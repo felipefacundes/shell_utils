@@ -64,7 +64,7 @@ Shell Utils es un marco educativo diseñado para hacer que la programación en s
 
 ### Opción 1: Instalación en Una Línea
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/master/tools/install.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"
 ```
 
 ### Opción 2: Instalación Manual
