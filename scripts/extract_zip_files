@@ -1,0 +1,44 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script checks for the existence of '.zip' files in the current directory and extracts each 
+one into a corresponding folder named after the zip file. If no zip files are found, it outputs 
+an error message and exits. The script creates a new directory for each zip file if it doesn't 
+already exist and uses 'unzip' to extract the contents quietly. Finally, it confirms the completion 
+of the extraction process.
+DOCUMENTATION
+
+# Function to check the existence of .zip files in the folder
+check_zip_files() {
+    local zip_files=(*.[Zz][Ii][Pp])
+    
+    if [ ${#zip_files[@]} -eq 0 ]; then
+        echo "No .zip files found in the folder."
+        exit 1
+    fi
+}
+
+# Loop to extract .zip files to folders with the same name
+extract_zip_files() {
+    for file in *.[Zz][Ii][Pp]; do
+        folder_name=$(basename -s .zip "$file")
+        
+        if [ ! -d "$folder_name" ]; then
+            mkdir "$folder_name"
+        fi
+        
+        unzip -q "$file" -d "$folder_name"
+        
+        echo -e "\nFile $file extracted to $folder_name/"
+    done
+}
+
+# Check the existence of .zip files
+check_zip_files
+
+# Extract .zip files
+extract_zip_files
+
+echo -e "\nExtraction completed."

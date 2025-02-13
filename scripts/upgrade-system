@@ -1,0 +1,120 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A robust system update management script for Linux (Arch-based) with the following key features:
+
+- Multilingual support (English/Portuguese) with automatic language detection based on system locale, 
+utilizing a well-structured message array system for easy maintenance and localization
+
+- Comprehensive system update functionality with user-friendly colored output, including update checking, 
+package listing, and automatic updates with administrator privileges
+
+- Advanced features including the ability to toggle automatic updates, graceful error handling, and 
+user-friendly prompts with a clean interface design
+DOCUMENTATION
+
+# Regular Colors
+red='\033[0;31m'          # Red
+cyan='\033[0;36m'         # Cyan
+green='\033[0;32m'        # Green
+yellow='\033[0;33m'       # Yellow
+bold='\033[1m'            # Only Bold
+color_off='\033[0m'       # Text Reset
+
+# Define language based on LANG variable
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [CHECK_UPDATE]='Checando atualização do sistema.'
+        [PACKAGES_TO_UPDATE]='Pacotes a serem atualizados:'
+        [ENTER_PASSWORD]='Digite à sua senha de administrador para atualizar o sistema.'
+        [SYSTEM_UPDATED]='Sistema atualizado.'
+        [DISABLE_AUTO_UPDATE]='Você deseja desativar a atualização automática?'
+        [YES]='Sim'
+        [NO]='Não'
+        [AUTO_UPDATE_DISABLED]='Atualização automática desativada!'
+        [AUTO_UPDATE_ACTIVE]='Atualização automática permanece ativa!'
+        [INVALID_OPTION]='Opção errada!'
+        [RESTART_MESSAGE]='O script será reaberto, para cancelar e sair use "Ctrl+c"'
+    )
+else
+    MESSAGES=(
+        [CHECK_UPDATE]='Checking for system updates.'
+        [PACKAGES_TO_UPDATE]='Packages to be updated:'
+        [ENTER_PASSWORD]='Enter your administrator password to update the system.'
+        [SYSTEM_UPDATED]='System is up to date.'
+        [DISABLE_AUTO_UPDATE]='Do you want to disable automatic updates?'
+        [YES]='Yes'
+        [NO]='No'
+        [AUTO_UPDATE_DISABLED]='Automatic updates disabled!'
+        [AUTO_UPDATE_ACTIVE]='Automatic updates remain active!'
+        [INVALID_OPTION]='Invalid option!'
+        [RESTART_MESSAGE]='The script will restart, press "Ctrl+c" to cancel and exit.'
+    )
+fi
+
+positive_response() {
+    sudo su -c 'systemctl stop pacman-auto-update.timer;
+    systemctl stop pacman-auto-update.service'
+    echo -e "${bold}${green}${MESSAGES[AUTO_UPDATE_DISABLED]}${color_off}"
+    sleep 5
+}
+
+negative_response() {
+    echo -e "${bold}${green}${MESSAGES[AUTO_UPDATE_ACTIVE]}${color_off}"
+    sleep 5
+}
+
+echo -e "${red}${MESSAGES[CHECK_UPDATE]}${color_off}"
+echo '━━━━━━━━━'
+echo "${MESSAGES[PACKAGES_TO_UPDATE]}"
+checkupdates
+echo '━━━━━━━━━'
+UPDATE=$(checkupdates)
+if [ -n "$UPDATE" ]; then
+    echo -e "${red}${MESSAGES[ENTER_PASSWORD]}${color_off}"
+    echo '━━━━━━━━━'
+    sudo pacman -Syyu --noconfirm
+else
+    sleep 2
+    clear
+    echo -e "${green}${MESSAGES[SYSTEM_UPDATED]}${color_off}"
+    notify-send "${MESSAGES[SYSTEM_UPDATED]}"
+fi
+
+sleep 2
+echo
+echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+echo -e "${yellow}${MESSAGES[DISABLE_AUTO_UPDATE]}${color_off}"
+echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+echo
+echo -e "${green}${MESSAGES[YES]}${color_off}"
+echo -e "${cyan}${MESSAGES[NO]}${color_off}"
+echo
+read -r option
+case "$option" in
+    ['S','s','Y','y','1']*)
+        positive_response
+    ;;
+    ['N','n','2']*)
+        negative_response
+    ;;
+    ['Q','q','E','e','0','3'-'99']*)
+        exit
+    ;;
+    *)
+        echo
+        echo '━━━━━━━━━━━━━'
+        echo -e "${red}${MESSAGES[INVALID_OPTION]}${color_off}"
+        echo '━━━━━━━━━━━━━'
+        echo
+        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+        echo -e "${yellow}${MESSAGES[RESTART_MESSAGE]}${color_off}"
+        echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+        sleep 6
+        exec "$0"
+    ;;
+esac
+exit

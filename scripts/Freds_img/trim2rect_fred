@@ -1,0 +1,480 @@
+#!/bin/bash
+# 
+# Developed by Fred Weinhaus 12/29/2018 .... revised 12/29/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: trim2rect [-f fuzzval] [-c coords] [-b bgcolor] [-p progress] [-g graphic] 
+# [-d dcolor] infile outfile
+# USAGE: trim2rect [-h or -help]
+# 
+# OPTIONS:
+# 
+# -f     fuzzval      fuzz value for determining border color; expressed as (float) 
+#                     percent 0 to 100; default=0 (uniform color)
+# -c     coords       pixel coordinate to extract color; may be expressed as a 
+#                     gravity value (NorthWest, etc) or as "x,y" value; default 
+#                     is NorthWest=(0,0)
+# -b     bgcolor      background color surrounding region of interest; any valid IM 
+#                     color is allowed; default is to use coords to get color; bgcolor 
+#                     takes precedence over coordinates
+# -p     progress     show progress; choices are: yes or no
+# -g     graphic      draw crop box on input image; yes or no; default=no; graphic 
+#                     image will be the input image name with _cropbox.jpg appended
+# -d     dcolor       crop box draw color; any valid opaque IM color is allowed: 
+#                     default=red
+# 
+###
+# 
+# NAME: TRIM2RECT 
+#  
+# PURPOSE: Automatically trims the sides of an image until no outer row or column
+# contains the background color. 
+# 
+# DESCRIPTION: TRIM2RECT automatically trims the sides of an image one row or column 
+# at a time until no side row or column contains the background color. The background 
+# color is first floodfilled to be transparent and a -trim is performed to remove 
+# excess background color that is completely along any side. Then the alpha channel is 
+# extracted. Each side row or column of the alpha channel is then tested for its 
+# mean value. If the mean value is less than one, a counter is incremented for that 
+# side. Once a side row or column of the alpha channel has a mean of 1, that side row 
+# or column is no longer tested. Processing continues until all side rows and columns 
+# have a mean value of 1. A crop box is then computed from the counters indicating 
+# how many rows and columns should be removed from each side. Finally the image is 
+# cropped.
+# 
+# 
+# Arguments: 
+# 
+# -f fuzzval ... FUZZVAL is the fuzz amount specified as a percent 0 to 100 
+# (without the % sign). The default=5. A value of zero indicates that border is a 
+# uniform color. Larger values are needed when the border is not a uniform color.
+# 
+# -c coords ... COORDS is any location within the border area for the 
+# algorithm to find the base border color. It may be specified in terms of 
+# gravity parameters (NorthWest, North, NorthEast, East, SouthEast, South, 
+# SouthWest or West) or as a pixel coordinate "x,y". The default is the 
+# upper left corner = NorthWest = "0,0".
+# 
+# -bg color ... BGCOLOR is the background color surrounding the region of interest. 
+# Any valid IM color is allowed. The default is to use coords to get color. The 
+# bgcolor takes precedence over coordinates.
+# 
+# -p progress... show PROGRESS in cycles. The choices are: yes (y) or no (n). Each  
+# cycle corresponds to a test of all four sides in the order of top, left, bottom, 
+# right.
+# 
+# -g graphic ... GRAPHIC specifies to draw the crop box on input image after the 
+# initial -trim to remove excess border. Choices are: yes (y) or no (n). The default=no. 
+# The graphic image will be the input image name with _cropbox.jpg appended.
+# 
+# -d dcolor ... DCOLOR is the crop box draw color. Any valid opaque IM color is allowed. 
+# The default=red.
+# 
+# Note, this script may be quite slow as it processes one row or column at a time.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+fuzzval=5
+bgcolor=""
+coord="0,0"
+progress="no"
+graphic="no"
+dcolor="red"
+
+# set directory for temporary files
+# tmpdir="/tmp"
+tmpdir="."
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+	echo ""
+	usage2
+	exit 0
+elif [ $# -gt 14 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+		# get parameters
+		case "$1" in
+	  -h|-help)    # help information
+				   echo ""
+				   usage2
+				   ;;
+			-f)    # fuzzval
+				   shift  # to get the next parameter - fuzzval
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID FUZZVAL SPECIFICATION ---"
+				   checkMinus "$1"
+				   fuzzval=`expr "$1" : '\([.0-9]*\)'`
+				   [ "$fuzzval" = "" ] && errMsg "--- FUZZVAL=$fuzzval MUST BE A NON-NEGATIVE FLOATING POINT VALUE (with no sign) ---"
+				   fuzzvaltest=`echo "$fuzzval < 0" | bc`
+				   [ $fuzzvaltest -eq 1 ] && errMsg "--- FUZZVAL=$fuzzval MUST BE A NON-NEGATIVE FLOATING POINT VALUE ---"
+				   ;;
+			-c)    # coords
+				   shift  # to get the next parameter - coords
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID COORDS SPECIFICATION ---"
+				   checkMinus "$1"
+				   coords=$1
+				   # further testing done later
+				   ;;
+			-b)    # bgcolor
+				   shift  # to get the next parameter - coords
+				   bgcolor="$1"
+				   ;;
+			-p)    # get progress
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign
+				   errorMsg="--- INVALID PROGRESS SPECIFICATION ---"
+				   checkMinus "$1"
+				   progress=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+				   case "$progress" in
+						yes|y) progress="yes";;
+						no|n) progress="no";;
+						*)  errMsg "--- PROGRESS=$progress IS NOT A VALID VALUE ---" ;;
+				   esac
+				   ;;
+			-g)    # get graphic
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign
+				   errorMsg="--- INVALID GRAPHIC SPECIFICATION ---"
+				   checkMinus "$1"
+				   graphic=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+				   case "$graphic" in
+						yes|y) graphic="yes";;
+						no|n) graphic="no";;
+						*)  errMsg "--- GRAPHIC=$graphic IS NOT A VALID VALUE ---" ;;
+				   esac
+				   ;;
+			-d)    # dcolor
+				   shift  # to get the next parameter - coords
+				   dcolor="$1"
+				   ;;
+			 -)    # STDIN and end of arguments
+				   break
+				   ;;
+			-*)    # any other - argument
+				   errMsg "--- UNKNOWN OPTION ---"
+				   ;;
+			*)     # end of arguments
+				   break
+				   ;;
+		esac
+		shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+dir="$tmpdir/TRIM2RECT.$$"
+
+mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+
+# get IM version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER */!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g'`
+
+# set up floodfill
+if [ "$im_version" -ge "07000000" ]; then
+	matte_alpha="alpha"
+else
+	matte_alpha="matte"
+fi
+
+# test if infile exist
+if ! [ -f "$infile" -a -e "$infile" -a -r "$infile" -a -s "$infile" ]; then
+	errMsg  "--- FILE $dfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+	exit 1
+fi
+
+
+# test if coords provided as x,y and not gravity values
+coords1=`expr "$coords" : '\([0-9]*,[0-9]*\)'`
+
+# get coords if not supplied and bgcolor not none or transparent
+if [ "$bgcolor" != "none" -a "$bgcolor" != "transparent" ]; then
+	if [ "$coords1" = "" ]; then
+		WxH=`convert -ping -quiet "$infile[0]" -format "%wx%h" info:`
+		width=`echo $WxH | cut -dx -f1`
+		height=`echo $WxH | cut -dx -f2`
+		widthm1=`convert xc: -format "%[fx:$width-1]" info:`
+		heightm1=`convert xc: -format "%[fx:$height-1]" info:`
+		midwidth=`convert xc: -format "%[fx:round(($width-1))/2]" info:`
+		midheight=`convert xc: -format "%[fx:round(($height-1))/2]" info:`
+		coords=`echo "$coords" | tr "[:upper:]" "[:lower:]"`
+		case "$coords" in
+			''|nw|northwest) coords="0,0" ;;
+			n|north)         coords="$midwidth,0" ;;
+			ne|northeast)    coords="$widthm1,0" ;;
+			e|east)          coords="$widthm1,$midheight" ;;
+			se|southeast)    coords="$widthm1,$heightm1" ;;
+			s|south)         coords="$midwidth,$heightm1" ;;
+			sw|southwest)    coords="0,$heightm1" ;;
+			w|west)          coords="0,$midheight" ;;
+			*)  errMsg "--- INVALID COORDS ---" ;;
+		esac
+		bgcolor=`convert "$infile[0]" -format "%[pixel:u.p{$coords}]" info:`
+	else
+		bgcolor=`convert "$infile[0]" -format "%[pixel:u.p{$coords}]" info:`
+	fi
+fi
+
+# set up for floodfill if bgcolor not none or transparnt
+if [ "$bgcolor" != "none" -a "$bgcolor" != "transparent" ]; then
+	proc="-fill none -draw \"$matte_alpha $coord floodfill\""
+else
+	proc=""
+fi
+
+
+# read the input
+convert -quiet "$infile[0]" +repage $dir/tmpO.mpc ||
+errMsg  "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get original dimensions
+declare `convert -ping $dir/tmpO.mpc -format "wwo=%w\nhho=%h\n" info:`
+#echo "wwo=$wwo; hho=$hho;"
+
+
+# do fuzzy trim
+#convert -quiet "$infile[0]" +repage $dir/tmpI.mpc ||
+eval 'convert -quiet $dir/tmpO.mpc -bordercolor "$bgcolor" -border 1 -fuzz $fuzzval% '$proc' -trim $dir/tmpI.mpc'
+
+
+# get trimbounds
+trimbounds=`convert -ping $dir/tmpI.mpc -format "%w+%h%O" info:`
+ww=`echo $trimbounds | cut -d+ -f1`
+hh=`echo $trimbounds | cut -d+ -f2`
+xx=`echo $trimbounds | cut -d+ -f3`
+yy=`echo $trimbounds | cut -d+ -f4`
+#echo "ww=$ww; hh=$hh; xx=$xx; yy=$yy;"
+
+# compute change in size and offset accounting for border pad by 1 all around
+dxo=$((xx-1))
+dyo=$((yy-1))
+#echo "dxo=$dxo; dyo=$dyo;"
+
+
+# extract alpha (be sure to repage since not done after -trim above)
+convert $dir/tmpI.mpc +repage -alpha extract $dir/tmpA.mpc
+
+
+# circulate around the outside edges and chop the side that has the smallest opacity; stop if opacity is fully white
+top="transparent"
+left="transparent"
+bottom="transparent"
+right="transparent"
+top_count=0
+left_count=0
+bottom_count=0
+right_count=0
+i=0
+mean_top=`convert $dir/tmpA.mpc -gravity north -crop 0x1+0+0 +repage -scale 1x1! -format "%[fx:u]" info:`
+mean_left=`convert $dir/tmpA.mpc -gravity west -crop 1x0+0+0 +repage -scale 1x1! -format "%[fx:u]" info:`
+mean_bottom=`convert $dir/tmpA.mpc -gravity south -crop 0x1+0+0 +repage -scale 1x1! -format "%[fx:u]" info:`
+mean_right=`convert $dir/tmpA.mpc -gravity east -crop 1x0+0+0 +repage -scale 1x1! -format "%[fx:u]" info:`
+mean_min=`convert xc: -format "%[fx:min(min(min($mean_top,$mean_left),$mean_bottom),$mean_right)]" info:`
+
+until [ "$top" = "opaque" -a "$left" = "opaque" -a "$bottom" = "opaque" -a "$right" = "opaque" ]; do
+echo "i=$i;"
+	#echo "i=$i; mean_top=$mean_top; mean_left=$mean_left; mean_bottom=$mean_bottom; mean_right=$mean_right; mean_min=$mean_min;"
+	
+	# test each side to see if transparent
+	# if transparent, then test if mean != 1
+	# if mean != 1, then test if mean = min
+	# if mean = min, then increment counter and continue loop
+	# if mean = 1, then set side to opaque
+	
+	if [ "$top" = "transparent" ]; then
+		if [ "$mean_top" != "1" ]; then
+			top_test=`echo "$mean_top==$mean_min" | bc`
+			#echo "top_test=$top_test"
+			if [ $top_test -eq 1 ]; then
+				#echo "i=$i; top_count=$top_count; mean_top=$mean_top;"
+				((top_count++))
+				wd=$((ww-left_count-right_count))
+				ht=$((hh-top_count-bottom_count))
+				mean_top=`convert $dir/tmpA.mpc -gravity northwest -crop ${wd}x1+${left_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_left=`convert $dir/tmpA.mpc -gravity northwest -crop 1x${ht}+${left_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_right=`convert $dir/tmpA.mpc -gravity northeast -crop 1x${ht}+${right_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_min=`convert xc: -format "%[fx:min(min(min($mean_top,$mean_left),$mean_bottom),$mean_right)]" info:`
+				((i++))
+				continue
+			fi
+		else
+			top="opaque"
+			echo "top is opaque"
+		fi
+	fi
+			
+	if [ "$left" = "transparent" ]; then
+		if [ "$mean_left" != "1" ]; then
+			left_test=`echo "$mean_left==$mean_min" | bc`
+			#echo "left_test=$left_test"
+			if [ $left_test -eq 1 ]; then
+				#echo "i=$i; left_count=$left_count; mean_left=$mean_left;"
+				((left_count++))
+				wd=$((ww-left_count-right_count))
+				ht=$((hh-top_count-bottom_count))
+				mean_left=`convert $dir/tmpA.mpc -gravity northwest -crop 1x${ht}+${left_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_top=`convert $dir/tmpA.mpc -gravity northwest -crop ${wd}x1+${left_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_bottom=`convert $dir/tmpA.mpc -gravity southwest -crop ${wd}x1+${left_count}+${bottom_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_min=`convert xc: -format "%[fx:min(min(min($mean_top,$mean_left),$mean_bottom),$mean_right)]" info:`
+				((i++))
+				continue
+			fi
+		else
+			left="opaque"
+			echo "left is opaque"
+		fi
+	fi
+
+	if [ "$bottom" = "transparent" ]; then
+		if [ "$mean_bottom" != "1" ]; then
+			bottom_test=`echo "$mean_bottom==$mean_min" | bc`
+			#echo "bottom_test=$bottom_test"
+			if [ $bottom_test -eq 1 ]; then
+				#echo "i=$i; bottom_count=$bottom_count; mean_bottom=$mean_bottom;"
+				((bottom_count++))
+				wd=$((ww-left_count-right_count))
+				ht=$((hh-top_count-bottom_count))
+				mean_bottom=`convert $dir/tmpA.mpc -gravity southwest -crop ${wd}x1+${left_count}+${bottom_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_left=`convert $dir/tmpA.mpc -gravity northwest -crop 1x${ht}+${left_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_right=`convert $dir/tmpA.mpc -gravity northeast -crop 1x${ht}+${right_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_min=`convert xc: -format "%[fx:min(min(min($mean_top,$mean_left),$mean_bottom),$mean_right)]" info:`
+				((i++))
+				continue
+			fi
+		else
+			bottom="opaque"
+			echo "bottom is opaque"
+		fi
+	fi
+			
+	if [ "$right" = "transparent" ]; then
+		if [ "$mean_right" != "1" ]; then
+			right_test=`echo "$mean_right==$mean_min" | bc`
+			#echo "right_test=$right_test"
+			if [ $right_test -eq 1 ]; then
+				#echo "i=$i; right_count=$right_count; mean_right=$mean_right;"
+				((right_count++))
+				wd=$((ww-left_count-right_count))
+				ht=$((hh-top_count-bottom_count))
+				mean_right=`convert $dir/tmpA.mpc -gravity northeast -crop 1x${ht}+${right_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_top=`convert $dir/tmpA.mpc -gravity northwest -crop ${wd}x1+${left_count}+${top_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_bottom=`convert $dir/tmpA.mpc -gravity southwest -crop ${wd}x1+${left_count}+${bottom_count} +repage -scale 1x1! -format "%[fx:u]" info:`
+				mean_min=`convert xc: -format "%[fx:min(min(min($mean_top,$mean_left),$mean_bottom),$mean_right)]" info:`
+				((i++))
+				continue
+			fi
+		else
+			right="opaque"
+			echo "right is opaque"
+		fi
+	fi
+
+done
+
+#echo "ww=$ww; hh=$hh; left_count=$left_count; right_count=$right_count; top_count=$top_count; bottom_count=$bottom_count;"
+
+# get crop coordinates
+xc=$((left_count+dxo))
+yc=$((top_count+dyo))
+wwc=$((ww-right_count-left_count))
+hhc=$((hh-bottom_count-top_count))
+cropbox="${wwc}x${hhc}+${xc}+${yc}"
+echo "cropbox=$cropbox;"
+
+# crop
+convert $dir/tmpO.mpc -crop $cropbox "$outfile"
+
+
+# draw crop box
+left_count0=$xc
+top_count0=$yc
+right_count0=$((xc+wwc-1))
+bottom_count0=$((yc+hhc-1))
+#echo "left_count0=$left_count0; right_count0=$right_count0; top_count0=$top_count0; bottom_count0=$bottom_count0;"
+
+draw_coords="$left_count0,$top_count0 $right_count0,$bottom_count0"
+convert $dir/tmpO.mpc -fill none -stroke red -draw "rectangle $draw_coords" -alpha off ${inname}_cropboxE.jpg
+
+exit 0

@@ -1,0 +1,7 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+paclog-pkglist <(tail -5000 /var/log/pacman.log | grep -A 100 -i 'pacman -R')
+echo "------------------------------------------------------------"
+echo "paclog-pkglist <(tail -5000 /var/log/pacman.log | grep -A 100 -i 'pacman -R')"

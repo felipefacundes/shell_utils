@@ -1,0 +1,372 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 2/24/2022 .......... revised 2/24/2022
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: position [-m method] [-d direction] [-o offset] [-l leftpt] 
+# [-r rightpt] [-b bcolor] [-f format] [-T trim] infile1 infile2 outfile
+#
+# USAGE: position [-h or -help]
+#
+# OPTIONS:
+#
+# -m     method        positioning method; choices are: offset or cpoints; 
+#                      default=offset
+# -d     direction     positioning direction; choices are: horizontal or 
+#                      vertical; default=horizontal
+# -o     offset        offset +X+Y values for left/ope edge of second image  
+#                      relative to right/bottom edge of first image. Used when 
+#                      method=offset; positive or negative offsets are allowed; 
+#                      default=+0+0
+# -l     leftpt        left (first) image control x,y point; default=0,0
+# -r     rightpt       right (second) image control x,y point; default=0,0
+# -b     bcolor        background color to fill empty spaces
+# -f     format        output color format; choices are: RG, GB, BR or RGB; 
+#                      default=RGB
+# -T     trim          trim output to remove any background fill areas
+#
+###
+#
+# NAME: POSITION 
+# 
+# PURPOSE: To position one image relative to another image.
+# 
+# DESCRIPTION: POSITION aligns or offsets one image relative to a another 
+# image.  The second image is positioned relative to the first image either 
+# horizontally or vertically. Positioning can be done using X and Y offsets 
+# or by specifying one controll point for each image.
+# 
+# OPTIONS: 
+#
+# -m method ... positioning METHOD. The choices are: offset (o) or cpoints (c).
+# The default=offset.
+# 
+# -d direction ... positioning DIRECTION. The choices are: horizontal (h) or 
+# vertical (v). The default=horizontal.
+# 
+# -o offset ... OFFSET +X+Y values for left/top edge of second image relative 
+# to right/bottom edge of first image. This is used when method=offset. 
+# Position X and Y offsets may be either positive or negative. The default=+0+0
+# 
+# -l leftpt ... LEFT (first) image control x,y POINT. Values are integers>0. 
+# The default=0,0
+# 
+# -r rightpt ... RIGHT (second) image control x,y POINT. Values are integers>0. 
+# The default=0,0
+# 
+# -b bcolor ... BGCOLOR is the background color to fill empty spaces. Any 
+# Imagemagick color is allowed. The default=none (transparent)
+# 
+# -f format ... output color FORMAT; The choices are: RG, GB, BR or RGB. 
+# RGB is the normal color image. RG, for example, is first image in Red and 
+# second image in Green and any overlay will show in yellow (mix of Red and 
+# Green). The default=RGB.
+# 
+# -T trim ... TRIM output to remove any background fill areas.
+# Choices are: yes (y) or no (n). The default=no. Background color must be 
+# unique in the image for the trim to work properly.
+# 
+# LIMITATIONS: TRIM option only works for Imagemagick 7.0.9-0 or higher.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+method="offset"            # offset or cpoints
+direction="horizontal"     # horizontal or vertical
+offset=+0+0                # offset
+#offset=-90-40             # offset
+leftpt="0,0"               # left image single control point
+rightpt="0,0"              # right image single control point
+#leftpt="287,49"           # left image single control point
+#rightpt="76,89"           # right image single control point
+bcolor=none                # background color
+format="RGB"               # RG or GB or BR or RGB output color format
+trim="no"                  # trim output; yes or no
+
+# set directory for temporary files
+tmpdir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 19 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-m)    # method
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID METHOD SPECIFICATION ---"
+					   checkMinus "$1"
+					   method=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$method" in 
+							offset|o) method="offset" ;;
+							cpoints|c) method="cpoints" ;;
+							*) errMsg "--- METHOD=$method IS AN INVALID VALUE ---" 
+					   esac
+				   	   ;;
+				-d)    # direction
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIRECTION SPECIFICATION ---"
+					   checkMinus "$1"
+					   direction=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$direction" in 
+							horizontal|h) direction="horizontal" ;;
+							vertical|v) direction="vertical" ;;
+							*) errMsg "--- DIRECTION=$direction IS AN INVALID VALUE ---" 
+					   esac
+				   	   ;;
+				-o)    # offset
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID OFFSET SPECIFICATION ---"
+					   #checkMinus "$1"
+					   offset=`expr "$1" : '\([-+][0-9]*[-+][0-9]*\)'`
+					   [ "$offset" = "" ] && errMsg "--- OFFSET=$offset IS INVALID ---"
+					   ;;
+				-l)    # leftpt
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID LEFTPT SPECIFICATION ---"
+					   checkMinus "$1"
+					   leftpt=`expr "$1" : '\([0-9]*,[0-9]*\)'`
+					   [ "$leftpt" = "" ] && errMsg "--- LEFTPT=$leftpt IS INVALID ---"
+					   ;;
+				-r)    # rightpt
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RIGHTPT SPECIFICATION ---"
+					   checkMinus "$1"
+					   rightpt=`expr "$1" : '\([0-9]*,[0-9]*\)'`
+					   [ "$rightpt" = "" ] && errMsg "--- RIGHTPT=$rightpt IS INVALID ---"
+					   ;;
+				-b)    # bcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bcolor="$1"
+					   ;;
+				-f)    # format
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FORMAT SPECIFICATION ---"
+					   checkMinus "$1"
+					   format=`echo "$1" | tr "[:lower:]" "[:upper:]"`
+					   case "$format" in 
+							RG) ;;
+							GB) ;;
+							BR) ;;
+							RGB) ;;
+							*) errMsg "--- FORMAT=$format IS AN INVALID VALUE ---" 
+					   esac
+				   	   ;;
+				-T)    # trim
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TRIM SPECIFICATION ---"
+					   checkMinus "$1"
+					   trim=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$trim" in 
+							yes) ;;
+							no) ;;
+							*) errMsg "--- TRIM=$trim IS AN INVALID VALUE ---" 
+					   esac
+				   	   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infiles and outfile
+	infile1="$1"
+	infile2="$2"
+	outfile="$3"
+fi
+
+# test that infile1 provided
+[ "$infile1" = "" ] && errMsg "--- NO INPUT FILE 1 SPECIFIED ---"
+
+# test that infile2 provided
+[ "$infile2" = "" ] && errMsg "--- NO INPUT FILE 2 SPECIFIED ---"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "--- NO OUTPUT FILE SPECIFIED ---"
+
+
+dir="$tmpdir/POSITION.$$"
+
+mkdir "$dir" || echo "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+
+# read input images
+# test if infile exists, is readable and is not zero size
+convert -quiet "$infile1" +repage $dir/tmpI1.mpc || 
+	echo  "--- FILE $infile1 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+convert -quiet "$infile2" +repage $dir/tmpI2.mpc || 
+	echo  "--- FILE $infile2 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get image1 dimensions
+ww=`convert  $dir/tmpI1.mpc -format "%w" info:`
+hh=`convert  $dir/tmpI1.mpc -format "%h" info:`
+#echo "ww=$ww; hh=$hh;"
+
+# get page values for second image
+if [ "$method" = "cpoints" ]; then
+	lx=`echo "$leftpt" | cut -d, -f1`
+	ly=`echo "$leftpt" | cut -d, -f2`
+	rx=`echo "$rightpt" | cut -d, -f1`
+	ry=`echo "$rightpt" | cut -d, -f2`
+		pagex=$((lx-rx))
+		pagey=$((ly-ry))
+	
+else # offsets
+	xoff=`echo $offset | sed -n 's/^\([+-].*\)[+-].*$/\1/p'`
+	yoff=`echo $offset | sed -n 's/^[+-].*\([+-].*\)$/\1/p'`
+	if [ "$direction" = "horizontal" ]; then
+		pagex=$((ww+xoff))
+		pagey=$((yoff))
+	else 
+		# vertical
+		pagex=$((xoff))
+		pagey=$((hh+yoff))
+	fi
+fi
+#echo "ww=$ww; hh=$hh; xoff=$xoff; yoff=$yoff; lx=$lx; ly=$ly; rx=$rx; ry=$ry; pagex=$pagex; pagey=$pagey;"
+
+# set up for trim
+[ "$trim" = "yes" ] && trimming="-background $bcolor -define trim:percent-background=0% -trim +repage"
+
+# align the two images
+if [ "$format" = "RG" ]; then
+	convert \
+		\( $dir/tmpI1.mpc -colorspace gray -set page +0+0 -write mpr:img1 +delete \) \
+		\( $dir/tmpI2.mpc -colorspace gray -set page +${pagex}+${pagey} -write mpr:img2 +delete \) \
+		\( \( mpr:img2 -background black -colorize 100 \) \( mpr:img1 +level-colors "black,red" \) \
+			-background "$bcolor" -layers merge +repage \) \
+		\( \( mpr:img1 -background black -colorize 100 \) \( mpr:img2 +level-colors "black,green1" \) \
+			-background "$bcolor" -layers merge +repage \) \
+		-compose over -compose blend -composite $trimming \
+		"$outfile"
+
+elif [ "$format" = "GB" ]; then
+	convert \
+		\( $dir/tmpI1.mpc -colorspace gray -set page +0+0 -write mpr:img1 +delete \) \
+		\( $dir/tmpI2.mpc -colorspace gray -set page +${pagex}+${pagey} -write mpr:img2 +delete \) \
+		\( \( mpr:img2 -background black -colorize 100 \) \( mpr:img1 +level-colors "black,green1" \) \
+			-background "$bcolor" -layers merge +repage \) \
+		\( \( mpr:img1 -background black -colorize 100 \) \( mpr:img2 +level-colors "black,blue" \) \
+			-background "$bcolor" -layers merge +repage \) \
+		-compose over -compose blend -composite $trimming \
+		"$outfile"
+
+elif [ "$format" = "BR" ]; then
+	convert \
+		\( $dir/tmpI1.mpc -colorspace gray -set page +0+0 -write mpr:img1 +delete \) \
+		\( $dir/tmpI2.mpc -colorspace gray -set page +${pagex}+${pagey} -write mpr:img2 +delete \) \
+		\( \( mpr:img2 -background black -colorize 100 \) \( mpr:img1 +level-colors "black,blue" \) \
+			-background "$bcolor" -layers merge +repage \) \
+		\( \( mpr:img1 -background black -colorize 100 \) \( mpr:img2 +level-colors "black,red" \) \
+			-background "$bcolor" -layers merge +repage \) \
+		-compose over -compose blend -composite $trimming \
+		"$outfile"
+
+else # RGB
+	convert \
+		\( $dir/tmpI1.mpc -set page +0+0 \) \
+		\( $dir/tmpI2.mpc -set page +${pagex}+${pagey} \) \
+		-background "$bcolor" -layers merge +repage $trimming \
+		"$outfile"
+		
+
+fi
+
+exit 0

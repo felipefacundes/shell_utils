@@ -1,0 +1,10 @@
+#!/bin/bash
+cat <<'EOF'
+rm -rf ~/.config/fish
+rm -rf ~/.local/share/fish
+
+# oh-my-fish install: curl https://raw.githubusercontent.com/oh-my-fish/oh-my-fish/master/bin/install | fish
+rm -rf ~/.config/omf
+rm -rf ~/.cache/omf
+rm -rf ~/.local/share/omf
+EOF

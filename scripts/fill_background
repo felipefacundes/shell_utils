@@ -1,0 +1,77 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script fills the terminal background with a specified color and displays the given text.
+DOCUMENTATION
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["usage"]="Uso: ${0##*/} [COR] [TEXTO]"
+        ["description"]="Este script preenche o fundo do terminal com uma cor especificada e exibe o texto dado."
+        ["arguments"]="Argumentos:"
+        ["color"]="  COR        A cor para o fundo do texto. Use códigos de cor ANSI."
+        ["color_example"]="  Exemplo:   '\033[31m' para vermelho, '\033[32m' para verde, '\033[34m' para azul, etc."
+        ["text"]="  TEXTO      O texto a ser exibido no terminal."
+        ["options"]="Opções:"
+        ["help"]="-h, --help   Mostra esta mensagem de ajuda e sai."
+        ["examples"]="Exemplos:"
+        ["example1"]="  ${0##*/} '\033[31;40m' 'Olá, Mundo!'    # Exibe 'Olá, Mundo!' com fundo vermelho."
+        ["example2"]="  ${0##*/} '\033[32;40m' 'Bem-vindo!'     # Exibe 'Bem-vindo!' com fundo verde."
+        ["note"]="Nota: Certifique-se de usar códigos de cor ANSI válidos para o argumento COR."
+    )
+else
+    MESSAGES=(
+        ["usage"]="Usage: ${0##*/} [COLOR] [TEXT]"
+        ["description"]="This script fills the terminal background with a specified color and displays the given text."
+        ["arguments"]="Arguments:"
+        ["color"]="  COLOR      The color for the background of the text. Use ANSI color codes."
+        ["color_example"]="  Example:   '\033[31m' for red, '\033[32m' for green, '\033[34m' for blue, etc."
+        ["text"]="  TEXT       The text to be displayed in the terminal."
+        ["options"]="Options:"
+        ["help"]="  -h, --help   Show this help message and exit."
+        ["examples"]="Examples:"
+        ["example1"]="  ${0##*/} '\033[31;40m' 'Hello, World!'    # Displays 'Hello, World!' with a red background."
+        ["example2"]="  ${0##*/} '\033[32;40m' 'Welcome!'         # Displays 'Welcome!' with a green background."
+        ["note"]="Note: Make sure to use valid ANSI color codes for the COLOR argument."
+    )
+fi
+
+function help {
+    echo "${MESSAGES[usage]}"
+    echo ""
+    echo "${MESSAGES[description]}"
+    echo ""
+    echo "${MESSAGES[arguments]}"
+    echo "${MESSAGES[color]}"
+    echo "${MESSAGES[color_example]}"
+    echo "${MESSAGES[text]}"
+    echo ""
+    echo "${MESSAGES[options]}"
+    echo "${MESSAGES[help]}"
+    echo ""
+    echo "${MESSAGES[examples]}"
+    echo "${MESSAGES[example1]}"
+    echo "${MESSAGES[example2]}"
+    echo ""
+    echo "${MESSAGES[note]}"
+    exit 0
+}
+
+if [[ -z "$1" || -z "$2" ]]; then
+    help
+fi
+
+function fill_background {
+    local color="$1"
+    local text="$2"
+    local cols=$(tput cols)    # Get the width of the terminal
+
+    # Build the line with colorful background
+    printf "${color}%-*s\033[0m\n" "$cols" "$text"
+}
+
+fill_background "$1" "$2"

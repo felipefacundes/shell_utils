@@ -1,0 +1,167 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+The provided script is a Bash program that displays a calendar along with the public holidays for the current year in the user's country. 
+It utilizes Python to fetch holiday data and offers an interactive terminal interface for users to navigate through the calendar. 
+
+Purpose:
+- To provide a user-friendly calendar application that displays holidays and allows users to navigate through months and days.
+
+Strengths:
+1. Dynamic Holiday Display: Automatically fetches and displays public holidays based on the user's locale.
+2. Interactive Navigation: Users can easily navigate through months and days using simple keyboard inputs.
+3. Custom Date Highlighting: Allows users to highlight specific dates for better visibility.
+4. Colorful Output: Integrates with 'lolcat' for colorful terminal output, enhancing user experience.
+5. User -Friendly Interface: Clear options and prompts make it easy for users to interact with the application.
+
+Capabilities:
+- Fetches and displays holidays using Python.
+- Supports navigation through months and days.
+- Highlights specific dates as requested by the user.
+- Provides options to show/hide holidays and toggle colorful output.
+DOCUMENTATION
+
+holidays() {
+python -c '
+import sys
+from datetime import datetime
+import locale
+from workalendar.registry import registry
+
+country = locale.getlocale()[0].split("_")[1].upper()
+
+def display_holidays():
+    # Get the holidays for the current year in the country
+    current_year = datetime.now().year
+
+    # Get the calendar for the country
+    country_calendar = registry.get_calendars()[country]()
+
+    # Display holidays in the terminal
+    holidays = country_calendar.holidays(current_year)
+    for holiday in holidays:
+        date = holiday[0]
+        name = holiday[1]
+        print(f"{date}: {name}")
+
+def main():
+    display_holidays()
+
+if __name__ == "__main__":
+    main()
+'
+}
+
+function lol { lolcat -p $(((RANDOM % 9)+1)) -F 0.$(((RANDOM % 9)+1)) -a -d 1; }
+
+# Loop main
+while true
+do
+    clear
+
+    # Get current month and year
+    day=${day:-$(date +%d)}
+    month=${month:-$(date +%m)}
+    year=${year:-$(date +%Y)}
+    lolcat=${lolcat:-""}
+
+    # Display calendar $month $year
+
+    [[ "$lolcat" ]] && cal --color=always $day $month $year | lol  && [[ "$holidays" ]] && echo && holidays | lol && echo
+    [[ -z "$lolcat" ]] && cal --color=always $day $month $year && [[ "$holidays" ]] && echo && holidays && echo
+    [[ -z "$holidays" ]] && echo
+    
+    echo "==================="
+    echo "     Options"
+    echo "==================="
+    echo "1. Previous month"
+    echo "2. Next month"
+    echo "3. Highlight a date"
+    echo "4. Day previous"
+    echo "5. Next day"
+    echo "6. Show/Hide holidays"
+    echo "7. On/Off lolcat"
+    echo "q. Exit"
+    echo
+
+    # Helper function to read a characte
+    read_char() {
+        # Save current terminal settings
+        local old_tty_settings=$(stty -g)
+
+        # Configure the terminal in 'raw' mode
+        stty -echo raw
+
+        # Reads a single character
+        IFS= read -rN 1 "$@"
+
+        # Restores default terminal settings
+        stty "$old_tty_settings"
+    }
+
+    # Display the message
+    echo -e "Select an option:\n"
+
+    # read -p "Select an option: " option
+    
+    # Reads the option without pressing 'Enter'
+    read_char option
+
+    case $option in
+        1|a)
+            # Last month
+            month=$(date -d "$year-$month-01 -1 month" +%m)
+            year=$(date -d "$year-$month-01 -1 month" +%Y)
+            ;;
+        2|d)
+            # Next month
+            month=$(date -d "$year-$month-01 +1 month" +%m)
+            year=$(date -d "$year-$month-01 +1 month" +%Y)
+            ;;
+        3)
+            # highlight a date
+            read -p "Enter a date (AAAA-MM-DD): " highlight_date
+            day=$(date -d "$highlight_date" +%d)
+            month=$(date -d "$highlight_date" +%m)
+            year=$(date -d "$highlight_date" +%Y)
+            ;;
+        4|z)
+            # Day previous
+            day=$(date -d "$year-$month-$day -1 day" +%d)
+            year=$(date -d "$year-$month-01 -1 month" +%Y)
+            ;;
+        5|c)
+            # Next day
+            day=$(date -d "$year-$month-$day +1 day" +%d)
+            year=$(date -d "$year-$month-01 +1 month" +%Y)
+            ;;
+        6|h)
+            if [[ -z "$holidays" ]]; then 
+                holidays=1
+                #holidays=$(curl -s https://www.calendarr.com/brasil/ | grep -oP '(?<=<h2>).*?(?=</h2>)' | sed 's/<[^>]*>//g')
+            else 
+                holidays=""
+            fi
+            ;;
+        7|l)
+            if [[ -z "$lolcat" ]]; then
+                lolcat=1
+            else
+                lolcat=""
+            fi
+            ;;
+        0|q|o|e)
+            # Exit
+            echo "Leaving..."
+            exit 0
+            ;;
+        *)
+            echo "Invalid option. Try again."
+            sleep 1
+            continue
+            ;;
+    esac
+
+done

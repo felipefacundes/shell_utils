@@ -1,0 +1,344 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# The DOCUMENTATION is at the end of the script.
+
+declare -A MESSAGES
+
+# Define multilingual messages
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["file_ready"]="Arquivo pronto e já configurado!"
+        ["file_not_found"]="Arquivo não encontrado, criando um novo..."
+        ["file_moved"]="Arquivo movido para backup."
+        ["proceed"]="Você deseja prosseguir? (y/n)"
+        ["exit"]="Operação cancelada pelo usuário."
+        ["help"]="Uso: ${0##*/} [opção]\n\nOpções:\n  -h, --help    Mostrar esta ajuda\n  unsafe        Configuração insegura\n  safe          Configuração segura (padrão)\n  doc           Documentação"
+    )
+elif [[ "${LANG,,}" =~ fr_ ]]; then
+    MESSAGES=(
+        ["file_ready"]="Fichier prêt et déjà configuré !"
+        ["file_not_found"]="Fichier non trouvé, création d'un nouveau..."
+        ["file_moved"]="Fichier déplacé vers la sauvegarde."
+        ["proceed"]="Voulez-vous continuer? (y/n)"
+        ["exit"]="Opération annulée par l'utilisateur."
+        ["help"]="Utilisation : ${0##*/} [option]\n\nOptions:\n  -h, --help    Afficher cette aide\n  unsafe        Configuration non sécurisée\n  safe          Configuration sécurisée (par défaut)\n  doc           Documentation"
+    )
+elif [[ "${LANG,,}" =~ es_ ]]; then
+    MESSAGES=(
+        ["file_ready"]="¡Archivo listo y ya configurado!"
+        ["file_not_found"]="Archivo no encontrado, creando uno nuevo..."
+        ["file_moved"]="Archivo movido a la copia de seguridad."
+        ["proceed"]="¿Desea continuar? (y/n)"
+        ["exit"]="Operación cancelada por el usuario."
+        ["help"]="Uso: ${0##*/} [opción]\n\nOpciones:\n  -h, --help    Mostrar esta ayuda\n  unsafe        Configuración insegura\n  safe          Configuración segura (predeterminada)\n  doc           Documentación"
+    )
+else
+    MESSAGES=(
+        ["file_ready"]="File ready and already configured!"
+        ["file_not_found"]="File not found, creating a new one..."
+        ["file_moved"]="File moved to backup."
+        ["proceed"]="Do you want to proceed? (y/n)"
+        ["exit"]="Operation canceled by the user."
+        ["help"]="Usage: ${0##*/} [option]\n\nOptions:\n  -h, --help    Show this help\n  unsafe        Unsafe configuration\n  safe          Safe configuration (default)\n  doc           Documentation"
+    )
+fi
+
+dir=/etc/security
+file="${dir}/limits.conf"
+hash=$(md5sum "$file" 2>/dev/null | awk '{ print $1 }')
+default_hash="d490bba8182fa49ce835d1e98a24eefd"
+unsafe_hash="5792f8500ff20f9984d6a9f0a1e286f1"
+
+help() {
+    clear
+    echo -e "${MESSAGES["help"]}"
+    exit 0
+}
+
+safe_config() {
+cat <<'EOF' | sudo tee "$file"
+hard stack unlimited
+nproc unlimited
+nofile 1048576
+as unlimited
+cpu unlimited
+fsize unlimited
+memlock unlimited
+msgqueue unlimited
+locks unlimited
+* soft nofile 1048576
+* hard nofile 1048576
+@realtime - rtprio 98
+@realtime - memlock unlimited
+EOF
+}
+
+unsafe_config() {
+cat <<'EOF' | sudo tee "$file"
+hard stack unlimited
+nproc unlimited
+nofile 1048576
+as unlimited
+cpu unlimited
+fsize unlimited
+memlock unlimited
+msgqueue unlimited
+locks unlimited
+* soft nofile 1048576
+* hard nofile 1048576
+@realtime - rtprio 98
+@realtime - memlock unlimited
+@audio - rtprio 99
+@audio - memlock unlimited
+@audio - nice -19
+@video - rtprio 99
+@video - memlock unlimited
+@video - nice -19
+
+* soft nice -5
+* hard nice -5
+
+* soft rtprio 99
+* hard rtprio 99
+
+root hard nice -20
+root soft nofile 1048576
+root hard nofile 1048576
+
+* soft nproc 1048576
+* hard nproc 1048576
+root soft nproc 1048576
+root hard nproc 1048576
+
+* soft memlock unlimited
+* hard memlock unlimited
+root soft memlock unlimited
+root hard memlock unlimited
+EOF
+}
+
+show_documentation() {
+    clear
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0" | less -R -i
+    exit 0
+}
+
+if ! command -v sudo &>/dev/null; then
+    echo 'sudo command not found'
+    exit 1
+fi
+
+# Check for arguments
+if [[ "$1" == "doc" || "$1" == "documentation" ]]; then
+    show_documentation
+elif [[ "$1" == "-h" || "$1" == "--help" || "$1" == "h" || "$1" == "help" ]]; then
+    help
+fi
+
+# Default action is to call safe_config
+if test -f "$file" && test "$hash" == "$default_hash" -o "$hash" == "$unsafe_hash" && [[ -z "$1" ]]; then
+    echo "${MESSAGES["file_ready"]}"
+    exit 0
+fi
+
+read -rp "${MESSAGES[proceed]} " answer
+
+if [[ "$answer" != [yY] ]]; then
+    echo -e "\n${MESSAGES[exit]}"
+    exit 1
+fi
+
+if test -f "$file" && test "$hash" != "$default_hash" -o "$hash" != "$unsafe_hash"; then
+    sudo mv -v --backup=t "$file" "${dir}/limits.backup"
+    echo "${MESSAGES["file_moved"]}"
+elif ! test -f "$file"; then
+    echo "${MESSAGES["file_not_found"]}"
+    sudo touch "$file"
+fi
+
+# Call the safe_config function by default
+if [[ "$1" == "unsafe" ]]; then
+    unsafe_config >/dev/null
+elif [[ "$1" == "safe" ]] || [[ -z "$1" ]]; then
+    safe_config >/dev/null
+fi
+
+: <<'DOCUMENTATION'
+1.  hard stack unlimited:
+        Descrição: Define o limite máximo de tamanho da pilha (stack) para processos como "ilimitado".
+        Impacto: Permite que processos usem uma quantidade ilimitada de memória de pilha, o que pode levar 
+        a um consumo excessivo de memória e potencialmente causar falhas no sistema se um processo malicioso 
+        ou mal projetado tentar usar muita memória.
+
+2.  nproc unlimited:
+        Descrição: Define o número máximo de processos que um usuário pode criar como "ilimitado".
+        Impacto: Isso pode permitir que um usuário ou um processo crie um número excessivo de processos, levando 
+        a um esgotamento de recursos do sistema e potencialmente a um ataque de negação de serviço (DoS).
+
+3.  nofile 1048576:
+        Descrição: Define o número máximo de arquivos que um processo pode abrir como 1.048.576.
+        Impacto: Um número muito alto pode permitir que um processo consuma muitos descritores de arquivo, o que 
+        pode esgotar os recursos do sistema.
+
+3.  memlock unlimited:
+        Descrição: Permite que um processo bloqueie uma quantidade ilimitada de memória na RAM.
+        Impacto: Isso pode ser problemático, pois um processo pode impedir que o sistema use memória para outros processos, 
+        levando a problemas de desempenho.
+
+4.  as unlimited:
+        Descrição: Define o limite de espaço de endereço virtual como "ilimitado".
+        Impacto: Isso permite que um processo use toda a memória virtual disponível, o que pode causar problemas de desempenho e estabilidade.
+
+5.  cpu unlimited:
+        Descrição: Permite que um processo use uma quantidade ilimitada de tempo de CPU.
+        Impacto: Isso pode levar a um processo monopolizando a CPU, afetando o desempenho de outros processos.
+
+6.  fsize unlimited:
+        Descrição: Define o tamanho máximo de arquivos que um processo pode criar como "ilimitado".
+        Impacto: Isso pode permitir que um processo crie arquivos muito grandes, potencialmente esgotando o espaço em disco.
+
+7.  msgqueue unlimited:
+        Descrição: Permite que um processo use uma quantidade ilimitada de memória para filas de mensagens.
+        Impacto: Isso pode levar a um consumo excessivo de memória, afetando a estabilidade do sistema.
+
+8.  locks unlimited:
+        Descrição: Permite que um processo use um número ilimitado de bloqueios de arquivos.
+        Impacto: Isso pode causar problemas de desempenho se muitos bloqueios forem usados, especialmente em sistemas com muitos 
+        processos concorrentes.
+
+9.  * hard nofile 1048576:
+        Descrição: Define o limite máximo de arquivos abertos para todos os usuários como 1.048.576.
+        Impacto: Semelhante à linha anterior, pode levar a um consumo excessivo de recursos.
+
+10. * soft nofile 1048576:
+        Descrição: Define o limite máximo de arquivos abertos para todos os usuários como 1.048.576.
+        Impacto: Isso pode permitir que usuários comuns abram muitos arquivos, o que pode esgotar os recursos do sistema.
+
+11. @realtime - rtprio 98:
+        Descrição: Define a prioridade em tempo real para processos do grupo "realtime" como 98.
+        Impacto: Isso permite que processos que pertencem ao grupo "realtime" tenham uma prioridade alta de CPU, o que é útil para 
+        aplicações que exigem processamento em tempo real, como áudio e vídeo. No entanto, se muitos processos em tempo real forem executados, 
+        isso pode afetar o desempenho de outros processos no sistema.
+
+12. @realtime - memlock unlimited:
+        Descrição: Permite que processos do grupo "realtime" bloqueiem uma quantidade ilimitada de memória na RAM.
+        Impacto: Isso é importante para garantir que aplicações em tempo real não sejam afetadas pela troca de memória (swap), mas pode levar 
+        a um consumo excessivo de memória se muitos processos em tempo real forem executados simultaneamente.
+
+13. @audio - rtprio 99:
+        Descrição: Define a prioridade em tempo real para processos do grupo "audio" como 99.
+        Impacto: Isso permite que processos relacionados a áudio tenham alta prioridade de CPU, o que é útil para aplicações de 
+        áudio em tempo real. No entanto, se muitos processos de áudio forem executados com alta prioridade, isso pode afetar o 
+        desempenho de outros processos no sistema.
+
+14. @audio - memlock unlimited:
+        Descrição: Permite que processos do grupo "audio" bloqueiem uma quantidade ilimitada de memória na RAM.
+        Impacto: Isso é útil para aplicações de áudio que precisam garantir que a memória não seja trocada para o disco. No entanto, 
+        pode levar a problemas de desempenho se muitos processos de áudio forem executados simultaneamente, consumindo toda a memória disponível.
+
+15. @audio - nice -19:
+        Descrição: Define o valor de "nice" para processos do grupo "audio" como -19, o que significa que eles têm prioridade máxima.
+        Impacto: Isso permite que processos de áudio sejam executados com prioridade mais alta, mas pode prejudicar o desempenho de 
+        outros processos, especialmente se muitos processos de áudio estiverem em execução.
+
+16. @video - rtprio 99:
+        Descrição: Define a prioridade em tempo real para processos do grupo "video" como 99.
+        Impacto: Semelhante à linha para o grupo "audio", isso permite que processos de vídeo tenham alta prioridade de CPU, o que é 
+        importante para aplicações de vídeo em tempo real. No entanto, pode causar problemas de desempenho para outros processos.
+
+17. @video - memlock unlimited:
+        Descrição: Permite que processos do grupo "video" bloqueiem uma quantidade ilimitada de memória na RAM.
+        Impacto: Isso é útil para aplicações de vídeo que precisam garantir que a memória não seja trocada. No entanto, pode levar a 
+        problemas de desempenho se muitos processos de vídeo forem executados simultaneamente.
+
+18. @video - nice -19:
+        Descrição: Define o valor de "nice" para processos do grupo "video" como -19, dando-lhes prioridade máxima.
+        Impacto: Isso permite que processos de vídeo sejam executados com prioridade mais alta, mas pode prejudicar o desempenho de 
+        outros processos, especialmente se muitos processos de vídeo estiverem em execução.
+
+19. * soft nice -5:
+        Descrição: Define o valor de "nice" para todos os usuários como -5, o que aumenta a prioridade de execução.
+        Impacto: Isso pode levar a um aumento geral na prioridade de todos os processos, o que pode causar problemas de desempenho 
+        em um sistema com muitos usuários ou processos concorrentes.
+
+20. * hard nice -5:
+        Descrição: Define o limite máximo de "nice" para todos os usuários como -5.
+        Impacto: Isso impede que os usuários definam uma prioridade mais alta do que -5, mas ainda assim pode causar problemas de desempenho.
+
+21. * soft rtprio 99:
+        Descrição: Define a prioridade em tempo real para todos os usuários como 99.
+        Impacto: Isso permite que todos os processos tenham alta prioridade de CPU, o que pode causar problemas de desempenho e estabilidade, 
+        especialmente em sistemas multitarefa.
+
+22. * hard rtprio 99:
+        Descrição: Define o limite máximo de prioridade em tempo real para todos os usuários como 99.
+        Impacto: Isso impede que os usuários definam uma prioridade em tempo real mais alta do que 99, mas ainda assim pode causar problemas 
+        de desempenho.
+
+23. root hard nice -20:
+        Descrição: Define o valor de "nice" para o usuário root como -20, dando-lhe a prioridade máxima.
+        Impacto: Isso permite que o root execute processos com a maior prioridade, o que é útil, mas pode causar problemas se o root executar 
+        muitos processos simultaneamente.
+
+24. root soft nofile 1048576:
+        Descrição: Define o limite máximo de arquivos abertos para o usuário root como 1.048.576.
+        Impacto: Isso permite que o usuário root abra um grande número de arquivos, o que é útil para operações administrativas, mas pode 
+        levar a um consumo excessivo de recursos se não for controlado.
+
+25. root hard nofile 1048576:
+        Descrição: Define o limite máximo de arquivos abertos para o usuário root como 1.048.576, mas como um limite "hard".
+        Impacto: Isso impede que o root defina um limite maior do que 1.048.576 para arquivos abertos, mas ainda permite que o root utilize 
+        um número muito alto de arquivos, o que pode causar problemas de desempenho.
+
+26. * soft nproc 1048576:
+        Descrição: Define o limite máximo de processos que todos os usuários podem criar como 1.048.576.
+        Impacto: Isso pode permitir que usuários comuns criem um número excessivo de processos, levando a um esgotamento de recursos do sistema 
+        e potencialmente a um ataque de negação de serviço (DoS).
+
+27. * hard nproc 1048576:
+        Descrição: Define o limite máximo de processos que todos os usuários podem criar como 1.048.576, mas como um limite "hard".
+        Impacto: Isso impede que os usuários definam um limite maior do que 1.048.576 para o número de processos, mas ainda permite que um número 
+        muito alto de processos seja criado, o que pode causar problemas de desempenho.
+
+28. root soft nproc 1048576:
+        Descrição: Define o limite máximo de processos que o usuário root pode criar como 1.048.576.
+        Impacto: Isso permite que o root crie um grande número de processos, o que é útil para operações administrativas, mas pode levar a um 
+        consumo excessivo de recursos.
+
+29. root hard nproc 1048576:
+        Descrição: Define o limite máximo de processos que o usuário root pode criar como 1.048.576, mas como um limite "hard".
+        Impacto: Isso impede que o root defina um limite maior do que 1.048.576 para o número de processos, mas ainda permite que o root utilize 
+        um número muito alto de processos, o que pode causar problemas de desempenho.
+
+30. * soft memlock unlimited:
+        Descrição: Permite que todos os usuários bloqueiem uma quantidade ilimitada de memória na RAM.
+        Impacto: Isso pode levar a um consumo excessivo de memória, afetando a estabilidade do sistema, especialmente se muitos usuários ou processos 
+        tentarem bloquear memória ao mesmo tempo.
+
+31. * hard memlock unlimited:
+        Descrição: Define o limite máximo de memória bloqueada para todos os usuários como "ilimitado", mas como um limite "hard".
+        Impacto: Isso impede que os usuários definam um limite menor do que ilimitado para a memória bloqueada, mas ainda pode levar a problemas de 
+        desempenho e estabilidade.
+
+32. root soft memlock unlimited:
+        Descrição: Permite que o usuário root bloqueie uma quantidade ilimitada de memória na RAM.
+        Impacto: Isso é útil para operações administrativas, mas pode levar a problemas de desempenho se o root bloquear muita memória.
+
+33. root hard memlock unlimited:
+        Descrição: Define o limite máximo de memória bloqueada para o usuário root como "ilimitado", mas como um limite "hard".
+        Impacto: Isso impede que o root defina um limite menor do que ilimitado para a memória bloqueada, mas ainda pode levar a problemas de 
+        desempenho e estabilidade.
+DOCUMENTATION

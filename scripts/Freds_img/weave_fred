@@ -1,0 +1,404 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 12/3/2010 .......... revised 12/3/2010
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: weave [-m modulation] [-d distortion] [-b blur] [-k kind] [-c compose] 
+# [-s size] [-o offset] [-a angle] [-o opacity] [-S seed] [-r retain] 
+# infile [tilefile] outfile
+# USAGE: weave [-h or -help]
+#
+# OPTIONS:
+#
+# -m    modulation    image modulate percent values; three comma separated  
+#                     values for brightness,saturation,hue;   
+#                     default="100,100,100" (no change)
+# -d    distortion    image distortion amount in pixels; two comma separated 
+#                     values; default="7,7"
+# -b    blur          distortion blur sigma amount; float>=0; default=4
+# -k    kind          kind of distortion; options are random or image; 
+#                     default="image"
+# -c    compose       compose method; softlight, overlay, pegtoplight; 
+#                     default=softlight
+# -s    size          tile size in pixels defining outer rectangle; 
+#                     default="9x9"
+# -o    offset        tile offset to inner rectangle; 
+#                     two "x" separated integers; default="2x2"
+# -a    angle         angle of rotation for tile; 0<=integer<=180; default=45
+# -O    opacity       tile opacity; 0<=integer<=100; default=100
+# -S    seed          seed for kind=random; integer>=0; default=no seed
+# -r    retain        retain image of tile as tile.png; yes or no; default=no
+#
+# optional tilefile in place of tiling arguments
+# 
+###
+#
+# NAME: WEAVE 
+# 
+# PURPOSE: To apply an irregular linear weave-like distortion to an image.
+# 
+# DESCRIPTION: WEAVE applies an irregular linear weave-like distortion to 
+# an image.
+# 
+# 
+# OPTIONS: 
+# 
+# -m modulation ... image MODULATION percent values. Three comma separated  
+# values for brightness,saturation,hue. The default="100,100,100" (no change)
+# 
+# -d distortion ... image DISTORTION amount in pixels. Two comma separated 
+# values. The default="7,7".
+# 
+# -b blur ... distortion BLUR sigma amount. Values are floats>=0. 
+# The default=4.
+# 
+# -k kind ... KIND of distortion: Options are random (r) or image (i).  
+# The default="image".
+# 
+# -c compose ... COMPOSE method. Choices are: softlight (s), overlay (o), 
+# or pegtoplight (p). The default=softlight.
+# 
+# -s size ... tile SIZE in pixels defining outer rectangle. The default="9x9"
+# 
+# -o offset ... tile OFFSET to inner rectangle. Two "x" separated integers. 
+# The default="2x2"
+# 
+# -a angle ... Angle of rotation for tile. Values are 0<=integers<=180. 
+# The default=45
+# 
+# -O opacity ... tile OPACITY. Values are 0<=integers<=100. The default=100
+# 
+# -S seed ... SEED for kind=random. Values are integers>=0. The default=no seed
+# 
+# -r retain ... Retain image of tile as tile.png. Options are: 
+# yes (y) or no (n) The default=no
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+modulation="100,100,100"	# image modulation (B,S,H)
+distortion="7,7"			# distortion amt 
+blur=4						# distortion blur
+kind="image"				# distortion kind: image or random
+compose="softlight"			# compose method: recommend softlight, overlay or pegtoplight
+tsize="9x9"					# tile size for outer lines
+toffset="2x2"				# tile offset for inner lines
+angle=45					# tile rotation angle
+opacity=100					# tile opacity
+seed=""						# seed for kind=random
+retain="no"					# retain tile
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 25 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-m)    # get modulation
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODULATION SPECIFICATION ---"
+					   checkMinus "$1"
+					   modulation=`expr "$1" : '\([0-9]*,[0-9]*,[0-9]*\)'`
+					   [ "$modulation" = "" ] && errMsg "--- MODULATION=$modulation MUST BE THREE COMMA DELIMITED NON-NEGATIVE INTEGERS ---"
+ 					   ;;
+				-d)    # get distortion
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DISTORTION SPECIFICATION ---"
+					   checkMinus "$1"
+					   distortion=`expr "$1" : '\([0-9]*,[0-9]*\)'`
+					   [ "$distortion" = "" ] && errMsg "--- DISTORTION=$distortion MUST BE TWO COMMA DELIMITED NON-NEGATIVE INTEGERS ---"
+ 					   ;;
+				-b)    # get blur
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BLUR SPECIFICATION ---"
+					   checkMinus "$1"
+					   blur=`expr "$1" : '\([0-9]*\)'`
+					   [ "$blur" = "" ] && errMsg "--- BLUR=$blur MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-k)    # get  kind
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID KIND SPECIFICATION ---"
+					   checkMinus "$1"
+					   kind=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$kind" in 
+					   		image|i) kind="image" ;;
+					   		random|r) kind="random" ;;
+					   		*) errMsg "--- KIND=$kind IS AN INVALID VALUE ---" ;;
+					   	esac
+					   ;;
+				-c)    # get  compose
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COMPOSE SPECIFICATION ---"
+					   checkMinus "$1"
+					   compose=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$compose" in 
+					   		overlay|o) compose="overlay" ;;
+					   		softlight|s) compose="softlight" ;;
+					   		pegtoplight|p) compose="pegtoplight" ;;
+					   		*) errMsg "--- COMPOSE=$compose IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				-s)    # get tsize
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   tsize=`expr "$1" : '\([0-9]*,[0-9]*\)'`
+					   [ "$tsize" = "" ] && errMsg "--- SIZE=$tsize MUST BE TWO COMMA DELIMITED NON-NEGATIVE INTEGERS ---"
+ 					   ;;
+				-o)    # get offset
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID OFFSET SPECIFICATION ---"
+					   checkMinus "$1"
+					   offset=`expr "$1" : '\([0-9]*,[0-9]*\)'`
+					   [ "$offset" = "" ] && errMsg "--- OFFSET=$offset MUST BE TWO COMMA DELIMITED NON-NEGATIVE INTEGERS ---"
+ 					   ;;
+				-a)    # get angle
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ANGLE SPECIFICATION ---"
+					   checkMinus "$1"
+					   angle=`expr "$1" : '\([0-9]*\)'`
+					   [ "$angle" = "" ] && errMsg "--- ANGLE=$angle MUST BE A NON-NEGATIVE INTEGER ---"
+					   test=`echo "$angle > 180" | bc`
+					   [ $test -eq 1 ] && errMsg "--- ANGLE=$angle MUST BE AN INTEGER BETWEEN 0 AND 180 (EXCLUSIVE) ---"
+					   ;;
+				-O)    # get opacity
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID OPACITY SPECIFICATION ---"
+					   checkMinus "$1"
+					   opacity=`expr "$1" : '\([0-9]*\)'`
+					   [ "$opacity" = "" ] && errMsg "--- OPACITY=$opacity MUST BE A NON-NEGATIVE INTEGER ---"
+					   test=`echo "$opacity > 100" | bc`
+					   [ $test -eq 1 ] && errMsg "--- OPACITY=$opacity MUST BE AN INTEGER BETWEEN 0 AND 100 (EXCLUSIVE) ---"
+					   ;;
+				-S)    # get seed
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SEED SPECIFICATION ---"
+					   checkMinus "$1"
+					   seed=`expr "$1" : '\([0-9]*\)'`
+					   [ "$seed" = "" ] && errMsg "--- SEED=$seed MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-r)    # get  retain
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RETAIN SPECIFICATION ---"
+					   checkMinus "$1"
+					   retain=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$retain" in 
+					   		yes|y) retain="yes" ;;
+					   		no|n) retain="no" ;;
+					   		*) errMsg "--- RETAIN=$retain IS AN INVALID VALUE ---" ;;
+					   	esac
+					   ;;
+			 	 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				 -*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# setup temporary images
+tmpA1="$dir/weave_1_$$.mpc"
+tmpB1="$dir/weave_1_$$.cache"
+tmpA2="$dir/weave_2_$$.mpc"
+tmpB2="$dir/weave_2_$$.cache"
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpA2 $tmpB2; exit 1" 1 2 3 15
+
+# read the input image into the temporary cached image and test if valid
+convert -quiet "$infile" +repage "$tmpA1" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+if [ "$tilefile" != "" ]; then
+	# read the mask image into the temporary cached image and test if valid
+	convert -quiet "$tilefile" +repage "$tmpA2" ||
+		errMsg "--- FILE $tilefile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+fi
+
+# get image dimensions
+declare `convert $tmpA1 -format "ww=%w\nhh=%h\n" info:`
+
+# get enlarged dimensions
+ww2=`convert xc: -format "%[fx:1.414*max($ww,$hh)]" info:`
+hh2=$ww2
+
+# convert opacity to fraction
+opacity=`convert xc: -format "%[fx:$opacity/100]" info:`
+
+# set up for seed
+if [ "$seed" = "" ]; then
+	seeding=""
+else
+	seeding="-seed $seed"
+fi
+
+# set up for distortion kind
+if [ "$kind" = "image" ]; then
+	proc_kind="+clone -colorspace gray -blur 0x$blur -auto-level"
+elif [ "$kind" = "random" ]; then
+	proc_kind="+clone $seeding +noise random -blur 0x$blur -auto-level -channel g -separate +channel"
+else
+	errMsg "--- INVALID KIND  ---"
+fi
+
+
+
+if [ "$tilefile" = "" ]; then
+
+	# get vertices for lines
+	tx=`echo "$tsize" | cut -dx -f1`
+	ty=`echo "$tsize" | cut -dx -f2`
+	tox=`echo "$toffset" | cut -dx -f1`
+	toy=`echo "$toffset" | cut -dx -f2`
+	x1=0
+	y1=0
+	x4=$((tx-1))
+	y4=$((ty-1))
+	x2=$(($x1+$tox))
+	y2=$(($y1+$toy))
+	x3=$(($x4-$tox))
+	y3=$(($y4-$toy))
+
+	eval 'convert -size $tsize xc:black -stroke white -draw \
+		"fill none rectangle $x1,$y1 $x4,$y4 \
+		 fill none rectangle $x2,$y2 $x3,$y3 \
+		 line $x1,$y1 $x4,$y4 line $x1,$y4 $x4,$y1" \
+		 -gravity east -chop 1x0 \
+		 -gravity south -chop 0x1 \
+		 +write mpr:tile +delete \
+		 -size ${ww2}x${hh2} tile:mpr:tile \
+		 -background black -rotate $angle +repage \
+		 -gravity center -crop ${ww}x${hh}+0+0 +repage \
+		 -write mpr:tile +delete \
+	$tmpA1 -modulate $modulation \
+		\( mpr:tile -negate -channel a -evaluate multiply $opacity +channel \) \
+		-compose $compose -composite \
+	\( '$proc_kind' \) -virtual-pixel black -define compose:args=7,7 -compose displace -composite \
+	"$outfile"'
+
+else
+	eval 'convert $tmpA2 -colorspace gray \
+		 +write mpr:tile +delete \
+		 -size ${ww2}x${hh2} tile:mpr:tile \
+		 -background black -rotate $angle +repage \
+		 -gravity center -crop ${ww}x${hh}+0+0 +repage \
+		 -write mpr:tile +delete \
+	$tmpA1 -modulate $modulation \
+		\( mpr:tile -negate -channel a -evaluate multiply $opacity +channel \) \
+		-compose $compose -composite \
+	\( '$proc_kind' \) -virtual-pixel black -define compose:args=7,7 -compose displace -composite \
+	"$outfile"'
+
+fi
+
+exit 0

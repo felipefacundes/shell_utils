@@ -1,0 +1,575 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 12/1/2108 .......... revised 4/2/2020
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: adaptivegamma2 [-t type][-m meanthresh] [-f fraction] [-c cumthresh] 
+# [-bg brightgain] [-dg darkgain] [-ba brightalpha] [-da darkalpha] [-C colormode] 
+# infile outfile
+# 
+# USAGE: adaptivegamma2 [-h or -help]
+#
+# OPTIONS:
+#
+# -t      type           type of mean threshold to use; choices are: orginial or simple;
+#                        default=simple
+# -m      meanthresh     threshold of the mean used to test if the image is bright 
+#                        or dark; 0<=integer<=255; default=128 (use 112 for original)
+# -f      fraction       fraction to use with the meanthresh to test if the image 
+#                        is bright or dark for type=original; ignored if type=simple; 
+#                        0<=float<=1; default=0.3
+# -c      cumthresh      threshold used to clip the cumulative distribution for dark 
+#                        images; 0<=float<=1; default=0.55
+# -bg     brightgain     gain on cumulative distribution for bright images; 
+#                        0<=float<=1; default=1 (no change)
+# -dg     darkgain       gain on cumulative distribution for dark images; 
+#                        0<=float<=1; default=1 (no change)
+# -ba     brightalpha    alpha exponent for weighting the normalize histogram for 
+#                        bright images; 0<=float<=1; default=0.25
+# -da     darkalpha      alpha exponent for weighting the normalize histogram for 
+#                        dark images; 0<=float<=1; default=0.75
+# -C      colormode      colorspace for processing; choices are srgb, lab, hcl, hsl, 
+#                        hsv, hsi, ycbcr and ohta; default=hsv
+#
+###
+#
+# NAME: ADAPTIVEGAMMA2
+# 
+# PURPOSE: To enhance the contrast/brightness in an image using an adaptive gamma method. 
+# 
+# DESCRIPTION: ADAPTIVEGAMMA2 is an adaptive gamma technique used to enhance an 
+# image's brightness and contrast. It is based upon an exponentiation of the 
+# the image's values using an exponent, gamma, that is evaluated differently for
+# each graylevel in the image based upon values in the cumulative normalized and 
+# weight histogram in the form, gamma(value)=1-cumulative_histogram(value). The 
+# fraction along with the meanthresh value are used to categorize the image as 
+# bright, dark (or neutral if type=original). Neutral images will have no processing 
+# applied. For dark images the cumulative distribution is clipped not to exceed 
+# cumthresh. For bright images, no clipping is used, but the input is negated before 
+# gamma processing and then negated back after processing. 
+# 
+# Arguments: 
+#
+# -t type ... TYPE of mean threshold to use. The choices are: orginial or simple.
+# The default=simple.
+# 
+# -m meanthresh ... MEANTHRESH is a threshold of the mean that is used to test if the 
+# image is bright or dark. Values are 0<=integer<=255. The default=128. 
+# (Use 112 for original).
+# 
+# -f fraction ... FRACTION to use with the meanthresh to test if the image is bright 
+# or dark. Values are 0<=float<=1. The default=0.3.
+# 
+# -c cumthresh ... CUMTHRESH is a threshold used to clip the cumulative distribution 
+# for dark images. Values are 0<=float<=1. The default=0.55.
+# 
+# -bg brightgain ... BRIGHTGAIN ia a gain on cumulative distribution for bright images. 
+# Values are 0<=float<=1. The default=1 (no change).
+# 
+# -dg darkgain ... DARKGAIN is a gain on cumulative distribution for dark images.
+# Values are 0<=float<=1. The default=1 (no change).
+# 
+# -ba brightalpha ... BRIGHTALPHA is an alpha exponent for weighting the normalize 
+# histogram for bright images. Values are 0<=float<=1. The default=0.25.
+# 
+# -da darkalpha ... DARKALPHA is an alpha exponent for weighting the normalize 
+# histogram for dark images. Values are 0<=float<=1. The default=0.75.
+# 
+# -C colormode ... COLORMODE is the colorspace for processing; choices are srgb, 
+# lab, hcl, hsl, hsv, hsi, ycbcr and ohta; default=hsv
+#
+# REFERENCE1:
+# https://arxiv.org/pdf/1709.04427.pdf
+# Contrast Enhancement of Brightness-Distorted Images by Improved Adaptive Gamma Correction
+# Gang Cao1*, Lihui Huang1, Huawei Tian2, Xianglin Huang3, Yongbin Wang1, Ruicong Zhi4
+# 
+# REFERENCE2:
+# https://in.mathworks.com/matlabcentral/answers/uploaded_files/4242/AGCWD.pdf
+# Efficient Contrast Enhancement Using Adaptive Gamma Correction With Weighting Distribution 
+# Shih-Chia Huang, Fan-Chieh Cheng, and Yi-Sheng Chiu
+# IEEE TRANSACTIONS ON IMAGE PROCESSING, VOL. 22, NO. 3, MARCH 2013
+# 
+# NOTE: This script may be a bit slow due for non-HDRI compile Imagemagick to the 
+# use of -fx.
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+# set default values
+type="simple"
+meanthresh=128
+fraction=0.3
+cumthresh=0.55
+brightalpha=0.25
+darkalpha=0.75
+brightgain=1
+darkgain=0.7
+colormode="hsv"
+debug="false"
+
+# set directory for temporary files
+# tmpdir="/tmp"
+tmpdir="."
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+#
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+#
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+#
+#
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+	echo ""
+	usage2
+	exit 0
+elif [ $# -gt 20 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+		# get parameters
+		case "$1" in
+	  -h|-help)    # help information
+				   echo ""
+				   usage2
+				   ;;
+			-t)    # get  type
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID TYPE SPECIFICATION ---"
+				   checkMinus "$1"
+				   type=`echo "$1" | tr '[A-Z]' '[a-z]'`
+				   case "$type" in 
+						simple|s) type="simple" ;;
+						original|o) type="original" ;;
+						*) errMsg "--- TYPE=$type IS AN INVALID VALUE ---" ;;
+					esac
+				   ;;
+			-m)    # get meanthresh
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID MEANTHRESH SPECIFICATION ---"
+				   checkMinus "$1"
+				   meanthresh=`expr "$1" : '\([0-9]*\)'`
+				   [ "$meanthresh" = "" ] && errMsg "--- MEANTHRESH=$meanthresh MUST BE A NON-NEGATIVE INTEGER ---"
+				   testA=`echo "$meanthresh > 255" | bc`
+				   [ $testA -eq 1 ] && errMsg "--- MEANTHRESH=$meanthresh MUST BE AN INTEGER BETWEEN 0 AND 255 ---"
+				   ;;
+			-f)    # fraction
+				   shift  # to get the next parameter - maxgain
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID FRACTION SPECIFICATION ---"
+				   checkMinus "$1"
+				   fraction=`expr "$1" : '\([.0-9]*\)'`
+				   [ "$fraction" = "" ] && errMsg "--- FRACTION=$fraction MUST BE A POSITIVE FLOATING POINT VALUE (with no sign) ---"
+				   testA=`echo "$fraction > 1.0" | bc`
+				   [ $testA -eq 1 ] && errMsg "--- FRACTION=$fraction MUST BE A FLOAT BETWEEN 0 AND 1 ---"
+				   ;;
+			-c)    # cumthresh
+				   shift  # to get the next parameter - maxgain
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID CUMTHRESH SPECIFICATION ---"
+				   checkMinus "$1"
+				   cumthresh=`expr "$1" : '\([.0-9]*\)'`
+				   [ "$cumthresh" = "" ] && errMsg "--- CUMTHRESH=$cumthresh MUST BE A POSITIVE FLOATING POINT VALUE (with no sign) ---"
+				   testA=`echo "$cumthresh > 1.0" | bc`
+				   [ $testA -eq 1 ] && errMsg "--- CUMTHRESH=$cumthresh MUST BE A FLOAT BETWEEN 0 AND 1 ---"
+				   ;;
+			-bg)   # brightgain
+				   shift  # to get the next parameter - maxgain
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID BRIGHTGAIN SPECIFICATION ---"
+				   checkMinus "$1"
+				   brightgain=`expr "$1" : '\([.0-9]*\)'`
+				   [ "$brightgain" = "" ] && errMsg "--- BRIGHTGAIN=$brightgain MUST BE A POSITIVE FLOATING POINT VALUE (with no sign) ---"
+				   testA=`echo "$brightgain > 1.0" | bc`
+				   [ $testA -eq 1 ] && errMsg "--- BRIGHTGAIN=$brightgain MUST BE A FLOAT BETWEEN 0 AND 1 ---"
+				   ;;
+			-dg)   # darkgain
+				   shift  # to get the next parameter - maxgain
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID DARKGAIN SPECIFICATION ---"
+				   checkMinus "$1"
+				   darkgain=`expr "$1" : '\([.0-9]*\)'`
+				   [ "$darkgain" = "" ] && errMsg "--- DARKGAIN=$darkgain MUST BE A POSITIVE FLOATING POINT VALUE (with no sign) ---"
+				   testA=`echo "$darkgain > 1.0" | bc`
+				   [ $testA -eq 1 ] && errMsg "--- DARKGAIN=$darkgain MUST BE A FLOAT BETWEEN 0 AND 1 ---"
+				   ;;
+			-ba)   # brightalpha
+				   shift  # to get the next parameter - maxgain
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID BRIGHTALPHA SPECIFICATION ---"
+				   checkMinus "$1"
+				   brightalpha=`expr "$1" : '\([.0-9]*\)'`
+				   [ "$brightalpha" = "" ] && errMsg "--- BRIGHTALPHA=$brightalpha MUST BE A POSITIVE FLOATING POINT VALUE (with no sign) ---"
+				   testA=`echo "$brightalpha > 1.0" | bc`
+				   [ $testA -eq 1 ] && errMsg "--- BRIGHTALPHA=$brightalpha MUST BE A FLOAT BETWEEN 0 AND 1 ---"
+				   ;;
+			-da)   # darkalpha
+				   shift  # to get the next parameter - maxgain
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID DARKALPHA SPECIFICATION ---"
+				   checkMinus "$1"
+				   darkalpha=`expr "$1" : '\([.0-9]*\)'`
+				   [ "$darkalpha" = "" ] && errMsg "--- DARKALPHA=$darkalpha MUST BE A POSITIVE FLOATING POINT VALUE (with no sign) ---"
+				   testA=`echo "$darkalpha > 1.0" | bc`
+				   [ $testA -eq 1 ] && errMsg "--- DARKALPHA=$darkalpha MUST BE A FLOAT BETWEEN 0 AND 1 ---"
+				   ;;
+			-C)    # get  colormode
+				   shift  # to get the next parameter
+				   # test if parameter starts with minus sign 
+				   errorMsg="--- INVALID COLORMODE SPECIFICATION ---"
+				   checkMinus "$1"
+				   colormode=`echo "$1" | tr '[A-Z]' '[a-z]'`
+				   case "$colormode" in 
+						srgb|s|r) colormode="srgb" ;;
+						lab|l) colormode="lab" ;;
+						hcl) colormode="hcl" ;;
+						hsl) colormode="hsl" ;;
+						hsv) colormode="hsv" ;;
+						hsi) colormode="hsi" ;;
+						ycbcr|y) colormode="ycbcr" ;;
+						ohta|o) colormode="ohta" ;;
+						*) errMsg "--- COLORMODE=$colormode IS AN INVALID VALUE ---" ;;
+					esac
+				   ;;
+			 -)    # STDIN and end of arguments
+				   break
+				   ;;
+			-*)    # any other - argument
+				   errMsg "--- UNKNOWN OPTION ---"
+				   ;;
+			*)     # end of arguments
+				   break
+				   ;;
+		esac
+		shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+dir="$tmpdir/ADAPTIVEGAMMA2.$$"
+
+mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+
+# read the input image into the temporary cached image and test if valid
+convert -quiet "$infile" -auto-orient -auto-level +repage $dir/tmpA.mpc ||
+    echo "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+
+# compute mean of image in 8-bit range
+# need -channel rgb for IM 7 otherwise it includes the alpha
+# mean=`convert $dir/tmpA.mpc -channel rgb -format "%[fx:255*mean]" info:`
+# bug in IM6 computing mean above -- do not know how many releases were bad - so compute using -scale
+# mean=`convert $dir/tmpA.mpc -channel rgb -scale 1x1! -format "%[fx:255*(u.r+u.g+u.b)/3]" info:`
+# get better results with mean of intensity (gray channel)
+mean=`convert $dir/tmpA.mpc -alpha off -colorspace gray -scale 1x1! -format "%[fx:255*u]" info:`
+[ "$debug" = "true" ] && echo "mean=$mean"
+
+# determine if bright or dark image
+if [ "$type" = "original" ]; then
+	test=`convert xc: -format "%[fx:($mean-$meanthresh)/$meanthresh>$fraction?1:($mean-$meanthresh)/$meanthresh<-$fraction?-1:0]" info:`
+elif [ "$type" = "simple" ]; then
+	test=`convert xc: -format "%[fx:($mean>=$meanthresh)?1:-1]" info:`
+fi
+if [ $test -eq 1 ]; then
+	test="bright"
+elif [ $test -eq -1 ]; then
+	test="dark"
+elif [ $test -eq 0 ]; then
+	test="neutral"
+fi
+[ "$debug" = "true" ] && echo "test=$test;"
+
+
+# set alpha based upon brightness test
+if [ "$test" = "bright" ]; then
+	alpha=$brightalpha
+	cumthresh=0
+	gain=$brightgain
+elif [ "$test" = "dark" ]; then
+	alpha=$darkalpha
+	gain=$darkgain
+fi
+[ "$debug" = "true" ] && echo "alpha=$alpha;"
+
+
+if [ "$test" = "neutral" ]; then
+	# just copy input to output
+	cp "$infile" "$outfile"
+	
+else
+
+	# process bright and dark images
+	if [ "$test" = "bright" ]; then
+		# negate the image
+		convert $dir/tmpA.mpc -negate $dir/tmpA.mpc 
+	fi
+
+	# get im_version
+	im_version=`convert -list configure | \
+		sed '/^LIB_VERSION_NUMBER */!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+
+	if [ "$im_version" -ge "07000000" ]; then
+		identifying="magick identify"
+	else
+		identifying="identify"
+	fi
+
+
+	# get colorspace and type
+	colorspace=`$identifying -ping -verbose -strip $dir/tmpA.mpc | sed -n 's/^.*Colorspace: \(.*\)$/\1/p'`
+	type=`$identifying -ping -verbose -strip $dir/tmpA.mpc | sed -n 's/^  Type: \(.*\)$/\1/p'`
+	[ "$debug" = "true" ] && echo "colorspace=$colorspace; type=$type;"
+
+
+	# select intensity like channel
+	if [ "$colorspace" = "srgb" -a "$colormode" = "srgb" ] ; then
+		convert $dir/tmpA.mpc -colorspace gray $dir/tmpI.mpc
+
+	elif [ "$type" = "Grayscale" -o "$colorspace" = "Gray" ]; then
+		colormode="gray"
+		convert $dir/tmpA.mpc $dir/tmpI.mpc
+
+	elif [ "$colorspace" = "sRGB" -a "$colormode" = "hsv" ] ; then
+		convert $dir/tmpA.mpc -colorspace $colormode -separate +channel -depth 8 $dir/tmpAA.mpc
+		convert $dir/tmpAA.mpc[2] $dir/tmpI.mpc
+
+	elif [ "$colorspace" = "sRGB" -a "$colormode" = "hsl" ] ; then
+		convert $dir/tmpA.mpc -colorspace $colormode -separate +channel -depth 8 $dir/tmpAA.mpc
+		convert $dir/tmpAA.mpc[2] $dir/tmpI.mpc
+
+	elif [ "$colorspace" = "sRGB" -a "$colormode" = "hsi" ] ; then
+		convert $dir/tmpA.mpc -colorspace $colormode -separate +channel -depth 8 $dir/tmpAA.mpc
+		convert $dir/tmpAA.mpc[2] $dir/tmpI.mpc
+
+	elif [ "$colorspace" = "sRGB" -a "$colormode" = "hcl" ] ; then
+		convert $dir/tmpA.mpc -colorspace $colormode -separate +channel -depth 8 $dir/tmpAA.mpc
+		convert $dir/tmpAA.mpc[2] $dir/tmpI.mpc
+
+	elif [ "$colorspace" = "sRGB" -a "$colormode" = "ycbcr" ] ; then
+		convert $dir/tmpA.mpc -colorspace $colormode -separate +channel -depth 8 $dir/tmpAA.mpc
+		convert $dir/tmpAA.mpc[0] $dir/tmpI.mpc
+
+	elif [ "$colorspace" = "sRGB" -a "$colormode" = "lab" ] ; then
+		convert $dir/tmpA.mpc -colorspace $colormode -separate +channel -depth 8 $dir/tmpAA.mpc
+		convert $dir/tmpAA.mpc[0] $dir/tmpI.mpc
+
+	elif [ "$colorspace" = "sRGB" -a "$colormode" = "ohta" ] ; then
+		convert $dir/tmpA.mpc -colorspace $colormode -separate +channel -depth 8 $dir/tmpAA.mpc
+		convert $dir/tmpAA.mpc[0] $dir/tmpI.mpc
+	fi
+
+
+	# compute total pixels in image
+	totpix=`convert $dir/tmpA.mpc -format "%[fx:w*h]" info:`
+	[ "$debug" = "true" ] && echo "totpix=$totpix"
+
+
+	# compute normalize pdf (probability density function, i.e. histogram normalize by total pixels) for the intensity-like channel
+	[ "$debug" = "true" ] && echo "pdf"
+	pdfArr=(`convert $dir/tmpI.mpc -depth 8 -format "%c" histogram:info:- \
+	| sed -n 's/[ ]*\([0-9]*\).*gray[(]\([0-9]*\).*$/\1 \2/p' | \
+	awk -v totpix=$totpix '  
+	{ bin[int($2)] += $1; max = 0; }
+	{ for (i=0;i<256;i++) max = bin[i]>max?bin[i]:max; }
+	END { for (i=0;i<256;i++) {pdf = (bin[i]+0)/totpix; print pdf; }
+	} '`)
+	[ "$debug" = "true" ] && echo ${pdfArr[*]}
+	[ "$debug" = "true" ] && echo ${#pdfArr[*]}
+
+
+	# compute min of pdf
+	# bc does not understand scientific notation, such 1e-3. so use printf to reformat
+	pdfmin=`echo "${pdfArr[*]}" | tr " " "\n" | \
+	awk -v min=1 '
+	{ ($1<min)?min=$1:min=min }
+	END { printf "%1.10f", min; }'`
+	[ "$debug" = "true" ] && echo "pdfmin=$pdfmin;"
+
+
+	# compute max of pdf
+	pdfmax=`echo "${pdfArr[*]}" | tr " " "\n" | \
+	awk -v max=0 '
+	{ ($1>max)?max=$1:max=max }
+	END { print max; }'`
+	[ "$debug" = "true" ] && echo "pdfmax=$pdfmax;"
+
+
+	# compute pdfdiff=pdfmax-pdfmin
+	pdfdiff=`echo "scale=6; $pdfmax-$pdfmin" | bc`
+	[ "$debug" = "true" ] && echo "pdfdiff=$pdfdiff;"
+
+	# compute weighted pdf
+	[ "$debug" = "true" ] && echo "pdfw"
+	pdfwArr=(`echo "${pdfArr[*]}" | tr " " "\n" | \
+	awk -v pdfmax=$pdfmax -v pdfmin=$pdfmin -v pdfdiff=$pdfdiff -v alpha=$alpha '
+	{ pdfw=pdfmax*(($1-pdfmin)/pdfdiff)**alpha; print pdfw }'`)
+	[ "$debug" = "true" ] && echo ${pdfwArr[*]}
+	[ "$debug" = "true" ] && echo ${#pdfwArr[*]}
+
+
+	# compute summed pdfw
+	pdfwSum=`echo "${pdfwArr[*]}" | tr " " "\n" | \
+	awk '
+	{ pdfwSum += $1; } 
+	END { print pdfwSum; }'`
+	[ "$debug" = "true" ] && echo "pdfwSum=$pdfwSum;"
+
+
+	# compute cummulative weighted probabity density function
+	[ "$debug" = "true" ] && echo "cdfw"
+	cdfwArr=(`echo "${pdfwArr[*]}" | tr " " "\n" | \
+	awk '
+	{ cdfw += $1; print cdfw; }'`)
+	[ "$debug" = "true" ] && echo ${cdfwArr[*]}
+	[ "$debug" = "true" ] && echo ${#cdfwArr[*]}
+
+
+	# compute gamma scaled by 65535 (16-bit range)
+	[ "$debug" = "true" ] && echo "gamma"
+	gammaArr=(`echo "${cdfwArr[*]}" | tr " " "\n" | \
+	awk -v pdfwSum=$pdfwSum -v cumthresh=$cumthresh -v gain=$gain '
+	{ cumvalue=(1-$1/pdfwSum); if (cumvalue<cumthresh) {gamma=int(65535*cumthresh+0.5)} else {gamma = int(65535*gain*cumvalue+0.5)}; print gamma; }'`)
+	[ "$debug" = "true" ] && echo ${gammaArr[*]}
+	[ "$debug" = "true" ] && echo ${#gammaArr[*]}
+
+	# convert gammaArr into 1D NebPBM PGM image and convert to miff
+	echo "P2 256 1 65535  ${gammaArr[*]}" | convert - $dir/tmpG.miff
+
+
+	# process intensity-like image for gamma correction
+	if [ "$colormode" = "srgb" ]; then
+		image="$dir/tmpA.mpc"
+	else
+		image="$dir/tmpI.mpc"
+	fi
+
+	if [ "$im_version" -lt "07000000" ]; then
+		convert $image $dir/tmpG.miff -monitor -fx "uu=round(255*u); pow(u,v.p{uu,0})" +monitor $image
+	else
+		convert $image +write mpr:img +delete \
+			\( $dir/tmpG.miff -evaluate divide 65535 \) \
+			\( +clone -sparse-color barycentric "0,0 black 255,0 white" \) \
+			-evaluate-sequence Pow \
+			mpr:img +swap -clut $image
+	fi
+	
+
+	# set up for negating bright images
+	if [ "$test" = "bright" ]; then
+		negating="-negate"
+	elif [ "$test" = "dark" ]; then
+		negating=""
+	fi
+
+	# reconstitute color image and write to output
+	if [ "$colormode" = "srgb" ] ; then
+		convert $dir/tmpA.mpc "$outfile"
+
+	elif [ "$colormode" = "gray" ]; then
+		convert $dir/tmpI.mpc "$outfile"
+
+	elif [ "$colormode" = "hsv" ] ; then
+		convert $dir/tmpAA.mpc -delete 2 $dir/tmpI.mpc -set colorspace "$colormode" -combine -colorspace sRGB $negating "$outfile"
+
+	elif [ "$colormode" = "hsl" ] ; then
+		convert $dir/tmpAA.mpc -delete 2 $dir/tmpI.mpc -set colorspace "$colormode" -combine -colorspace sRGB $negating "$outfile"
+
+	elif [ "$colormode" = "hsi" ] ; then
+		convert $dir/tmpAA.mpc -delete 2 $dir/tmpI.mpc -set colorspace "$colormode" -combine -colorspace sRGB $negating "$outfile"
+
+	elif [ "$colormode" = "hcl" ] ; then
+		convert $dir/tmpAA.mpc -delete 2 $dir/tmpI.mpc -set colorspace "$colormode" -combine -colorspace sRGB $negating "$outfile"
+
+	elif [ "$colormode" = "ycbcr" ] ; then
+		convert $dir/tmpAA.mpc $dir/tmpI.mpc -swap 0,3 +delete -set colorspace "$colormode" -combine -colorspace sRGB $negating "$outfile"
+
+	elif [ "$colormode" = "lab" ] ; then
+		convert $dir/tmpAA.mpc $dir/tmpI.mpc -swap 0,3 +delete -set colorspace "$colormode" -combine -colorspace sRGB $negating "$outfile"
+
+	elif [ "$colormode" = "ohta" ] ; then
+		convert $dir/tmpAA.mpc $dir/tmpI.mpc -swap 0,3 +delete -set colorspace "$colormode" -combine -colorspace sRGB $negating "$outfile"
+
+	fi
+	
+fi
+
+exit 0
+
+
+
+
+
+

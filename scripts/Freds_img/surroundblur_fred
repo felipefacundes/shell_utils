@@ -1,0 +1,314 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 8/20/2018 .......... revised 8/20/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: surroundblur [-r resize] [-b bgsize] [-s smoothing] [-c color] [-t thickness] 
+# [-d darkness] [-f fade] [-e extent] [infile] [outfile]
+# 
+# USAGE: surroundblur [h|-help]
+# 
+# OPTIONS:
+# 
+# -r     resize         resize of input image; WxH in pixels; default is input size
+# -b     bgsize         blurred background size; WxH in pixels; default is twice the 
+#                       original input size
+# -s     smoothing      smoothing (blurring) amount; integer>=0; default=50
+# -c     color          color of border; default=white
+# -t     thickness      thickness of the border; integer>=0; default=0
+# -d     darkeness      darkeness of the shadow; 0<=integer<=100; default=60
+# -f     fade           fade rate of the shadow; integer>=0; default=2
+# -e     extent         extent (distance) of the shadow; integer>=0; default=5
+#
+###
+# 
+# NAME: SURROUNDBLUR 
+# 
+# PURPOSE: To create a blurred background region around the input image.
+# 
+# DESCRIPTION: SURROUNDBLUR creates a blurred background region around the input image. 
+# A border and or drop shadow may be added between the image and the blurred background.
+# 
+# 
+# ARGUMENTS: 
+# 
+# -r resize ... RESIZE of input image expressed as WxH in pixels or in percent as WxH%. 
+# The default is the original input size. The resize value should be smaller than 
+# the bgsize.
+#  
+# -b bgsize ... BGSIZE is the blurred background size expressed as WxH in pixels or in 
+# percent as WxH%. The default is twice the original input size. The bgsize should be 
+# larger than the resize.
+# 
+# -s smoothing ... SMOOTHING (blurring) amount to apply to the input to create the 
+# background. Values are integers>=0. The default=50.
+# 
+# -c color ... COLOR for the border. Any valid opaque IM color is allowed.
+# The default=white.
+# 
+# -t thickness ... THICKNESS of the border. Values are integers>=0. The default=0 
+# (no border)
+#
+# -d darkeness ... DARKNESS of the shadows. Values are 0<=integer<=100. The default=80.
+# 
+# -f fade ... FADE (rolloff) of the shadow darkness. Values are integers>=0. 
+# The default=3.
+# 
+# -e extent ... EXTENT (distance) of the shadow. Values are integers>=0. The default=0. 
+# (no shadow). Typical value is about 5
+# 
+# NOTE: This script is not designed for images with transparency.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+resize=""
+bgsize=""
+smoothing=50
+color="white"
+thickness=0
+darkeness=80
+fade=3
+extent=0
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 18 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		 -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-r)    # get resize
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RESIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   resize=`expr "$1" : '\([0-9]*[%]*x[0-9]*[%]*\)'`
+					   [ "$resize" = "" ] && errMsg "--- RESIZE=$resize MUST BE A PAIR OF NON-NEGATIVE INTEGERS SEPARATED BY AN x ---"
+					   ;;
+				-b)    # get bgsize
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BGSIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgsize=`expr "$1" : '\([0-9]*[%]*x[0-9]*[%]*\)'`
+					   [ "$bgsize" = "" ] && errMsg "--- BGSIZE=$bgsize MUST BE A PAIR OF NON-NEGATIVE INTEGERS SEPARATED BY AN x ---"
+					   ;;
+				-s)    # get smoothing
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SMOOTHING SPECIFICATION ---"
+					   checkMinus "$1"
+					   smoothing=`expr "$1" : '\([0-9]*\)'`
+					   [ "$smoothing" = "" ] && errMsg "--- SMOOTHING=$smoothing MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-c)    # get  color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   color="$1"
+					   ;;
+				-t)    # get thickness
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID THICKNESS SPECIFICATION ---"
+					   checkMinus "$1"
+					   thickness=`expr "$1" : '\([0-9]*\)'`
+					   [ "$thickness" = "" ] && errMsg "--- THICKNESS=$thickness MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-d)    # get darkness
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DARKNESS SPECIFICATION ---"
+					   checkMinus "$1"
+					   darkness=`expr "$1" : '\([0-9]*\)'`
+					   [ "$darkness" = "" ] && errMsg "--- DARKNESS=$darkness MUST BE A NON-NEGATIVE INTEGER ---"
+					   testA=`echo "$darkness > 100" | bc`
+					   [ $testA -eq 1 ] && errMsg "--- DARKNESS=$darkness MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ;;
+				-f)    # get fade
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FADE SPECIFICATION ---"
+					   checkMinus "$1"
+					   fade=`expr "$1" : '\([0-9]*\)'`
+					   [ "$fade" = "" ] && errMsg "--- FADE=$fade MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-e)    # get extent
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID EXTENT SPECIFICATION ---"
+					   checkMinus "$1"
+					   extent=`expr "$1" : '\([0-9]*\)'`
+					   [ "$extent" = "" ] && errMsg "--- EXTENT=$extent MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# setup temporary images
+tmpA1="$dir/surroundblur_1_$$.mpc"
+tmpB1="$dir/surroundblur_1_$$.cache"
+trap "rm -f $tmpA1 $tmpB1; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+
+# read the input image into the temporary cached image and test if valid
+convert -quiet "$infile" +repage $tmpA1 ||
+	echo "--- 1 FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+
+# get image dimensions
+ww=`convert -ping $tmpA1 -format "%w" info:`
+hh=`convert -ping $tmpA1 -format "%h" info:`
+
+# get resize and bgsize dimensions
+if [ "$resize" = "" ]; then 
+	resize=${ww}x${hh}
+fi
+if [ "$bgsize" = "" ]; then 
+	bww=$((2*ww))
+	bhh=$((2*hh))
+	bgsize=${bww}x${bhh}
+fi
+
+
+# process image
+if [ "$thickness" = "0" -a "$extent" = "0" ]; then
+	convert $tmpA1 -write mpr:img +delete \
+	\( mpr:img -resize ${bgsize}^ -crop ${bgsize}+0+0 +repage -blur 0x$smoothing \) \
+	\( mpr:img -resize ${resize} \) \
+	-gravity center -compose over -composite "$outfile"
+	
+elif [ "$extent" = "0" ]; then
+	convert $tmpA1 -write mpr:img +delete \
+	\( mpr:img -resize ${bgsize}^ -crop ${bgsize}+0+0 +repage -blur 0x$smoothing \) \
+	\( mpr:img -resize ${resize} -bordercolor "$color" -border $thickness \) \
+	-gravity center -compose over -composite "$outfile"
+
+elif [ "$thickness" = "0" ]; then
+	convert $tmpA1 -write mpr:img +delete \
+	\( mpr:img -resize ${bgsize}^ -crop ${bgsize}+0+0 +repage -blur 0x$smoothing \) \
+	\( mpr:img -resize ${resize} \) \
+	\( +clone -background black -shadow ${darkness}x${fade}+${extent}+${extent} \) \
+	\( -clone 2,1 -background none -layers merge +repage \) \
+	-delete 1,2 \
+	-gravity center -compose over -composite "$outfile"
+
+else
+	convert $tmpA1 -write mpr:img +delete \
+	\( mpr:img -resize ${bgsize}^ -crop ${bgsize}+0+0 +repage -blur 0x$smoothing \) \
+	\( mpr:img -resize ${resize} -bordercolor "$color" -border $thickness \) \
+	\( +clone -background black -shadow ${darkness}x${fade}+${extent}+${extent} \) \
+	\( -clone 2,1 -background none -layers merge +repage \) \
+	-delete 1,2 \
+	-gravity center -compose over -composite "$outfile"
+
+fi
+
+	
+exit 0
+
+
+

@@ -1,0 +1,261 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is a powerful image processing utility developed by Felipe Facundes, 
+leveraging ImageMagick for various image manipulation tasks. Its key capabilities include:
+
+1. Multiple Image Transformation Functions:
+- Brightness adjustment ('ulight')
+- Dark negative effect ('negative-black')
+- Contrast modification ('contrast-dark')
+- Image remastering with advanced parameters
+
+2. Color Analysis Features:
+- Extraction of dominant colors
+- Color palette generation
+- Ability to display color information in the terminal
+
+3. Flexible Processing Options:
+- Supports processing single or multiple images
+- Offers modes to save modified images with specific suffixes
+- Provides comprehensive help documentation and usage examples
+
+4. Advanced Image Enhancement:
+- The 'remaster' function applies sophisticated image processing techniques like adaptive resizing, 
+contrast stretching, color space normalization, and adaptive sharpening
+
+5. Additional Utilities:
+- Includes tips for image processing using ImageMagick, Krita, and GIMP
+- Provides color-related functions for advanced image color analysis
+
+The script is open-source (GPLv3 licensed) and requires ImageMagick to be installed for full functionality, 
+making it a versatile tool for photographers, designers, and image processing enthusiasts.
+DOCUMENTATION
+
+# Array global de mensagens bilíngue
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["usage"]="Uso: ${0##*/} [opção]"
+        ["options"]="Opções disponíveis:"
+        ["ulight"]="ulight             Aplica curvas de brilho na(s) imagem(s)."
+        ["ulight-m"]="ulight-m           Aplica curvas de brilho e salva com sufixo \"-light.jpg\"."
+        ["negative-black"]="negative-black     Aplica efeito de negativo em modo escuro na(s) imagem(s)."
+        ["negative-black-m"]="negative-black-m   Aplica negativo escuro e salva com sufixo \"-negative-black.jpg\"."
+        ["contrast-dark"]="contrast-dark      Aplica curvas de contraste para escurecer na(s) imagem(s)."
+        ["contrast-dark-m"]="contrast-dark-m    Aplica curvas de contraste escuro e salva com sufixo \"-contrast-dark.jpg\"."
+        ["color-dominant"]="color-dominant     Extrai as 5 cores dominantes da(s) imagem(s) e salva em um novo arquivo."
+        ["color-dominant2"]="color-dominant2    Extrai as 5 cores dominantes e exibe as cores no terminal."
+        ["color2pallete"]="color2pallete      Gera uma paleta de cores da(s) imagem(s) e exibe informações no terminal."
+        ["remaster"]="remaster           Aplica remasterização em imagens."
+        ["remaster_tips"]="remaster_tips      Exibe dicas úteis para remasterizar imagens com ImageMagick, Krita e GIMP."
+        ["help"]="help               Exibe esta mensagem de ajuda."
+        ["examples"]="Exemplos:"
+        ["imagemagick"]="Certifique-se de que o ImageMagick esteja instalado para utilizar as funções."
+    )
+else
+    MESSAGES=(
+        ["usage"]="Usage: ${0##*/} [option]"
+        ["options"]="Available options:"
+        ["ulight"]="ulight             Applies brightness curves to the image(s)."
+        ["ulight-m"]="ulight-m           Applies brightness curves and saves with suffix \"-light.jpg\"."
+        ["negative-black"]="negative-black     Applies dark negative effect to the image(s)."
+        ["negative-black-m"]="negative-black-m   Applies dark negative and saves with suffix \"-negative-black.jpg\"."
+        ["contrast-dark"]="contrast-dark      Applies contrast curves to darken the image(s)."
+        ["contrast-dark-m"]="contrast-dark-m    Applies dark contrast and saves with suffix \"-contrast-dark.jpg\"."
+        ["color-dominant"]="color-dominant     Extracts the 5 dominant colors from the image(s) and saves to a new file."
+        ["color-dominant2"]="color-dominant2    Extracts the 5 dominant colors and displays them in the terminal."
+        ["color2pallete"]="color2pallete      Generates a color palette from the image(s) and displays information in the terminal."
+        ["remaster"]="remaster           Applies remastering to images."
+        ["remaster_tips"]="remaster_tips      Displays useful tips for remastering images using ImageMagick, Krita, and GIMP."
+        ["help"]="help               Displays this help message."
+        ["examples"]="Examples:"
+        ["imagemagick"]="Make sure ImageMagick is installed to use the functions."
+    )
+fi
+
+help() {
+    cat <<EOF
+${MESSAGES["usage"]}
+
+${MESSAGES["options"]}
+    ${MESSAGES["ulight"]}
+    ${MESSAGES["ulight-m"]}
+    ${MESSAGES["negative-black"]}
+    ${MESSAGES["negative-black-m"]}
+    ${MESSAGES["contrast-dark"]}
+    ${MESSAGES["contrast-dark-m"]}
+    ${MESSAGES["color-dominant"]}
+    ${MESSAGES["color-dominant2"]}
+    ${MESSAGES["color2pallete"]}
+    ${MESSAGES["remaster"]}
+    ${MESSAGES["remaster_tips"]}
+    ${MESSAGES["help"]}
+
+${MESSAGES["examples"]}
+    ${0##*/} ulight
+    ${0##*/} ulight-m
+
+${MESSAGES["imagemagick"]}
+EOF
+}
+
+# Funções específicas
+ulight() {
+    tput setaf 6
+    echo -e "Será aplicado curvas de brilho na(s) imagen(s)\n"
+    tput setaf 9
+    echo -e "Comando a ser executado:\n"
+    tput setaf 3
+    echo -e "convert -function polynomial \"-0.762,3.333,-5.167,3.595,-0.000\"\n"
+    tput sgr0
+    convert -function polynomial "-0.762,3.333,-5.167,3.595,-0.000" "$@"
+}
+
+ulight_m() {
+    tput setaf 6
+    echo -e "Será aplicado curvas de brilho na(s) imagen(s)\n"
+    tput setaf 9
+    echo -e "Comando a ser executado:\n"
+    tput setaf 3
+    echo -e "convert -function polynomial \"-0.762,3.333,-5.167,3.595,-0.000\" *.[jJpP][nNpP][gG] -set filename:base \"%[basename]\" \"%[filename:base]-light.jpg\"\n"
+    tput sgr0
+    convert -function polynomial "-0.762,3.333,-5.167,3.595,-0.000" *.[jJpP][nNpP][gG] -set filename:base "%[basename]" "%[filename:base]-light.jpg"
+}
+
+negative_black() {
+    tput setaf 6
+    echo -e "Será aplicado efeito de negativo em modo escuro na(s) imagen(s)\n"
+    tput setaf 9
+    echo -e "Comando a ser executado:\n"
+    tput setaf 3
+    echo -e "convert -function polynomial \"-0.331,1.111,-2.033,1.442,-0.000\"\n"
+    tput sgr0
+    convert -function polynomial "-0.331,1.111,-2.033,1.442,-0.000" "$@"
+}
+
+negative_black_m() {
+    tput setaf 6
+    echo -e "Será aplicado efeito de negativo em modo escuro na(s) imagen(s)\n"
+    tput setaf 9
+    echo -e "Comando a ser executado:\n"
+    tput setaf 3
+    echo -e "convert -function polynomial \"-0.331,1.111,-2.033,1.442,-0.000\" *.[jJpP][nNpP][gG] -set filename:base \"%[basename]\" \"%[filename:base]-negative-black.jpg\"\n"
+    tput sgr0
+    convert -function polynomial "-0.331,1.111,-2.033,1.442,-0.000" *.[jJpP][nNpP][gG] -set filename:base "%[basename]" "%[filename:base]-negative-black.jpg"
+}
+
+contrast_dark() {
+    tput setaf 6
+    echo -e "Será aplicado curvas de contraste na(s) imagen(s) para escurecer\n"
+    tput setaf 9
+    echo -e "Comando a ser executado:\n"
+    tput setaf 3
+    echo -e "convert -function polynomial \"-0.762 * x^4   + 3.333 * x^3   +  -5.167 * x^2  + 3.595 * x  + 0\"\n"
+    tput sgr0
+    convert -function polynomial "-0.762 * x^4   + 3.333 * x^3   +  -5.167 * x^2  + 3.595 * x  + 0" "$@"
+}
+
+contrast_dark_m() {
+    tput setaf 6
+    echo -e "Será aplicado curvas de contraste na(s) imagen(s) para escurecer\n"
+    tput setaf 9
+    echo -e "Comando a ser executado:\n"
+    tput setaf 3
+    echo -e "convert -function polynomial \"-0.762 * x^4   + 3.333 * x^3   +  -5.167 * x^2  + 3.595 * x  + 0\" *.[jJpP][nNpP][gG] -set filename:base \"%[basename]\" \"%[filename:base]-contrast-dark.jpg\"\n"
+    tput sgr0
+    convert -function polynomial "-0.762 * x^4   + 3.333 * x^3   +  -5.167 * x^2  + 3.595 * x  + 0" *.[jJpP][nNpP][gG] -set filename:base "%[basename]" "%[filename:base]-contrast-dark.jpg"
+}
+
+color_dominant() {
+    filename="$*"
+    echo 'convert imagem.jpg +dither -colors 5 -unique-colors resulting-color.jpg'
+    echo
+    convert "$filename" +dither -colors 5 -unique-colors "${filename%.*}"-resulting-color.jpg
+}
+
+color_dominant2() {
+    filename="$*"
+    echo 'convert imagem.jpg +dither -colors 5 -colors cor-resultante.jpg'
+    echo
+    convert "$filename" +dither -colors 5 -colors "${filename%.*}"-resulting-color.jpg
+}
+
+color2pallete() {
+    echo 'convert imagem.jpg +dither -colors 5 -define histogram:unique-colors=true -format "%c" histogram:info:'
+    echo
+    convert "$*" +dither -colors 5 -define histogram:unique-colors=true -format "%c" histogram:info:
+}
+
+remaster() {
+    tput setaf 6
+    echo -e "Será aplicado o processo de remasterização na(s) imagem(s)\n"
+    tput setaf 9
+    echo -e "Comando a ser executado:\n"
+    tput setaf 3
+    echo -e "convert -adaptive-resize 5464 -contrast-stretch 0,3% -strip -modulate 99,99 -colorspace sRGB -depth 16 -channel rgba -adaptive-blur 0.05 -density 400 -strip +repage -fuzz 50% -quality 100% -adaptive-sharpen 2x2.5+2.7+01"
+    tput sgr0
+    convert -adaptive-resize 5464 -contrast-stretch 0,3% -strip -modulate 99,99 -colorspace sRGB -depth 16 -channel rgba -adaptive-blur 0.05 -density 400 -strip +repage -fuzz 50% -quality 100% -adaptive-sharpen 2x2.5+2.7+01 "$@"
+}
+
+remaster_tips() {
+  tput setaf 11
+  echo -e """
+convert -adaptive-resize 5464 -contrast-stretch 0,3% -strip -modulate 99,99 -colorspace sRGB -depth 16 -channel rgba -adaptive-blur 0.05 -density 400 -strip +repage -fuzz 50% -quality 100% -adaptive-sharpen 2x2.5+2.7+01
+
+convert -normalize -unsharp 12x25  --Ou-- convert -normalize -unsharp 2x2.5+2.7+01
+
+convert -auto-gamma -auto-level -normalize -unsharp 1x2
+
+convert -channel RGB -contrast-stretch 4x8%
+
+Krita > Duplicar camada > Inverter cor > Camadas do modo "normal", para "clarear gama" > achatar imagem
+
+Ou no Gimp...
+
+ImageMagick: convert imagem.jpg -colors 5 paleta.jpg (Para extrair às cores dominantes, e depois melhorar a imagem com Gimp > Duplicar Camada > Menu - Inverter cor > e em camadas > extrair grãos)
+
+Gimp > Duplicar camada > Inverter cor > Camadas do modo "normal", para "extrair grãos" > achatar imagem
+
+Gimp > Duplicar camada > Menu - Filtros > Blur > Gaussian Blur (valores - 20x25 ou 20x40) > Menu - Cores > Inverter e depois Dessaturar > Em camadas use o modo Sobrepor (Overlay)
+"""
+  tput sgr0
+}
+
+# Verificação de argumentos
+if [[ $# -eq 0 ]]; then
+    help
+    exit 1
+fi
+
+case $1 in
+    ulight-m) ulight_m; exit ;;
+    negative-black-m) negative_black_m; exit ;;
+    contrast-dark-m) contrast_dark_m; exit ;;
+    remaster_tips) remaster_tips; exit ;;
+    help) help; exit ;;
+esac
+
+# Verificação de argumentos
+if [[ $# -eq 1 ]]; then
+    help
+    exit 1
+fi
+
+case $1 in
+    ulight) shift; ulight "$@" ;;
+    color-dominant) shift; color_dominant "$@" ;;
+    color-dominant2) shift; color_dominant2 "$@" ;;
+    color2pallete) shift; color2pallete "$@" ;;
+    negative-black) shift; negative_black "$@" ;;
+    contrast-dark) shift; contrast_dark "$@" ;;
+    remaster) shift; remaster "$@" ;;
+    *)
+        echo "Opção desconhecida: $1"
+        help
+        exit 1
+    ;;
+esac

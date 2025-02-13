@@ -1,0 +1,217 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 2/28/2021 .......... revised 2/28/2021
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: warplog [-w width] [-h height] [-b bgcolor] infile outfile
+# USAGE: warplog [-help]
+#
+# OPTIONS:
+#
+# -w width        desired output width; value in pixels; logarithmic
+#                 stretch/compression applied only if width is specified
+# -h height       desired output height; value in pixels; logarithmic
+#                 stretch/compression applied only if height is specified
+# -b bgcolor      background color for virtual pixels; default is black
+#
+###
+#
+# NAME: WARPLOG
+# 
+# PURPOSE: To resize an image (stretch or compress) according to a 
+# logarithmic transformation.
+# 
+# DESCRIPTION: WARPLOG resizes an image (stretch or compress) according to a 
+# logarithmic transformation. The log transform will be applied to the 
+# width and/or height, if specified.
+# 
+# 
+# OPTIONS: 
+# 
+#
+# -w width ... WIDTH is the desired output width. Value in pixels. The 
+# logarithmic stretch/compression is applied only if width is specified.
+
+# -h height ... HEIGHT is the desired output height. Value in pixels. The 
+# logarithmic stretch/compression applied only if height is specified
+# 
+# -b bgcolor ... BGCOLOR is the background color for virtual pixels. Any 
+# IM valid color may be specified. Typically, there should be no need for 
+# the virtual pixel color to be specified. The default is black.
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+dwidth=""			# desired output width
+dheight=""			# desired output height
+bgcolor="black"		# color or none for transparent
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 8 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		     -help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+	 		    -w)    # get width
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID WIDTH SPECIFICATION ---"
+					   checkMinus "$1"
+					   dwidth=`expr "$1" : '\([0-9]*\)'`
+					   [ "$dwidth" = "" ] && errMsg "--- WIDTH=$dwidth MUST BE A POSITIVE INTEGER ---"
+					   ;;
+	 		    -h)    # get height
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID HEIGHT SPECIFICATION ---"
+					   checkMinus "$1"
+					   dheight=`expr "$1" : '\([0-9]*\)'`
+					   [ "$dheight" = "" ] && errMsg "--- HEIGHT=$dheight MUST BE A POSITIVE INTEGER ---"
+					   ;;
+		 		-b)    # get background color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BACKGROUND COLOR SPECIFICATION ---"
+					   bgcolor="$1"
+					   ;;
+ 				 -)    # STDIN, end of arguments
+  				 	   break
+  				 	   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;					   
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# setup temporary images and auto delete upon exit
+# use mpc/cache to hold input image temporarily in memory
+tmpA="$dir/warplog_$$.mpc"
+tmpB="$dir/warplog_$$.cache"
+trap "rm -f $tmpA $tmpB;" 0
+trap "rm -f $tmpA $tmpB; exit 1" 1 2 3 15
+trap "rm -f $tmpA $tmpB; exit 1" ERR
+
+# test if infile exists and compute dimensions
+convert -quiet "$infile" +repage "$tmpA" || \
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+	
+# get input image dimensions
+declare `convert -ping $tmpA -format "ww=%w\nhh=%h\n" info:`
+
+if [ "$dheight" = "" -a "$dwidth" = "" ]; then
+	errMsg "--- NO OUTPUT SIZE SPECIFIED ---"
+
+elif [ "$dheight" != "" -a "$dwidth" != "" ]; then
+	convert -size ${dwidth}x${hh} xc: $tmpA -background "$bgcolor" -virtual-pixel background \
+			-fx "v.p{exp(ln(v.w)*i/(w-1))-1,j}" -write mpr:tmp +delete \
+		-size ${dwidth}x${dheight} xc: mpr:tmp -background "$bgcolor" -virtual-pixel background \
+			-fx "v.p{i,exp(ln(v.h)*j/(h-1))-1}" "$outfile"
+
+elif [ "$dwidth" != "" ]; then
+	convert -size ${dwidth}x${hh} xc: $tmpA -background "$bgcolor" -virtual-pixel background \
+		-fx "v.p{exp(ln(v.w)*i/(w-1))-1,j}" "$outfile"
+
+elif [ "$dheight" != "" ]; then
+	convert -size ${ww}x${dheight} xc: $tmpA -background "$bgcolor" -virtual-pixel background \
+		-fx "v.p{i,exp(ln(v.h)*j/(h-1))-1}" "$outfile"
+
+fi
+
+
+exit 0

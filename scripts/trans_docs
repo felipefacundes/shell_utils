@@ -1,0 +1,62 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to facilitate the translation of files into a specified language and format. 
+It takes command-line arguments for the desired file format and language, ensuring that the user provides valid inputs. 
+The script's strengths include:
+
+1. User -Friendly Interface: It provides clear usage instructions and examples for ease of use.
+2. File Handling: It checks for the existence of files with the specified format before attempting translation.
+3. Translation Capability: Utilizes the 'trans' command to perform translations efficiently.
+4. Format-Specific Processing: Includes additional processing for SRT files to clean up formatting issues.
+5. Error Handling: Implements checks to ensure that required parameters are provided and that files exist, enhancing robustness.
+
+Overall, this script streamlines the translation process for various file types while ensuring user input is validated and 
+errors are managed effectively.
+DOCUMENTATION
+
+script="${0##*/}"
+declare -l format
+declare -l language
+
+usage() {
+    echo "Usage: $script -f <format> -l <language>"
+    echo "Example: $script -f txt -l pt-br"
+    exit 1
+}
+
+while getopts "f:l:" opt; do
+    case "$opt" in
+        f) format="$OPTARG" ;;
+        l) language="$OPTARG" ;;
+        *) usage ;;
+    esac
+done
+
+if [ -z "$format" ] || [ -z "$language" ]; then
+    usage
+fi
+
+for i in *."$format"; do
+    if [ ! -e "$i" ]; then
+        echo "No file found with the .$format extension."
+        exit 1
+    fi
+
+    echo "Translating $i..."
+    trans -b ":$language" -i "$i" -o "${i%.*}-$language.$format"
+    echo "Translated file: ${i%.*}-$language.$format"
+    echo
+done
+
+if [[ "$format" != "srt" ]]; then
+    exit 0
+fi
+
+for i in *"-$language.$format"; do 
+    sed -i 's|ufeff1|1|g' "$i"
+done
+
+exit 0

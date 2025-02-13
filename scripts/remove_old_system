@@ -1,0 +1,23 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script verifies that it is executed as root and checks if the /mnt directory is mounted with a valid /mnt/usr folder. 
+If both conditions are met, it removes several system directories from /mnt, ensuring a clean state.
+DOCUMENTATION
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Error: This script must be run as root"
+    exit 1
+fi
+
+# Check if /mnt is mounted
+if mountpoint -q /mnt && test -d /mnt/usr; then
+    cd /mnt && rm -rf bin dev lib lib64 mnt opt proc root run sbin srv sys tmp usr
+    exit 0
+else
+    echo "Error: /mnt is not mounted or the folder /mnt/usr does not exist."
+    exit 1
+fi

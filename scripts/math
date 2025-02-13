@@ -1,0 +1,64 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script serves as a command-line calculator that can evaluate mathematical expressions using various programming languages. 
+It accepts a mathematical expression as an argument and supports multiple modes of calculation, including shell arithmetic, 
+'bc', 'awk', Python, and Perl. If no arguments are provided or if help is requested, it displays usage instructions and examples 
+for each calculation method. The script disables wildcard expansion to prevent unintended behavior with special characters in expressions. 
+The result of the calculation is then printed to the terminal.
+DOCUMENTATION
+
+set -f  # Disable wildcard expansion
+
+if [[ $# -lt 1 ]] || [[ $1 = '-h' ]] || [[ $1 = '--help' ]]; then
+cat <<EOF
+    Usage: ${0##*/} [args]
+    
+    Calculation,
+                example: ${0##*/} '2*19'
+    
+    -s|-shell,
+                command: echo $((2+2))
+    -b|-bc,
+                command: echo '2+2' | bc -l
+    -a|-awk,
+                command: awk 'BEGIN {print 2+2}'
+    -p|-python,
+                command: python -c 'import math; print(2+2)'
+
+    -pe|-perl,
+                command: perl -e 'print 2+2'
+
+    Default command: perl -E 'say 2+2'
+EOF
+    exit 0
+fi
+
+case $1 in
+    -s|-shell) 
+        shift
+        result=$(($@))
+        ;;
+    -b|-bc) 
+        shift
+        result=$(echo "$@" | bc -l)
+        ;;
+    -a|-awk) 
+        shift
+        result=$(awk "BEGIN {print $@}")
+        ;;
+    -p|-py|-python) 
+        shift
+        result=$(python -c "import math; print($@)")
+        ;;
+    -pe|-perl) 
+        shift
+        result=$(perl -e "print $@")
+        ;;
+    *) 
+        result=$(perl -E "say $@")
+        ;;
+esac
+eval echo "$result"

@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+# License: GPLv3
+# Credits: Felipe Facundes
+
+"""
+The script implements a calendar application using PyQt5, designed to display holidays based on the user's local language and country settings. 
+
+Strengths:
+1. Localized calendar display with holidays highlighted.
+2. User-friendly interface with a clean layout.
+3. Dynamic updates based on system language and country.
+
+Capabilities:
+- Integrates with the 'holidays' library to fetch holiday data.
+- Utilizes 'pycountry' for accurate country code mapping.
+- Provides tooltips for holiday descriptions on the calendar.
+
+Dependencies:
+1. 'PyQt5' - Third-party library for creating the GUI (install via pip).
+2. 'holidays' - Third-party library for holiday data (install via pip).
+3. 'pycountry' - Third-party library for country code mapping (install via pip).
+4. 'sys' - Native library for system-specific parameters and functions (no installation needed).
+5. 'locale' - Native library for locale-specific settings (no installation needed).
+
+Installation of Dependencies:
+- Install 'PyQt5', 'holidays', and 'pycountry' using pip:
+  
+  pip install PyQt5 holidays pycountry
+"""
+
+import sys
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QCalendarWidget, QToolTip
+from PyQt5.QtCore import QLocale, QDate, Qt
+from PyQt5.QtGui import QFont
+import holidays
+import pycountry
+
+
+class CalendarPyQt5(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle("Calendar")
+        self.setGeometry(100, 100, 400, 300)
+
+        # Create the widget that will contain the calendar
+        self.calendar_container = QWidget(self)
+        self.setCentralWidget(self.calendar_container)
+
+        # Create a vertical layout for the container widget
+        layout = QVBoxLayout(self.calendar_container)
+
+        # Create the calendar widget
+        self.calendar_widget = QCalendarWidget(self.calendar_container)
+
+        # Add the calendar widget to the layout
+        layout.addWidget(self.calendar_widget)
+
+        # Connect the calendar month change sign to the update_calendar method
+        self.calendar_widget.currentPageChanged.connect(self.update_calendar)
+
+        # Update calendar with local language and country
+        self.update_calendar()
+
+    def update_calendar(self):
+        system_language = QLocale.system().languageToString(QLocale.system().language())
+        system_country = QLocale.system().countryToString(QLocale.system().country())
+
+        # Set local language and country
+        locale_language = QLocale.system().language() if QLocale.system().language() else QLocale.Language()
+        locale_country = QLocale.system().country()
+
+        # Configure calendar with local language and country
+        self.calendar_widget.setLocale(QLocale(locale_language, locale_country))
+
+        # Get year adjusted by calendar widget
+        year = self.calendar_widget.yearShown()
+
+        # Get country code from country name in system language
+        country_code = self.get_country_code(system_country, system_language)
+
+        # Get the holidays for the desired country and year
+        holiday_list = holidays.CountryHoliday(country_code, years=year)
+
+        # Highlight holidays on the calendar
+        for date, holiday in holiday_list.items():
+            holiday_date = QDate(date.year, date.month, date.day)
+            if self.calendar_widget.minimumDate() <= holiday_date <= self.calendar_widget.maximumDate():
+                self.calendar_widget.setDateTextFormat(holiday_date, self.highlight_format(holiday))
+
+    def get_country_code(self, country_name, language):
+        # Map country code from country name in desired language
+        try:
+            country = pycountry.countries.get(name=country_name)
+            return country.alpha_2
+        except Exception:
+            return ""
+
+    def highlight_format(self, holiday):
+        # Set the format for highlighting holidays in the calendar
+        format = self.calendar_widget.dateTextFormat(self.calendar_widget.selectedDate())
+        format.setFontWeight(QFont.Bold)
+        format.setForeground(Qt.red)
+
+        # Set the tooltip with the holiday description
+        format.setToolTip(' '.join(holiday))
+
+        return format
+
+    def run(self):
+        self.show()
+        sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    calendar_pyqt5 = CalendarPyQt5()
+    calendar_pyqt5.run()

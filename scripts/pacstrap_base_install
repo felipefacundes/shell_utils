@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ "$EUID" -ne 0 ]; then
+    echo "This script must be run as root."
+    exit 1
+fi
+
+pacstrap -i /mnt grub base wget base-devel linux linux-headers mkinitcpio mkinitcpio-busybox mkinitcpio-netconf mkinitcpio-utils \
+    mkinitcpio-nfs-utils mkinitcpio-openswap mkinitcpio-systemd-tool nano bash bash-completion fish zsh zsh-completions sudo doas less
+genfstab -U -p /mnt >> /mnt/etc/fstab

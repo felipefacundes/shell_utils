@@ -1,0 +1,8 @@
+#!/bin/bash
+######### Sway Shortcut Help #########
+
+if command -v ccat >/dev/null 2>&1 ; then
+    ccat --color=always ~/.config/sway/config | less -i -R -N --use-color --color=HBCEMNPRSWsu
+else
+    cat --color=always ~/.config/sway/config | less -i -R -N --use-color --color=HBCEMNPRSWsu
+fi

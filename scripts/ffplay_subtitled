@@ -1,0 +1,35 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script plays multimedia files using 'ffplay', automatically detecting the file type based on its extension or MIME type. 
+If the file is an audio file, it plays it without displaying video. For video files, it checks for associated subtitle files and plays 
+the video with subtitles if available; otherwise, it plays the video without subtitles. If the input file is not a valid multimedia file, 
+it outputs an error message and exits.
+DOCUMENTATION
+
+file="$1"
+name="${file%.*}"
+
+if [ -f "$file" ] && ( ls "${name}".[AaDdMmOoPpSsWw][4AaCcGgLlMmPpSsTt][3AaCcDdEeGgVvMmRrSs] >/dev/null 2>&1 || \
+file -b --mime-type "$file" | grep -q "^audio/" ); then
+    ffplay -autoexit -nodisp "$file"
+
+elif [ -f "$file" ] && file -b --mime-type "$file" | grep -q "^video/"; then
+
+    if ls "${name}.forced.srt" >/dev/null 2>&1; then
+        ffplay "$file" -vf subtitles="${name}.forced.srt"
+
+    elif ls "${name}.srt" >/dev/null 2>&1; then
+        ffplay "$file" -vf subtitles="${name}.srt"
+
+    else
+        ffplay "$file"
+
+    fi
+    
+else
+    echo "${file} is not multimedia."
+    exit 1
+fi

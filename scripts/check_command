@@ -1,0 +1,74 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script checks the type of a specified command, determining whether it is an alias, built-in command, system command, or function. 
+It requires two arguments: a flag indicating the type to check and the command itself. If the command is found, the script evaluates 
+its type and outputs the result, indicating whether it matches the specified category. If the command is not found or does not match the expected type, 
+it provides an appropriate error message. Overall, the script serves as a useful tool for analyzing command types in a Unix-like environment.
+DOCUMENTATION
+
+if [[ $# != 2 ]]; then
+    cat <<EOF
+usage: ${0##*/} [-a|-b|-c|-f|-all] <command>
+
+-a, -alias
+    Check if is an alias
+-b, -builtin
+    Check if is an builtin
+-c, -command
+    Check if is an system command
+-f, -function
+    Check if is an function
+-all
+    Analyzes whether it is a valid command regardless of type
+EOF
+    exit 1
+fi
+
+if type "$2" >/dev/null 2>&1; then
+    case $1 in
+        -a|-alias) if [[ "$(type ${2})" =~ "is an alias" ]]; then
+                shift
+                exit 0
+            else
+                printf '%s: not an alias\n' "$2" >&2
+                exit 1
+            fi
+        ;;
+        -all) if command -v "$2" >/dev/null 2>&1; then
+                shift
+                exit 0
+            fi
+        ;;
+        -b|-builtin) if [[ "$(type ${2})" =~ "builtin" ]] >/dev/null 2>&1; then
+                shift
+                exit 0
+            else
+                printf '%s: not an builtin\n' "$2" >&2
+                exit 1
+            fi
+        ;;
+        -c|-command) if [[ "$(ls /*bin/${2} | ls /*/*bin/${2})" =~ "/.?bin/" ]] >/dev/null 2>&1; then
+                shift
+                exit 0
+            elif [[ "$(type ${2})" =~ "is an alias" || "$(type ${2})" =~ "function" ]]; then
+                printf '%s: not a system command\n' "$2" >&2
+                exit 1
+            fi
+        ;;
+        -f|-function) if [[ "$(type ${2})" =~ "function" ]]; then
+                shift
+                exit 0
+            else
+                printf '%s: not a function\n' "$2" >&2
+                exit 1
+            fi
+        ;;
+
+    esac
+else
+    printf '%s: command not found\n' "$2" >&2
+    exit 1
+fi

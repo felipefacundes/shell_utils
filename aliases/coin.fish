@@ -1,0 +1,6 @@
+alias dolar='~/.shell_utils/scripts/coin-price USD'
+alias dollar='~/.shell_utils/scripts/coin-price USD'
+alias euro='~/.shell_utils/scripts/coin-price EUR'
+alias quotation='~/.shell_utils/scripts/coin-price'
+alias price-coin='~/.shell_utils/scripts/coin-price'
+alias cotacao='~/.shell_utils/scripts/coin-price'

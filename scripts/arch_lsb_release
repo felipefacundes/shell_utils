@@ -1,0 +1,48 @@
+#!/bin/bash
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script configures the Arch Linux system by creating and updating the /etc/lsb-release and /etc/issue configuration files, 
+as well as adjusting the GRUB to accurately reflect the distribution. It also ensures that the lsb-release package is installed 
+before making any changes.
+DOCUMENTATION
+
+date=$(date +"%Y.%m.%d")
+
+if ! command -v lsb_release &>/dev/null; then
+    sudo pacman -S lsb-release
+fi
+
+cat <<EOF | sudo tee /etc/lsb-release &>/dev/null
+NAME="Arch Linux"
+PRETTY_NAME="Arch Linux"
+ID="arch"
+ID_LIKE="arch"
+ANSI_COLOR="38;2;23;147;209"
+HOME_URL="https://www.archlinux.org/"
+DOCUMENTATION_URL="https://wiki.archlinux.org/"
+SUPPORT_URL="https://bbs.archlinux.org/"
+BUG_REPORT_URL="https://bugs.archlinux.org/"
+PRIVACY_POLICY_URL="https://terms.archlinux.org/docs/privacy-policy/"
+BUILD_ID="$date"
+LOGO="arch"
+LSB_VERSION=1.4-14
+DISTRIB_ID="Arch"
+DISTRIB_RELEASE="rolling"
+DISTRIB_DESCRIPTION="Arch Linux"
+DISTRIB_CODENAME="rolling"
+EOF
+
+cat <<'EOF' | sudo tee /etc/issue &>/dev/null
+Arch Linux \r (\l)
+EOF
+
+if test -f /usr/lib/os-release; then
+    sudo rm /usr/lib/os-release
+fi
+
+sudo cp -f /etc/lsb-release /usr/lib/os-release
+sudo sed -i "s/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR='Arch'/" /etc/default/grub
+sudo grub-mkconfig -o /boot/grub/grub.cfg &>/dev/null
+echo
+echo 'Configuration completed successfully!'

@@ -1,0 +1,184 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This is a simple script for recording audio using ffmpeg. With useful tips!
+DOCUMENTATION
+
+record_dir=~/Music/record
+
+# Display the help menu using heredoc
+help() {
+    cat <<EOF
+Usage: ${0##*/} [OPTION]...
+
+Options:
+  -db, --volume value
+            Record audio with a specified volume. Default is 20.
+  -mic, --source toggle
+            Toggle sources/microphone on/off.
+  -ar value
+            Set the sampling rate value. Default is 22.050 Hz.
+  -o, --output file.ext
+            Save the recorded audio to the specified output file with the corresponding audio extension: .ogg, .wav, .mp3, .m4a, .flac, etc.
+  -fix source     
+            Print instructions to fix audio recording issues.
+  -l, -ls, --list-sources
+            Display the current status (muted or unmuted) of audio sources/microphones.
+  -h, --help              
+            Display this help and exit.
+
+Examples:
+
+  ${0##*/} -db 20 -ar 48000 -o output.wav
+            Record audio with volume 20dB and save it to output.wav. With a sampling rate of 48,000 Hz.
+  ${0##*/} -mic toggle
+            Toggle sources/microphone on/off.
+  ${0##*/} -fix source
+            Print instructions to fix audio recording issues.
+  ${0##*/} -c
+            Show an example command to record audio.
+
+Note:
+  If no options are provided, the script will record audio with default settings and save it to a timestamped file in ~/Music/record directory.
+EOF
+}
+
+create_record_dir() {
+    [[ ! -d "$record_dir" ]] && mkdir -p "$record_dir"
+}
+
+check_sources() {
+    BRED='\033[1;31m'
+    BGREEN='\033[1;32m'
+    RESET='\033[0m'
+    default_source="$(pacmd info | awk '/Default source name:/ {print $4}')"
+
+    # Armazenar a saída do comando em uma array
+    mapfile -t muted_array < <(pacmd list-sources | grep -oP 'muted: (?:yes|no)')
+
+    # Iterar sobre a array e mostrar a saída enumerada
+    for ((i=0; i<${#muted_array[@]}; i++)); do
+        if [[ ${muted_array[$i]} == 'muted: yes' ]]; then
+            echo -e "$BRED $i ${muted_array[$i]} $RESET"
+        elif [[ ${muted_array[$i]} == 'muted: no' ]]; then
+            echo -e "$BGREEN $i ${muted_array[$i]} $RESET"
+        fi
+    done
+
+    echo ""
+    pacmd info | grep -i --color=auto "$default_source"
+
+    echo -e "\n Set default source with command: $BGREEN pactl set-default-source <number> $RESET"
+}
+
+# Enables and disables all sources at once
+toggle_sources() {
+    pacmd list-sources | grep -oP 'index: \d+' | awk '{ print $2 }' | xargs -I{} pactl set-source-mute {} toggle
+
+    check_sources
+}
+
+# Nothing like a little extra help. Learn how to enable source for recording.
+print_fix_instructions() {
+    # https://askubuntu.com/questions/12100/command-to-mute-and-unmute-a-microphone
+    # https://www.linuxquestions.org/questions/linux-desktop-74/how-do-i-toggle-the-microphone-with-a-command-or-with-autokey-4175654480/
+    # https://unix.stackexchange.com/questions/132230/read-out-pulseaudio-volume-from-commandline-i-want-pactl-get-sink-volume
+    cat <<'EOF'
+    pactl list short sources
+    pactl set-default-source <source_device>
+
+    For microphone it is usually 1: 
+                pactl set-source-mute 1 toggle
+
+    Or use: pavucontrol, in "Recording" tab choose source device.
+EOF
+}
+
+# record this damn audio
+record_audio() {
+    ar="${ar:-22050}"
+    volume="${volume:-20}"
+    file="audio_$(date +'%Y-%m-%d_%H:%M:%S').ogg"
+    output="${output:-"${record_dir}/${file}"}"
+    ffmpeg -f pulse -ac 2 -i default -af "volume=${volume}dB" -ar "${ar}" "${output}"
+}
+
+if [[ -z $1 ]]; then
+    help
+    exit 0
+fi
+
+# main function
+main() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -db|-vol|--volume)
+                volume="$2"
+                shift 2
+                continue
+                ;;
+            -ar)
+                ar="$2"
+                shift 2
+                continue
+                ;;
+            -o|-out|--output)
+                output="$2"
+                shift 2  # Makes the two arguments $1 (-o) and $2 (var output) for $1, shifting them left
+                continue
+                ;;
+            -mic|--source)
+                shift
+                toggle_sources
+                exit 0
+                ;;
+            -l|-ls|--list-sources)
+                shift
+                check_sources
+                exit 0
+                ;;
+            -fix)
+                shift
+                print_fix_instructions
+                exit 0
+                ;;
+            -c|--command)
+                shift
+                echo -e "Example command to record audio with ffmpeg:\n"
+                echo 'ffmpeg -f pulse -ac 2 -i default -af "volume=10dB" audio.mp3'
+                exit 0
+                ;;
+            *)
+                help
+                shift
+                exit 0
+                ;;
+        esac
+    done
+}    
+
+create_record_dir
+main "$@"
+
+if [[ "$volume" =~ ^[0-9]+$ ]]; then
+    echo "Volume: $volume"
+elif [[ "$volume" ]]; then
+    echo 'Only numbers are accepted for volume!'
+    exit 1
+fi
+if [[ "$ar" =~ ^[0-9]+$ ]]; then
+    echo "Volume: $ar"
+elif [[ "$ar" ]]; then
+    echo 'Only numbers are accepted for sampling rate!'
+    exit 1
+fi
+if [[ "$output" =~ [[:alnum:]]\..[[:alnum:]] ]]; then
+    echo "file: $output"
+elif [[ "$output" ]]; then
+    echo 'An extension must have a dot "." and text: "file.ext"'
+    exit 1
+fi
+
+record_audio

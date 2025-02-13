@@ -1,0 +1,5 @@
+#!/bin/bash
+tput setaf 3
+echo -e "Use:\n"
+tput setaf 2
+echo -e "pdftotext -layout -nopgbrk file.pdf file.txt\n\nOr:\nlesspipe.sh file.pdf > file.txt\n"

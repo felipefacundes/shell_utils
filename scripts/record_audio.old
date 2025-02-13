@@ -1,0 +1,129 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This is a simple script for recording audio using ffmpeg.
+DOCUMENTATION
+
+record_dir=~/Music/record
+
+create_record_dir() {
+    [[ ! -d "$record_dir" ]] && mkdir -p "$record_dir"
+}
+
+# https://askubuntu.com/questions/12100/command-to-mute-and-unmute-a-microphone
+# https://www.linuxquestions.org/questions/linux-desktop-74/how-do-i-toggle-the-microphone-with-a-command-or-with-autokey-4175654480/
+# https://unix.stackexchange.com/questions/132230/read-out-pulseaudio-volume-from-commandline-i-want-pactl-get-sink-volume
+
+# Default source (microphone)
+# pactl set-source-mute 1 toggle
+
+# Enables and disables all sources at once
+toggle_sources() {
+    pacmd list-sources | grep -oP 'index: \d+' | awk '{ print $2 }' | xargs -I{} pactl set-source-mute {} toggle 
+    pacmd list-sources | grep -oP 'muted: (?:yes|no)'
+}
+
+# Nothing like a little extra help. Learn how to enable source for recording.
+print_fix_instructions() {
+    cat <<'EOF'
+    pactl list short sources
+    pactl set-default-source <source_device>
+
+    For microphone it is usually 1: 
+                pactl set-source-mute 1 toggle
+
+    Or use: pavucontrol, in "Recording" tab choose source device.
+EOF
+}
+
+# Display the help menu using heredoc
+help() {
+    cat <<EOF
+Usage: ${0##*/} [OPTION]...
+
+Options:
+  -db VOLUME OUTPUT_FILE
+            Record audio with a specified volume and save it to OUTPUT_FILE.
+  -mic, -source      
+            Toggle sources/microphone on/off.
+  -fix      
+            Print instructions to fix audio recording issues.
+  -h, --help              
+            Display this help and exit.
+  ar="sampling rate value"
+            Default is 22.050 Hz
+
+Examples:
+
+  ar=48000 ${0##*/} -db 20 output.wav
+            Record audio with volume 20dB and save it to output.wav. With a sampling rate of 48.000 Hz
+  ${0##*/} -mic, -source
+            Toggle sources/microphone on/off.
+  ${0##*/} -fix
+            Print instructions to fix audio recording issues.
+EOF
+}
+
+# record this damn audio
+record_audio() {
+    ar="${ar:-22050}"
+    if [[ "${volume}" ]] && [[ "${output_file}" ]]; then
+        ffmpeg -f pulse -ac 2 -i default -af "volume=${volume}" -ar "${ar}" "${output_file}"
+    elif [[ "$1" =~ \\. ]]; then
+        volume="10dB"
+        ffmpeg -f pulse -ac 2 -i default -af "volume=${volume}" -ar "${ar}" "${1}"
+    else
+        volume="10dB"
+        ffmpeg -f pulse -ac 2 -i default -af "volume=${volume}" -ar "${ar}" "${record_dir}/output.ogg}"
+    fi
+}
+
+# Volume / decibels
+volume() {
+    # The volume has to be numeric
+    if [[ "${1}" =~ ^[0-9]+$ ]]; then
+        volume="${1}"
+    else
+        echo "The volume must be number, and it was \"${1}\""
+        exit 1
+    fi
+    # Of course, the extension must have a dot "audio.ogg"
+    if [[ "$2" =~ \\. ]]; then
+        output_file="${2}"
+    else
+        file="audio_$(date +'%Y-%m-%d_%H:%M:%S').ogg"
+        output_file="${2:-"${record_dir}/${file}"}"
+    fi
+}
+
+# main function
+main() {
+    case "$1" in
+        -db|-vol|-volume)
+            volume "${2}" "${3}"
+            record_audio "${2}" "${3}"
+            ;;
+        -mic|-source)
+            toggle_sources
+            ;;
+        -fix)
+            print_fix_instructions
+            ;;
+        -c|--command)
+            echo -e "Example command to record audio with ffmpeg:\n"
+            echo 'ffmpeg -f pulse -ac 2 -i default -af "volume=10dB" audio.mp3'
+            ;;
+        -h|--help|-*)
+            help
+            ;;
+        *)  
+            volume 10
+            record_audio
+            ;;
+    esac
+}    
+
+create_record_dir
+main "$@"

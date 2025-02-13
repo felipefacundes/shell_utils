@@ -1,0 +1,20 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script checks for block devices on the system and identifies which ones are not currently mounted.
+Its strengths include providing a straightforward method to list unmounted devices, which can be useful for 
+system administration tasks. The script efficiently utilizes lsblk and findmnt commands to gather and verify 
+device information.
+DOCUMENTATION
+
+# Get the list of block devices
+devices=$(lsblk -rpo "NAME")
+
+# Check that each device is not mounted
+for device in $devices; do
+    if ! findmnt -rno SOURCE,TARGET "$device" >/dev/null; then
+        echo "$device is not mounted"
+    fi
+done

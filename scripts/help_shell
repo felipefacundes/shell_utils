@@ -1,0 +1,141 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Imagine creating helper functions and typing whatever you want in the terminal, just creating a 
+simple function instead of an entire script—this is the premise of help_shell.
+
+The help_shell script is an efficient and user-friendly tool designed to dynamically 
+display help information for your Bash functions.
+
+Define your functions below. Add as many functions as you like in a similar manner
+
+- Dynamic Help Display: Automatically lists all available functions with descriptions extracted from comments.
+- Interactive Search: Search for functions by name or description using a clean and intuitive menu powered by whiptail.
+- Flexible Usage: Allows for specifying functions as command-line arguments or interacting via the dynamic menu.
+- Integration Ready: Seamlessly integrates with the shell_utils framework, leveraging pre-defined variables and resources.
+DOCUMENTATION
+
+shell_utils=~/.shell_utils
+helps_dir="${shell_utils}/scripts/helps"
+
+shopt -s globstar
+source "${shell_utils}/variables/shell_colors.sh"
+
+for file in "${helps_dir}"/**/*.sh; do
+    source "${file}"
+done
+
+show_documentation() {
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0"
+}
+
+# Display help dynamically
+help() {
+    echo -e "$(show_documentation | head -7)\n"
+    echo "Usage: ${0##*/} [function1 function2 ...]"
+    echo -e "\n-h, --help,"
+    echo -e "
+# Display this help message.
+"
+    echo -e "Available functions:\n"
+ 
+    for func_name in $(declare -F | cut -d " " -f 3); do
+        # Extract the first comment line of the function
+        description=$(type "$func_name" | grep -m 1 '^#')  # Or | awk '/^#/ {print; exit}' or | sed -n '/^#/p' | head -n 1
+        # Remove the '#' character from the description
+        description=${description/#\# /}
+        echo -e "  ${func_name} <=> $description"
+    done
+
+    echo -e "\nEnter q to quit this help.\n"
+}
+
+# Check if help option was provided
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    help | less -i -R
+    exit 0
+fi
+
+if [[ -z "$1" ]]; then
+    while true; do
+        # Initialize an empty array to hold the menu items
+        menu_items=()
+
+        # Ask the user for a search term
+        search_term=$(whiptail --inputbox "Enter a search term (leave blank to list all functions):" 8 78 3>&1 1>&2 2>&3)
+
+        # If the user pressed Cancel, break the loop
+        if [[ $? -ne 0 ]]; then
+            break
+        fi
+
+        # Normalize the search term to lowercase
+        search_term=$(echo "$search_term" | tr '[:upper:]' '[:lower:]')
+
+        for func_name in $(declare -F | cut -d " " -f 3); do
+            # Extract the first comment line of the function
+            description=$(type "$func_name" | grep -m 1 '^#')
+            # Remove the '#' character from the description
+            description=${description/#\# /}
+            
+            # Normalize function name and description to lowercase
+            func_name_lower=$(echo "$func_name" | tr '[:upper:]' '[:lower:]')
+            description_lower=$(echo "$description" | tr '[:upper:]' '[:lower:]')
+
+            # If the function name or description matches the search term, add it to the menu items
+            if [[ -z "$search_term" || "$func_name_lower" == *"$search_term"* || "$description_lower" == *"$search_term"* ]]; then
+                menu_items+=("$func_name" "| $description")
+            fi
+        done
+
+        # Check if no items were found
+        if [[ ${#menu_items[@]} -eq 0 ]]; then
+            whiptail --msgbox "No matches found for '$search_term'. Please try again." 8 78
+            continue
+        fi
+
+        # Pass the menu items to whiptail and get the selected item
+        selected_item=$(whiptail --title "Functions menu" --menu "Choose a function" 24 80 17 "${menu_items[@]}" 3>&1 1>&2 2>&3)
+
+        # If the user pressed Cancel, break the loop
+        if [[ $? -ne 0 ]]; then
+            break
+        fi
+
+        # Check if the selected item is a function
+        if declare -f "$selected_item" > /dev/null; then
+            clear
+            # Call the function
+            "$selected_item"
+            break
+        else
+            echo "Function '$selected_item' not found."
+        fi
+    done
+    exit 0
+fi
+
+# Iterate over the passed arguments
+for func_name in "$@"; do
+    # Check if the function exists
+    if declare -f "$func_name" > /dev/null; then
+        # Call the function
+        shift
+        "$func_name" "$@"
+    else
+        echo "Function '$func_name' not found."
+    fi
+done

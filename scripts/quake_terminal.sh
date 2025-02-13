@@ -1,0 +1,1191 @@
+#!/usr/bin/env bash
+# Terminal a Dropdown (Quake Style) Terminal (WM Independent)
+# Source: https://github.com/noctuid/tdrop/blob/master/tdrop
+# Credits: noctuid
+# Script Name: tdrop
+
+MUTDROP_PATH=/tmp/tdrop_"$USER"_"$DISPLAY"
+LOG_FILE="$MUTDROP_PATH"/log
+NOAUTOHIDE_FILE="$MUTDROP_PATH"/no_autohide
+GEO_DIR="$MUTDROP_PATH"/geometries
+WID_DIR="$MUTDROP_PATH"/wids
+CLASS_DIR="$MUTDROP_PATH"/classes
+HIDE_DIR="$MUTDROP_PATH"/auto_hidden
+# shellcheck disable=SC2174
+mkdir -m 700 -p "$MUTDROP_PATH"/{auto_hidden,classes,geometries,wids}
+
+FLOATING_WMS_REGEXP='Openbox|pekwm|Fluxbox|Blackbox|xfwm4|Metacity|FVWM|Sawfish|GoomwW|Mutter|GNOME Shell|Mutter \(Muffin\)|KWin|Metacity \(Marco\)|[Cc]ompiz'
+GEO_REGEXP='^xoff=-?[0-9]+
+yoff=-?[0-9]+
+width=?[0-9]+
+height=?[0-9]+$'
+
+print_help() {
+	echo "
+usage: tdrop [options] <program> [program options ...]
+                       or 'current'
+                       or one of 'auto_show'/'auto_hide'/'toggle_auto_hide'
+                       or 'hide_all'
+                       or 'foreach'
+options:
+	-h height	specify a height for a newly created term (default: 45%)
+	-w width	specify a width for a newly created term (default: 100%)
+	-x pos		specify x offset for a newly created term (default: 0)
+	-y pos		specify y offset for a newly created term (default: 1, see man)
+	-s name		name for tmux/tmuxinator/tmuxifier/tmuxp session (supported
+			terminal required)
+	-n num		num or extra text; only needed if for the purpose of using
+			multiple dropdowns of same program
+	-c cmd		provide a pre-create command
+	-C cmd		provide a post-create command
+	-l cmd		provide a command to float the window before it is mapped
+	-L cmd		provide a command to float the window after it is mapped
+	-p cmd		provide a pre-map command
+	-P cmd		provide a post-map command
+	-u cmd		provide a pre-unmap command
+	-U cmd		provide a post-unmap command
+	-d XxY		give decoration/border size to accurately restore window
+			position; only applicable with auto_show
+	-S		can be used to fix saved geometry with auto_hide; see manpage
+	-i cmd		provide a command to detect whether the current window is a
+			floating window; on applicable with auto_hide
+	-f flags	specify flags/options to be used when creating the term or
+			window (e.g. -f '--title mytitle'; default: none).
+			NOTE: This flag is deprecated. Specify flags after the program name
+			instead. This flag may be removed in the future.
+			Caution: if there is a tmux session specified (with -s), the option
+			to execute a program (usually -e for terminal programs) is
+			implicitly added by tdrop
+	-a		automatically detect window manager and set relevant options
+			(e.g. this makes specifying -l/-L, -d, and -i unnecessary
+			for supported WMs) (default: false)
+	-m		for use with multiple monitors and only with dropdowns
+			(i.e. not for auto_show or auto_hide); convert percentages used
+			for width or height to values relative to the size of the
+			current monitor and force resizing of the dropdown when
+			the monitor changes (default: false)
+	-t		use mouse pointer location for detecting which monitor is the current
+			one
+	-A		always show/activate the window if it is not focused
+	-r		save geometry when hiding, restore geometry when showing
+	-N		same as -x '' -y '' -w '' -h '' (do not use with those options)
+	--wm		set the window manager name to mimic another window manager
+			(for use with -a)
+	--class name	manually specify the class of the window (can be obtained with xprop)
+	--name name	set a new name for the dropdown window
+	--clear		clear saved window id; useful after accidentally make a
+			window a dropdown (e.g. '$ tdrop --clear current')
+	--no-cancel	don't cancel auto-showing (default is to prevent this when
+			manually toggling a window after it is auto-hidden)
+	--timeout	set the timeout (in seconds) that tdrop will wait for a window
+			to appear before giving up in case the program fails to start
+			(default: 10)
+	--debug		print debugging information to /tmp/tdrop_<user>/log
+	--help		print help
+
+See man page for more options and details.
+"
+}
+
+first_message=true
+msg() {
+	if $first_message; then
+		echo "--------------------------------------------------" >> "$LOG_FILE"
+		first_message=false
+	fi
+	echo "$(date "+%F %T") $*" > >(tee -a "$LOG_FILE" >&2)
+}
+
+error() {
+	msg "Error: $*"
+	exit 1
+}
+
+debug=false
+debug() {
+	if $debug; then
+		msg "Debug $*"
+	fi
+}
+
+debug "command: tdrop $*"
+
+# * Default Options and Option Parsing
+# xdotool can take percentages; cannot take decimal percentages though
+width="100%"
+height="45%"
+xoff=0
+yoff=2
+session_name=
+num=
+pre_create=
+post_create=
+pre_float=
+post_float=
+pre_map=
+post_map=
+pre_unmap=
+post_unmap=
+dec_fix=
+# NOTE:
+# pekwm, xfwm4, sawfish, openbox need subtract_when_same to be true
+# for awesome, fluxbox, blackbox, mutter, fvwm, and metacity, the value
+# does not matter
+# set in decoration_settings
+subtract_when_same=
+is_floating=
+program_flags=()
+clearwid=false
+cancel_auto_show=true
+auto_detect_wm=false
+always_activate=false
+monitor_aware=false
+monitor=
+pointer_monitor_detection=false
+wm=
+wm_wid=
+user_set_wm=false
+class=
+name=
+timeout=10
+remember_geometry=false
+while getopts :h:w:x:y:s:n:c:C:l:L:p:P:u:U:d:S:i:f:-:aAmNtr opt
+do
+	case $opt in
+		h) height=$OPTARG;;
+		w) width=$OPTARG;;
+		x) xoff=$OPTARG;;
+		y) yoff=$OPTARG;;
+		s) session_name=$OPTARG;;
+		n) num=$OPTARG;;
+		c) pre_create=$OPTARG;;
+		C) post_create=$OPTARG;;
+		l) pre_float=$OPTARG;;
+		L) post_float=$OPTARG;;
+		p) pre_map=$OPTARG;;
+		P) post_map=$OPTARG;;
+		u) pre_unmap=$OPTARG;;
+		U) post_unmap=$OPTARG;;
+		d) dec_fix=$OPTARG;;
+		S) subtract_when_same=false;;
+		i) is_floating=$OPTARG;;
+		f) eval "program_flags=($OPTARG)";;
+		a) auto_detect_wm=true;;
+		A) always_activate=true;;
+		m) monitor_aware=true;;
+		t) pointer_monitor_detection=true;;
+		r) remember_geometry=true;;
+		N) xoff=
+		   yoff=
+		   width=
+		   height=;;
+		-)
+			if [[ $OPTARG =~ ^(auto-detect-wm|monitor-aware|pointer-monitor-detection|clear|no-cancel|debug|remember|no-manage|help)$ ]] || \
+				   [[ $OPTARG == *=* ]]; then
+				OPTION=${OPTARG%%=*}
+				OPTARG=${OPTARG#*=}
+			else
+				OPTION=$OPTARG
+				# shellcheck disable=SC2124
+				OPTARG=${@:$OPTIND:1}
+				((OPTIND++))
+			fi
+			case $OPTION in
+				height) height=$OPTARG;;
+				width) width=$OPTARG;;
+				x-offset) xoff=$OPTARG;;
+				y-offset) yoff=$OPTARG;;
+				session) session_name=$OPTARG;;
+				number) num=$OPTARG;;
+				pre-create-hook) pre_create=$OPTARG;;
+				post-create-hook) post_create=$OPTARG;;
+				pre-map-float-command) pre_float=$OPTARG;;
+				post-map-float-command) post_float=$OPTARG;;
+				pre-map-hook) pre_map=$OPTARG;;
+				post-map-hook) post_map=$OPTARG;;
+				pre-unmap-hook) pre_unmap=$OPTARG;;
+				post-unmap-hook) post_unmap=$OPTARG;;
+				decoration-fix) dec_fix=$OPTARG;;
+				no-subtract-when-same) subtract_when_same=false;;
+				is-floating) is_floating=$OPTARG;;
+				program-flags) eval "program_flags=($OPTARG)";;
+				auto-detect-wm) auto_detect_wm=true;;
+				activate) always_activate=true;;
+				monitor-aware) monitor_aware=true;;
+				pointer-monitor-detection) pointer_monitor_detection=true;;
+				monitor) monitor=$OPTARG;;
+				wm) wm=$OPTARG
+					user_set_wm=true;;
+				class) class=$OPTARG;;
+				name) name=$OPTARG;;
+				clear) clearwid=true;;
+				no-cancel) cancel_auto_show=false;;
+				timeout) timeout=$OPTARG;;
+				debug) debug=true;;
+				remember) remember_geometry=true;;
+				no-manage) xoff=
+						   yoff=
+						   width=
+						   height=;;
+				help) print_help; exit;;
+				*) error "Unknown option --$OPTION." \
+						 "Use --help to see available flags.";;
+			esac;;
+		*) error "Unknown option -$OPTARG." \
+				 "Use --help to see available flags.";;
+	esac
+done
+shift "$((OPTIND-1))"
+program=$1
+
+if [[ ${#program_flags[@]} -eq 0 ]]; then
+	program_flags=("${@:2}")
+fi
+
+if [[ -z $program ]]; then
+	error "Program to run is required as a positional argument." \
+		  "For help use --help or see the manpage."
+fi
+
+# check that the program is in PATH
+if [[ ! $program =~ ^(current|auto_hide|auto_show|toggle_auto_hide|hide_all|foreach)$ ]] && \
+	   ! hash "$program" 2> /dev/null; then
+	error "The program ($program) should be in PATH."
+fi
+
+# validate options that require number values
+if [[ ! $height$width$xoff$yoff =~ ^[0-9%-]*$ ]]; then
+	error "The -h, -w, -x, and -y values must be numbers (or percentages)."
+fi
+if [[ -n $dec_fix ]] && [[ ! $dec_fix =~ ^-?[0-9]+x-?[0-9]+$ ]]; then
+	error "The decoration fix value must have form 'num'x'num'." \
+		  "The numbers can be negative or zero."
+fi
+
+# check that dependencies are installed
+if ! hash xprop xwininfo xdotool; then
+	error "Xprop, xwininfo, and xdotool must all be installed."
+fi
+
+if ! hash gawk; then
+	error "Gawk must be installed."
+fi
+
+if ! hash pgrep; then
+	error "Pgrep must be installed."
+fi
+
+if [[ -n $monitor_aware ]] && ! hash xrandr 2> /dev/null; then
+	error "Xrandr must be installed to use -m / --monitor-aware."
+fi
+
+if [[ -n $session_name ]] && ! hash tmux 2> /dev/null; then
+	error "Tmux must be installed to use -s / --session."
+fi
+
+# non-user-settable global vars
+wid=
+
+# * Multiple Monitor Automatic Re-Sizing
+percent_of_total() { # percent total
+	# use gawk to allow floating point percentages
+	gawk "BEGIN {printf(\"%.0f\", 0.01*${1%\%}*$2)}"
+	# echo $((${1%\%} * ${2} / 100))
+}
+
+# acts on globals
+convert_geometry_to_pixels() {
+	total_width=$1
+	total_height=$2
+	local minus_width minus_height minus_xoff minus_yoff
+	if [[ $width =~ %$ ]]; then
+		width=$(percent_of_total "$width" "$total_width")
+	elif [[ $width =~ ^- ]]; then
+		minus_width=${width#-}
+		width=$((total_width-minus_width))
+	fi
+	if [[ $height =~ %$ ]]; then
+		height=$(percent_of_total "$height" "$total_height")
+	elif [[ $height =~ ^- ]]; then
+		minus_height=${height#-}
+		height=$((total_height-minus_height))
+	fi
+	if [[ $xoff =~ %$ ]]; then
+		xoff=$(percent_of_total "$xoff" "$total_width")
+	elif [[ $xoff =~ ^- ]]; then
+		minus_xoff=${xoff#-}
+		xoff=$((total_width-minus_xoff))
+	fi
+	if [[ $yoff =~ %$ ]]; then
+		yoff=$(percent_of_total "$yoff" "$total_height")
+	elif [[ $yoff =~ ^- ]]; then
+		minus_yoff=${yoff#-}
+		yoff=$((total_height-minus_yoff))
+	fi
+}
+
+# meant to set variables for calling function given geometry:
+# - x_begin
+# - y_begin
+# - x_width
+# - x_height
+split_geometry() { # <monitor geometry>
+	monitor_geo=$1
+	# x_begin=$(echo "$monitor_geo" | gawk -F '+' '{print $2}')
+	x_begin=${monitor_geo#*+}
+	x_begin=${x_begin%+*}
+	# y_begin=$(echo "$monitor_geo" | gawk -F '+' '{print $3}')
+	y_begin=${monitor_geo##*+}
+	# x_width=$(echo "$monitor_geo" | gawk -F 'x' '{print $1}')
+	x_width=${monitor_geo%x*}
+	# y_height=$(echo "$monitor_geo" | gawk -F 'x|+' '{print $2}')
+	y_height=${monitor_geo#*x}
+	y_height=${y_height%%+*}
+}
+
+# sets these variables for the calling function to use:
+# - x_begin
+# - y_begin
+# - x_width
+# - y_height
+populate_current_monitor_geometry() {
+	# it is conceivable that a user may want to use -m but not -a, so
+	# get the wm from within this function
+
+    # get current monitor
+	local current_monitor
+	if [[ -n $monitor ]]; then
+		current_monitor=$monitor
+	elif [[ $wm == bspwm ]]; then
+		current_monitor=$(bspc query --names --monitors --monitor)
+	elif [[ $wm == i3 ]]; then
+		# TODO use jq if installed
+		# I'd rather not make jq a dependency
+		current_monitor=$(i3-msg -t get_workspaces | sed 's/"num"/\n/g' | \
+							  gawk -F ',' '/focused":true/ {sub(".*output",""); gsub("[:\"]",""); print $1}')
+	elif [[ $wm != herbstluftwm ]]; then
+		local current_x current_y monitors_info x_end y_end
+		if ! $pointer_monitor_detection; then
+			# determine current monitor using active window
+			local wid wininfo
+			wid=$(get_active_wid_or_empty)
+			if [[ -z $wid ]]; then
+				# will try again after remapping or creating the dropdown
+				return 1
+			fi
+
+			wininfo=$(xwininfo -id "$wid")
+			current_x=$(echo "$wininfo" | gawk '/Absolute.*X/ {print $4}')
+			current_y=$(echo "$wininfo" | gawk '/Absolute.*Y/ {print $4}')
+		else
+			# shellcheck disable=SC2034
+			local X Y SCREEN WINDOW
+			# determine current monitor using pointer location
+			eval "$(xdotool getmouselocation --shell)"
+			current_x=X
+			current_y=Y
+		fi
+		monitors_info=$(xrandr --current | gawk '/ connected/ {gsub("primary ",""); print}')
+		while read -r monitor; do
+			monitor_geo=$(echo "$monitor" | gawk '{print $3}')
+			if [[ $monitor_geo =~ ^[0-9]+x[0-9]+\+[0-9]+\+[0-9]+$ ]]; then
+				split_geometry "$monitor_geo"
+				x_end=$((x_begin+x_width))
+				y_end=$((y_begin+y_height))
+				if [[ $current_x -ge $x_begin ]] && [[ $current_x -lt $x_end ]] && \
+					   [[ $current_y -ge $y_begin ]] && [[ $current_y -lt $y_end ]]; then
+					# current_monitor=$(echo "$monitor" | gawk '{print $1}')
+					current_monitor=${monitor%% *}
+					break
+				fi
+			fi
+		done <<< "$monitors_info"
+	fi
+
+	local monitor_geo
+	if [[ $wm == herbstluftwm ]]; then
+		# fine if no monitor; will use current
+		monitor_geo=$(herbstclient monitor_rect "$monitor")
+		# not using read because behavior depends on bash version
+		x_begin=${monitor_geo%% *}
+		y_begin=${monitor_geo#* }
+		y_begin=${y_begin%% *}
+		x_width=${monitor_geo#* }
+		x_width=${x_width#* }
+		x_width=${x_width%% *}
+		y_height=${monitor_geo##* }
+	else
+		monitor_geo=$(xrandr --current | \
+						  gawk "/^$current_monitor/ {gsub(\"primary \",\"\"); print \$3}")
+		split_geometry "$monitor_geo"
+	fi
+}
+
+update_geometry_settings_for_monitor() {
+	# 1. Correctly interpret width/height percentages when there exist multiple
+	#    monitors so an initially created dropdown is the correct size (xdotool
+	#    would create a dropdown the width of all screens for 100% width)
+	# 2. Force resize the dropdown to the correct percentage of the current
+	#    monitor IF the monitor has changed since the last time the dropdown
+	#    was used
+
+	local x_begin y_begin x_width y_height
+	populate_current_monitor_geometry
+
+	# convert w/h/x/y percentages/negatives to pixels
+	convert_geometry_to_pixels "$x_width" "$y_height"
+
+	# update x and y offsets, so that will appear on correct screen
+	# (required for some WMs apparently, but not for others)
+	[[ -n $xoff ]] && ((xoff+=x_begin))
+	[[ -n $yoff ]] && ((yoff+=y_begin))
+}
+
+map_and_reset_geometry() {
+	if [[ -n $width ]] && [[ -n $height ]] && [[ -n $xoff ]] \
+		   && [[ -n $yoff ]]; then
+		xdotool windowmap --sync "$wid" windowmove "$wid" "$xoff" "$yoff" \
+				windowsize "$wid" "$width" "$height" 2> /dev/null
+	elif [[ -n $width ]] && [[ -n $height ]]; then
+		xdotool windowmap --sync "$wid" windowsize "$wid" "$width" "$height" \
+				2> /dev/null
+	elif [[ -n $xoff ]] && [[ -n $yoff ]]; then
+		xdotool windowmap --sync "$wid" windowmove "$wid" "$xoff" "$yoff" \
+				2> /dev/null
+	else
+		xdotool windowmap --sync "$wid" 2> /dev/null
+	fi
+	# windowmap does not activate the window for all window managers;
+	# windowactivate should be run separately after windowmap --sync or it can
+	# activate a window on another desktop on some window managers (e.g. bspwm)
+	xdotool windowactivate "$wid" 2> /dev/null
+}
+
+# * WM Detection and Hooks
+set_wm() {
+	wm_wid=$(xprop -root -notype _NET_SUPPORTING_WM_CHECK)
+	wm_wid=${wm_wid##* }
+	if ! $user_set_wm && $auto_detect_wm; then
+		# xfwm4 and fvwm at least will give two names (hence piping into head)
+		wm=$(xprop -notype -id "$wm_wid" _NET_WM_NAME | head -n 1)
+		wm=${wm##* }
+		wm=${wm//\"/}
+		debug "window manager: $wm"
+	fi
+}
+
+decoration_settings() {
+	if [[ -z $subtract_when_same ]]; then
+		if $auto_detect_wm \
+				&& [[ $wm =~ ^(Mutter|GNOME Shell|bspwm|i3|GoomwW)$ ]]; then
+			subtract_when_same=false
+		else
+			subtract_when_same=true
+		fi
+	fi
+
+	if [[ -z $dec_fix ]] && $auto_detect_wm; then
+		# settings for stacking/floating wms where can't get right position
+		# easily from xwininfo; take borders into account
+		if [[ $wm == Blackbox ]]; then
+			dec_fix="1x22"
+		elif [[ $wm =~ ^(Mutter|GNOME Shell)$ ]]; then
+			dec_fix="-10x-8"
+		elif [[ $wm =~ ^(Mutter \(Muffin\))$ ]]; then
+			dec_fix="-9x-8"
+		elif [[ $wm == herbstluftwm ]]; then
+			# alternatively could just not subtract when storing (though this
+			# will also work if border changes after hiding but before showing)
+			border_width=$(herbstclient get window_border_width)
+			dec_fix="-${border_width}x-${border_width}"
+		fi
+	fi
+}
+
+set_class() {
+	if [[ -z $class ]]; then
+		if [[ $program =~ ^emacsclient ]]; then
+			class=emacs
+		elif [[ $program =~ ^google-chrome ]]; then
+			class=google-chrome
+		elif [[ $program == st ]]; then
+			class=st-256color
+		elif [[ $program == gnome-terminal ]]; then
+			class=Gnome-terminal
+		elif [[ $program =~ ^urxvt.* ]]; then
+			class=urxvt
+		elif [[ $program == xiatec ]]; then
+			class=xiate
+		elif [[ $program == alacritty ]]; then
+			class=Alacritty
+		elif [[ $program == wezterm ]]; then
+			# wezterm is normally installed through flatpak
+			class=org.wezfurlong.wezterm
+		elif [[ $program == flatpak ]]; then
+			# flatpak jails the application, the PID cannot be used to find
+			# the window. A specific class has to be given by the user.
+			error "--class is required with flatpak but was not given."
+		elif [[ $program == brave ]]; then
+			class=brave-browser
+		elif ! [[ $program =~ ^(current|auto_show)$ ]]; then
+			# NOTE: current/auto_show will use restore_class to set class to the
+			# recorded class later
+			class=$program
+		fi
+	fi
+}
+
+is_floating() {
+	if [[ -n $is_floating ]]; then
+		eval "$is_floating $1"
+	elif [[ $wm =~ FLOATING_WMS_REGEXP ]]; then
+		return
+	elif $auto_detect_wm; then
+		if [[ $wm == i3 ]]; then
+			# TODO make sure this returns 1 on failure
+			i3-msg -t get_tree | gawk 'gsub(/{"id"/, "\n{\"id\"")' | \
+				gawk '/focused":true.*floating":"user_on/ {print $1}'
+		elif [[ $wm == bspwm ]]; then
+			bspc query -T -n | grep '"state":"floating"'
+		elif [[ $wm == herbstluftwm ]]; then
+			herbstclient or , compare tags.focus.floating = on , compare clients.focus.floating = on
+		fi
+	else
+		return 0
+	fi
+}
+
+pre_float() {
+	# TODO why is this an exception?
+	lowercase_classes="firefox"
+	if [[ $wm == bspwm ]]; then
+		# newest (using "instance" names)
+		if [[ $class =~ [A-Z] ]] || [[ $class =~ $lowercase_classes ]]; then
+			bspc rule -a "$class" -o state=floating
+		else
+			bspc rule -a \*:"$class" -o state=floating
+		fi
+	elif [[ $wm == herbstluftwm ]]; then
+		if [[ $class =~ [A-Z] ]] || [[ $class =~ $lowercase_classes ]]; then
+			herbstclient rule once class="$class" floating=on
+		else
+			herbstclient rule once instance="$class" floating=on
+		fi
+	fi
+}
+
+post_float() {
+	if [[ $wm == awesome ]]; then
+		echo 'local awful = require("awful") ; awful.client.floating.set(c, true)' | \
+			awesome-client
+	elif [[ $wm == i3 ]]; then
+		i3-msg "[id=$wid] floating enable" > /dev/null
+	fi
+}
+
+pre_create() {
+	if [[ -n $pre_create ]]; then
+		eval "$pre_create"
+	fi
+}
+
+post_create() {
+	if [[ -n $post_create ]]; then
+		eval "$post_create"
+	fi
+}
+
+pre_map() { # float
+	float=${1:-true}
+	if [[ $float != false ]]; then
+		if [[ -n $pre_float ]]; then
+			eval "$pre_float"
+		elif $auto_detect_wm; then
+			pre_float
+		fi
+	fi
+	if [[ -n $pre_map ]]; then
+		eval "$pre_map"
+	fi
+}
+
+map_and_post_map() { # float
+	# always reset geometry
+	map_and_reset_geometry
+	float=${1:-true}
+	if [[ $float != false ]]; then
+		if [[ -n $post_float ]]; then
+			eval "$post_float"
+		elif $auto_detect_wm; then
+			post_float
+		fi
+	fi
+	# need to set geometry again if wasn't previously floating
+	map_and_reset_geometry
+	if [[ -n $post_map ]]; then
+		eval "$post_map"
+	fi
+}
+
+pre_unmap() {
+	if [[ -n $pre_unmap ]]; then
+		eval "$pre_unmap"
+	fi
+}
+
+post_unmap() {
+	if [[ -n $post_unmap ]]; then
+		eval "$post_unmap"
+	fi
+}
+
+unmap() {
+	if $remember_geometry; then
+		store_geometry true
+	fi
+	pre_unmap
+	xdotool windowunmap "$wid"
+	post_unmap
+}
+
+# Old notes:
+# floating WMs that may move a window after remapping it
+# pekwm|Fluxbox|Blackbox|xfwm4|Metacity|FVWM|Sawfish|GoomwW|Mutter|GNOME Shell|Mutter \(Muffin\)|KWin|Metacity \(Marco\)|[Cc]ompiz|bspwm
+# floating WMs that may both move and resize a window after remapping it
+# Openbox
+
+# * General Helper Functions
+# use when there may not be a focused window
+get_active_wid_or_empty() {
+	if [[ $wm == Openbox ]]; then
+		# on empty openbox desktop, getactivewindow will return the last active
+		# window, and getwindowfocus will return the wm window id
+		local wid
+		wid=$(xdotool getwindowfocus)
+		if [[ "$(printf 0x%x "$wid")" == "$wm_wid" ]]; then
+			echo -n ""
+		else
+			echo -n "$wid"
+		fi
+	else
+		xdotool getactivewindow
+	fi
+}
+
+get_tdrop_name() {
+	if tdrop_name=$(xprop -id "$1" TDROP_NAME 2> /dev/null); then
+		# remove to first quote then remove closing quote
+		tdrop_name=${tdrop_name#*\"}
+		echo -n "${tdrop_name%\"*}"
+	else
+		echo -n ""
+	fi
+}
+
+# check that the window is actually the correct tdrop dropdown instead of a
+# newly created window that is reusing the window id of a previously closed
+# tdrop window
+check_tdrop_name() { # wid
+	[[ "$(get_tdrop_name "$1")" == "tdrop $program$num" ]]
+}
+
+store_wid() {  # wid
+	wid=$1
+	# give it a name to uniquely recognize the window (since window ids can be
+	# reused later if the window is closed)
+	xprop -format TDROP_NAME 8u -id "$wid" -set TDROP_NAME "tdrop $program$num"
+	echo "$wid" > "$WID_DIR/$program$num"
+}
+
+get_class_name() { # wid
+	local class
+	class=$(xprop -id "$1" WM_CLASS 2> /dev/null)
+	class=${class%\"}
+	class=${class##*\"}
+	echo -n "$class"
+}
+
+store_class() {
+	get_class_name "$wid" > "$CLASS_DIR/$wid"
+}
+
+restore_class() {
+	if [[ -z $class ]]; then
+		class=$(< "$CLASS_DIR/$wid")
+	fi
+}
+
+get_visibility() {
+	xwininfo -id "$1" 2> /dev/null | gawk '/Map State/ {print $3}'
+}
+
+maybe_cancel_auto_show() {
+	if $cancel_auto_show && \
+			[[ $1 == $(cat "$HIDE_DIR"/wid 2> /dev/null) ]]; then
+		# shellcheck disable=SC2188
+		> "$HIDE_DIR"/wid
+	fi
+}
+
+get_geometry() { # wid
+	# so that won't float a tiled window later when showing
+	if is_floating "$1" &> /dev/null; then
+		local wininfo x y rel_x rel_y width height
+		wininfo=$(xwininfo -id "$1")
+		x=$(echo "$wininfo" | gawk '/Absolute.*X/ {print $4}')
+		y=$(echo "$wininfo" | gawk '/Absolute.*Y/ {print $4}')
+		rel_x=$(echo "$wininfo" | gawk '/Relative.*X/ {print $4}')
+		rel_y=$(echo "$wininfo" | gawk '/Relative.*Y/ {print $4}')
+		if [[ $subtract_when_same != false ]]; then
+			# behavior works for most WMs (at least floating ones)
+			x=$((x-rel_x))
+			y=$((y-rel_y))
+		else
+			# don't subtract when abs and rel values are the same
+			# necessary for WMs like bspwm and i3
+			if [[ $x -ne $rel_x ]]; then
+				x=$((x-rel_x))
+			fi
+			if [[ $y -ne $rel_y ]]; then
+				y=$((y-rel_y))
+			fi
+		fi
+		width=$(xwininfo -id "$(xdotool getactivewindow)" | \
+					gawk '/Width/ {print $2}')
+		height=$(xwininfo -id "$(xdotool getactivewindow)" | \
+					 gawk '/Height/ {print $2}')
+
+		if $monitor_aware; then
+			local x_begin y_begin x_width y_height
+			populate_current_monitor_geometry
+			((x-=x_begin))
+			((y-=y_begin))
+		fi
+
+		echo -n -e "xoff=$x\nyoff=$y\nwidth=$width\nheight=$height"
+	else
+		# window is not floating; don't bother saving geometry
+		echo -n "false"
+	fi
+}
+
+store_geometry() {
+	get_geometry "$wid" > "$GEO_DIR/$wid"
+}
+
+# set global xoff, yoff, width, and height based on stored values
+restore_geometry() {
+	local geo x_fix y_fix
+	geo="$(cat "$GEO_DIR/$wid" 2> /dev/null)"
+	if [[ $geo =~ $GEO_REGEXP ]]; then
+		eval "$geo"
+	fi
+	if [[ -n $dec_fix ]]; then
+		# x_fix=$(echo "$dec_fix" | gawk -F "x" '{print $1}')
+		x_fix=${dec_fix%x*}
+		# y_fix=$(echo "$dec_fix" | gawk -F "x" '{print $2}')
+		y_fix=${dec_fix#*x}
+		xoff=$((xoff-x_fix))
+		yoff=$((yoff-y_fix))
+	fi
+	if $monitor_aware; then
+		local x_begin y_begin x_width y_height
+		populate_current_monitor_geometry
+		((xoff+=x_begin))
+		((yoff+=y_begin))
+	fi
+}
+
+# * Dropdown Initialization
+# TODO ideally this function wouldn't be necessary and some external program
+# (something like xtoolwait) could be used to return the wid
+create_win_return_wid() {
+	local blacklist program_command pid visible_wid wids wid program_wid
+	# save blacklist all existing wids of program
+	# change pid for programs where $! won't always work (e.g. one pid for all
+	# windows)
+	if [[ $program =~ ^(tilix|xfce4-terminal)$ ]]; then
+		pid=$(pgrep -x "$program")
+	elif [[ $program == urxvtc ]]; then
+		blacklist=$(xdotool search --classname urxvtd)
+		pid=$(pgrep -x urxvtd)
+	elif [[ $program == wezterm ]]; then
+		blacklist=$(xdotool search --classname wezterm)
+	elif [[ $program == xiatec ]]; then
+		pid=$(pgrep -x xiate)
+	elif [[ $program == chromium ]]; then
+		# this may work fine
+		# pid=$(pgrep -xo chromium)
+		pid=$(pgrep -xa chromium | gawk '!/--type/ {print $1}')
+	elif [[ $program == chromium-browser ]]; then
+		pid=$(pgrep -xa chromium-browse | gawk '!/--type/ {print $1}')
+	elif [[ $program =~ ^google-chrome ]]; then
+		pid=$(pgrep -xa chrome | gawk '!/--type/ {print $1}')
+	elif [[ $program == firefox ]]; then
+		blacklist=$(xdotool search --name firefox)
+	elif [[ $program =~ ^emacsclient ]]; then
+		blacklist=$(xdotool search --classname emacs)
+	elif [[ $program =~ ^(strawberry|clementine)$ ]]; then
+		pid=$(pgrep -xa $program | gawk '!/--type/ {print $1}')
+	else
+		blacklist=$(xdotool search --classname "$program")
+	fi
+	# need to redirect stdout or function won't return
+	"$@" > "$MUTDROP_PATH/program-output" &
+	if [[ -z $pid ]]; then
+		# for normal programs
+		# also for when one of the programs above hadn't already been started
+		pid=$!
+	fi
+	visible_wid=false
+	counter=0
+	while : ; do
+		if ((counter==0)); then
+			debug "pid: $pid"
+		fi
+		if [[ $program == gnome-terminal ]]; then
+			wids=""
+			for pid in $(pgrep gnome-terminal); do
+				wids+=$(xdotool search --pid "$pid")
+			done
+		elif [[ $program == discord ]]; then
+			wids=$(xdotool search --classname discord)
+			blacklist=
+		elif [[ $program =~ ^(qutebrowser|brave|spotify|wezterm)$ ]]; then
+			# can't rely on pid for these programs
+			# - wezterm - can have multiple processes with multiple windows each
+		    #   $! is not correct, and pgrep would need to be delayed; easier to
+			#   just search for new window ids
+			# - spotify - pid gives extra incorrect wid (want main window)
+			# - others - one pid, but can't use for getting wids with xdotool
+			wids=$(xdotool search --classname "$program")
+		elif [[ $program =~ ^emacsclient ]]; then
+			wids=$(xdotool search --classname emacs)
+		elif [[ $program == flatpak ]]; then
+			wids=$(xdotool search --classname "$class")
+		elif [[ $program == firefox ]]; then
+			wids=$(xdotool search --name firefox)
+		elif [[ $program == tabbed ]]; then
+			wids=$(head -n 1 "$MUTDROP_PATH/program-output")
+		elif [[ $program =~ ^(postman|todoist)$ ]]; then
+			# postman has multiple wids for the correct pid
+			# todoist also creates multiple wids
+			# print only wids that are both are for the class and have the
+			# browser-window role
+			wids=$(comm -12 \
+						<(xdotool search --classname "$program" | sort) \
+						<(xdotool search --role 'browser-window' | sort))
+		elif [[ $program == strawberry ]]; then
+			wids=$(xdotool search --all --pid "$pid" --name "Strawberry Music Player")
+		else
+			wids=$(xdotool search --pid "$pid")
+		fi
+		if [[ -n $wids ]]; then
+			debug "blacklist: $blacklist"
+			debug "wids: ${wids[*]}"
+			while read -r wid; do
+				if [[ ! $blacklist =~ (^|$'\n')$wid($|$'\n') ]] && \
+					   [[ $(get_visibility "$wid") == IsViewable ]]; then
+					visible_wid=true
+					program_wid=$wid
+				fi
+			done <<< "$wids"
+		fi
+		if $visible_wid; then
+			break
+		fi
+		((counter=counter+1))
+		if [[ $counter -gt $((timeout * 100)) ]]; then
+			error "Exceeded timeout of $timeout seconds waiting for program."
+		fi
+		sleep 0.01
+	done
+	# workaround for urxvt tabbed plugin using -embed
+	if [[ $program =~ urxvt ]] && [[ -n $program_wid ]]; then
+		maybe_program_wid=$(xprop -id "$program_wid" | \
+								gawk -F '"' '/-embed/ {print $6}')
+		if [[ -n $maybe_program_wid ]]; then
+			program_wid=$maybe_program_wid
+		fi
+	fi
+	debug "picked wid: $program_wid"
+	echo -n "$program_wid"
+}
+
+# clear all stored wids matching wid; necessary if wid no longer exists to
+# prevent two dropdowns from getting thes same wid
+invalidate_wid() { # wid
+	shopt -s nullglob dotglob
+	for f in {"$HIDE_DIR"/wid,"$WID_DIR"/*}; do
+		if [[ -f $f ]] && [[ $(< "$f") == "$wid" ]]; then
+			debug "Clearing stored wid from $f since wid $wid no longer exists"
+			rm "$f"
+		fi
+	done
+	for f in {"$CLASS_DIR","$GEO_DIR"}/*; do
+		if [[ $(basename "$f") == "$wid" ]]; then
+			debug "Removing $f since wid $wid no longer exists"
+			rm "$f"
+		fi
+	done
+	shopt -u nullglob dotglob
+}
+
+program_start() {
+	local program_command tmux_command wid
+	program_command=("$program")
+	program_command+=("${program_flags[@]}")
+	if [[ -n $session_name ]]; then
+		session_name=$(printf "%q" "$session_name")
+		tmux_command="tmux attach-session -dt $session_name 2> /dev/null || \
+			tmuxifier load-session $session_name 2> /dev/null || \
+			tmuxinator start $session_name 2> /dev/null || \
+			tmuxp load $session_name 2> /dev/null || \
+			tmux new-session -s $session_name"
+		# note: st will work with or without the -e flag (like kitty)
+		# note: regular console works with or without quotes, but trinity's
+		# konsole only works without quotes
+		if [[ $program =~ ^(urxvt|alacritty|xiatec|st|lxterminal|qterminal|cool-retro-term|lilyterm|konsole$) ]]; then
+			program_command+=(-e bash -c "$tmux_command")
+		elif [[ $program == kitty ]]; then
+			program_command+=(bash -c "$tmux_command")
+		elif [[ $program == wezterm || $class =~ ^(org\.wezfurlong\.)?wezterm$ ]]; then
+			program_command+=(start --always-new-process -- bash -c "$tmux_command")
+		elif [[ $program == gnome-terminal ]]; then
+			program_command+=(-- bash -c "$tmux_command")
+		else
+			program_command+=(-e "bash -c '$tmux_command'")
+		fi
+	fi
+	wid=$(create_win_return_wid "${program_command[@]}")
+	if [[ -n $name ]]; then
+		xdotool set_window --name "$name" "$wid"
+	fi
+	store_wid "$wid"
+	echo -n "$wid"
+}
+
+current_create() {
+	# turns active window into a dropdown
+	local wid
+	wid=$(xdotool getactivewindow)
+	store_wid "$wid"
+	store_class
+	if [[ -n $name ]]; then
+		xdotool set_window --name "$name" "$wid"
+	fi
+	echo -n "$wid"
+}
+
+wid_toggle() {
+	# used for -m option; at first tdrop assumes that there is a focused window
+	# on the current desktop; if there isn't (and the WM doesn't have some way
+	# to query the current monitor), this will be set to false, and tdrop will
+	# have to find out the current monitor info after opening the dropdown
+	# (currently, using xwininfo to find the position of a window is the only
+	# WM-independent way I know to find out what the current monitor is)
+	local focused_window_exists
+	focused_window_exists=true
+
+	# deal with percentages/negatives when no -m
+	if ! $monitor_aware; then
+		local total_geo total_width total_height
+		total_geo=$(xwininfo -root | gawk '/geometry/ {gsub("+.*",""); print $2}')
+		# total_width=$(echo "$total_geo" | gawk -F 'x' '{print $1}')
+		total_width=${total_geo%x*}
+		# total_height=$(echo "$total_geo" | gawk -F 'x' '{print $2}')
+		total_height=${total_geo#*x}
+		convert_geometry_to_pixels "$total_width" "$total_height"
+	fi
+	# get saved window id if already created
+	local exists visibility
+	# cat to silence error
+	wid=$(cat "$WID_DIR/$program$num" 2> /dev/null)
+	exists=true
+	if [[ -n $wid ]]; then
+		visibility=$(get_visibility "$wid")
+		# sometimes xwininfo will still report a window as existing, so an xprop
+		# check is required; check_tdrop_name ensures both that the window
+		# actually exists (if xwininfo is wrong) and that it is the correct
+		# window (by checking the TDROP_NAME window property)
+		if [[ -z $visibility ]] || ! check_tdrop_name "$wid"; then
+			# window no longer exists; clear all stored information about it
+			invalidate_wid "$wid"
+			exists=false
+		fi
+	else
+		exists=false
+	fi
+	if $exists; then
+		debug "Window exists, visibility: $visibility"
+		if [[ $program == current ]]; then
+			restore_class
+		fi
+		if [[ $visibility =~ ^(IsUnMapped|IsUnviewable)$ ]] \
+			   || { $always_activate \
+						&& [[ $(get_active_wid_or_empty) != "$wid" ]]; }
+		then
+			# visibility will be IsUnMapped on most WMs if the dropdown is open
+			# on another desktop; may also be IsUnviewable
+			xdotool set_desktop_for_window "$wid" "$(xdotool get_desktop)"
+			if [[ $(get_visibility "$wid") == IsUnMapped ]]; then
+				pre_map
+			fi
+			if $remember_geometry; then
+				restore_geometry
+			elif $monitor_aware; then
+				# update here if possible so this doesn't cause a delay
+				# between the window being remapped and resized
+				update_geometry_settings_for_monitor || \
+					focused_window_exists=false
+			fi
+			map_and_post_map
+			# cancel auto-show for a window when manually remapping it
+			maybe_cancel_auto_show "$wid"
+			if ! $focused_window_exists; then
+				# need to use dropdown as active window to get monitor info
+				update_geometry_settings_for_monitor
+				# always resize/move; if monitor hasn't changed then it won't be
+				# necessary, but it won't cause problems either
+				map_and_reset_geometry
+			fi
+		else
+			unmap
+		fi
+	else
+		# necessary to deal with negative width or height
+		# if creating on an empty desktop and can't determine the monitor,
+		# must set temporary values for negative width and/or height
+		local original_width original_height
+		if $monitor_aware && ! update_geometry_settings_for_monitor; then
+			focused_window_exists=false
+			if [[ $width =~ ^- ]]; then
+				original_width=$width
+				width=100%
+			fi
+			if [[ $height =~ ^- ]]; then
+				original_height=$height
+				height=100%
+			fi
+		fi
+		# make it
+		pre_create
+		if [[ $program == current ]]; then
+			wid=$(current_create)
+			unmap
+		else
+			pre_map
+			wid=$(program_start)
+			map_and_post_map
+			# update window dimensions if necessary
+			if ! $focused_window_exists; then
+				width=${original_width:-$width}
+				height=${original_height:-$height}
+				update_geometry_settings_for_monitor
+				map_and_reset_geometry
+			fi
+		fi
+		post_create
+	fi
+}
+
+# * Helper Functions for Auto Hiding/Showing
+toggle_auto_hide() {
+	local no_hide
+	no_hide=$(cat "$NOAUTOHIDE_FILE" 2> /dev/null)
+	if [[ -z $no_hide ]]; then
+		echo "true" > "$NOAUTOHIDE_FILE"
+	else
+		# shellcheck disable=SC2188
+		> "$NOAUTOHIDE_FILE"
+	fi
+}
+
+# * Auto Hiding/Showing
+# TODO if considered useful, nesting auto_hide could be supported by having the
+# users pass a key as an extra argument to use to store the wid (e.g. script
+# that calls could use the time)
+auto_hide() {
+	local no_hide
+	no_hide=$(cat "$NOAUTOHIDE_FILE" 2> /dev/null)
+	if [[ -z $no_hide ]]; then
+		wid=$(xdotool getactivewindow)
+		echo "$wid" > "$HIDE_DIR"/wid
+		store_class
+		store_geometry
+		unmap
+	fi
+}
+
+auto_show() {
+	local no_hide
+	no_hide=$(cat "$MUTDROP_PATH"/auto_hidden/no_hide 2> /dev/null)
+	if [[ -z $no_hide ]]; then
+		local was_floating
+		wid=$(< "$HIDE_DIR"/wid)
+		restore_class "$wid"
+		restore_geometry "$wid"
+		was_floating=$(< "$GEO_DIR/$wid")
+		pre_map "$was_floating"
+		map_and_post_map "$was_floating"
+	fi
+}
+
+# * Hide All
+hide_all() {
+	shopt -s nullglob dotglob
+	local dropdowns
+	dropdowns=("$WID_DIR"/*)
+	for dropdown in "${dropdowns[@]}"; do
+		# cat to silence errors
+		wid=$(cat "$dropdown" 2> /dev/null)
+		unmap "$wid" 2> /dev/null
+	done
+	shopt -u nullglob dotglob
+}
+
+# * Run Command For Each
+foreach() {
+	shopt -s nullglob dotglob
+	local dropdowns wid
+	dropdowns=("$WID_DIR"/*)
+	for dropdown in "${dropdowns[@]}"; do
+		# cat to silence errors
+		wid=$(cat "$dropdown" 2> /dev/null)
+		eval "$1"
+	done
+}
+
+# * Main
+# ** Setup
+set_wm
+decoration_settings
+set_class
+
+# ** Primary Action
+if $clearwid; then
+	debug "command: clear wid for $program$num"
+	# shellcheck disable=SC2188
+	> "$WID_DIR/$program$num"
+elif [[ $program == toggle_auto_hide ]]; then
+	debug "command: toggle auto hide"
+	toggle_auto_hide
+elif [[ $program == auto_hide ]]; then
+	debug "command: auto hide"
+	auto_hide
+elif [[ $program == auto_show ]]; then
+	debug "command: auto show"
+	auto_show
+elif [[ $program == hide_all ]]; then
+	debug "command: hide all"
+	hide_all
+elif [[ $program == foreach ]]; then
+	debug "command: foreach"
+	foreach "$2"
+else
+	debug "command: toggle $program$num"
+	wid_toggle
+fi
+
+# vim is dumb
+# vim: set ft=sh noet:

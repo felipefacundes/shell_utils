@@ -1,0 +1,189 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 3/5/2021 .......... revised 3/5/2021
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: vividize [-a amount] infile outfile
+# USAGE: vividize [-h|-help]
+#
+# OPTIONS:
+#
+# -a amount      amount of vividization; 0<=integer<=100; default=100 
+#                (full vividization)
+#
+###
+#
+# NAME: VIVIDIZE
+# 
+# PURPOSE: To enhance the colors in an image.
+# 
+# DESCRIPTION: VIVIDIZE enhances the colors in an image, i.e. makes the colors 
+# more vivid. Processing is done in LAB colorspace.
+# 
+# 
+# OPTIONS: 
+# 
+#
+# -a amount ... AMOUNT of vividization. Values are 0<=integer<=100. The 
+# default=100 (full vividization).
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+amount=100			# amount of vividization
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 4 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		   -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+	 		    -a)    # get amount
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID AMOUNT SPECIFICATION ---"
+					   checkMinus "$1"
+					   amount=`expr "$1" : '\([0-9]*\)'`
+					   [ "$amount" = "" ] && errMsg "--- AMOUNT=$amount MUST BE A NON-NEGATIVE INTEGER ---"
+					   test=`echo "$amount > 100" | bc`
+					   [ $test -eq 1 ] && errMsg "--- AMOUNT=$amount MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ;;
+ 				 -)    # STDIN, end of arguments
+  				 	   break
+  				 	   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;					   
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# setup temporary images and auto delete upon exit
+# use mpc/cache to hold input image temporarily in memory
+tmpA="$dir/vividize_$$.mpc"
+tmpB="$dir/vividize_$$.cache"
+trap "rm -f $tmpA $tmpB; exit 0" 0
+trap "rm -f $tmpA $tmpB; exit 1" 1 2 3 15
+#trap "rm -f $tmpA $tmpB; exit 1" ERR
+
+# test if infile exists and compute dimensions
+convert -quiet "$infile" +repage "$tmpA" || \
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+
+# get AB channel limits (smallest change from zero)
+loval=`convert $tmpA -colorspace LAB \
+	-format "%[fx:100*min(min(min(minima.g,minima.b),1-maxima.g),1-maxima.b)]" info:`
+
+hival=`convert xc: -format "%[fx:100-$loval]" info:`
+
+# convert amount to fraction
+amt1=`convert xc: -format "%[fx:$amount/100]" info:`
+amt2=`convert xc: -format "%[fx:1-$amt1]" info:`
+
+# process image and blend with input
+convert $tmpA \
+	\( +clone -colorspace LAB \
+	-channel R -auto-level +channel \
+	-channel GB -level $loval,$hival% +channel \) \
+	+colorspace \
+	-set option:compose:args "0, $amt1, $amt2, 0" \
+	-compose mathematics -composite \
+	"$outfile"
+
+exit 0
+

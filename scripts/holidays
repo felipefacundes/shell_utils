@@ -1,0 +1,47 @@
+#!/usr/bin/env python
+# License: GPLv3
+# Credits: Felipe Facundes
+
+"""
+This Python script retrieves and displays the public holidays for the current year based on the user's country, 
+determined by their locale settings. It utilizes the 'workalendar' library to access the holiday calendar for the specified country. 
+The script prints each holiday's date and name in the terminal.
+
+Dependencies:
+1. 'workalendar' - Third-party library for accessing holiday calendars (install via pip).
+2. 'datetime' - Native library for manipulating dates and times (no installation needed).
+3. 'locale' - Native library for locale-specific settings (no installation needed).
+4. 'sys' - Native library for system-specific parameters and functions (no installation needed).
+
+Installation of Dependencies:
+- Install 'workalendar' using pip:
+
+  pip install workalendar
+"""
+
+import sys
+from datetime import datetime
+import locale
+from workalendar.registry import registry
+
+country = locale.getlocale()[0].split("_")[1].upper()
+
+def display_holidays():
+    # Get the holidays for the current year in the country
+    current_year = datetime.now().year
+
+    # Get the calendar for the country
+    country_calendar = registry.get_calendars()[country]()
+
+    # Display holidays in the terminal
+    holidays = country_calendar.holidays(current_year)
+    for holiday in holidays:
+        date = holiday[0]
+        name = holiday[1]
+        print(f"{date}: {name}")
+
+def main():
+    display_holidays()
+
+if __name__ == "__main__":
+    main()

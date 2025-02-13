@@ -1,0 +1,89 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A bash script that provides a command-line interface for browsing and viewing '.log' files from a specified directory, 
+offering options to display logs using 'cat' or 'scriptreplay'. The script lacks advanced log management features like 
+'grep' for searching or 'whiptail' for a more graphical interface, which limits its usability for complex log analysis and user interaction.
+DOCUMENTATION
+
+# Specify the default path for logs
+logs_folder="${ENVIRONMENT_VARIABLE:-${HOME}/.chatgpt}"
+
+while true; do
+    # List the .log files in the specified folder
+    log_files=( "$logs_folder"/*.log )
+    if [ ${#log_files[@]} -eq 0 ]; then
+        echo "No .log files found in the folder: $logs_folder"
+        exit 1
+    fi
+
+    list_logs() {
+        echo -e "Available .log files:\n"
+        for ((i=0; i<${#log_files[@]}; i++)); do
+            echo "$(($i+1)). ${log_files[$i]}"
+        done
+        echo -e "\nPress [q] to exit.\n"
+    }
+
+    list_logs | less -r
+
+    # Prompt for the selection of the .log file
+    printf "Select the number of the desired .log file: "
+    read -r file_option
+
+    # Check if the option is valid
+    if [[ $file_option =~ ^[0-9]+$ ]] && ((file_option >= 1 && file_option <= ${#log_files[@]})); then
+        selected_file="${log_files[file_option-1]}"
+    else
+        echo "Invalid option."
+        continue
+    fi
+
+    # Ask the user which command to use to display the log content
+    echo "Available commands:"
+    echo "1. cat"
+    echo "2. scriptreplay"
+
+    # Prompt for the selection of the command
+    printf "Select the number of the desired command: "
+    read -r command_option
+
+    case $command_option in
+        1)
+            cat "$selected_file"
+        ;;
+        2)
+            # Capture the name of the corresponding .tim file
+            tim_file="${selected_file%.*}.tim"
+
+            # Check if the .tim file exists
+            if [ ! -f "$tim_file" ]; then
+                echo "Corresponding .tim file not found: $tim_file"
+                continue
+            fi
+
+            scriptreplay -T "$tim_file" "$selected_file"
+        ;;
+        *)
+            echo "Invalid option."
+            continue
+        ;;
+    esac
+
+    # Ask if the user wants to view another log
+    sleep 1; echo -e "\n"
+    read -p "Press enter to continue"
+    printf "Do you want to view another .log file? (y/n): "
+    declare -l response
+    read -r response
+
+    if [ "$response" != "y" ]; then
+        echo "Exiting the program."
+        exit 0
+    else
+        clear
+    fi
+
+done

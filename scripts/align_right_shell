@@ -1,0 +1,105 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script aligns text to the right in the terminal with a specified background color.
+DOCUMENTATION
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["usage"]="Uso: ${0##*/} [COMANDO] [COR] [TEXTO]"
+        ["description"]="Este script alinha texto à direita no terminal com uma cor de fundo especificada."
+        ["commands"]="Comandos:"
+        ["align"]="  align      Alinha o texto à direita com a cor especificada."
+        ["fill"]="  fill       Preenche a linha com a cor de fundo e exibe o texto à direita."
+        ["color"]="  COR        O código da cor ANSI para o texto."
+        ["color_example"]="  Exemplo:   '\033[31m' para vermelho, '\033[32m' para verde, '\033[34m' para azul, etc."
+        ["text"]="  TEXTO      O texto a ser exibido."
+        ["options"]="Opções:"
+        ["help"]="-h, --help   Mostra esta mensagem de ajuda e sai."
+        ["examples"]="Exemplos:"
+        ["example1"]="  ${0##*/} align '\033[31;40m' 'Texto à direita'  # Alinha 'Texto à direita' em vermelho."
+        ["example2"]="  ${0##*/} fill '\033[32;40m' 'Texto preenchido' # Preenche a linha com verde e exibe 'Texto preenchido'."
+        ["note"]="Nota: Certifique-se de usar códigos de cor ANSI válidos para o argumento COR."
+    )
+else
+    MESSAGES=(
+        ["usage"]="Usage: ${0##*/} [COMMAND] [COLOR] [TEXT]"
+        ["description"]="This script aligns text to the right in the terminal with a specified background color."
+        ["commands"]="Commands:"
+        ["align"]="  align      Aligns the text to the right with the specified color."
+        ["fill"]="  fill       Fills the line with the background color and displays the text to the right."
+        ["color"]="  COLOR      The ANSI color code for the text."
+        ["color_example"]="  Example:   '\033[31m' for red, '\033[32m' for green, '\033[34m' for blue, etc."
+        ["text"]="  TEXT       The text to be displayed."
+        ["options"]="Options:"
+        ["help"]="  -h, --help   Show this help message and exit."
+        ["examples"]="Examples:"
+        ["example1"]="  ${0##*/} align '\033[31;40m' 'Right-aligned text'  # Aligns 'Right-aligned text' in red."
+        ["example2"]="  ${0##*/} fill '\033[32;40m' 'Filled text'        # Fills the line with green and displays 'Filled text'."
+        ["note"]="Note: Make sure to use valid ANSI color codes for the COLOR argument."
+    )
+fi
+
+function help {
+    echo "${MESSAGES[usage]}"
+    echo ""
+    echo "${MESSAGES[description]}"
+    echo ""
+    echo "${MESSAGES[commands]}"
+    echo "${MESSAGES[align]}"
+    echo "${MESSAGES[fill]}"
+    echo "${MESSAGES[color]}"
+    echo "${MESSAGES[color_example]}"
+    echo "${MESSAGES[text]}"
+    echo ""
+    echo "${MESSAGES[options]}"
+    echo "${MESSAGES[help]}"
+    echo ""
+    echo "${MESSAGES[examples]}"
+    echo "${MESSAGES[example1]}"
+    echo "${MESSAGES[example2]}"
+    echo ""
+    echo "${MESSAGES[note]}"
+    exit 0
+}
+
+function align_right_shell {
+    local color="$1"    # First Argument: ANSI CODE OF COLOR
+    local text="$2"     # According to argument: text to be displayed
+    local width=$(( $(tput cols) - ${#text} - 4 ))  # Calculates space before the text
+
+    # Prints spaces followed by the colorful text
+    printf '%*s' "$width" ''
+    echo -e "${color}${text}\e[0m"  # Apply color and reset after the text
+}
+
+function fill_background_right {
+    local color="$1"
+    local text="$2"
+    local cols=$(tput cols)                        # Get the width of the terminal
+
+    # Build the line with colorful background and right-aligned text
+    printf "${color}%*s\033[0m\n" "$cols" "$text"
+}
+
+if [[ -z "$3" ]]; then
+    help
+fi
+
+case $1 in
+    align)
+        shift
+        align_right_shell "$1" "$2"
+    ;;
+    fill)
+        shift
+        fill_background_right "$1" "$2"
+    ;;
+    *)
+        help
+    ;;
+esac

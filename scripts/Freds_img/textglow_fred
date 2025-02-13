@@ -1,0 +1,443 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 5/30/22 .......... revised 5/30/22
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: textglow [-t text] [-p pointsize] [-f font] [-a antialias] [-s spread] 
+# [-I intensify] [-P padding] [-T textcolor] [-G glowcolor] [-B bgcolor] [-g gravity] 
+# [-o offset] [-b brighness] [infile] [bgfile] outfile
+# 
+# USAGE: textglow [-help or -h]
+#
+# OPTIONS:
+#
+# -t     text            text string to apply to the input image; defaults to infile
+# -p     pointsize       pointsize for the text; integer>0; default=64
+# -f     font            font name or path to font file; default=arial
+# -a     antialias       amount of anti-aliasing (blur sigma); float>0; default=0
+# -s     spread          spread of glow (blur sigma value); default=32
+# -I     intensify       glow intensification; float; 1 is no change, float>1 is 
+#                        amplify, float<1 is attenuate; default=2
+# -P     padding         padding around text; default=32
+# -T     textcolor       text color; any valid opaque IM color is allowed; 
+#                        default="magenta"
+# -G     glowcolor       glow color; any valid opaque IM color is allowed; 
+#                        default="magenta"
+# -B     bgcolor         background color; any valid IM color is allowed; 
+#                        can be transparent; default="black"
+# -g     gravity         gravity setting for offset placement of text; choices are: 
+#                        center or northwest; default=center
+# -o     offset          offset of text placement relative to gravity setting; format 
+#                        is +-X+-Y; default="+0+0"
+# -b     brightness      brightness for clipart; integer>0; default=100 (no change)
+# 
+# infile is optional and can be a textfile or clipart in place of supplied text string
+# if textfile, it is an optional white on black "mandatory opaque" binary image of text
+# if clipart, it is an optional clipart image with "mandatory transparent" background
+# Only one of textfile or clipart can be used as infile.
+# bgfile is an optional opaque background file onto which to place the glowing text or art
+#
+###
+#
+# NAME: TEXTGLOW 
+# 
+# PURPOSE: Adds glowing text to an image or some background color.
+# 
+# DESCRIPTION: TEXTGLOW adds glowing text or glowing clipart to a background image or 
+# some background color. The text can be specified as a string along with a text color,
+# a glow color and a background color. A fully opaque binary text image may be used
+# as an alternate to the text string. Or a transparent clipart image may be used and 
+# have a glow around it. The background may simply be some defined color or a background
+# image. If a background image, the background color should be set to transparent.
+# If infile is provided, then it will be tested. If opaque, then it is assumed to be 
+# the textfile. If infile has any transparency, then it is assumed to be an artfile.
+# 
+# 
+# OPTIONS: 
+# 
+# -t text ... TEXT string to use. Defaults to either textfile or clipart.
+# 
+# -p pointsize ... POINTSIZE for the text. Values are integer>0. The default=64.
+# 
+# -f font ... FONT name or path to font file. The default="Arial-Black".
+# 
+# -a antialias ... ANTI-ALIASING amount (blur sigma). Values are float>=0. The default=0.
+# 
+# -s spread ... SPREAD of glow (blur sigma value). The default=32.
+# 
+# -I intensify ... glow INTENSIFICATION. Values are floats. Float=1 is no change, 
+# float>1 is amplify, float<1 is attenuate. The default=2.
+# 
+# -P padding ... PADDING around text. The default=32.
+# 
+# -T textcolor ... TEXT COLOR. Any valid opaque IM color is allowed. The default="white".
+# 
+# -G glowcolor ... GLOW COLOR. Any valid opaque IM color is allowed. The default="white".
+# 
+# -B bgcolor ... BACKGROUND COLOR. Any valid IM color is allowed including transparent. 
+# The default="black".
+# 
+# -g gravity ... GRAVITY setting for the offset placement of text or clipart. 
+# The choices are: center (c) or northwest (n). The default=center.
+# 
+# -o offset ... OFFSET placement of the text or clipart relative to the gravity setting. 
+# The format is +-X+-Y. The default="+0+0"
+# 
+# -b brightness ... BRIGHTNESS adjustment for the clipart. Values are integer>0. 
+# The default=100 (indicates no change)
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+text=""						# text is required
+pointsize=64				# font pointsize
+font="arial"				# font name
+antialias=0                 # anti-alias blur sigma
+spread=32					# spread of glow
+padding=32					# padding around text
+textcolor="magenta"			# text color
+glowcolor="magenta"			# glow color
+bgcolor="black"			    # background color
+intensify=2					# glow intensification
+gravity="center"		    # gravity for offset: northwest or center
+offset="+0+0"				# text offset relative to gravity
+brightness=100				# brightness percent for clipart
+
+
+# set directory for temporary files
+# tmpdir="/tmp"
+tmpdir="."
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 29 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		   -help|h)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-t)    # get text
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   text="$1"
+		   			   ;;
+				-p)    # get pointsize
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID POINTSIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   pointsize=`expr "$1" : '\([0-9]*\)'`
+					   [ "$pointsize" = "" ] && errMsg "--- POINTSIZE=$pointsize MUST BE A NON-NEGATIVE INTEGER ---"
+					   test=`echo "$pointsize <= 0" | bc`
+					   [ $test -eq 1  ] && errMsg "--- POINTSIZE=$pointsize MUST BE A POSITIVE INTEGER ---"
+		   			   ;;
+				-f)    # get font
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FONT SPECIFICATION ---"
+					   checkMinus "$1"
+					   font="$1"
+		   			   ;;
+				-a)    # get antialias
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ANTIALIAS SPECIFICATION ---"
+					   checkMinus "$1"
+					   antialias=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$antialias" = "" ] && errMsg "--- ANTIALIAS=$antialias MUST BE A NON-NEGATIVE FLOAT ---"
+					   ;;
+				-s)    # get spread
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SPREAD SPECIFICATION ---"
+					   checkMinus "$1"
+					   spread=`expr "$1" : '\([0-9]*\)'`
+					   [ "$spread" = "" ] && errMsg "--- SPREAD=$spread MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-P)    # get padding
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PADDING SPECIFICATION ---"
+					   checkMinus "$1"
+					   padding=`expr "$1" : '\([0-9]*\)'`
+					   [ "$padding" = "" ] && errMsg "--- PADDING=$padding MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-T)    # get text color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TEXTCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   textcolor="$1"
+		   			   ;;
+				-G)    # get glow color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GLOWCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   glowcolor="$1"
+		   			   ;;
+				-B)    # get background color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BGCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgcolor="$1"
+		   			   ;;
+				-I)    # get intensify
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID INTENSIFY SPECIFICATION ---"
+					   checkMinus "$1"
+					   intensify=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$intensify" = "" ] && errMsg "--- INTENSIFY=$intensify MUST BE A NON-NEGATIVE FLOAT ---"
+					   ;;
+				-g)    # get gravity
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GRAVITY SPECIFICATION ---"
+					   checkMinus "$1"
+					   gravity=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$gravity" in 
+					   		center|c) gravity="center" ;;
+					   		northwest|n) gravity="northwest" ;;
+					   		*) errMsg "--- GRAVITY=$gravity IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-o)    # get offset
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID OFFSET SPECIFICATION ---"
+					   checkMinus "$1"
+					   offset=`expr "$1" : '\([+-][0-9]*[+-][0-9]*\)'`
+					   [ "$offset" = "" ] && errMsg "--- OFFSET=$offset MUST BE IN FORMAT +-X+-Y ---"
+		   			   ;;
+				-b)    # get brightness
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BRIGHTNESS SPECIFICATION ---"
+					   checkMinus "$1"
+					   brightness=`expr "$1" : '\([0-9]*\)'`
+					   [ "$brightness" = "" ] && errMsg "--- BRIGHTNESS=$brightness MUST BE A NON-NEGATIVE INTEGER ---"
+					   test=`echo "$brightness <= 0" | bc`
+					   [ $test -eq 1  ] && errMsg "--- BRIGHTNESS=$brightness MUST BE A POSITIVE INTEGER ---"
+		   			   ;;
+			 	 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get textfile, clipart, bgfile and outfile
+	if [ $# -eq 1  -a "$text" != "" ]; then
+		outfile="$1"
+	elif [ $# -eq 2 -a "$text" = "" ]; then
+		infile="$1"
+		outfile="$2"
+	elif [ $# -eq 2 -a "$text" != "" ]; then
+		bgfile="$1"
+		outfile="$2"
+	elif [ $# -eq 3 ]; then
+		infile="$1"
+		bgfile="$2"	
+		outfile="$2"
+	else
+	errMsg "--- NO TEXT STRING OR NO OUTPUT FILE SPECIFIED ---"
+	fi
+fi
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+dir="$tmpdir/TEXTGLOW$$"
+
+mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+
+
+# read the input if exists into the temporary cached image and test if valid 
+# or create input from text string 
+if [ "$infile" != "" ]; then
+	# read the infile image into the temporary cached image and test if valid
+	convert -quiet "$infile" +repage $dir/tmpI.mpc ||
+		echo "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+	# test if opaque then textfile, otherwise if any transparency, then clipart
+	is_opaque=`convert $dir/tmpI.mpc -channel a -separate +channel -format "%[fx:mean==1?1:0]" info:`
+
+elif [ "$infile" = "" -a "$text" != "" ]; then
+	# create textfile from text STRING
+	convert -background black -font $font -pointsize $pointsize \
+		-gravity center -fill "white" label:"$text" -alpha off \
+		-trim +repage $dir/tmpI.mpc
+	
+	# set flag to opaque
+	is_opaque=1
+
+else
+	errMsg "--- NO INFILE AND NO TEXT STRING PROVIDED  ---"
+fi
+
+# setup antialiasing
+if [ "$antialias" != "" ]; then
+	antialiasing="-blur 0x$antialias -level 50x100%"
+else
+	antialiasing=""
+fi
+
+# pad and antialias infile
+if [ $is_opaque -eq 1 ]; then
+	# opaque so pad with black and get dimensions
+	if [ $padding -gt 0 ]; then
+		pad="-bordercolor black -border $padding"
+	else
+		pad=""
+	fi
+	dims=`convert $dir/tmpI.mpc $pad $antialiasing +write $dir/tmpI.mpc -format "%wx%h" info:`
+
+else
+	# transparent so pad with transparent and get dimensions
+	if [ $padding -gt 0 ]; then
+		pad="-bordercolor none -border $padding"
+	else
+		pad=""
+	fi
+	dims=`convert $dir/tmpI.mpc $pad -channel a $antialiasing +channel +write $dir/tmpI.mpc -format "%wx%h" info:`
+fi
+
+# read background file if exists
+if [ "$bgfile" != "" ]; then
+	# read the bgfile image into the temporary cached image and test if valid
+	convert -quiet "$bgfile" +repage $dir/tmpB.mpc ||
+		errMsg "--- FILE $bgfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+fi
+
+
+# set up for intensify
+if [ "$intensify" != "1" ]; then
+	intensification="-channel a -evaluate multiply $intensify +channel"
+else
+	intensification=""
+fi
+
+# get infile dimensions
+[ "$infile" != "" ] && dims=`convert $dir/tmpI.mpc -format "%wx%h" info:`
+
+
+if [ $is_opaque -eq 1 ]; then
+	# opaque binary text image has been provided or created from text string
+	convert $dir/tmpI.mpc \
+		\( +clone -fill "$textcolor" -colorize 100 \) \
+		+swap -compose copy_opacity -composite -compose over \
+		\( +clone -background "$glowcolor" -shadow 100x${spread}+0+0 \
+		$intensification \) +swap \
+		-background "$bgcolor" -layers merge +repage \
+		-gravity center -crop "${dims}+0+0" +repage \
+		$dir/tmpG.mpc
+
+else # $is_opaque -eq 0
+	# transparent artfile image has been provided
+	convert $dir/tmpI.mpc \
+		-channel rgb -modulate $brightness,100,100 +channel \
+		\( +clone -background "$glowcolor" -shadow 100x${spread}+0+0 \
+		$intensification \) +swap \
+		-background "$bgcolor" -layers merge +repage \
+		-gravity center -crop "${dims}+0+0" +repage \
+		$dir/tmpG.mpc
+fi
+
+if [ "$bgfile" != "" ]; then
+	convert \
+		\( $dir/tmpB.mpc -channel rgb -modulate $brightness,100,100 +channel \) \
+	 	$dir/tmpG.mpc -gravity $gravity -geometry $offset \
+		-compose over -composite \
+		"$outfile"
+else
+	convert $dir/tmpG.mpc "$outfile"
+fi
+
+exit 0

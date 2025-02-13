@@ -1,0 +1,17 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A bash script designed to merge multiple text files in the current directory into a single file called 'merged_text_files.txt'. 
+It checks for the existence of text files, concatenates their contents with a newline separator, and handles potential errors 
+if no text files are present. The script provides a simple method for combining text file contents in a single output file.
+DOCUMENTATION
+
+for i in *.txt
+do 
+    [[ ! -f "$i" ]] && echo 'Not found txt files' && exit 1
+    touch merged_text_files.txt
+    cat "${i}" >> merged_text_files.txt
+    echo -e "\n" >> merged_text_files.txt
+done

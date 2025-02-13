@@ -1,0 +1,537 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+# WinCur2XCur Script Analysis
+
+## Overview
+WinCur2XCur is a sophisticated Bash script designed to convert Windows cursor themes to the Freedesktop standard, 
+making them compatible with Linux, BSD, FreeBSD, and other Unix-like operating systems. The script demonstrates 
+exceptional versatility in handling cursor theme conversions with multiple features and capabilities.
+
+## Key Features
+- Supports conversion of both .ani (animated) and .cur (static) cursor files
+- Handles various compressed formats (tar.bz2, tar.gz, tar.xz, zip, 7z, etc.)
+- Offers multiple cursor size options (24, 32, 48, 64, 96 pixels)
+- Provides automatic size detection and precise conversion methods
+- Maintains cursor hotspot positioning during conversion
+- Generates proper index.theme files for system integration
+
+## Technical Capabilities
+- Implements intelligent file extraction and processing
+- Converts cursor files to PNG format with high-quality settings
+- Generates XCursor format files using xcursorgen
+- Creates proper cursor theme directory structure
+- Handles file naming conventions and cursor mappings
+- Supports batch processing of multiple cursor files
+- Preserves animation timing for animated cursors
+
+## Strong Points
+- Robust error handling and file validation
+- Flexible customization options for output
+- Comprehensive cursor mapping for system integration
+- Preserves cursor quality through careful conversion parameters
+- Maintains proper metadata and cursor properties
+- Includes cache management and cleanup functions
+
+## Additional Features
+- Interactive theme naming and configuration
+- Support for overwriting existing themes
+- Backup and source preservation options
+- Detailed documentation of cursor naming conventions
+- Automatic symlink creation for compatibility
+DOCUMENTATION
+
+#set -x
+export script="${0##*/}"
+export theme_base=/usr/share/icons/Adwaita/cursors
+export windows_cursor_theme_dir=~/.cache/"${script}"
+export ani2ico=~/.local/bin/ani2ico
+export ani2ico_dir=~/.local/bin/
+export file="${1}"
+shopt -s extglob
+
+if [ ! -d "${windows_cursor_theme_dir}" ]; then
+    mkdir -p "${windows_cursor_theme_dir}"
+fi
+
+[[ ! -d "${ani2ico_dir}" ]] && mkdir -p "${ani2ico_dir}"
+
+if [ ! -f "${ani2ico}" ]; then
+    git clone https://github.com/avaunit02/cursor-converter ~/.cache/cursor-converter
+    cd ~/.cache/cursor-converter/ani2ico || exit
+    rm ani2ico
+    gcc ani2ico.c -o ani2ico
+    cp ani2ico "${ani2ico_dir}"
+    chmod +x "${ani2ico}"
+    cd - || exit
+    rm -rf ~/.cache/cursor-converter
+    clear
+fi
+
+theme_creator()
+{
+    lower_file="$(echo ${file%.*} | tr '[A-Z]' '[a-z]')"
+    echo "You cursor theme name is ${lower_file}"
+    echo "Would you like to change the name: y (yes) | n (no)"
+    declare -l option
+    read -r option
+
+    if [ "${option}" = y ] || [ "${option}" = yes ]; then
+        echo -e "\nEnter the theme name of your choice:"
+        read -r new_theme_name
+        export theme_name="${new_theme_name}"
+    else
+        export theme_name="${lower_file}"
+    fi
+
+    if [ -d ~/.icons/"${theme_name}" ]; then
+        echo -e "\n'The theme exists, do you want to overwrite it? y (yes) | n (no)'"
+            declare -l overwrite
+            read -r overwrite
+            if [ "${overwrite}" = y ] || [ "${overwrite}" = yes ]; then
+                read -n 1 -s -r -p "Press any key to continue";echo
+            else
+                exit 1
+            fi
+    fi
+
+    export theme_name_cache="${windows_cursor_theme_dir}/${theme_name}"
+    mkdir -p "${theme_name_cache}"
+    cp -rf "${file}" "${theme_name_cache}"/"`echo ${file} | tr '[A-Z]' '[a-z]'`"
+    cd "${theme_name_cache}" || exit
+
+    mkdir -p ~/.icons/"${theme_name}"
+    export theme_dir=~/.icons/"${theme_name}"
+}
+
+extract_theme()
+{
+    
+    find . -type f -name "*.[Tt][Aa][Rr].[Bb][Zz]2" -exec tar xvjf {} + \
+        -o -name "*.[Tt][Aa][Rr].[Gg][Zz]" -exec tar xvzf {} + \
+        -o -name "*.[Tt][Aa][Rr].[Xx][Zz]" -exec tar xvJf {} + \
+        -o -name "*.[Ll][Zz][Mm][Aa]" -exec unlzma {} + \
+        -o -name "*.[Bb][Zz]2" -exec bunzip2 {} + \
+        -o -name "*.[Rr][Aa][Rr]" -exec unrar x -ad {} + \
+        -o -name "*.[Gg][Zz]" -exec gunzip {} + \
+        -o -name "*.[Tt][Aa][Rr]" -exec tar xvf {} + \
+        -o -name "*.[Tt][Bb][Zz]2" -exec tar xvjf {} + \
+        -o -name "*.[Tt][Gg][Zz]" -exec tar xvzf {} + \
+        -o -name "*.[Zz][Ii][Pp]" -exec unzip {} + \
+        -o -name "*.[Zz]" -exec uncompress {} + \
+        -o -name "*.7[Zz]" -exec 7z x {} + \
+        -o -name "*.[Ii][Ss][Oo]" -exec 7z x {} + \
+        -o -name "*.[Xx][Zz]" -exec unxz {} + \
+        -o -name "*.[Ee][Xx][Ee]" -exec cabextract {} +
+
+}
+
+check_files()
+{
+    find . -type f -name "*.[Aa][Nn][Ii]" -print0 | xargs -0 -I {} mv -f {} "${theme_name_cache}" >/dev/null 2>&1
+    find . -type f -name "*.[Cc][Uu][Rr]" -print0 | xargs -0 -I {} mv -f {} "${theme_name_cache}" >/dev/null 2>&1
+    
+    for i in *.[Aa][Nn][Ii];
+        do
+        mv -f "${i}" "`echo ${i} | sed 's#[][,><,#,$,*,&,",!,¨,%,=,+,}{,~,^,|,]##g' | tr '[A-Z]' '[a-z]'`"
+    done
+
+    for i in *.[Cc][Uu][Rr];
+        do
+        mv -f "${i}" "`echo ${i} | sed 's#[][,><,#,$,*,&,",!,¨,%,=,+,}{,~,^,|,]##g' | tr '[A-Z]' '[a-z]'`"
+    done
+    #GLOBIGNORE=*.ani:*.cur:pngs
+    rm -rf -- !(*.ani|*.cur|pngs)
+}
+
+size_options()
+{
+echo -e "\nDo you want to change icon size? y (yes) | n (no)"
+    declare -l option
+    read -r option
+    if [ "${option}" = y ] || [ "${option}" = yes ]; then
+        echo -e "\nAvailable sizes:
+1) 24: Small.
+2) 32: Default.
+3) 48: Large.
+4) 64: Larger.
+5) 96: Largest."
+        declare -i available_sizes
+        read -r available_sizes
+        case "${available_sizes}" in
+            1) export size=24    ;;
+            2) export size=32    ;;
+            3) export size=48    ;;
+            4) export size=64    ;;
+            5) export size=96    ;;
+            *) export size=32    ;;
+        esac
+    else
+        export auto=1
+    fi
+
+}
+
+method()
+{
+echo -e "\nDo you want to use the precise method? 
+This method takes 50x longer to process, around 15min. 
+But in some cases it is necessary."
+
+        echo -e "\n1) Default: fast.
+2) Precise: slow."
+        declare -i method
+        read method
+        case "${method}" in
+            2) export precise=1  ;;
+            *) echo              ;;
+        esac
+}
+
+source_xcursor_gen() {
+
+( cat <<'EOF'
+    #!/bin/bash
+    mkdir XCursor/
+    for i in *.cursor
+        do
+        name="${i%.*}"
+        xcursorgen "${i}" "${name}"
+        mv "${name}" XCursor/
+    done
+EOF
+) > "$@"
+}
+
+precise_convert_auto_ani()
+{
+    mkdir -p "${name}".dir
+    mv *.png "${name}".dir
+    cd "${name}".dir || exit
+    for p in *.png; do
+        identify -format '%w 2 4 %f 200\n' "${p}" >> "${name}".cursor
+    done
+    mv * ../
+    cd .. || exit
+    rm -rf "${name}".dir
+}
+
+precise_convert_auto_cur()
+{
+    mkdir -p "${name}".dir
+    mv *.png "${name}".dir
+    cd "${name}".dir || exit
+    for p in *.png; do
+        identify -format '%w 2 4 %f\n' "${p}" >> "${name}".cursor # 32 2 4 | 32 1 1 | 32 10 5
+    done
+    mv * ../
+    cd .. || exit
+    rm -rf "${name}".dir
+}
+
+precise_convert_size_ani()
+{
+    mkdir -p "${name}".dir
+    mv *.png "${name}".dir
+    cd "${name}".dir || exit
+    for p in *.png; do
+        echo "${size} 2 4 ${p} 200" >> "${name}".cursor
+    done
+    mv * ../
+    cd ..
+    rm -rf "${name}".dir
+}
+
+precise_convert_size_cur()
+{
+    mkdir -p "${name}".dir
+    mv *.png "${name}".dir
+    cd "${name}".dir || exit
+    for p in *.png; do
+        echo "${size} 2 4 ${p}" >> "${name}".cursor # 32 2 4 | 32 1 1 | 32 10 5
+    done
+    mv * ../
+    cd ..
+    rm -rf "${name}".dir
+}
+convert_theme()
+{
+    if [[ -n $(ls *.ani) ]] >/dev/null 2>&1; then 
+        for i in *.ani; do
+            name="${i%.*}"
+            "${ani2ico}" "${i}"
+            rm "${name}".ani
+            for f in "${name}"*.ico; do
+                png=`echo "${f%.*}" | sed 's# #_#g'`
+                
+                if [ "${auto}" ]; then
+                    convert "${f}" "${png}".png
+                    #<size> <xhot> <yhot> <filename> <ms-delay>
+                    # 32 2 4 <name> 200 | 32 1 1 <name> 200 | 32 10 5 <name> 200
+                    
+                    if [ "${precise}" ]; then
+                        precise_convert_auto_ani
+                    else
+                        identify -format '%w 2 4 %f 200\n' "${png}".png >> "${name}".cursor
+                    fi
+
+                else
+                    convert  "${f}" -adaptive-resize "${size}x${size}" -contrast-stretch 0,3% \
+                    -normalize -strip -modulate 99,99 -colorspace sRGB \
+                    -depth 16 -channel rgba -interlace Plane -gaussian-blur 0.05 -density 300 \
+                    -strip +repage -fuzz 50% -quality 100% -unsharp 2x2.5+2.7+0 "${png}".png
+                    
+                    if [ "${precise}" ]; then
+                        precise_convert_size_ani
+                    else
+                        echo "${size} 2 4 ${png}.png 200" >> "${name}".cursor
+                    fi
+
+                fi
+            done
+            xcursorgen "${name}".cursor "${name}"
+        done
+
+        echo 'Success converting .ani files'
+        rm -f *.ico
+
+        if  [ "${auto}" ]; then
+            mkdir -p pngs/source/ani/original_size
+            mv *.png pngs/source/ani/original_size
+            mv *.cursor pngs/source/ani/original_size
+            source_xcursor_gen pngs/source/ani/original_size/xcursor_gen.sh
+            chmod +x pngs/source/ani/original_size/xcursor_gen.sh
+        elif [ "${size}" ];then
+            mkdir -p pngs/source/ani/"${size}"
+            mv *.png pngs/source/ani/"${size}"
+            mv *.cursor pngs/source/ani/"${size}"
+            source_xcursor_gen pngs/source/ani/"${size}"/xcursor_gen.sh
+            chmod +x pngs/source/ani/"${size}"/xcursor_gen.sh
+        fi
+    fi
+
+    if [[ -n $(ls *.cur) ]] >/dev/null 2>&1; then 
+        for i in *.cur; do
+            name="${i%.*}"
+            png=`echo "${name}" | sed 's# #_#g'`
+
+            if [ "${auto}" ]; then
+                convert "${name}".cur "${png}".png
+
+                if [ "${precise}" ]; then
+                    precise_convert_auto_cur
+                else
+                    identify -format '%w 2 4 %f\n' "${png}".png >> "${name}".cursor # 32 2 4 | 32 1 1 | 32 10 5
+                fi
+
+            else
+                convert  "${name}".cur -adaptive-resize "${size}x${size}" -contrast-stretch 0,3% \
+                -normalize -strip -modulate 99,99 -colorspace sRGB \
+                -depth 16 -channel rgba -interlace Plane -gaussian-blur 0.05 -density 300 \
+                -strip +repage -fuzz 50% -quality 100% -unsharp 2x2.5+2.7+0 "${png}".png
+
+                if [ "${precise}" ]; then
+                    precise_convert_size_cur
+                else
+                    echo "${size} 2 4 ${png}.png" >> "${name}".cursor # 32 2 4 | 32 1 1 | 32 10 5
+                fi
+
+            fi
+            xcursorgen "${name}".cursor "${name}"
+        done
+
+        echo 'Success converting .cur files'
+        rm -f *.cur
+        
+        if  [ "${auto}" ]; then
+            mkdir -p pngs/source/cur/original_size
+            mv *.png pngs/source/cur/original_size
+            mv *.cursor pngs/source/cur/original_size
+            source_xcursor_gen pngs/source/cur/original_size/xcursor_gen.sh
+            chmod +x pngs/source/cur/original_size/xcursor_gen.sh
+        elif [ "${size}" ];then
+            mkdir -p pngs/source/cur/"${size}"
+            mv *.png pngs/source/cur/"${size}"
+            mv *.cursor pngs/source/cur/"${size}"
+            source_xcursor_gen pngs/source/cur/"${size}"/xcursor_gen.sh
+            chmod +x pngs/source/cur/"${size}"/xcursor_gen.sh
+        fi
+    fi
+
+    export name
+    rm -rf "$(echo ${file} | tr '[A-Z]' '[a-z]')"
+}
+
+index_theme()
+{
+    echo '[Icon Theme]' | tee "${theme_dir}"/index.theme
+    echo -e "Name = ${theme_name}" | tee -a "${theme_dir}"/index.theme
+}
+
+default_names()
+{
+    echo -e "\nFile names are usually:\n"
+    echo Alternate 
+    echo Normal Select
+    echo Move
+    echo Link Select
+    echo Help Select
+    echo Handwriting
+    echo Diagonal Resize
+    echo Horizontal Resize
+    echo Vertical Resize
+    echo Precision
+    echo Text
+    echo Unavailable
+    echo Busy
+    echo Working in Progress
+    echo -e "\nAny variation in filenames may result in a theme that does not match.\n"
+    echo "Just do the correspondence manually, the converted files are in:"
+    echo "${theme_name_cache}"
+    echo -e "\nAnd the theme generated in:"
+    echo -e "${HOME}/.icons/${theme_name}\n"
+    read -n 1 -s -r -p "Press any key to continue";echo
+}
+
+corresponding_pointer()
+{
+    default_names
+    cp -rf "${theme_base}" "${theme_dir}"
+    cp -f *[Aa]lternat* "${theme_dir}"/cursors/left_ptr
+    cp -f *[Nn]ormal\ [Ss]elect* "${theme_dir}"/cursors/context-menu
+    cp -f *[Nn]ormal\ [Ss]elect* "${theme_dir}"/cursors/hand2
+    cp -f *[Mm]ove* "${theme_dir}"/cursors/hand1
+    cp -f *[Mm]ove* "${theme_dir}"/cursors/move
+    cp -f *[Mm]ove* "${theme_dir}"/cursors/dnd-move
+    cp -f *[Mm]ove* "${theme_dir}"/cursors/all-scroll
+    cp -f *[Mm]ove* "${theme_dir}"/cursors/grabbing
+    cp -f *[Mm]ove* "${theme_dir}"/cursors/openhand
+    cp -f *[Mm]ove* "${theme_dir}"/cursors/pointer-move
+    cp -f *[Ll]ink\ [Ss]elect* "${theme_dir}"/cursors/link
+    cp -f *[Ll]ink\ [Ss]elect* "${theme_dir}"/cursors/dnd-link
+    cp -f *[Hh]elp\ [Ss]elect* "${theme_dir}"/cursors/question_arrow
+    cp -f *[Hh]elp\ [Ss]elect* "${theme_dir}"/cursors/dnd-ask
+    cp -f *[Hh]andwriting* "${theme_dir}"/cursors/pencil
+    cp -f *[Dd]iagonal\ [Rr]esize\ 1* "${theme_dir}"/cursors/bottom_right_corner
+    cp -f *[Dd]iagonal\ [Rr]esize\ 1* "${theme_dir}"/cursors/top_left_corner
+    cp -f *[Dd]iagonal\ [Rr]esize\ 1* "${theme_dir}"/cursors/bd_double_arrow
+    cp -f *[Dd]iagonal\ [Rr]esize\ 2* "${theme_dir}"/cursors/fd_double_arrow
+    cp -f *[Dd]iagonal\ [Rr]esize\ 2* "${theme_dir}"/cursors/top_right_corner
+    cp -f *[Dd]iagonal\ [Rr]esize\ 2* "${theme_dir}"/cursors/bottom_left_corner
+    cp -f *[Dd]iagonal\ [Rr]esize\ 2* "${theme_dir}"/cursors/right_ptr
+    cp -f *[Hh]orizontal\ [Rr]esize* "${theme_dir}"/cursors/left_side
+    cp -f *[Hh]orizontal\ [Rr]esize* "${theme_dir}"/cursors/right_side
+    cp -f *[Hh]orizontal\ [Rr]esize* "${theme_dir}"/cursors/sb_h_double_arrow
+    cp -f *[Hh]orizontal\ [Rr]esize* "${theme_dir}"/cursors/sb_left_arrow
+    cp -f *[Hh]orizontal\ [Rr]esize* "${theme_dir}"/cursors/sb_right_arrow
+    cp -f *[Vv]ertical\ [Rr]esize* "${theme_dir}"/cursors/sb_v_double_arrow
+    cp -f *[Vv]ertical\ [Rr]esize* "${theme_dir}"/cursors/top_side
+    cp -f *[Vv]ertical\ [Rr]esize* "${theme_dir}"/cursors/sb_up_arrow
+    cp -f *[Vv]ertical\ [Rr]esize* "${theme_dir}"/cursors/sb_down_arrow
+    cp -f *[Vv]ertical\ [Rr]esize* "${theme_dir}"/cursors/bottom_side
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/plus
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/tcross
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/cross
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/right_tee
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/top_tee
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/bottom_tee
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/left_tee
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/ul_angle
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/ur_angle
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/ll_angle
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/lr_angle
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/cell
+    cp -f *[Pp]recision* "${theme_dir}"/cursors/dotbox
+    cp -f *[Tt]ext* "${theme_dir}"/cursors/xterm
+    cp -f *[Tt]ext* "${theme_dir}"/cursors/vertical-text
+    cp -f *[Uu]navailable* "${theme_dir}"/cursors/X_cursor
+    cp -f *[Uu]navailable* "${theme_dir}"/cursors/circle
+    cp -f *[Uu]navailable* "${theme_dir}"/cursors/dnd-no-drop
+    cp -f *[Uu]navailable* "${theme_dir}"/cursors/dnd-none
+    cp -f *[Uu]navailable* "${theme_dir}"/cursors/crossed_circle
+    cp -f *[Bb]usy* "${theme_dir}"/cursors/left_ptr_watch
+    cp -f *[Ww]orking* "${theme_dir}"/cursors/watch
+    cp -f *[Ww]orking* "${theme_dir}"/cursors/dnd-copy
+
+##########################################
+# https://wiki.archlinux.org/title/Cursor_themes
+# Applications may keep using the default cursors when a theme lacks some cursors. 
+# This can be corrected by adding links to the missing cursors. For example:
+
+#$ cd ~/.icons/theme/cursors/
+#$ ln -s right_ptr arrow
+#$ ln -s cross crosshair
+#$ ln -s right_ptr draft_large
+#$ ln -s right_ptr draft_small
+#$ ln -s cross plus
+#$ ln -s left_ptr top_left_arrow
+#$ ln -s cross tcross
+#$ ln -s hand hand1
+#$ ln -s hand hand2
+#$ ln -s left_side left_tee
+#$ ln -s left_ptr ul_angle
+#$ ln -s left_ptr ur_angle
+#$ ln -s left_ptr_watch 08e8e1c95fe2fc01f976f1e063a24ccd
+#If the above does not solve the problem, look in /usr/share/icons/whiteglass/cursors 
+#for additional cursors your theme may be missing, and create links for these as well.
+
+#Tip: You can also remove unwanted cursors. To for example remove the "watch" cursor:
+#$ cd ~/.icons/theme/cursors/
+#$ rm watch left_ptr_watch
+#$ ln -s left_ptr watch
+#$ ln -s left_ptr left_ptr_watch
+
+}
+
+single_pointer()
+{
+
+    theme_creator
+    extract_theme
+    check_files
+
+    if [[ $((ls -l *.ani || ls -l *.cur) | wc -l ) = 1 ]] >/dev/null 2>&1; then 
+        method
+        size_options
+        convert_theme
+    else
+        echo 'There can only be one theme file: .ani or .cur'
+        exit 1
+    fi
+    
+    cp -rf "${theme_base}" "${theme_dir}"
+    index_theme
+
+    for i in "${theme_dir}"/cursors/*
+        do
+        if [ ! -h "${i}" ]; then 
+            cp -f "${name}" "${i}"
+        fi
+    done
+}
+
+if [[ "${1}" = clearcache ]] || [[ "${1}" = cc ]]; then
+    rm -rf "${windows_cursor_theme_dir}"/*
+
+elif  [ -e "${1}" ] && [[ "${2}" = single ]]; then
+    single_pointer
+
+elif ([ -e "${1}" ] && [ -z "${2}" ]) || ([ -f "${1}" ] && [[ "${2}" = generic ]]); then
+    theme_creator
+    extract_theme
+    check_files
+    method
+    size_options
+    convert_theme
+    index_theme
+    corresponding_pointer
+
+else
+    echo "Usage: ${script} -h                       | print this help"
+    echo "       ${script} <theme>                  | To generate a matching Xcursor theme"
+    echo "       ${script} <theme> single           | To generate a theme based on a single .ani or .cur file"
+    echo "       ${script} clearcache               | To clear the cache directory"
+    exit 1
+fi

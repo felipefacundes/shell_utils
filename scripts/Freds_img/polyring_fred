@@ -1,0 +1,373 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 2/28/2018 .......... revised 2/28/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: polyring [-d duplicates] [-f format] [-b bcolor] [-m maxsize] infile1 
+# [infile2 infile3 ... ] outfile
+# 
+# USAGE: polyring [-h or -help]
+#
+# OPTIONS:
+#
+# -d     duplicates     duplicate images to use when only one input image is supplied, 
+#                       including the input; integer>=3; default=6; the associated 
+#                       polygon number of sides will be the value of duplicates; 
+#                       if multiple images are supplied, then that will take precedence; 
+#                       if more than one image is supplied, then there must be at 
+#                       minimum 3 images supplied and no more than 6 images supplied
+# -f     format         format for the output; polygon or ring; default=polygon
+# -b     bcolor         color to use for the background color of the output; 
+#                       default=white
+# -m     maxsize        output image's maximum size; integer>0; default is twice the  
+#                       input image's minimum width plus twice the minimum height plus 
+#                       twice computed radius 
+# 
+###
+#
+# NAME: POLYRING 
+# 
+# PURPOSE: To create a polygon ring from one or more images.
+# 
+# DESCRIPTION: POLYRING creates a polygon ring image from one or more images. One input 
+# may be duplicated multiple times so that there are 3 or more copies. Or 3 or more 
+# different input images may be supplied. If multiple input images are supplied, they  
+# will be center cropped to the minimum dimensions from all the images supplied.
+# 
+# OPTIONS: 
+# 
+# -d duplicates ... DUPLICATES is the number of duplicate images to use when only one 
+# input image is supplied, including the input. Values are integer>=3. The default=6. 
+# The associated polygon number of sides will be the value of duplicates. If multiple 
+# images are supplied, then that will take precedence. If more than one image is 
+# supplied, then there must be at minimum 3 images supplied and no more than 
+# 6 images supplied.
+# 
+# -f format ... FORMAT for the output. Choices are: polygon (p) or ring (r). The 
+# default=polygon. The polygon shape will be determined by the total number of images 
+# used, including the duplicates.
+#
+# -b bcolor ... BCOLOR is the background color of the output. Any valid IM color 
+# is allowed. The default=white.
+# 
+# -m maxsize ... MAXSIZE is the output image's maximum size (dimension). The value is 
+# an integer>0. The default is twice the input image's minimum width plus twice the 
+# minimum height plus twice computed radius.
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+duplicates=6		# number of duplicates of a single input image
+format="polygon"	# polygon or ring
+bcolor="white"		# background color
+maxsize=""			# maximum output size
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 13 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-d)    # get duplicates
+					   shift  # to get the next parameter - spread
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DUPLICATES SPECIFICATION ---"
+					   #checkMinus "$1"
+					   duplicates=`expr "$1" : '\([0-9]*\)'`
+					   [ "$duplicates" = "" ] && errMsg "DUPLICATES=$duplicates MUST BE A NON-NEGATIVE INTEGER"
+		   			   test1=`echo "$duplicates <= 2" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- DUPLICATES=$duplicates MUST BE A INTEGER GREATER THAN 2 ---"
+					   ;;
+				-f)    # get  format
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FORMAT SPECIFICATION ---"
+					   checkMinus "$1"
+					   format=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$format" in 
+					   		polygon|p) format="polygon" ;;
+					   		ring|r) format="ring" ;;
+					   		*) errMsg "--- FORMAT=$format IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-b)    # get  bcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bcolor="$1"
+					   ;;
+				-m)    # get maxsize
+					   shift  # to get the next parameter - spread
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MAXSIZE SPECIFICATION ---"
+					   #checkMinus "$1"
+					   maxsize=`expr "$1" : '\([0-9]*\)'`
+					   [ "$maxsize" = "" ] && errMsg "MAXSIZE=$maxsize MUST BE A NON-NEGATIVE INTEGER"
+		   			   test1=`echo "$maxsize <= 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- MAXSIZE=$maxsize MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infiles and outfile
+	num=$#
+	numi=$((num-1))
+	if [ $num -eq 2 ]; then
+		infile1="$1"
+		outfile="$2"
+	elif [ $num -eq 3 ]; then
+		errMsg "--- ILLEGAL NUMBER OF IMAGES SUPPLIED ---"
+	elif [ $num -eq 4 ]; then
+		infile1="$1"
+		infile2="$2"
+		infile3="$3"
+		outfile="$4"
+	elif [ $num -eq 5 ]; then
+		infile1="$1"
+		infile2="$2"
+		infile3="$3"
+		infile4="$4"
+		outfile="$5"
+	elif [ $num -eq 6 ]; then
+		infile1="$1"
+		infile2="$2"
+		infile3="$3"
+		infile4="$4"
+		infile5="$5"
+		outfile="$6"
+	elif [ $num -eq 7 ]; then
+		infile1="$1"
+		infile2="$2"
+		infile3="$3"
+		infile4="$4"
+		infile5="$5"
+		infile6="$6"
+		outfile="$7"
+	else
+		errMsg "--- ILLEGAL NUMBER OF IMAGES SUPPLIED ---"
+	fi
+fi
+
+
+# set directory for temporary files
+# tmpdir="/tmp"
+tmpdir="."
+
+dir="$tmpdir/POLYRING.$$"
+
+mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+
+
+# read input images
+if [ $numi -ge 1 -a $numi -ne 2 ]; then
+	convert -quiet "$infile1" $dir/tmpI1.mpc || \
+		echo  "--- FILE $infile1 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+fi
+if [ $numi -ge 3 ]; then
+	convert -quiet "$infile2" -alpha off $dir/tmpI2.mpc || \
+		echo  "--- FILE $infile2 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+	convert -quiet "$infile3" -alpha off $dir/tmpI3.mpc || \
+		echo  "--- FILE $infile3 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+fi
+if [ $numi -ge 4 ]; then
+	convert -quiet "$infile4" -alpha off $dir/tmpI4.mpc || \
+		echo  "--- FILE $infile4 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+fi
+if [ $numi -ge 5 ]; then
+	convert -quiet "$infile5" -alpha off $dir/tmpI5.mpc || \
+		echo  "--- FILE $infile5 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+fi
+if [ $numi -eq 6 ]; then
+	convert -quiet "$infile6" -alpha off $dir/tmpI6.mpc || \
+		echo  "--- FILE $infile6 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+fi
+
+
+# get min dimensions
+if [ $numi -ge 3 ]; then
+	wlist=""
+	hlist=""
+	for ((i=1; i<=numi; i++)); do
+	ww=`convert -ping $dir/tmpI$i.mpc -format "%w" info:`
+	hh=`convert -ping $dir/tmpI$i.mpc -format "%h" info:`
+	#echo "ww=$ww; hh=$hh;"
+	wlist="$wlist $ww"
+	hlist="$hlist $hh"
+	done
+	width=`echo $wlist | tr " " "\n" | sort -n -k1,1 | head -n 1`
+	height=`echo $hlist | tr " " "\n" | sort -n -k1,1 | head -n 1`
+else
+	width=$(convert -ping "$infile1" -format "%w" info:)
+	height=$(convert -ping "$infile1" -format "%h" info:)
+fi
+#echo "width=$width; height=$height;"
+
+
+# set up for resize
+if [ "$maxsize" != "" ]; then
+	resizing="-resize ${maxsize}x${maxsize}"
+else
+	resizing=""
+fi
+
+# process the image(s)
+if [ "$format" = "polygon" -a $numi -eq 1 ]; then
+	number=$duplicates
+	angle=$(convert xc: -format "%[fx:360/$number]" info:)
+	ix=$(convert xc: -format "%[fx:$width/2]" info:)
+	iy=$(convert xc: -format "%[fx:$height/2]" info:)
+	radius=$(convert xc: -format "%[fx:($height/2) + $width/(2*tan((pi/180)*($angle/2)))]" info:)
+	#echo "angle=$angle; width=$width; height=$height; ix=$ix; iy=$iy; radius=$radius;"
+	for ((i=1; i<=number; i++)); do
+	rot1=$(convert xc: -format "%[fx:$i*$angle]" info:)
+	rot2=$(convert xc: -format "%[fx:$rot1+90]" info:)
+	ox=$(convert xc: -format "%[fx:($radius+$width)+$radius*cos((pi/180)*$rot1)]" info:)
+	oy=$(convert xc: -format "%[fx:($radius+$height)+$radius*sin((pi/180)*$rot1)]" info:)
+	#echo "rot1=$rot1; rot2=$rot2; ox=$ox; oy=$oy"
+	convert $dir/tmpI1.mpc -virtual-pixel none +distort SRT "$ix,$iy 1 $rot2  $ox,$oy" $dir/tmp_$i.miff
+	done
+	convert $dir/tmp_*.miff -background "$bcolor" -layers merge +repage $resizing "$outfile"
+
+elif [ "$format" = "polygon" -a $numi -ge 3 ]; then
+	number=$numi
+	angle=$(convert xc: -format "%[fx:360/$number]" info:)	
+	ix=$(convert xc: -format "%[fx:$width/2]" info:)
+	iy=$(convert xc: -format "%[fx:$height/2]" info:)
+	radius=$(convert xc: -format "%[fx:($height/2) + $width/(2*tan((pi/180)*($angle/2)))]" info:)
+	#echo "angle=$angle; width=$width; height=$height; ix=$ix; iy=$iy; radius=$radius;"
+	for ((i=1; i<=number; i++)); do
+	rot1=$(convert xc: -format "%[fx:$i*$angle]" info:)
+	rot2=$(convert xc: -format "%[fx:$rot1+90]" info:)
+	ox=$(convert xc: -format "%[fx:($radius+$width)+$radius*cos((pi/180)*$rot1)]" info:)
+	oy=$(convert xc: -format "%[fx:($radius+$height)+$radius*sin((pi/180)*$rot1)]" info:)
+	#echo "rot1=$rot1; rot2=$rot2; ox=$ox; oy=$oy"
+	convert $dir/tmpI$i.mpc -gravity center -crop ${width}x${height}+0+0 +repage \
+		-virtual-pixel none +distort SRT "$ix,$iy 1 $rot2  $ox,$oy" $dir/tmp_$i.miff
+	done
+	convert $dir/tmp_*.miff -background "$bcolor" -layers merge +repage $resizing "$outfile"
+
+elif [ "$format" = "ring" -a $numi -eq 1 ]; then
+	dups=$((duplicates-1))
+	convert $dir/tmpI1.mpc -duplicate $dups +append -virtual-pixel "$bcolor" -distort Arc 360  $resizing "$outfile"
+
+elif [ "$format" = "ring" -a $numi -eq 3 ]; then
+	convert $dir/tmpI1.mpc $dir/tmpI2.mpc $dir/tmpI3.mpc \
+		-gravity center -crop ${width}x${height}+0+0 +repage \
+		+append -virtual-pixel "$bcolor" -distort Arc 360  $resizing "$outfile"
+
+elif [ "$format" = "ring" -a $numi -eq 4 ]; then
+	convert $dir/tmpI1.mpc $dir/tmpI2.mpc $dir/tmpI3.mpc $dir/tmpI4.mpc \
+		-gravity center -crop ${width}x${height}+0+0 +repage \
+		+append -virtual-pixel "$bcolor" -distort Arc 360  $resizing "$outfile"
+
+elif [ "$format" = "ring" -a $numi -eq 5 ]; then
+	convert $dir/tmpI1.mpc $dir/tmpI2.mpc $dir/tmpI3.mpc $dir/tmpI4.mpc $dir/tmpI5.mpc \
+		-gravity center -crop ${width}x${height}+0+0 +repage \
+		+append -virtual-pixel "$bcolor" -distort Arc 360  $resizing "$outfile"
+
+elif [ "$format" = "ring" -a $numi -eq 6 ]; then
+	convert $dir/tmpI1.mpc $dir/tmpI2.mpc $dir/tmpI3.mpc $dir/tmpI4.mpc $dir/tmpI5.mpc $dir/tmpI6.mpc \
+		-gravity center -crop ${width}x${height}+0+0 +repage \
+		+append -virtual-pixel "$bcolor" -distort Arc 360  $resizing "$outfile"
+
+fi
+
+
+
+
+exit 0

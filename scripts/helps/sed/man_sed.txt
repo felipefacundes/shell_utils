@@ -1,0 +1,282 @@
+       SED(1)                                                               Comandos do usuário
+
+       NOME
+                   sed - editor de fluxo para filtrar e transformar texto
+
+       SINOPSE
+                   sed [-V] [--version] [--help] [-n] [--quiet] [--silent]
+                       [-l N] [--line-length=N] [-u] [--unbuffered]
+                       [-E] [-r] [--regexp-extended]
+                       [-e script] [--expression=script]
+                       [-f script-file] [--file=script-file]
+                       [script-if-no-other-script]
+                       [file...]
+
+
+
+       DESCRIÇÃO
+
+                   Sed é um editor de fluxo. Um editor de fluxo é usado para executar transformações básicas de texto em um fluxo
+                   de entrada (um arquivo ou entrada de um pipeline). Embora de certa forma semelhante a um editor que permite
+                   edições com script (como ed), o sed funciona fazendo apenas uma passagem sobre a(s) entrada(s) e,
+                   conseqüentemente, é mais eficiente. Mas é a capacidade do sed de filtrar o texto em um pipeline que o
+                   distingue particularmente de outros tipos de editores.
+
+                   -n, --quiet, --silent
+
+                               suprimir a impressão automática do espaço do padrão
+
+                   --debug
+
+                               anotar a execução do programa
+
+                   -e script, --expression=script
+
+                               adicione o script aos comandos a serem executados
+
+                   -f script-file, --file=script-file
+
+                               adicione o conteúdo do arquivo de script aos comandos a serem executados
+
+                   --follow-symlinks
+
+                               siga os links simbólicos ao processar no local
+
+                   -i[SUFFIX], --in-place[=SUFFIX]
+
+                               editar arquivos no local (faz backup se SUFFIX fornecido)
+
+                   -l N, --line-length=N
+
+                               especifique o comprimento de quebra de linha desejado para o comando `l'
+
+                   --posix
+
+                               desativar todas as extensões GNU.
+
+                   -E, -r, --regexp-extended
+
+                               use expressões regulares estendidas no script (para portabilidade, use POSIX -E).
+
+                   -s, --separate
+
+                               considere os arquivos como separados, em vez de um único e contínuo corrente longa.
+
+                   --sandbox
+
+                               opere no modo sandbox (desabilite os comandos e/r/w).
+
+                   -u, --unbuffered
+
+                               carregar quantidades mínimas de dados dos arquivos de entrada e liberar o buffers de saída com
+                               mais frequência
+
+                   -z, --null-data
+
+                               linhas separadas por caracteres NUL
+
+                   --help
+                               exibir esta ajuda e sair
+
+                   --version
+                              informações de versão de saída e saída
+
+                   Se nenhuma opção -e, --expression, -f ou --file for fornecida, o primeiro argumento de não opção é considerado
+                   como o script sed para incluir interpretar. Todos os argumentos restantes são nomes de arquivos de entrada;
+                   se não arquivos de entrada são especificados, então a entrada padrão é ler.
+
+
+                   Página inicial do GNU sed: <https://www.gnu.org/software/sed/>. Ajuda Geral usando o software
+                   GNU: <https://www.gnu.org/gethelp/>. Envie relatórios de erros por e-mail para: <bug-sed@gnu.org>.
+
+       SINOPSE DO COMANDO
+                   Esta é apenas uma breve sinopse dos comandos sed para servir de lembrete para aqueles que já conhecem o sed;
+                   outra documentação (como o documento texinfo) deve ser consultada para descrições mais completas.
+
+            Zero-address ``commands''
+
+                   : label
+                          Rótulo para comandos b e t.
+
+                   #Comente
+                          O comentário se estende até a próxima nova linha (ou o final de um -e fragmento de roteiro).
+
+                   }      O colchete de fechamento de um bloco { }.
+
+            Zero- or One- address commands
+                   =      Imprima o número da linha atual.
+
+                   a \
+
+                   text   Acrescenta texto, que tem cada nova linha incorporada precedida por uma barra invertida.
+
+                   i \
+
+                   text   Inserir texto, que tem cada nova linha incorporada precedida por uma barra invertida.
+
+                   q [exit-code]
+                          Saia imediatamente do script sed sem processar mais nenhuma entrada, exceto que se a impressão
+                          automática não estiver desativada, o atual espaço padrão de aluguel será impresso. O argumento
+                          do código de saída é uma extensão GNU.
+
+
+                   Q [exit-code]
+                          Saia imediatamente do script sed sem processar mais nenhuma entrada.
+                          Esta é uma extensão GNU.
+
+                   r filename
+                          Acrescenta o texto lido do filename.
+
+                   R filename
+                          Acrescenta uma linha lida de filename. Cada chamada do comando lê uma linha do arquivo.
+                          Esta é uma extensão GNU.
+
+            Comandos que aceitam intervalos de endereço
+                   {      Comece um bloco de comandos (termine com um }).
+
+                   b label
+                          Ramificação para rótulo; se o rótulo for omitido, vá para o final do script.
+
+                   c \
+
+                   texto Substitua as linhas selecionadas por texto, que tem cada nova linha incorporada precedida por
+                   uma barra invertida.
+
+                   d      Exclua o espaço do padrão. Iniciar o próximo ciclo.
+
+                   D      Se o espaço do padrão não contiver nova linha, inicie um novo ciclo normal como se o comando d foi
+                          emitido. Caso contrário, exclua texto no espaço padrão até a primeira nova linha e reinicie o ciclo
+                          com o espaço padrão resultante, sem ler uma nova linha de entrada.
+
+
+                   h H    Copie/anexe o espaço do padrão para manter o espaço.
+
+                   g G    Copiar/anexar espaço de retenção ao espaço do padrão.
+
+                   l      Liste a linha atual de uma forma ``visualmente inequívoca''.
+
+                   l width
+                          Lista a linha atual em uma forma ``visualmente inequívoca'', quebrando-a em caracteres de largura.
+                          Esta é uma extensão GNU.
+
+                   n N    Leia/anexe a próxima linha de entrada no espaço padrão.
+
+                   p      Imprima o espaço padrão atual.
+
+                   P      Imprimir até a primeira nova linha incorporada do padrão atual espaço.
+
+                   s/regexp/replacement/
+                          Tenta combinar regexp com o espaço padrão. Se for bem-sucedido, substitua a parte correspondente à
+                          substituição. A substituição pode conter o caractere especial & para se referir à parte do espaço
+                          padrão que correspondeu, e os escapes especiais \1 a \9 para se referir às subexpressões
+                          correspondentes correspondentes no regexp.
+
+                   t label
+                          Se a s/// fez uma substituição bem-sucedida desde a última a linha de entrada foi lida e, desde o
+                          último comando t ou T, então ramifica para o rótulo; se o rótulo for omitido, ramifica para o final
+                          do roteiro.
+
+                   T label
+                          Se nenhum s/// tiver feito uma substituição bem-sucedida desde a última entrada linha foi lida e desde
+                          o último comando t ou T, em seguida, ramificar para rótulo; se o rótulo for omitido, ramifica para o
+                          final do roteiro. Esta é uma extensão GNU.
+
+                   w filename
+                          Grava o espaço padrão atual em filename.
+
+                   W filename
+                          Grava a primeira linha do espaço padrão atual em filename. Esta é uma extensão GNU.
+
+                   x      Troque o conteúdo dos espaços de retenção e padrão.
+
+                   y/source/dest/
+                          Translitera os caracteres no espaço padrão que aparecem em source para o caractere correspondente em
+                          dest.
+
+       Endereços
+                   Os comandos Sed podem ser dados sem endereços, caso em que o comando será executado para todas as linhas de
+                   entrada; com um endereço, caso em que o comando será executado apenas para linhas de entrada que correspondem
+                   a esse endereço; ou com dois endereços, em caso em que o comando será executado para todas as linhas de
+                   entrada que correspondam o intervalo inclusivo de linhas começando no primeiro endereço e continuando até
+                   o segundo endereço. Três coisas a serem observadas sobre faixas de endereço: a sintaxe é addr1,addr2
+                   (ou seja, os endereços são separados por vírgula); a linha que addr1 combinou sempre será aceito, mesmo
+                   se addr2 selecionar um ouvido linha lier; e se addr2 for um regexp, ele não será testado na linha
+                   correspondente a addr1.
+
+                   Após o endereço (ou intervalo de endereços) e antes do comando, um ! pode ser inserido, o que especifica que
+                   o comando deve só será executado se o endereço (ou intervalo de endereços) não corresponder.
+
+                   Os seguintes tipos de endereço são suportados:
+
+                   number Corresponde apenas ao número da linha especificada (que incrementa cumulativamente entre arquivos,
+                   a menos que a opção -s seja especificada na linha de comando).
+
+                   first~step
+                          Corresponde a cada linha step'th começando com a linha first. Por exemplo, ``sed -n 1~2p'' imprimirá
+                          todos os números ímpares linhas no fluxo de entrada, e o endereço 2~5 corresponderá a cada quinta
+                          linha, começando com a segunda. primeiro pode ser zero; neste caso, sed funciona como se fosse igual
+                          a step. (Esta é uma extensão.)
+
+                   $      Corresponde à última linha.
+
+                   /regexp/
+                          Corresponde às linhas correspondentes à expressão regular regexp. Combinar é realizada no espaço padrão
+                          atual, que pode ser modificado com comandos como ``s///''.
+
+                   \cregexpc
+                          Corresponde às linhas correspondentes à expressão regular regexp. O c pode ser qualquer caractere.
+
+
+
+                   GNU sed também suporta alguns formulários especiais de 2 endereços:
+
+
+                   0,addr2
+                          Comece no estado "primeiro endereço correspondente", até que addr2 seja encontrado. Isso é semelhante
+                          a 1,addr2, exceto que se addr2 corresponder à primeira linha de entrada, o formulário 0,addr2 estará
+                          em o fim de seu intervalo, enquanto a forma 1,addr2 irá ainda estar no início de seu alcance.
+                          Isso funciona apenas quando addr2 é uma expressão regular.
+
+                   addr1,+N
+                          Irá corresponder a addr1 e as N linhas seguintes a addr1.
+
+                   addr1,~N
+                          Irá corresponder a addr1 e as linhas seguintes a addr1 até a próxima linha cujo número de linha de
+                          entrada é um múltiplo de N.
+
+       EXPRESSÕES REGULARES
+                   Os BREs POSIX.2 devem ser suportados, mas não são totalmente devido a problemas de desempenho.
+                   A sequência \n em uma expressão regular corresponde ao caractere de nova linha e da mesma forma para \a, \t e
+                   outras sequências. A opção -E alterna para o uso de expressões regulares estendidas; tem sido apoiado por anos
+                   por GNU sed e agora está incluído no POSIX.
+
+       BUGS
+
+                   Envie relatórios de erros por e-mail para bug-sed@gnu.org. Além disso, inclua a saída de ``sed --version'' no
+                   corpo do seu relatório se possível.
+
+       AUTOR
+                   Escrito por Jay Fenlason, Tom Lord, Ken Pizzini, Paolo Bonzini, Jim Meyering e Assaf Gordon.
+
+
+
+                   Este programa sed foi construído sem suporte SELinux.
+
+                   Página inicial do GNU sed: <https://www.gnu.org/software/sed/>. Ajuda Geral usando o software
+                   GNU: <https://www.gnu.org/gethelp/>. Envie relatórios de erros por e-mail para: <bug-sed@gnu.org>.
+
+       COPYRIGHT
+                   Copyright  ©  2022  Free  Software  Foundation,  Inc.   License  GPLv3+:  GNU  GPL  version  3 or later
+                   <https://gnu.org/licenses/gpl.html>.
+                   Este é um software livre: você é livre para alterá-lo e redistribuí-lo. Lá NÃO É GARANTIA,
+                   na medida permitida por lei.
+
+       VEJA TAMBÉM
+                   awk(1), ed(1), grep(1), tr(1), perlre(1), sed.info, qualquer um dos vários livros sobre sed, o sed FAQ
+                   (http://sed.sf.net/grabbag/tutorials/sedfaq.txt), http://sed.sf.net/grabbag/.
+
+                   A documentação completa do sed é mantida como um manual do Texinfo. Se o info e sed estão devidamente
+                   instalados em seu site, o comando info sed deve dar-lhe acesso ao manual completo.
+
+       GNU sed 4.9                                                                                                  março de 2023
+       SED(1)

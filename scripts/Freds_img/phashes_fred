@@ -1,0 +1,679 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 5/2/2018 .......... revised 1/15/2023
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: phashes [-m method] [-d directory] [-t types] [-f file] [-s save] [-j jsonfile] 
+# [infile1 ... infileN]
+#
+# USAGE: phashes [-h|-help]
+#
+# OPTIONS:
+#
+# -m     methods       hash methods; one or more of: bmh, bdh, avh, pfh as a list of 
+#                      space or comma separate values or "all"; default=bmh
+# -d     directory     optional path to directory holding images; default is no 
+#                      directory; infiles have precedence over directory
+# -t     types         types of file formats to process from directory as a space or 
+#                      comma separate list; default will process all files in the 
+#                      directory
+# -f     file          optional text file containing a list of paths to input images 
+#                      with one image per row; directory has precedence over file
+# -s     save          save the hash values to either the "comment" or "label" field in 
+#                      the image meta data or "neither"; default=comment
+# -j     jsonfile      json file to hold list of images, methods and hash values in 
+#                      addition to the save option specified
+# -p     progress      show progress to the terminal; choices are: 0 (nothing), 
+#                      1 (image only), 2 (image and method) or 3 (image, method and hash);
+#                      default=0; output can be redirected to a tab delimited text file 
+#                      that can be imported into Excel
+# 
+###
+# 
+# NAME: PHASHES 
+# 
+# PURPOSE: To compute and store one or more perceptual hashes for all provided images.
+# 
+# DESCRIPTION: PHASHES will compute and store one or more perceptual hashes for all 
+# provided images. If multiple images are provided, they can be listed in the 
+# commmand line or obtained from a directory or they can be provided via a text file 
+# containing a list one image per row using the -f option. There are four different 
+# hashes that can be used: bmh (block mean hash), bdh (block difference hash), 
+# avh (annular variance hash) and pfh (polar fft hash). 
+# 
+# In all listed hashes, the images are first preprecessed to rec709luma grayscale 
+# removing the alpha channel and any virtual canvas removed. Then they scaled to a 
+# size of 256x256, stretched to full dynamic range and blurred with sigma=1.
+# 
+# Block Mean Hash (bmh): The preprocess image is scale to 16x16 pixels, which is the 
+# same as averaging non-overlapping blocks of 16x16 pixels. The hash is computed by 
+# comparing the global mean of the 256x256 image to each of the 16x16 pixel value. If  
+# the value is larger than the global mean, the hash is set to 1; otherwise 0. This  
+# forms a 256 length binary string for the hash.
+# 
+# Block Difference Hash (bdh): The preprocessed image is scale to 9x8 pixels. Then each 
+# pixel is subtracted from its neighbor to the right, thresholded at 0 and divided by 
+# 255. This forms a 128 length binary string. The preprocessed image is scale again,  
+# but this time to 8x9 pixels. Then each pixel is subtracted from its neighbor below, 
+# thresholded at 0 and divided by 255. This forms another 128 length binary string. 
+# Finally the two 128 length strings are appended to form a 256 length string for 
+# the binary hash.
+# 
+# Annular Variance Hash (avh): The preprocessed image is converted to 256x256 polar 
+# format with the columns representing angles and the rows representing radius. Thus 
+# each row is an annulus (circular ring) of the preprocessed image. The variance of 
+# each row is computed to get the variance as a function of radius as a list of 256 
+# values. Each value is compared to the next one. If the next one is larger, then a 
+# value of 1 is assigned; othewise a value of 0 is assigned. This produces a 255 length 
+# binary string for the hash.
+# 
+# Polar FFT Hash (pfh): The preprocessed image is converted to 256x256 polar format 
+# with the columns representing angles and the rows representing radius. The FFT 
+# magnitude is then computed and the center 15x15 pixels are extracted and listed 
+# as 225 graylevel values in row first order. Each pixel's graylevel is then compared 
+# to the next one. If the next one is larger, then a value of 1 is assigned; othewise 
+# a value of 0 is assigned. This produces a 224 length binary string for the hash.
+# 
+# Attack Tests; Brightness, Contrast, Gamma, Blur, Compression, Color Noise, Grayscale 
+# Noise, Resizing, Rotation (cropped to original size), Flip-Flop-Transpose-Transverse, 
+# Watermark, Shear, Arc, Barrel, Pincushion and Other Images.
+# 
+# Pros and Cons:
+# 
+# Block Mean Hash is insensitive to all but geometry (rotation and distortion) attacks.   
+# Note that it is insensitive only to small rotations (<=5 deg) and small distortions, 
+# but none of the flip-flop-transpose-transverse attacks.
+# 
+# Block Difference Hash is insensitive to all but geometry (rotation and distortion) 
+# attacks. Note that it is insensitive only to small rotations (<=5 deg) and 
+# distortions, but none of the flip-flop-transpose-transverse attacks. It is slightly 
+# better than the Block Mean Hash with respect to the distortion attacks from my tests.
+# 
+# Annular Variance Hash is insenstive to all but the distortion attacks. It is 
+# especially insensitive to all rotations and the flip-flop-transpose-transverse 
+# attacks. It is insensitive only to very small amounts of watermark, shear and arc. 
+# It is sensitive to all barrel and pincushion attacks.
+# 
+# Polar FFT HASH is insensitive to all rotations, but not the 
+# flip-flop-transpose-transverse attacks. It is insensitive to all the other 
+# non-distortion attacks. It is insensitive only to very small amounts of watermark, 
+# shear, arc and barrel. It is sensitive to all pincushion attacks.
+# 
+# REQUIREMENTS: Polar FFT requires FFTW delegate
+# 
+# Test Results
+# http://www.fmwconcepts.com/imagemagick/phashes/phashing_mean1.pdf
+# http://www.fmwconcepts.com/imagemagick/phashes/phashing_diff1.pdf
+# http://www.fmwconcepts.com/imagemagick/phashes/phashing_annularvar1.pdf
+# http://www.fmwconcepts.com/imagemagick/phashes/phashing_polarfft1.pdf
+# 
+# References:
+# https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=11&cad=rja&uact=8&ved=0ahUKEwjsvISLz5zaAhWrg1QKHQSJBJ04ChAWCCYwAA&url=https%3A%2F%2Fdigi.lib.ttu.ee%2Fi%2Ffile.php%3FDLID%3D2816%26t%3D1&usg=AOvVaw1qDKiIDQI80WZGUe7DbJEm
+# https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=38&cad=rja&uact=8&ved=0ahUKEwjZzIXRt-rXAhVHrVQKHUOEDWc4HhAWCFUwBw&url=http%3A%2F%2Fjournals.dbuniversity.ac.in%2Fojs%2Findex.php%2FAJET%2Farticle%2Fdownload%2F15%2Fpdf_2&usg=AOvVaw03c7wUi1rCmj-uG25ea4fQ
+# https://pdfs.semanticscholar.org/b59b/14d3a0d7047a63cbbcfc25582fb915f60664.pdf
+# http://www.diva-portal.se/smash/get/diva2:946365/FULLTEXT01.pdf
+# http://www.phash.org/docs/design.html
+# https://tech.okcupid.com/evaluating-perceptual-image-hashes-okcupid/
+# http://qtandopencv.blogspot.my/2016/06/speed-up-image-hashing-of-opencvimghash.html
+# https://hal.archives-ouvertes.fr/hal-01222780/document
+# http://www.eurasip.org/Proceedings/Eusipco/2002/articles/paper745.pdf
+# http://radioeng-test.urel.feec.vutbr.cz/fulltexts/2007/07_04_076_081.pdf
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5118381/
+# https://www.cs.tau.ac.il/~amir1/PS/30_PolarFFT_ACHA.pdf
+# https://pdfs.semanticscholar.org/4c32/f6cab7cb79b70af00e2e2912d875bd58a799.pdf
+# 
+# 
+# OPTIONS: 
+# 
+# -m methods ... hash METHODS. One or more of: bmh (block mean hash), 
+# bdh (block difference hash), avh (annular variance hash) and pfh (polar fft hash) 
+# as a list of comma separate values or "all". The default=bmh.
+# 
+# -d directory ... optional path to DIRECTORY holding images. The default is no 
+# directory. The infiles have precedence over the directory.
+# 
+# -t types ... limit of types of file formats to process from directory as a comma 
+# separate list. The default will process all files in the directory. This may not 
+# be a good idea if other than image files reside in the directory.
+# 
+# -f file ... optional text FILE containing a list of paths to the input images 
+# with one image per row. The directory has precedence over the file.
+# 
+# -s save ... SAVE the hash values to either the "comment" or "label" field in the 
+# image meta data. Choices are: comment (c), label (l) or neither/none (n). 
+# The default=comment
+# 
+# -j jsonfile ... optional JSON FILE to hold list of images, methods and hash values. 
+# The jsonfile is a simple text file that can be used in addition to the save option.
+# 
+# -p progress ... show PROGRESS to the terminal. The choices are: 0 (nothing), 
+# 1 (image only), 2 (image and method) or 3 (image, method and hash). The default=0. 
+# The output can be redirected to a tab delimited text file one row at a time that 
+# can be imported into Excel.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+methods="bmh"		# hash methods
+directory=""		# directory of images
+types=""			# list of image types to get from directory
+file=""				# file of images
+save="comment"		# save hash location
+jsonfile=""			# json file
+progress=0			# progress to the terminal
+
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# function to store comment or label data
+storeMetaData()
+	{		
+	# write to comment or label meta data
+	if [ "$save" = "comment" ]; then
+		if [ "$comment" = "" ]; then
+			comment="$method $phash"
+		else
+			comment="$comment\n$method $phash"
+		fi
+	elif [ "$save" = "label" ]; then
+		if [ "$label" = "" ]; then
+			label="$method $phash"
+		else
+			label="$label\n$method $phash"
+		fi
+	fi
+	}
+
+
+# function to write method and phash to json file
+writeJsonData()
+	{
+	if [ "$jsonfile" != "" ]; then
+		if [ $j -eq $num_last_method ]; then
+			echo -e "\t\t\t{\"method\":\"$method\", \"phash\":\"$phash\"}" >> $jsonfile
+			if [ $i -eq $num_last_image ]; then
+				echo -e "\t\t\t]}" >> $jsonfile
+			else
+				echo -e "\t\t\t]}," >> $jsonfile
+			fi
+		else
+			echo -e "\t\t\t{\"method\":\"$method\", \"phash\":\"$phash\"}," >> $jsonfile
+		fi
+	fi
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -eq 0 ]
+	then
+	errMsg "--- TOO FEW ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-m)    # get methods
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID METHODS SPECIFICATION ---"
+					   checkMinus "$1"
+					   methods=`expr "$1" : '\([abdfhlmpv, ]*\)'`
+					   [ "$methods" = "" ] && errMsg "--- METHODS=$methods IS NOT A VALID LIST ---"
+					   ;;
+				-d)    # get directory
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIRECTORY SPECIFICATION ---"
+					   checkMinus "$1"
+					   directory="$1"
+					   ;;
+				-t)    # get types
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TYPES SPECIFICATION ---"
+					   checkMinus "$1"
+					   types=`expr "$1" : '\([0-9a-zA-Z, ]*\)'`
+					   [ "$types" = "" ] && errMsg "--- TYPES=$types IS NOT A VALID LIST ---"
+					   ;;
+				-f)    # get file
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FILE SPECIFICATION ---"
+					   checkMinus "$1"
+					   file="$1"
+					   ;;
+				-s)    # save
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SAVE SPECIFICATION ---"
+					   checkMinus "$1"
+					   save=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$save" in 
+							comment|c) save="comment" ;;
+							label|l) save="label" ;;
+							neither|none|n) save="neither" ;;
+							*) errMsg "--- SAVE=$save IS AN INVALID VALUE ---" 
+					   esac
+				   	   ;;
+				-j)    # get jsonfile
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID JSONFILE SPECIFICATION ---"
+					   checkMinus "$1"
+					   jsonfile="$1"
+					   ;;
+				-p)    # get progress
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PROGRESS SPECIFICATION ---"
+					   checkMinus "$1"
+					   progress=`expr "$1" : '\([0123]\)'`
+					   [ "$progress" = "" ] && errMsg "--- PROGRESS=$progress MUST BE EITHER 0, 1, 2 OR 3 ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	num_images=$#
+	num_last_image=$((num_images-1))
+	[ $num_images -gt 0 ]; imgArr=("$@")
+fi
+
+# setup temporary images
+tmpA1="$dir/hashes_1_$$.mpc"
+tmpB1="$dir/hashes_1_$$.cache"
+trap "rm -f $tmpA1 $tmpB1;" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+#trap "rm -f $tmpA1 $tmpB1; exit 1" ERR
+
+# get array of methods
+# change any commas or spaces to a single space
+# remove any potential leading or trailing spaces
+[ "$methods" = "all" ] && methods="bmh,bdh,avh,pfh"
+mArr=(`echo "$methods" | sed 's/[, ][, ]*/ /g' | sed 's/^[ ]*//' | sed 's/[ ]*$//'`)
+#echo "${mArr[*]}"
+num_methods=${#mArr[*]}
+num_last_method=$((num_methods-1))
+for ((l=0; l<num_methods; l++)); do
+	method="${mArr[$l]}"
+	[ "$method" != "bmh" -a "$method" != "bdh" -a "$method" != "avh" -a "$method" != "pfh" ] && \
+			errMsg "--- METHOD $method IS NOT A VALID VALUE  ---"
+done
+
+# get array of images
+if [ $num_images -eq 0 ]; then
+	# test if images are from directory or from file
+	if [ -d "$directory" -a -r "$directory" -a -s "$directory" ]; then
+		# remove any trailing /
+		directory=`echo "$directory" | sed 's/[/]*$//'`
+		# change all spaces and commas to one |.
+		# remove any potential leading or trailing |.
+		# add leading .
+		newtypes=`echo "$types" | sed 's/[, ][, ]*/|./g' | sed 's/^[|.]*//' | sed 's/[|.]*$//'`
+		newtypes=".$newtypes"
+		#echo "$newtypes"
+		imgNamesArr=(`ls "$directory" | egrep -i "$newtypes"`)
+		num_names=${#imgNamesArr[*]}
+		for((k=0; k<num_names; k++)); do
+			imgArr[$k]="$directory/${imgNamesArr[$k]}"
+		done
+		num_images=${#imgArr[*]}
+		num_last_image=$((num_images-1))
+		#echo "${imgArr[*]}"
+		
+	elif [ -f "$file" -a -r "$file" -a -s "$file" ]; then
+		imgArr=(`cat "$file"`)
+		num_images=${#imgArr[*]}
+		num_last_image=$((num_images-1))
+		#echo "${imgArr[*]}"
+		
+	else
+		errMsg "--- NO IMAGE FILES PROVIDED OR DIRECTORY OR TEXTFILE  ---"		
+	fi
+fi
+
+# write beginning of jsonfile 
+if [ "$jsonfile" != "" ]; then
+	touch "$jsonfile"
+	echo "" > "$jsonfile"
+	echo -e "{" > "$jsonfile"
+	echo -e "\t\"PerceptualHashes\":[" >> "$jsonfile"
+fi
+
+# process images
+if [ $num_images -eq 1 -a $num_methods -eq 1 ]; then
+
+	# assign image looping index to 0, since no actual looping
+	i=0
+	img="${imgArr[0]}"
+	
+	# get image filename with extension from path
+	image=`convert -ping "$img" -format "%f" info:`
+
+	
+	if [ ! -f "$img" -a ! -r "$img" -a ! -s "$img" ]; then
+		errMsg "--- COULND NOT READ IMAGE FILE $img ---"
+	fi
+	
+	# read image comment and label data
+	if [ "$save" = "comment" ]; then
+		comment=`convert -ping "$img" -format "%c" info:`
+	elif [ "$save" = "label" ]; then
+		label=`convert -ping "$img" -format "%l" info:`
+	fi
+
+	# write image to jsonfile
+	if [ "$jsonfile" != "" ]; then
+		echo -e "\t\t{\"$image\":[" >> "$jsonfile"
+	fi
+
+
+	# assign method looping index to 0, since no actual looping
+	j=0
+	method="${mArr[0]}"
+
+
+	if [ "$method" = "bmh" ]; then
+
+		phash=`convert "$img" +repage -alpha off -colorspace gray -resize 256x256! \
+			-auto-level -blur 0x1 -scale 16x16! txt:- | \
+			tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p' | \
+			awk ' 
+			{ i=NR; blockmean[i] = $1; sum += $1; mean = sum/NR; } 
+			END { for (i=1; i<=NR; i++) { ( blockmean[i] >= mean )?hash[i]=1:hash[i]=0; print hash[i] } }' | \
+			tr -d '\012'`
+		storeMetaData
+		writeJsonData
+
+
+	elif [ "$method" = "bdh" ]; then
+
+		convert "$img" +repage -alpha off -colorspace gray -resize 256x256! \
+			-auto-level -blur 0x1 $tmpA1
+		# shift b to left by 1 and diff=b-a and crop at west side
+		phashArr1=(`convert $tmpA1 -scale 9x16! \( +clone -roll -1+0 \) \
+			-compose minus -composite +repage -gravity west -crop 8x16+0+0 +repage \
+			-threshold 0 -evaluate divide 255 -type grayscale txt:- | \
+			tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p'`)
+			
+		# shift b to up by 1 and diff=b-a and crop at north side
+		phashArr2=(`convert $tmpA1 -scale 16x9! \( +clone -roll +0-1 \) \
+			-compose minus -composite +repage -gravity north -crop 16x8+0+0 +repage \
+			-threshold 0 -evaluate divide 255 -type grayscale txt:- | \
+			tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p'`)
+			
+		phash="${phashArr1[*]} ${phashArr2[*]}"
+		phash=`echo "$phash" |  sed 's/ *//g'`
+		storeMetaData
+		writeJsonData
+
+	elif [ "$method" = "avh" ]; then
+
+		# compute var of each ring distorted so equal area rings
+		phash=`convert "$img" +repage -alpha off -colorspace gray -resize 256x256! \
+			-auto-level -blur 0x1 distort depolar 0 -write mpr:img +delete \
+			\( mpr:img -scale 1x256! \) \
+			\( mpr:img mpr:img -compose multiply -composite -scale 1x256! \) \
+			\( -clone 0 -clone 0 -compose multiply -composite \) \
+			\( -clone 1 -clone 2 +swap -compose minus -composite -auto-level -type grayscale \) \
+			-delete 0,1,2 txt: |\
+			tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p' | \
+			awk ' 
+			{ i=NR; annularvar[i] = $1; } 
+			END { for (i=1; i<NR; i++) { ( annularvar[i+1] >= annularvar[i] )?hash[i]=1:hash[i]=0; print hash[i] } }' | \
+			tr -d '\012'`
+		storeMetaData
+		writeJsonData
+
+
+	elif [ "$method" = "pfh" ]; then
+
+		# central 15x15 fft magnitude values of polar transformed images
+		phash=`convert "$img" +repage -alpha off -colorspace gray -resize 256x256! \
+			-auto-level -blur 0x1 -distort depolar 0 -fft -delete 1 \
+			-gravity northwest -crop 15x15+122+122 +repage -type grayscale txt:- |\
+			tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p' | \
+			awk ' 
+			{ i=NR; polarfft[i] = $1; } 
+			END { for (i=1; i<NR; i++) { ( polarfft[i+1] >= polarfft[i] )?hash[i]=1:hash[i]=0; print hash[i] } }' | \
+			tr -d '\012'`
+		storeMetaData
+		writeJsonData
+
+	fi
+
+	# write to comment or label meta data
+	if [ "$save" = "comment" ]; then
+		convert "$img" -set comment "$comment" "$img"
+	elif [ "$save" = "label" ]; then
+		convert "$img" -set label "$label" "$img"
+	fi
+
+	# show progress
+	if [ $progress -eq 1 ]; then
+		echo -e "$img"
+	elif [ $progress -eq 2 ]; then
+		echo -e "$img\t$method"
+	elif [ $progress -eq 3 ]; then
+		echo -e "$img\t$method\t$phash"
+	fi	
+	
+	
+else
+
+	# loop over images
+	for ((i=0; i<num_images; i++)); do
+		img="${imgArr[$i]}"
+		#echo "$img"
+		
+		# get image filename with extension from path
+		image=`convert -ping "$img" -format "%f" info:`
+		
+		# read the input image into the temporary cached image and test if valid
+		convert -quiet "$img" +repage -alpha off -colorspace gray \
+			-resize 256x256! -auto-level -blur 0x1 "$tmpA1" ||
+			errMsg "--- FILE $img DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+		# read image comment and label data
+		if [ "$save" = "comment" ]; then
+			comment=`convert -ping "$img" -format "%c" info:`
+		elif [ "$save" = "label" ]; then
+			label=`convert -ping "$img" -format "%l" info:`
+		fi
+		
+		# write image to jsonfile
+		if [ "$jsonfile" != "" ]; then
+			echo -e "\t\t{\"$image\":[" >> "$jsonfile"
+		fi
+		
+
+		# loop over methods
+		for ((j=0; j<num_methods; j++)); do
+			method="${mArr[$j]}"
+			#echo "$method"
+			if [ "$method" = "bmh" ]; then
+
+				phash=`convert "$tmpA1" -scale 16x16! txt:- | \
+					tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p' | \
+					awk ' 
+					{ i=NR; blockmean[i] = $1; sum += $1; mean = sum/NR; } 
+					END { for (i=1; i<=NR; i++) { ( blockmean[i] >= mean )?hash[i]=1:hash[i]=0; print hash[i] } }' | \
+					tr -d '\012'`
+				storeMetaData
+				writeJsonData
+
+			elif [ "$method" = "bdh" ]; then
+
+				# shift b to left by 1 and diff=b-a and crop at west side
+				phashArr1=(`convert $tmpA1 -scale 9x16! \( +clone -roll -1+0 \) \
+					-compose minus -composite +repage -gravity west -crop 8x16+0+0 +repage \
+					-threshold 0 -evaluate divide 255 -type grayscale txt:- | \
+					tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p'`)
+					
+				# shift b to up by 1 and diff=b-a and crop at north side
+				phashArr2=(`convert $tmpA1 -scale 16x9! \( +clone -roll +0-1 \) \
+					-compose minus -composite +repage -gravity north -crop 16x8+0+0 +repage \
+					-threshold 0 -evaluate divide 255 -type grayscale txt:- | \
+					tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p'`)
+					
+				phash="${phashArr1[*]} ${phashArr2[*]}"
+				phash=`echo "$phash" |  sed 's/ *//g'`
+				storeMetaData
+				writeJsonData
+				
+				
+			elif [ "$method" = "avh" ]; then
+
+				# compute var of each ring distorted so equal area rings
+				phash=`convert "$tmpA1" -distort depolar 0 -write mpr:img +delete \
+					\( mpr:img -scale 1x256! \) \
+					\( mpr:img mpr:img -compose multiply -composite -scale 1x256! \) \
+					\( -clone 0 -clone 0 -compose multiply -composite \) \
+					\( -clone 1 -clone 2 +swap -compose minus -composite -auto-level -type grayscale \) \
+					-delete 0,1,2 txt: |\
+					tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p' | \
+					awk ' 
+					{ i=NR; annularvar[i] = $1; } 
+					END { for (i=1; i<NR; i++) { ( annularvar[i+1] >= annularvar[i] )?hash[i]=1:hash[i]=0; print hash[i] } }' | \
+					tr -d '\012'`
+				storeMetaData
+				writeJsonData
+
+
+			elif [ "$method" = "pfh" ]; then
+
+				# central 15x15 fft magnitude values of polar transformed images
+				phash=`convert "$tmpA1" -distort depolar 0 -fft -delete 1 \
+					-gravity northwest -crop 15x15+122+122 +repage -type grayscale txt:- |\
+					tail -n +2 | sed -n 's/^.*gray[(]\(.*\)[)].*$/\1/p' | \
+					awk ' 
+					{ i=NR; polarfft[i] = $1; } 
+					END { for (i=1; i<NR; i++) { ( polarfft[i+1] >= polarfft[i] )?hash[i]=1:hash[i]=0; print hash[i] } }' | \
+					tr -d '\012'`
+				storeMetaData
+				writeJsonData
+				
+			fi
+		
+
+			# show progress
+			if [ $progress -eq 1 ]; then
+				echo -e "$img"
+			elif [ $progress -eq 2 ]; then
+				echo -e "$img\t$method"
+			elif [ $progress -eq 3 ]; then
+				echo -e "$img\t$method\t$phash"
+			fi	
+			
+			[ $progress -ne 0 ] && echo ""
+
+		done
+		
+		# write to comment or label meta data
+		if [ "$save" = "comment" ]; then
+			convert "$img" -set comment "$comment" "$img"
+		elif [ "$save" = "label" ]; then
+			convert "$img" -set label "$label" "$img"
+		fi
+
+		[ $progress -ne 0 ] && echo ""
+	done
+fi
+
+# write ending of jsonfile
+if [ "$jsonfile" != "" ]; then
+	echo -e "\t]" >> "$jsonfile"
+	echo -e "}" >> "$jsonfile"
+fi
+
+
+exit 0
+
+
+

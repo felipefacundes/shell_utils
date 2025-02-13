@@ -1,0 +1,79 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script centralizes the given text in the terminal with a specified color.
+DOCUMENTATION
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["usage"]="Uso: ${0##*/} [COR] [TEXTO]"
+        ["description"]="Este script centraliza o texto dado no terminal com uma cor especificada."
+        ["arguments"]="Argumentos:"
+        ["color"]="  COR        A cor para o fundo do texto. Use códigos de cor ANSI."
+        ["color_example"]="  Exemplo:   '\033[31m' para vermelho, '\033[32m' para verde, '\033[34m' para azul, etc."
+        ["text"]="  TEXTO      O texto a ser exibido no centro do terminal."
+        ["options"]="Opções:"
+        ["help"]="-h, --help   Mostra esta mensagem de ajuda e sai."
+        ["examples"]="Exemplos:"
+        ["example1"]="  ${0##*/} '\033[31m' 'Olá, Mundo!'    # Exibe 'Olá, Mundo!' em vermelho."
+        ["example2"]="  ${0##*/} '\033[32m' 'Bem-vindo!'     # Exibe 'Bem-vindo!' em verde."
+        ["note"]="Nota: Certifique-se de usar códigos de cor ANSI válidos para o argumento COR."
+    )
+else
+    MESSAGES=(
+        ["usage"]="Usage: ${0##*/} [COLOR] [TEXT]"
+        ["description"]="This script centralizes the given text in the terminal with a specified color."
+        ["arguments"]="Arguments:"
+        ["color"]="  COLOR      The color for the background of the text. Use ANSI color codes."
+        ["color_example"]="  Example:   '\033[31m' for red, '\033[32m' for green, '\033[34m' for blue, etc."
+        ["text"]="  TEXT       The text to be displayed in the center of the terminal."
+        ["options"]="Options:"
+        ["help"]="  -h, --help   Show this help message and exit."
+        ["examples"]="Examples:"
+        ["example1"]="  ${0##*/} '\033[31m' 'Hello, World!'    # Displays 'Hello, World!' in red."
+        ["example2"]="  ${0##*/} '\033[32m' 'Welcome!'         # Displays 'Welcome!' in green."
+        ["note"]="Note: Make sure to use valid ANSI color codes for the COLOR argument."
+    )
+fi
+
+function help {
+    echo "${MESSAGES[usage]}"
+    echo ""
+    echo "${MESSAGES[description]}"
+    echo ""
+    echo "${MESSAGES[arguments]}"
+    echo "${MESSAGES[color]}"
+    echo "${MESSAGES[color_example]}"
+    echo "${MESSAGES[text]}"
+    echo ""
+    echo "${MESSAGES[options]}"
+    echo "${MESSAGES[help]}"
+    echo ""
+    echo "${MESSAGES[examples]}"
+    echo "${MESSAGES[example1]}"
+    echo "${MESSAGES[example2]}"
+    echo ""
+    echo "${MESSAGES[note]}"
+    exit 0
+}
+
+function centralize_text {
+    local color="$1"   
+    local text="$2"
+    local cols=$(tput cols)                        # Get the width of the terminal
+    local text_len=${#text}                        # Text length
+    local padding=$(( (cols - text_len) / 2 ))     # Calculate spaces to centralize
+
+    # Build the line with colorful background and centralized text
+    printf "${color}%*s%s%*s\033[0m\n" "$padding" "" "$text" "$padding" ""
+}
+
+if [[ -z "$1" || -z "$2" ]]; then
+    help
+fi
+
+centralize_text "$1" "$2"

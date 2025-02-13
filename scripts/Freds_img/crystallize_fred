@@ -1,0 +1,229 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 4/25/2109 .......... 5/7/2109
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: crystallize [-n number] [-s seed] infile outfile 
+# USAGE: crystallize [-h|help]
+#
+# OPTIONS:
+#
+# -n     number     number of randomly placed crystals; integer>0; default=500
+# -s     seed       seed to randomize placement of crystal; integer>=0; default 
+#                   is totally random and result will not duplicate
+# 
+###
+# 
+# NAME: CRYSTALLIZE 
+# 
+# PURPOSE: Creates random crystal-like regions in an image.
+# 
+# DESCRIPTION: CRYSTALLIZE creates random crystal-like regions in an image. Each  
+# crystal will have a constant color found from the input image at random coordinates. 
+# The number of crystals can be adjusted.
+# 
+# 
+# OPTIONS: 
+# 
+# -n number ... NUMBER of randomly placed crystals. Values are integers>0. 
+# The default=500.
+# 
+# -s seed ... SEED to randomize the placement of the crystal. Values are integers>=0. 
+# The default is totally random placement such that the resulting image will not 
+# duplicate.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+number=500      # number of crystals
+seed=""         # random number seeds for coverage and color
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 6 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-n)    # get number
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID NUMBER SPECIFICATION ---"
+					   checkMinus "$1"
+					   number=`expr "$1" : '\([0-9]*\)'`
+					   [ "$number" = "" ] && errMsg "--- NUMBER=$number MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test=`echo "$number == 0" | bc`
+					   [ $test -eq 1 ] && errMsg "--- NUMBER=$number MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-s)    # get seed
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SEED SPECIFICATION ---"
+					   checkMinus "$1"
+					   seed=`expr "$1" : '\([0-9]*\)'`
+					   [ "$seed" = "" ] && errMsg "--- SEED=$seed MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# setup temporary images
+tmpA1="$dir/crystallize_1_$$.mpc"
+tmpB1="$dir/crystallize_1_$$.cache"
+trap "rm -f $tmpA1 $tmpB1; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+
+# read the input image into the temporary cached image and test if valid
+convert -quiet -regard-warnings "$infile" +repage -alpha off "$tmpA1" ||
+	errMsg "--- 1 FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+# get image width and height
+WxH=`convert -ping $tmpA1 -format "%wx%h" info:`
+ww=`echo $WxH | cut -dx -f1`
+hh=`echo $WxH | cut -dx -f2`
+wwm1=$((ww-1))
+hhm1=$((hh-1))
+
+# get list of random coordinates for x and y
+# Using bash $RANDOM is dramatically faster than Imagemagick random() via fx calc.
+# For 500 random pts, RANDOM is less than 1 sec and random() is about 17 sec.
+# Reference for $RANDOM and seeding --- http://www.ing.iac.es/~docs/external/bash/abs-guide/randomvar.html
+list=""
+xseed=$((seed % 32767))
+yseed=$((seed+1 % 32767))
+for ((i=0; i<number; i++)); do
+if [ "$seed" = "" ]; then
+x=$((RANDOM % wwm1))
+y=$((RANDOM % hhm1))
+else
+RANDOM=$((xseed % 32767))
+x=$(($RANDOM % wwm1))
+RANDOM=$((yseed % 32767))
+y=$(($RANDOM % hhm1))
+fi
+list="$list point $x,$y"
+j=$((i+1))
+xseed=$((xseed+i*i))
+yseed=$((yseed+j*j))
+done
+
+# process input
+# create black image with random points in white
+# put that image into the alpha channel
+# use sparse-color:- to get list of coordinates and colors for opaque pixels
+# use -sparse-color voronoi to fill in transparency with colors from nearest opaque color
+convert $tmpA1 \
+\( -clone 0 -fill black -colorize 100 \
+-fill white -draw "$list" \) \
+-alpha off -compose copy_opacity -composite \
+sparse-color:- | \
+convert -size ${ww}x${hh} xc: -sparse-color Voronoi @- "$outfile"
+
+exit 0
+
+
+
+
+
+

@@ -1,0 +1,104 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to adjust the screen brightness of a connected display using the 'xrandr' command. 
+Its main purpose is to provide users with a simple command-line interface to increase or decrease the brightness gradually. 
+
+Strengths:
+1. User -Friendly: The script includes a help message that guides users on how to use it effectively.
+2. Gradual Adjustment: It allows for gradual changes in brightness, enhancing user control over display settings.
+3. Error Handling: The script checks for errors, such as the inability to determine the current brightness, and provides appropriate feedback.
+4. Dynamic Brightness Control: It dynamically calculates new brightness levels while ensuring they remain within valid limits (0 to 1).
+5. Modular Functions: The use of functions for different tasks (getting brightness, increasing, decreasing, and showing help) promotes 
+   code readability and maintainability.
+
+Capabilities:
+- Adjusts brightness based on user input.
+- Supports command-line options for increasing, decreasing, and displaying help.
+- Utilizes 'xrandr' for effective screen management.
+DOCUMENTATION
+
+# Get the name of the connected display
+connected="$(xrandr | awk '/ connected/ {print $1; exit}')"
+
+# Function to get current brightness using xrandr
+get_current_brightness() {
+    local display="$1"
+    current=$(xrandr --verbose | grep -A5 "$display" | grep "Brightness" | cut -d':' -f2 | tr -d ' ')
+    echo "$current"
+}
+
+# Function to display help message
+show_help() {
+    echo "Usage: ${0##*/} [OPTION]"
+    echo "Adjust the screen brightness."
+    echo ""
+    echo "Options:"
+    echo "  --increase        Increase brightness gradually"
+    echo "  --decrease        Decrease brightness gradually"
+    echo "  --help            Show this help message"
+    exit 0
+}
+
+# Function to increase brightness gradually
+increase_brightness() {
+    current_brightness=$(get_current_brightness "$connected")
+    
+    if [[ -z "$current_brightness" ]]; then
+        echo "Error: Unable to determine current brightness."
+        exit 1
+    fi
+
+    # Define the increment value (e.g., 0.05)
+    increment=0.05
+    new_brightness=$(echo "$current_brightness + $increment" | bc)
+
+    # Ensure the new brightness is capped between 0 and 1
+    if (( $(echo "$new_brightness > 1" | bc -l) )); then
+        new_brightness=1
+    fi
+
+    echo "Increasing brightness to $new_brightness"
+    xrandr --output "$connected" --brightness "$new_brightness"
+}
+
+# Function to decrease brightness gradually
+decrease_brightness() {
+    current_brightness=$(get_current_brightness "$connected")
+    
+    if [[ -z "$current_brightness" ]]; then
+        echo "Error: Unable to determine current brightness."
+        exit 1
+    fi
+
+    # Define the decrement value (e.g., 0.05)
+    decrement=0.05
+    new_brightness=$(echo "$current_brightness - $decrement" | bc)
+
+    # Ensure the new brightness is not below 0
+    if (( $(echo "$new_brightness < 0" | bc -l) )); then
+        new_brightness=0
+    fi
+
+    echo "Decreasing brightness to $new_brightness"
+    xrandr --output "$connected" --brightness "$new_brightness"
+}
+
+# Main script logic to process arguments
+case "$1" in
+    --increase)
+        increase_brightness
+        ;;
+    --decrease)
+        decrease_brightness
+        ;;
+    --help)
+        show_help
+        ;;
+    *)
+        echo "Invalid option. Use --help for usage information."
+        exit 1
+        ;;
+esac

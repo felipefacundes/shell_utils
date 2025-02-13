@@ -1,0 +1,8 @@
+alias find_temperature_sensor='~/.shell_utils/scripts/get_sensor_temperatures.sh -f'
+alias get_sensor_temperatures='~/.shell_utils/scripts/get_sensor_temperatures.sh -t'
+alias sensor_temperatures='get_sensor_temperatures'
+alias sensors_temperatures='get_sensor_temperatures'
+alias temp='sensor_temperatures'
+alias temperature='temp'
+alias temperatures='temp'
+alias temperatura='temp'

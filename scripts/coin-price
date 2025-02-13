@@ -1,0 +1,34 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script retrieves the current exchange rate for various currencies using the ExchangeRate API. 
+It accepts a base currency (defaulting to USD) and a target currency (defaulting to BRL) as command-line arguments. 
+The script supports multiple currencies, including "yene", "dolar" and "euro," and fetches the latest rates in JSON format, 
+parsing the response with 'jq'. If the specified currency is invalid or the API call fails, it outputs an appropriate error message. 
+Additionally, it includes a help option to guide users on how to use the script effectively.
+DOCUMENTATION
+
+declare -u coin
+declare -u conversion
+
+coin="${1:-USD}"
+conversion="${2:-BRL}"
+
+if [ "$1" == "dolar" ] || [ "$1" == "dollar" ]; then
+    coin="USD"
+elif [ "$1" == "euro" ]; then
+    coin="EUR"
+elif [[ "$1" = "-h" ]] || [[ "$1" = "--help" ]]; then
+    echo "Usage: ${0##*/} [dolar|euro|USD] [BRL|USD|EUR]"
+    exit 1
+fi
+
+response=$(curl -s "https://api.exchangerate-api.com/v4/latest/$coin")
+rate=$(echo "$response" | jq ".rates.${conversion}")
+if [ "$rate" == "null" ]; then
+    echo "Error getting quote: $(echo $response | jq '.error')"
+else
+    echo $rate
+fi

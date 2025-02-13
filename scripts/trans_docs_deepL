@@ -1,0 +1,66 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to facilitate the translation of files using the DeepL translation service. 
+It allows users to specify the format of the files to be translated and the target language. 
+
+Strengths:
+1. User -Friendly Interface: The script provides clear usage instructions and examples for ease of use.
+2. Flexible File Handling: It processes multiple files with a specified format, enhancing efficiency.
+3. Language Support: Users can choose their desired target language for translation.
+4. Automated Output Naming: Translated files are automatically named to reflect the target language, making organization straightforward.
+5. SRT File Handling: It includes specific handling for SRT files, ensuring proper formatting after translation.
+
+Capabilities:
+- Accepts command-line arguments for file format and language.
+- Translates all files of a specified format in the current directory.
+- Utilizes a separate script for the actual translation process.
+- Modifies SRT files to correct formatting issues post-translation.
+DOCUMENTATION
+
+script="${0##*/}"
+SCRIPT=~/.shell_utils/scripts/trans_deepL.sh
+declare -l format
+declare -l language
+
+usage() {
+    echo "Usage: $script -f <format> -l <language>"
+    echo "Example: $script -f txt -l pt"
+    exit 1
+}
+
+while getopts "f:l:" opt; do
+    case "$opt" in
+        f) format="$OPTARG" ;;
+        l) language="$OPTARG" ;;
+        *) usage ;;
+    esac
+done
+
+if [ -z "$format" ] || [ -z "$language" ]; then
+    usage
+fi
+
+for i in *."$format"; do
+    if [ ! -e "$i" ]; then
+        echo "No file found with the .$format extension."
+        exit 1
+    fi
+
+    echo "Translating $i..."
+    "$SCRIPT" -l "$language" -i "$i" -o "${i%.*}-$language.$format"
+    echo "Translated file: ${i%.*}-$language.$format"
+    echo
+done
+
+if [[ "$format" != "srt" ]]; then
+    exit 0
+fi
+
+for i in *"-$language.$format"; do 
+    sed -i 's|ufeff1|1|g' "$i"
+done
+
+exit 0

@@ -1,0 +1,47 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to process PDF files in a directory, identifying and listing them or opening them using 
+a specified application. Its key strengths include:
+
+1. Flexibility: Allows users to specify an application for opening PDFs or simply list the PDF files.  
+2. Accuracy: Reliably identifies PDF files by checking their MIME type.  
+3. Efficiency: Automatically detects and processes PDF files in the current directory, providing a clear output.  
+
+Capabilities: The script can identify PDF files, open them with a chosen app, or list them for further use.
+DOCUMENTATION
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "Example: app=feh ${0##*/}"
+    exit 0 
+fi
+
+app="${app:-""}"
+pdfs=()
+
+# Loop to loop through the files in the folder
+for pdf in *; do
+    # Check if the file is a regular file and if it is an pdf file
+    if [ -f "$pdf" ] && file -b --mime-type "$pdf" | grep -q "application/pdf"; then
+        if [[ "$app" ]]; then
+            echo
+            echo \'"$pdf"\'
+            echo
+            "$app" "$pdf"
+        else
+            pdfs+=(\'"$pdf"\')
+        fi
+    fi
+done
+
+if [ ${#pdfs[@]} -gt 0 ]; then
+    num_itens=${#pdfs[@]}
+
+    echo -e "PDFs: $num_itens\n"
+
+    for item in "${pdfs[@]}"; do
+        echo "$item"
+    done
+fi

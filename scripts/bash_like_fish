@@ -1,0 +1,7 @@
+#!/bin/bash
+
+HISTORY=$HOME/.bash_history
+WORDLIST=$HOME/.wordlist
+cp -f $HOME/.bash_history $HOME/.wordlist
+USERINPUT=$(rlwrap -H $HISTORY -f $WORDLIST sh -c 'read REPLY && echo $REPLY')
+echo "$USERINPUT"

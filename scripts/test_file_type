@@ -1,0 +1,260 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+The test_file_type script is a versatile and multilingual utility designed to analyze and report 
+detailed information about a given file. This tool can identify various file types, 
+including directories, symbolic links, pipes, character/block devices, sockets, and regular files. 
+It also provides specific details for images, audio, video, PDFs, and compressed files.
+
+## Features
+
+- Multilingual Support: Messages are provided in English, Portuguese, French, and German based on system language.
+- Detailed File Analysis:
+  - Identifies file types such as directories, symbolic links, and pipes.
+  - Extracts metadata for media files (images, audio, video).
+  - Counts pages for PDF documents.
+  - Calculates uncompressed sizes for compressed files.
+- Integration: Functions seamlessly within the 'shell_utils' framework, enhancing user productivity.
+DOCUMENTATION
+
+# Define multilingual messages
+file="${1##*/}"
+declare -A MESSAGES
+
+update_array() {
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        MESSAGES=(
+            ["file_not_exist"]="O arquivo $file não existe."
+            ["is_directory"]="$file é um diretório."
+            ["is_symlink"]="$file é um link simbólico."
+            ["is_pipe"]="$file é um pipe nomeado (fifo)."
+            ["is_char_device"]="$file é um dispositivo de caractere."
+            ["is_block_device"]="$file é um dispositivo de bloco."
+            ["is_socket"]="$file é um socket."
+            ["file_empty"]="O arquivo $file está vazio."
+            ["executable_ascii"]="$file é um arquivo executável ASCII."
+            ["executable_binary"]="$file é um arquivo executável binário."
+            ["file_executable"]="O arquivo $file é executável."
+            ["file_writable"]="O arquivo $file é gravável."
+            ["file_readable"]="O arquivo $file é legível."
+            ["regular_ascii"]="$file é um arquivo regular ASCII."
+            ["regular_binary"]="$file é um arquivo regular binário."
+            ["file_regular"]="O arquivo $file é regular."
+            ["image_details"]="$file é uma imagem ${image_type} com dimensões ${image_width}x${image_height}, ${image_bits} bits, ${image_color_space}, ${image_colors} cores e tamanho ${image_size}."
+            ["audio_details"]="$file é um áudio ${audio_format} com duração de ${audio_duration} segundos."
+            ["video_details"]="$file é um vídeo ${video_format} com duração de ${video_duration} e resolução de ${video_width}x${video_height}."
+            ["pdf_pages"]="$file é um documento PDF com ${pdf_pages} páginas."
+            ["install_pdfinfo"]="Instale 'pdfinfo' para obter mais detalhes sobre o documento PDF."
+            ["compressed"]="$file é um arquivo compactado com tamanho descompactado total de ${uncompressed_size} bytes."
+            ["unknown_file"]="Não foi possível determinar o tipo do arquivo $file."
+        )
+    elif [[ "${LANG,,}" =~ fr_ ]]; then
+        MESSAGES=(
+            ["file_not_exist"]="Le fichier $file n'existe pas."
+            ["is_directory"]="$file est un répertoire."
+            ["is_symlink"]="$file est un lien symbolique."
+            ["is_pipe"]="$file est un tube nommé (fifo)."
+            ["is_char_device"]="$file est un périphérique de caractère."
+            ["is_block_device"]="$file est un périphérique de bloc."
+            ["is_socket"]="$file est un socket."
+            ["file_empty"]="Le fichier $file est vide."
+            ["executable_ascii"]="$file est un fichier exécutable ASCII."
+            ["executable_binary"]="$file est un fichier exécutable binaire."
+            ["file_executable"]="Le fichier $file est exécutable."
+            ["file_writable"]="Le fichier $file est modifiable."
+            ["file_readable"]="Le fichier $file est lisible."
+            ["regular_ascii"]="$file est un fichier régulier ASCII."
+            ["regular_binary"]="$file est un fichier régulier binaire."
+            ["file_regular"]="Le fichier $file est régulier."
+            ["image_details"]="$file est une image ${image_type} avec des dimensions ${image_width}x${image_height}, ${image_bits} bits, ${image_color_space}, ${image_colors} couleurs et une taille de ${image_size}."
+            ["audio_details"]="$file est un fichier audio ${audio_format} d'une durée de ${audio_duration} secondes."
+            ["video_details"]="$file est une vidéo ${video_format} d'une durée de ${video_duration} et d'une résolution de ${video_width}x${video_height}."
+            ["pdf_pages"]="$file est un document PDF avec ${pdf_pages} pages."
+            ["install_pdfinfo"]="Installez 'pdfinfo' pour obtenir plus de détails sur le document PDF."
+            ["compressed"]="$file est une archive compressée avec une taille totale décompressée de ${uncompressed_size} octets."
+            ["unknown_file"]="Impossible de déterminer le type du fichier $file."
+        )
+    elif [[ "${LANG,,}" =~ de_ ]]; then
+        MESSAGES=(
+            ["file_not_exist"]="Die Datei $file existiert nicht."
+            ["is_directory"]="$file ist ein Verzeichnis."
+            ["is_symlink"]="$file ist ein symbolischer Link."
+            ["is_pipe"]="$file ist eine benannte Pipe (fifo)."
+            ["is_char_device"]="$file ist ein Zeichengerät."
+            ["is_block_device"]="$file ist ein Blockgerät."
+            ["is_socket"]="$file ist ein Socket."
+            ["file_empty"]="Die Datei $file ist leer."
+            ["executable_ascii"]="$file ist eine ausführbare ASCII-Datei."
+            ["executable_binary"]="$file ist eine ausführbare Binärdatei."
+            ["file_executable"]="Die Datei $file ist ausführbar."
+            ["file_writable"]="Die Datei $file ist beschreibbar."
+            ["file_readable"]="Die Datei $file ist lesbar."
+            ["regular_ascii"]="$file ist eine reguläre ASCII-Datei."
+            ["regular_binary"]="$file ist eine reguläre Binärdatei."
+            ["file_regular"]="Die Datei $file ist regulär."
+            ["image_details"]="$file ist ein ${image_type}-Bild mit den Abmessungen ${image_width}x${image_height}, ${image_bits} Bit, ${image_color_space}, ${image_colors} Farben und einer Größe von ${image_size}."
+            ["audio_details"]="$file ist eine ${audio_format}-Audiodatei mit einer Dauer von ${audio_duration} Sekunden."
+            ["video_details"]="$file ist eine ${video_format}-Videodatei mit einer Dauer von ${video_duration} und einer Auflösung von ${video_width}x${video_height}."
+            ["pdf_pages"]="$file ist ein PDF-Dokument mit ${pdf_pages} Seiten."
+            ["install_pdfinfo"]="Installieren Sie 'pdfinfo', um mehr Details über das PDF-Dokument zu erhalten."
+            ["compressed"]="$file ist ein komprimiertes Archiv mit einer Gesamtextrahierten Größe von ${uncompressed_size} Bytes."
+            ["unknown_file"]="Der Dateityp von $file konnte nicht bestimmt werden."
+        )
+    else
+        MESSAGES=(
+            ["file_not_exist"]="The file $file does not exist."
+            ["is_directory"]="$file is a directory."
+            ["is_symlink"]="$file is a symbolic link."
+            ["is_pipe"]="$file is a named pipe (fifo)."
+            ["is_char_device"]="$file is a character device."
+            ["is_block_device"]="$file is a block device."
+            ["is_socket"]="$file is a socket."
+            ["file_empty"]="The file $file is empty."
+            ["executable_ascii"]="$file is an executable ASCII file."
+            ["executable_binary"]="$file is an executable binary file."
+            ["file_executable"]="The file $file is executable."
+            ["file_writable"]="The file $file is writable."
+            ["file_readable"]="The file $file is readable."
+            ["regular_ascii"]="$file is a regular ASCII file."
+            ["regular_binary"]="$file is a regular binary file."
+            ["file_regular"]="The file $file is regular."
+            ["image_details"]="$file is an ${image_type} image with dimensions ${image_width}x${image_height}, ${image_bits} bits, ${image_color_space}, ${image_colors} colors and size ${image_size}."
+            ["audio_details"]="$file is an ${audio_format} audio with duration of ${audio_duration} seconds."
+            ["video_details"]="$file is a ${video_format} video with duration of ${video_duration} and resolution of ${video_width}x${video_height}."
+            ["pdf_pages"]="$file is a PDF document with ${pdf_pages} pages."
+            ["install_pdfinfo"]="Install 'pdfinfo' to get more details about the PDF document."
+            ["compressed"]="$file is a compressed archive with total uncompressed size of ${uncompressed_size} bytes."
+            ["unknown_file"]="Unable to determine the type of the file $file."
+        )
+    fi
+}
+
+update_array
+
+if [[ ! -e "${1}" ]]; then
+    echo "${MESSAGES["file_not_exist"]}"
+elif [[ -d "${1}" ]]; then
+    echo "${MESSAGES["is_directory"]}"
+elif [[ -L "${1}" ]]; then
+    echo "${MESSAGES["is_symlink"]}"
+elif [[ -p "${1}" ]]; then
+    echo "${MESSAGES["is_pipe"]}"
+elif [[ -c "${1}" ]]; then
+    echo "${MESSAGES["is_char_device"]}"
+elif [[ -b "${1}" ]]; then
+    echo "${MESSAGES["is_block_device"]}"
+elif [[ -S "${1}" ]]; then
+    echo "${MESSAGES["is_socket"]}"
+elif [[ ! -s "${1}" ]]; then
+    echo "${MESSAGES["file_empty"]}"
+elif [[ -x "${1}" ]]; then
+    if file -b --mime-encoding "${1}" | grep -q "ascii"; then
+        echo "${MESSAGES["executable_ascii"]}"
+    elif file -b --mime-encoding "${1}" | grep -q "binary"; then
+        echo "${MESSAGES["executable_binary"]}"
+    else
+        echo "${MESSAGES["file_executable"]}"
+    fi
+
+    # Additional test for text or binary file
+    if [[ -w "${1}" ]]; then
+        echo "${MESSAGES["file_writable"]}"
+    elif [[ -r "${1}" ]]; then
+        echo "${MESSAGES["file_readable"]}"
+    fi
+elif [[ -f "${1}" ]]; then
+    # Additional test for text or binary file
+    if file -b --mime-encoding "${1}" | grep -q "ascii"; then
+        echo "${MESSAGES["regular_ascii"]}"
+    elif file -b --mime-encoding "${1}" | grep -q "binary"; then
+        echo "${MESSAGES["regular_binary"]}"
+    else
+        echo "${MESSAGES["file_regular"]}"
+    fi
+
+    # Additional test for text or binary file
+    if [[ -w "${1}" ]]; then
+        echo "${MESSAGES["file_writable"]}"
+    elif [[ -r "${1}" ]]; then
+        echo "${MESSAGES["file_readable"]}"
+    fi
+
+    type=$(file -b --mime-type "$1")
+
+    # Additional test for image files using the 'identify' command.
+    if [[ "$type" == image/* ]]; then # Check if the input file can be identified as an image.
+        # Additional test for image files using the 'identify' command from ImageMagick package.
+        if command -v identify &>/dev/null 2>&1; then # Check if 'identify' command exists.
+            image_type=$(identify -format '%m' "${1}")
+            image_width=$(identify -format '%w' "${1}")
+            image_height=$(identify -format '%h' "${1}")
+            image_size=$(du -hs "${1}" | awk '{ print $1 }')
+            image_bits=$(identify -format '%z' "${1}")
+            image_colors=$(identify -format '%k' "${1}")
+            image_color_space=$(identify -format "%[colorspace]" "${1}")
+            update_array
+            printf '%s\n' "${MESSAGES["image_details"]}"
+        fi
+    fi
+
+    # Additional test for audio files using the 'ffprobe' command.
+    if [[ "$type" == audio/* ]]; then  # Check if the input file can be identified as an audio.
+        if command -v ffprobe &>/dev/null 2>&1; then # Check if 'ffprobe' command exists.
+            audio_format=$(ffprobe -v error -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 "${1}")
+            audio_duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${1}")
+            update_array
+            printf '%s\n' "${MESSAGES["audio_details"]}"
+        fi
+    fi
+
+    # Additional test for video files using the 'mediainfo' command.
+    if [[ "$type" == video/* ]]; then  # Check if the input file can be identified as a video.
+        if command -v mediainfo &>/dev/null 2>&1; then # Check if 'mediainfo' command exists.
+            video_format=$(mediainfo --Inform="General;%Format%" "${1}")
+            video_duration=$(mediainfo --Inform="General;%Duration/String3%" "${1}")
+            video_width=$(mediainfo --Inform="Video;%Width%" "${1}")
+            video_height=$(mediainfo --Inform="Video;%Height%" "${1}")
+            update_array
+            printf '%s\n' "${MESSAGES["video_details"]}"
+        fi
+    fi
+
+    # Additional test for PDF files
+    if echo "$type" | grep -q "application/pdf"; then
+        if command -v pdfinfo &>/dev/null 2>&1; then # Check if 'pdfinfo' command exists.
+            pdf_pages=$(pdfinfo "$1" | awk '/^Pages:/ {print $2}')
+            update_array
+            echo "${MESSAGES["pdf_pages"]}"
+        else
+            echo "${MESSAGES["install_pdfinfo"]}"
+        fi
+    fi
+
+    # Additional test for compressed files (ZIP, TAR, etc.)
+    if echo "$type" | grep -q "a*/zip"; then
+        uncompressed_size=$(unzip -l "$1" | tail -n +4 | awk '{total+=$1} END{print total}')
+        update_array
+        echo "${MESSAGES["compressed"]}"
+    fi
+    if echo "$type" | grep -q "a*/x-tar"; then
+        uncompressed_size=$(tar -tvf "$1" | awk '{total+=$3} END{print total}')
+        update_array
+        echo "${MESSAGES["compressed"]}"
+    fi
+    if echo "$type" | grep -q "a*/gzip"; then
+        uncompressed_size=$(gzip -l "$1" | tail -n +2 | awk '{total+=$2} END{print total}')
+        update_array
+        echo "${MESSAGES["compressed"]}"
+    fi
+    if echo "$type" | grep -q "a*/bzip2"; then
+        uncompressed_size=$(bzip2 -dc "$1" | wc -c)
+        update_array
+        echo "${MESSAGES["compressed"]}"
+    fi
+
+else
+    echo "${MESSAGES["unknown_file"]}"
+    exit 1
+fi

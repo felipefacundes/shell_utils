@@ -1,0 +1,264 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 7/17/2018 .......... 7/18/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: shimmer [-f frames] [-d delay] [-r rate] [-a amount] [-F fcolor] infile outfile
+# USAGE: shimmer [-h or -help]
+#
+# OPTIONS:
+#
+# -f     frames     number of frames to generate in the animation; integer>0; default=15
+# -d     delay      animation delay between frames; integer>0; default=5 
+# -r     rate       rate of change in chirp wavelength; integer>0; default=3
+# -a     amount     displacement amount; integer>0; default=10
+# -F     fcolor     fade color for the reflection; any valid opaque IM color is 
+#                   allowed; default=no fade; typical color is white.
+#
+###
+#
+# NAME: SHIMMER 
+# 
+# PURPOSE: Creates a reflected heat shimmering effect animation.
+# 
+# DESCRIPTION: SHIMMER creates a reflected heat shimmering effect animation. 
+# 
+# 
+# OPTIONS: 
+# 
+# -f frames ... FRAMES are the number of frames to generate in the animation. Value 
+# are integers>0. The default=15.
+# 
+# -d delay ... DELAY is animation delay between frames in ticks. Values are integers>0. 
+# The default=5.
+# 
+# -r rate ... RATE of change in the chirp distortion to be applied. Values are 
+# integers>0. A chirp is a sinusoidal wave whose wavelength/frequency changes as a 
+# function of distance along the wave. The rate value is the exponent used in the 
+# chirp equation. Larger values ramp the chirp faster. The default=3.
+# 
+# -a amount ... AMOUNT of displacement. Values are integers>=0. The default=10.
+# 
+# -F fcolor ... FCOLOR is the fade color for the reflection. Any valid opaque IM color 
+# is allowed. Te default=no fade. Typical color is white.
+# 
+# REFERENCE: 
+# https://en.wikipedia.org/wiki/Chirp
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+frames=15
+delay=5
+rate=3
+amount=10
+fcolor=""
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 12 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -help|-h)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-f)    # get frames
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FRAMES SPECIFICATION ---"
+					   checkMinus "$1"
+					   frames=`expr "$1" : '\([0-9]*\)'`
+					   [ "$frames" = "" ] && errMsg "--- FRAMES=$frames MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$frames == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- FRAMES=$frames MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-d)    # get delay
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DELAY SPECIFICATION ---"
+					   checkMinus "$1"
+					   delay=`expr "$1" : '\([0-9]*\)'`
+					   [ "$delay" = "" ] && errMsg "--- DELAY=$delay MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$delay == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- DELAY=$delay MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-r)    # get rate
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RATE SPECIFICATION ---"
+					   checkMinus "$1"
+					   rate=`expr "$1" : '\([0-9]*\)'`
+					   [ "$rate" = "" ] && errMsg "--- RATE=$rate MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$rate == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- RATE=$rate MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-a)    # get amount
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID AMOUNT SPECIFICATION ---"
+					   checkMinus "$1"
+					   amount=`expr "$1" : '\([0-9]*\)'`
+					   [ "$amount" = "" ] && errMsg "--- AMOUNT=$amount MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$amount == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- AMOUNT=$amount MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-F)    # get fcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID AMOUNT SPECIFICATION ---"
+					   checkMinus "$1"
+					   fcolor="$1"
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# set up temporaries
+tmp1A="$dir/shimmer_1_$$.mpc"
+tmp1B="$dir/shimmer_1_$$.cache"
+tmp2A="$dir/shimmer_2_$$.mpc"
+tmp2B="$dir/shimmer_2_$$.cache"
+trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B;" 0
+trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B; exit 1" 1 2 3 15
+#trap "rm -f $tmp1A $tmp1B; exit 1" ERR
+
+
+
+# test input image
+convert -quiet "$infile" +repage "$tmp1A" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get image dimensions
+WxH=`convert -ping $tmp1A -format "%wx%h" info:`
+ww=`echo $WxH | cut -dx -f1`
+hh=`echo $WxH | cut -dx -f2`
+
+if [ "$fcolor" = "" ]; then
+	# use subshell processing to avoid saving separate frames
+	(
+	for ((k=0; k<frames; k++)); do
+	convert $tmp1A -write mpr:img \
+	\( -size 1x${hh} xc: -fx "0.5*sin($k*2*pi/$frames+2*pi*(j/(0.5*h))^$rate)+0.5" -scale ${ww}x${hh}! \) \
+	-define compose:args=0,$amount -compose displace -composite -flip \
+	mpr:img +swap -append miff:-
+	done
+	) | convert -delay $delay - -loop 0 "$outfile"
+else
+	# use subshell processing to avoid saving separate frames
+	convert -size ${ww}x${hh} gradient: -flip $tmp2A
+	(
+	for ((k=0; k<frames; k++)); do
+	convert $tmp1A -write mpr:img \
+	\( -size 1x${hh} xc: -fx "0.5*sin($k*2*pi/$frames+2*pi*(j/(0.5*h))^$rate)+0.5" -scale ${ww}x${hh}! \) \
+	-define compose:args=0,$amount -compose displace -composite -compose over \
+	$tmp2A -alpha off -compose copy_opacity -composite -compose over -background "$fcolor" -flatten -flip \
+	mpr:img +swap -append miff:-
+	done
+	) | convert -delay $delay - -loop 0 "$outfile"
+fi
+
+exit 0
+
+
+
+

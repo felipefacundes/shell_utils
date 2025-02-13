@@ -1,0 +1,154 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script extracts hexadecimal color codes from an image file, allowing users to specify the number of colors to extract, 
+the output file for the results, and the extraction mode. It provides a help message detailing usage and options, 
+including the ability to generate a color palette image from a text file of hex codes. The script supports multiple extraction modes, 
+utilizing the 'magick' command from ImageMagick for color extraction. It also includes error handling for missing image files and 
+incorrect command-line arguments.
+DOCUMENTATION
+
+image_file=""
+colors=20
+output_file=""
+mode=""
+
+# Function to display the help message
+display_help() {
+    cat <<EOF
+Usage: ${0##*/} [-colors <number>] [-output <file>] [-mode <mode>] <image>
+
+    Extracts hexadecimal color codes from an image.
+
+Options:
+
+-c, -colors <number>  
+    Specifies the number of colors to be extracted (default: 20)
+
+-o, -output <file> 
+    Specifies the output file to write the extracted information
+
+-m, -mode <mode>     
+    Specifies the extraction mode (default: 1)
+    Mode 1: Use 'magick' to extract the colors (e.g., -mode 1)
+    Mode 2: Use an additional command to extract the colors (e.g., -mode 2)
+
+-p, -palette file.txt output_image.png      
+    Generates an image with hexadecimal color palettes from the file.txt
+
+-h, -help             
+    Displays this help message
+EOF
+}
+
+# Converts a text file with hexadecimal color codes to an image with a color palette
+hexacode2palette() {
+    
+    # Read the input file
+    colors=($(cat "$1"))
+
+    # Calculate the number of colors and the image size
+    num_colors=${#colors[@]}
+    size=100
+    width=$((num_colors * ${size}))
+    height=${size}
+
+    # Create a blank image
+    magick -size ${width}x${height} xc:white "$2"
+
+    # Set the initial position of the color square
+    x=0
+    y=0
+
+    # Iterate over the colors and create squares in the image
+    for color in "${colors[@]}"; do
+        magick "$2" -fill "$color" -draw "rectangle $x,$y $((x+${size})),$((y+${size}))" "$2"
+        x=$((x+${size}))
+    done
+}
+
+# Loop to process the arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -colors|-c)
+            shift
+            colors=$1
+            ;;
+        -output|-o)
+            shift
+            output_file=$1
+            ;;
+        -palette|-p)
+            # Check if the number of arguments is correct
+            if [[ -z $2 ]]; then            
+                echo "Usage: $(basename $0) input_file.txt output_image.png"
+            else
+                shift
+                palette_file=$1
+                output_file=$2
+                hexacode2palette "$palette_file" "$output_file"
+            fi
+            exit 0
+            ;;
+        -mode|-m)
+            shift
+            mode=$1
+            ;;
+        -help|-h)
+            display_help
+            exit 0
+            ;;
+        *)
+            image_file=$1
+            ;;
+    esac
+    shift
+done
+
+# Check if an image file was provided
+if [[ -z $image_file ]]; then
+    echo "No image provided. Use -help for more information."
+    exit 1
+fi
+
+# Check if the image file exists
+if [[ ! $image_file ]]; then
+    echo "The image file '$image_file' does not exist."
+    exit 1
+fi
+
+# Function to extract colors using mode 1 (magick)
+extract_colors_mode1() {
+    output=$(magick "$image_file" +dither -colors "$colors" -unique-colors txt: | awk '!/pixel/{print $3}' | sed 's/.*#\(...\)\(...\)\(...\).*/#\1\2\3/')
+}
+
+# Function to extract colors using mode 2 (additional command)
+extract_colors_mode2() {
+    output=$(magick "$image_file" +dither -colors "$colors" -define histogram:unique-colors=true -format "%c" histogram:info: | awk '!/pixel/{print $3}' | sed 's/.*#\(...\)\(...\)\(...\).*/#\1\2\3/')
+}
+
+extract_colors_mode3() {
+    #output=$(magick -size "$colors"x"$colors" xc:"$image_file" txt:-| awk '!/pixel/{print $3}' | sed 's/.\{6\}$//')
+    output=$(magick -size "$colors"x"$colors" xc:"$image_file" txt:-| awk '!/pixel/{print $3}' | sed -E 's/.*#(.{6}).*/#\1/')
+}
+
+# Check the selected mode (default: mode 1)
+if [[ $mode == "2" ]]; then
+    extract_colors_mode2
+elif [[ $mode == "3" ]]; then
+    extract_colors_mode3
+else
+    extract_colors_mode1
+fi
+
+# Check if an output file is specified
+if [[ -z $output_file ]]; then
+    echo "No output file specified. Printing information on the screen:"
+    echo "$output"
+else
+    echo "Writing information to the file: $output_file"
+    echo "$output" > "$output_file"
+    echo "Information written successfully."
+fi

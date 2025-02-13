@@ -1,0 +1,383 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 8/9/2019 .......... revised 8/9/2019
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: shapecompare [-m metric] [-t type] [-T thresh] [-e edgemode] [-i invert] 
+# infile1 infile2
+#
+# USAGE: shapecompare [-h or -help]
+# 
+# OPTIONS:
+# 
+# -m     metric       compare difference metric; choices are: sad, said, sand, rssd, all; 
+#                     default=sad
+# -t     type         type of image to convert input images for compare processing; 
+#                     choices are: grayscale (g), binary (b) or outline (o); 
+#                     default=grayscale
+# -T     thresh       threshold for converting to binary; 0<=thresh<=100 (percent); 
+#                     default=50
+# -e     edgemode     mode of morphologic edge processing; choices are: edge, edgin or 
+#                     edgeout; default=edge
+# -i     invert       invert (negate) colors in input image; choices are: yes (y) or 
+#                     no (n); default=no
+# 
+###
+# 
+# NAME: SHAPECOMPARE 
+# 
+# PURPOSE: To compares two images' shapes using metrics computed from Hu image moments.
+# 
+# DESCRIPTION: SHAPECOMPARE compares two images' shapes using metrics computed from 
+# Hu Image Moments. Several metrics are available. The image will first be converted 
+# to grayscale and can then be converted to binary or an edge outline. The script is 
+# designed to work with primarily binary or outline shapes on black backgrounds. 
+# However, grayscale shapes on black background or antialiased black/white shapes on 
+# black backgrounds should work, also. My analysis (see chart) indicates that outline 
+# mode does not work as well as the other two modes.
+# 
+# 
+# ARGUMENTS: 
+# 
+# -m metric ... METRIC is the compare metric to compute the difference between the two 
+# images. Smaller is better than larger. The choices are: sad (sum absolute difference), 
+# said (sum absolute inverse difference), sand (sum absolute normalized difference), 
+# rssd (root sum squared difference) or all (report all of them). The default=sad.
+# 
+# The equations for the metrics are:
+# SAD = sum( abs(Hu1 - Hu2) )
+# SAID = sum( abs(1/Hu1 - 1/Hu2) )
+# SAND = sum( abs(Hu1 - Hu2) / sqrt( abs(Hu1*Hu2) ) )
+# RSSD = sqrt( sum( (Hu1 - Hu2)^2 ) )
+# where there are 7 different (log) Hu image moments that are summed
+#
+# -t type ... TYPE of image to convert the input images for processing. The choices are: 
+# grayscale (g), binary (b) or outline (o). The default=grayscale.
+# 
+# -T thresh ... THRESH is the threshold for converting to binary. Values are: 
+# 0<=thresh<=100 (percent). The default=50.
+# 
+# -e edgemode. EDGEMODE is the mode of morphologic edge processing. The choices are: 
+# edge, edgin or edgeout. Edge will be 2 pixels thick. The other two will be only 
+# 1 pixel thick. All 3 use a diamond shaped kernel. The edgein will be on the white 
+# side and the edgeout will be on the black side. The default=edge.
+# 
+# -i invert ... INVERT (negate) the colors in input image as preprocessing. Choices are: 
+# yes (y) or no (n). The default=no
+# 
+# REFERENCE:
+# https://www.learnopencv.com/shape-matching-using-hu-moments-c-python/
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+metric="sad"		# sad (sum abs diff), said (sum abs inverse diff), sand (sum abs normalized diff), rssd (root sum squared diff) or all
+type="grayscale"	# grayscale (g), binary (b), outline (o)
+threshold=50		# threshold percent for binarizing 
+edgemode="edge"		# edge mode: edge (e), in (i), out (o)
+invert="no"			# invert white <--> black in binary
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+tmpdir="."    # suggestions are tmpdir="." or tmpdir="/tmp"
+
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 12 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+
+metric="sad"		# sad (sum abs diff), said (sum abs inverse diff), sand (sum abs normalized diff), rssd (root sum squared diff) or all
+type="grayscale"	# grayscale (g), binary (b), outline (o)
+threshold=50		# threshold percent for binarizing 
+edgemode="edge"		# edge mode: edge (e), in (i), out (o)
+invert="no"			# invert white <--> black in binary
+
+
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-m)    # get  metric
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID METRIC SPECIFICATION ---"
+					   checkMinus "$1"
+					   metric=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$metric" in 
+					   		sad) ;;
+					   		said) ;;
+					   		sand) ;;
+					   		rssd) ;;
+					   		*) errMsg "--- MODE=$metric IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				-t)    # get type
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TYPE SPECIFICATION ---"
+					   checkMinus "$1"
+					   type=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$type" in 
+					   		grayscale|g) type=grayscale;;
+					   		binary|b) type=binary;;
+					   		outline|o) type=outline;;
+					   		*) errMsg "--- TYPE=$type IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				-T)    # get thresh
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID THRESH SPECIFICATION ---"
+					   checkMinus "$1"
+					   thresh=`expr "$1" : '\([0-9]*\)'`
+					   [ "$thresh" = "" ] && errMsg "--- THRESH=$thresh MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test1=`echo "$thresh < 0" | bc`
+					   test2=`echo "$thresh > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- THRESH=$thresh MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ;;
+				-e)    # get edgemode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID EDGEMODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   edgemode=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$edgemode" in 
+					   		edge) ;;
+					   		edgein)  ;;
+					   		edgeout)  ;;
+					   		*) errMsg "--- EDGEMODE=$edgemode IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				-i)    # get invert
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID INVERT SPECIFICATION ---"
+					   checkMinus "$1"
+					   type=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$invert" in 
+					   		yes|y) invert=yes;;
+					   		no|n) invert=no;;
+					   		*) errMsg "--- INVERT=$invert IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile
+	infile1="$1"
+	infile2="$2"
+fi
+
+# test that infile1 provided
+[ "$infile1" = "" ] && errMsg "--- NO INPUT FILE 1 SPECIFIED ---"
+
+# test that infile1 provided
+[ "$infile2" = "" ] && errMsg "--- NO INPUT FILE 2 SPECIFIED ---"
+
+
+dir="$tmpdir/SHAPECOMPARE.$$"
+
+mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir; exit 0" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+
+# set up for invert
+if [ "$invert" = "yes" ]; then
+	inverting="-negate"
+else
+	inverting=""
+fi
+
+# get im_version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER */!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# set up for IM 7 identify
+if [ "$im_version" -ge "07000000" ]; then
+	identifying="magick identify"
+else
+	identifying="identify"
+fi
+
+# set up for type
+if [ "$type" = "binary" ]; then
+	proc="-threshold $thresh%"
+elif [ "$type" = "outline" ]; then
+	proc="-threshold $thresh% -morphology $edgemode diamond:1"
+fi
+
+# read infile1 and process to type
+# read the input image into the temporary cached image and test if valid
+# note: need type palette so identify show binary or edge image as Gray stats, not RGB stats
+convert -quiet "$infile1" +repage -alpha off $inverting -colorspace gray $proc -type palette $dir/A1.mpc ||
+	errMsg "--- FILE $infile1 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+# read infile2 and process to type
+# read the input image into the temporary cached image and test if valid
+# note: need type palette so identify show binary or edge image as Gray stats, not RGB stats
+convert -quiet "$infile2" +repage -alpha off -colorspace gray $proc -type palette $dir/A2.mpc ||
+	errMsg "--- FILE $infile2 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+
+# get first 7 hu moments from I1.mpc
+hu_Arr1=(`$identifying -verbose -moments $dir/A1.mpc | sed '/^[ ]*Gray:.*$/,/^[ ]*Channel perceptual hash:.*$/!d' | grep -e "I[0-7]" | awk '{print $2}'`)
+#echo "${hu_Arr1[*]}"
+num1="${#hu_Arr1[*]}"
+#echo $num1
+
+# get first 7 hu moments from I2.mpc
+hu_Arr2=(`$identifying -verbose -moments $dir/A2.mpc | sed '/^[ ]*Gray:.*$/,/^[ ]*Channel perceptual hash:.*$/!d' | grep -e "I[0-7]" | awk '{print $2}'`)
+#echo "${hu_Arr2[*]}"
+num2="${#hu_Arr2[*]}"
+#echo $num2
+
+
+# test if same number of moments and both equal to 7 moments
+[ $num1 -ne 7 ] && echo "--- INCONSISTENT NUMBER OF HU MOMENTS FOR INFILE 1 ---"
+[ $num2 -ne 7 ] && echo "--- INCONSISTENT NUMBER OF HU MOMENTS FOR INFILE 2 ---"
+
+
+# convert hu moments to log form as HU=-sign(hu)*log(abs(hu))
+for ((i=0; i<7; i++)); do
+	hu1="${hu_Arr1[$i]}"
+	HU_Arr1[$i]=`convert xc: -format "%[fx:-sign($hu1)*log(abs($hu1))]\n" info:`
+	hu2="${hu_Arr2[$i]}"
+	HU_Arr2[$i]=`convert xc: -format "%[fx:-sign($hu2)*log(abs($hu2))]\n" info:`
+done
+
+if [ "$metric" = "sad" -o "$metric" = "all" ]; then
+	metric1="sad"
+	score=0
+	for ((i=0; i<7; i++)); do
+		HU1="${HU_Arr1[$i]}"
+		HU2="${HU_Arr2[$i]}"
+		score=`convert xc: -format "%[fx:$score + abs($HU1-$HU2)]\n" info:`
+		#echo "$i; HU1=$HU1; HU2=$HU2; score=$score"
+	done
+	echo "Metric=$metric1 Score=$score"
+fi
+
+if [ "$metric" = "said" -o "$metric" = "all" ]; then
+	metric1="said"
+	score=0
+	for ((i=0; i<7; i++)); do
+		HU1="${HU_Arr1[$i]}"
+		HU2="${HU_Arr2[$i]}"
+		score=`convert xc: -format "%[fx:$score + abs(1/$HU1-1/$HU2)]\n" info:`
+		#echo "$i; HU1=$HU1; HU2=$HU2; score=$score"
+	done
+	echo "Metric=$metric1 Score=$score"
+fi
+
+if [ "$metric" = "sand" -o "$metric" = "all" ]; then
+	metric1="sand"
+	score=0
+	for ((i=0; i<7; i++)); do
+		HU1="${HU_Arr1[$i]}"
+		HU2="${HU_Arr2[$i]}"
+		score=`convert xc: -format "%[fx:$score + abs($HU1-$HU2)/sqrt(abs($HU1)*abs($HU2))]\n" info:`
+		#echo "$i; HU1=$HU1; HU2=$HU2; score=$score"
+	done
+	echo "Metric=$metric1 Score=$score"
+fi
+
+if [ "$metric" = "rssd" -o "$metric" = "all" ]; then
+	metric1="rssd"
+	score=0
+	for ((i=0; i<7; i++)); do
+		HU1="${HU_Arr1[$i]}"
+		HU2="${HU_Arr2[$i]}"
+		score=`convert xc: -format "%[fx:$score + ($HU1-$HU2)^2]\n" info:`
+		#echo "$i; HU1=$HU1; HU2=$HU2; score=$score"
+	done
+	score=`convert xc: -format "%[fx:sqrt($score)]\n" info:`
+	echo "Metric=$metric1 Score=$score"
+fi
+
+exit 0

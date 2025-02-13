@@ -1,0 +1,94 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to translate text from the clipboard into a specified 
+language using the translate-shell and xclip utilities. It initializes an associative 
+array of messages that adapt based on the system's language settings, providing user-friendly 
+prompts and error messages. The script includes functionality to display help information, 
+parse command-line arguments for language selection, and check for the necessary dependencies. 
+If the required tools are not installed or if there is no text in the clipboard, it provides 
+appropriate error messages. The script ultimately translates the clipboard text and copies the 
+translated result back to the clipboard, making it a practical tool for quick translations.
+DOCUMENTATION
+
+# Declare an associative array for messages
+declare -A MESSAGES
+
+# Initialize messages based on the system language
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["help"]="Uso: ${0##*/} [-l idioma] | [--help] - Traduz o texto da área de transferência."
+        ["install_trans"]="translate-shell não pôde ser encontrado. Por favor, instale -o para usar este script."
+        ["install_xclip"]="xclip não pôde ser encontrado. Por favor, instale -o para usar este script."
+        ["lang"]="Idioma padrão: en-us. Use -l para especificar outro idioma."
+        ["translated"]="Texto traduzido:"
+        ["error"]="Erro: Não foi possível traduzir o texto."
+        ["no_text"]="Erro: Não há texto na área de transferência."
+    )
+else
+    MESSAGES=(
+        ["help"]="Usage: ${0##*/} [-l language] | [--help] - Translates the text from the clipboard."
+        ["install_trans"]="translate-shell could not be found. Please install it to use this script."
+        ["install_xclip"]="xclip could not be found. Please install it to use this script."
+        ["lang"]="Default language: en-us. Use -l to specify another language."
+        ["translated"]="Translated text:"
+        ["error"]="Error: Could not translate the text."
+        ["no_text"]="Error: No text in the clipboard."
+    )
+fi
+
+# Function to display help
+function show_help {
+    echo "${MESSAGES[help]}"
+    echo "${MESSAGES[lang]}"
+}
+
+# Parse command line arguments
+language=${language:-"en-us"}
+
+while getopts ":l:h" opt; do
+    case ${opt} in
+        l )
+            language="$OPTARG"
+            ;;
+        h )
+            show_help
+            exit 0
+            ;;
+        \? )
+            echo "${MESSAGES[error]}"
+            exit 1
+            ;;
+    esac
+done
+
+# Get text from clipboard
+if ! command -v xclip &> /dev/null; then
+    echo "${MESSAGES[install_xclip]}"
+    exit 1
+elif ! command -v trans &> /dev/null; then
+    echo "${MESSAGES[install_trans]}"
+    exit 1
+fi
+
+
+text=$(xclip -o)
+
+if [[ -z "$text" ]]; then
+    echo "${MESSAGES[no_text]}"
+    exit 1
+fi
+
+# Translate the text
+translated_text=$(trans -b :"$language" "$text" 2>/dev/null)
+
+if [[ $? -ne 0 ]]; then
+    echo "${MESSAGES[error]}"
+    exit 1
+fi
+
+# Print and copy the translated text to clipboard
+echo -e "${MESSAGES[translated]}\n\n $translated_text"
+printf '%s' "$translated_text" | xclip -selection clipboard

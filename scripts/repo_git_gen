@@ -1,0 +1,217 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Capabilities:
+
+- Multilingual support (Portuguese, French, German, Romanian, English)
+- Automatic dependency checks (Git and GitHub CLI)
+- GitHub authentication process
+- Automatic Git user data configuration
+- Commit description validation:
+
+- 70-character maximum
+- Only Latin characters, numbers, and punctuation allowed
+
+- Automated repository creation
+- Git initialization, initial commit, and GitHub push
+- Public repository creation
+- Localized error handling
+- Guided initial configuration with configuration file creation
+
+Primary functionality: Automate GitHub repository creation and publication with custom validations and configurations.
+DOCUMENTATION
+
+config_file=~/.repo_git_gen.conf
+declare -A MESSAGES
+repo_name="$1"
+USERNAME=''
+EMAIL=''
+
+# Message configuration: Portuguese - French - German - Romanian - English
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [description_prompt]="Insira uma descrição (ou pressione Enter para usar 'first commit'):"
+        [length_error]="Erro: A descrição deve ter no máximo 70 caracteres."
+        [character_error]="Erro: A descrição contém caracteres não suportados (somente latinos básicos, números e pontuações são permitidos)."
+        [gh_missing]="GitHub CLI (gh) não está instalado. Instale-o antes de continuar."
+        [git_missing]="Git não está instalado. Instale-o antes de continuar."
+        [auth_error]="Erro de autenticação no GitHub. Redefinindo as configurações e iniciando o login."
+        [config_creating]="Arquivo de configuração ausente. Criando ~/.repo_git_gen.conf."
+        [repo_missing]="O repositório especificado não existe. O diretório $repo_name será criado. Crie o README.md e estruture o repositório."
+        [readme_missing]="Arquivo README.md ausente. Crie-o para continuar."
+        [success]="Operação concluída com sucesso!"
+    )
+elif [[ "${LANG,,}" =~ fr_ ]]; then
+    MESSAGES=(
+        [description_prompt]="Entrez une description (ou appuyez sur Entrée pour utiliser 'premier commit'):"
+        [length_error]="Erreur : La description doit contenir au maximum 70 caractères."
+        [character_error]="Erreur : La description contient des caractères non pris en charge (seuls les caractères latins de base, les chiffres et la ponctuation sont autorisés)."
+        [gh_missing]="GitHub CLI (gh) n'est pas installé. Veuillez l'installer avant de continuer."
+        [git_missing]="Git n'est pas installé. Veuillez l'installer avant de continuer."
+        [auth_error]="Erreur d'authentification avec GitHub. Réinitialisation de la configuration et démarrage de la connexion."
+        [config_creating]="Fichier de configuration manquant. Création de ~/.repo_git_gen.conf."
+        [repo_missing]="Le dépôt spécifié n'existe pas. Le répertoire $repo_name sera créé. Créez le fichier README.md et structurez le dépôt."
+        [readme_missing]="Le fichier README.md est manquant. Créez-le pour continuer."
+        [success]="Opération terminée avec succès !"
+    )
+elif [[ "${LANG,,}" =~ de_ ]]; then
+    MESSAGES=(
+        [description_prompt]="Geben Sie eine Beschreibung ein (oder drücken Sie Enter, um 'erster Commit' zu verwenden):"
+        [length_error]="Fehler: Die Beschreibung darf höchstens 70 Zeichen lang sein."
+        [character_error]="Fehler: Die Beschreibung enthält nicht unterstützte Zeichen (nur einfache lateinische Buchstaben, Zahlen und Satzzeichen sind erlaubt)."
+        [gh_missing]="GitHub CLI (gh) ist nicht installiert. Bitte installieren Sie es, bevor Sie fortfahren."
+        [git_missing]="Git ist nicht installiert. Bitte installieren Sie es, bevor Sie fortfahren."
+        [auth_error]="Authentifizierungsfehler mit GitHub. Zurücksetzen der Konfiguration und Start der Anmeldung."
+        [config_creating]="Konfigurationsdatei fehlt. Erstellung von ~/.repo_git_gen.conf."
+        [repo_missing]="Das angegebene Repository existiert nicht. Das Verzeichnis $repo_name wird erstellt. Erstellen Sie die README.md und strukturieren Sie das Repository."
+        [readme_missing]="README.md-Datei fehlt. Bitte erstellen Sie diese, um fortzufahren."
+        [success]="Operation erfolgreich abgeschlossen!"
+    )
+elif [[ "${LANG,,}" =~ ro_ ]]; then
+    MESSAGES=(
+        [description_prompt]="Introduceți o descriere (sau apăsați Enter pentru a utiliza 'primul commit'):"
+        [length_error]="Eroare: Descrierea trebuie să aibă cel mult 70 de caractere."
+        [character_error]="Eroare: Descrierea conține caractere neacceptate (sunt permise doar caractere latine de bază, cifre și punctuație)."
+        [gh_missing]="GitHub CLI (gh) nu este instalat. Vă rugăm să îl instalați înainte de a continua."
+        [git_missing]="Git nu este instalat. Vă rugăm să îl instalați înainte de a continua."
+        [auth_error]="Eroare de autentificare cu GitHub. Resetarea configurației și începerea autentificării."
+        [config_creating]="Fișierul de configurare lipsește. Se creează ~/.repo_git_gen.conf."
+        [repo_missing]="Repository-ul specificat nu există. Directorul $repo_name va fi creat. Creați fișierul README.md și structurați repository-ul."
+        [readme_missing]="Fișierul README.md lipsește. Creați-l pentru a continua."
+        [success]="Operațiunea a fost finalizată cu succes!"
+    )
+else
+    MESSAGES=(
+        [description_prompt]="Enter a description (or press Enter to use 'first commit'):"
+        [length_error]="Error: The description must be at most 70 characters."
+        [character_error]="Error: The description contains unsupported characters (only basic Latin, numbers, and punctuation are allowed)."
+        [gh_missing]="GitHub CLI (gh) is not installed. Please install it before continuing."
+        [git_missing]="Git is not installed. Please install it before continuing."
+        [auth_error]="Authentication error with GitHub. Resetting configuration and starting login."
+        [config_creating]="Configuration file missing. Creating ~/.repo_git_gen.conf."
+        [repo_missing]="The specified repository does not exist. The directory $repo_name will be created. Create the README.md file and structure the repository."
+        [readme_missing]="README.md file is missing. Create it to proceed."
+        [success]="Operation completed successfully!"
+    )
+fi
+
+# Function to check dependencies
+check_dependencies() {
+    for cmd in git gh; do
+        if ! command -v "$cmd" &>/dev/null; then
+            echo "${MESSAGES[${cmd}_missing]}"
+            exit 1
+        fi
+    done
+}
+
+# Checks if the user is authenticated on GitHub
+check_authentication() {
+    if ! gh auth status &>/dev/null; then
+        echo "${MESSAGES[auth_error]}"
+        rm -rf ~/.config/gh
+        gh auth login || exit 1
+    fi
+}
+
+# Ensures the existence and completion of the configuration file
+setup_config() {
+
+    if [[ ! -f "$config_file" ]]; then
+        echo "${MESSAGES[config_creating]}"
+        read -rp "GitHub Username: " username
+        read -rp "GitHub Email: " email
+
+        touch "$config_file"
+        echo "USERNAME=$username" > "$config_file"
+        echo "EMAIL=$email" >> "$config_file"
+    fi
+
+    # Load settings
+    source "$config_file"
+
+    # Configure Git global data
+    git config --global user.name "$USERNAME"
+    git config --global user.email "$EMAIL"
+}
+
+validate_description() {
+    # Default value for the description
+    description="${description:-"first commit"}"
+
+    # Loop until the description is valid
+    while :; do
+        # Prompt for a description if not defined
+        read -rp "${MESSAGES[description_prompt]} " description
+        description="${description:-"first commit"}"
+
+        # Check if the description has a maximum of 70 characters
+        if (( ${#description} > 70 )); then
+            echo "${MESSAGES[length_error]}"
+            description=""
+            continue
+        fi
+
+        # Check if the description contains only basic Latin characters
+        if ! [[ "$description" =~ ^[a-zA-Z0-9[:space:][:punct:]]*$ ]]; then
+            echo "${MESSAGES[character_error]}"
+            description=""
+            continue
+        fi
+
+        # If all checks are passed, export the valid description
+        export description
+        break
+    done
+}
+
+# Create the repository
+create_repository() {
+    local repo_name="$1"
+
+    if [[ ! -d "$repo_name" ]]; then
+        echo "${MESSAGES[repo_missing]}"
+        mkdir -p "$repo_name"
+        exit 1
+    fi
+
+    if [[ ! -f "$repo_name/README.md" ]]; then
+        echo "${MESSAGES[readme_missing]}"
+        exit 1
+    fi
+
+    cd "$repo_name" || exit 0
+    validate_description
+
+    git init
+    git add .
+    git add README.md
+    git commit -m "$description"
+    git branch -M main
+
+    gh repo create "$repo_name" --public
+    git remote add origin "https://github.com/${USERNAME}/${repo_name}.git"
+    git push -u origin main
+
+    cd ..
+    echo -e "\n${MESSAGES[success]}"
+}
+
+# Main
+main() {
+    check_dependencies
+    check_authentication
+    setup_config
+    create_repository "$1"
+}
+
+# Validate arguments
+if [[ $# -ne 1 ]]; then
+    echo "Usage: ${0##*/} <repository_name>"
+    exit 1
+fi
+
+# Main execution
+main "$@"

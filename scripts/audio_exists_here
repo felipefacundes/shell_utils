@@ -1,0 +1,49 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to process audio files in a directory, identifying and listing them or playing them 
+using a specified application. Its key strengths include:  
+
+1. Flexibility: Allows users to specify an application for audio playback or simply list the audio files.  
+2. Compatibility: Supports a wide range of audio formats by checking file extensions and MIME types.  
+3. Efficiency: Automatically detects and processes audio files in the current directory, providing a clear output.  
+Capabilities: The script can identify audio files, play them with a chosen app, or list them for further use.
+DOCUMENTATION
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "Example: app=mpv ${0##*/}"
+    exit 0 
+fi
+
+app="${app:-""}"
+audios=()
+
+# https://www.sageaudio.com/articles/top-10-audio-file-formats
+# Loop to loop through the files in the folder
+for audio in *; do
+    name="${audio%.*}"
+    # Check if the file is a regular file and if it is an audio file
+    if [ -f "$audio" ] && ( ls "${name}".[AaDdMmOoPpSsWw][4AaCcGgLlMmPpSsTt][3AaCcDdEeGgVvMmRrSs] >/dev/null 2>&1 || \
+    file -b --mime-type "$audio" | grep -q "^audio/" ); then
+        if [[ "$app" ]]; then
+            echo
+            echo \'"$audio"\'
+            echo
+            "$app" "$audio"
+        else
+            audios+=(\'"$audio"\')
+        fi
+    fi
+done
+
+if [ ${#audios[@]} -gt 0 ]; then
+    num_itens=${#audios[@]}
+
+    echo -e "Audios: $num_itens\n"
+
+    for item in "${audios[@]}"; do
+        echo "$item"
+    done
+fi

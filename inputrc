@@ -1,0 +1,102 @@
+# https://man.archlinux.org/man/readline.3
+# https://tiswww.cwru.edu/php/chet/readline/readline.html
+# https://www.gnu.org/software/bash/manual/html_node/Readline-Init-File-Syntax.html
+$include /etc/inputrc
+
+# If set to ‘on’, Readline performs filename matching and completion in a case-insensitive fashion.
+###################################################################################################
+# O comando set completion-ignore-case On é usado para habilitar a conclusão de tabulação sem distinção entre maiúsculas e minúsculas no Bash. 
+# Isso significa que, ao usar a tecla Tab para completar um comando ou nome de arquivo, o Bash não diferenciará entre maiúsculas e minúsculas
+set completion-ignore-case On
+
+# This alters the default behavior of the completion functions. If set to ‘on’, words which have more than one possible completion cause 
+# the matches to be listed immediately instead of ringing the bell.
+###################################################################################################
+# O comando set show-all-if-ambiguous On é usado para alterar o comportamento padrão das funções de conclusão no Bash. Se definido como On, 
+# palavras que têm mais de uma possível conclusão fazem com que as correspondências sejam listadas imediatamente em vez de tocar o sino
+set show-all-if-ambiguous On
+
+# This alters the default behavior of the completion functions in a fashion similar to show-all-if-ambiguous. If set to ‘on’, words which 
+# have more than one possible completion without any possible partial completion (the possible completions don’t share a common prefix) 
+# cause the matches to be listed immediately instead of ringing the bell.
+###################################################################################################
+# O comando set show-all-if-unmodified On é usado para alterar o comportamento padrão das funções de conclusão no Bash de 
+# maneira semelhante ao show-all-if-ambiguous. Se definido como On, palavras que têm mais de uma possível conclusão 
+# sem qualquer conclusão parcial possível (as possíveis conclusões não compartilham um prefixo comum) fazem com que 
+# as correspondências sejam listadas imediatamente em vez de tocar o sino.
+set show-all-if-unmodified On
+
+# Controls what happens when Readline wants to ring the terminal bell. If set to ‘none’, Readline never rings the bell. 
+# If set to ‘visible’, Readline uses a visible bell if one is available. If set to ‘audible’ (the default), Readline attempts 
+# to ring the terminal’s bell.
+###################################################################################################
+# O comando set bell-style none é usado para desativar completamente o som do sino no Bash 
+set bell-style On
+
+# If set to ‘on’, Readline displays possible completions using different colors to indicate their file type. 
+# The color definitions are taken from the value of the LS_COLORS environment variable. 
+###################################################################################################
+# A linha de leitura do Bash adiciona uma variável que permite a cor para conclusão de tabulação para mostrar 
+# cores diferentes para arquivos executáveis, diretórios, etc., durante a conclusão da guia
+set colored-stats On
+
+# If set to ‘on’, when listing completions, Readline displays the common prefix of the set of possible completions using 
+# a different color. The color definitions are taken from the value of the LS_COLORS environment variable. 
+# If there is a color definition in LS_COLORS for the custom suffix ‘readline-colored-completion-prefix’, 
+# Readline uses this color for the common prefix instead of its default. 
+###################################################################################################
+# Adiciona uma variável que permite que a cor indique a parte correspondente da cadeia de caracteres 
+# durante a conclusão da guia.
+set colored-completion-prefix On
+
+# Se definido como '', a conclusão do menu exibirá o prefixo comum do lista de possíveis preenchimentos 
+# (que podem estar vazios) antes de percorrer a lista.
+###################################################################################################
+# If set to ‘on’, menu completion displays the common prefix of the list 
+# of possible completions (which may be empty) before cycling through the list.
+set menu-complete-display-prefix On
+
+# If set to ‘on’, completed names which are symbolic links to directories have a slash appended (subject to the value of mark-directories).
+###################################################################################################
+# Se definido como 'On', nomes concluídos que são links simbólicos para diretórios têm uma barra anexada (sujeito ao valor de ).
+set mark-symlinked-directories On
+
+# If set to ‘on’, a character denoting a file’s type is appended to the filename when listing possible completions. 
+###################################################################################################
+# Se definido como 'On', um caractere que indica o tipo de um arquivo é anexado ao nome do arquivo ao listar possíveis Conclusões.
+set visible-stats On
+
+# The number of possible completions that determines when the user is asked whether the list of possibilities should be displayed. 
+# If the number of possible completions is greater than or equal to this value, Readline will ask whether or not the user wishes to view them; 
+# otherwise, they are simply listed. This variable must be set to an integer value greater than or equal to zero. A zero value means 
+# Readline should never ask; negative values are treated as zero. The default limit is . 100
+###################################################################################################
+# O número de conclusões possíveis que determina quando o usuário está perguntou se a lista de possibilidades deveria ser exibida. 
+# Se o número de possíveis conclusões for maior ou igual a esse valor, O Readline perguntará se o usuário deseja ou não visualizá-los; 
+# caso contrário, eles são simplesmente listados. Essa variável deve ser definida como um valor inteiro maior ou igual a zero. 
+# Um valor zero significa que a Readline nunca deve perguntar; os valores negativos são tratado como zero. O limite padrão é . 100
+set completion-query-items 50
+
+# If set to ‘’, the history code attempts to place the point (the current cursor position) at the same location on each history line 
+# retrieved with or .
+###################################################################################################
+# Se definido como '', o código de histórico tentará colocar o ponto (o posição atual do cursor) na mesmo local em cada linha de histórico 
+# recuperada com ou.
+set history-preserve-point On
+
+# The length in characters of the common prefix of a list of possible completions that is displayed without modification. 
+# When set to a value greater than zero, common prefixes longer than this value are replaced with an ellipsis when displaying possible completions.
+###################################################################################################
+# O comando set completion-prefix-display-length 3 é usado para alterar o comportamento padrão das funções de conclusão no Bash. 
+# Quando definido com um valor maior que zero, os prefixos comuns mais longos do que esse valor são substituídos por reticências 
+# ao exibir possíveis conclusões
+###set completion-prefix-display-length 3
+
+# This variable can be set to either ‘’ or ‘’. Setting it to ‘’ means that the text of the lines being edited will scroll horizontally 
+# on a single screen line when they are longer than the width of the screen, instead of wrapping onto a new screen line. 
+# This variable is automatically set to ‘’ for terminals of height 1. 
+###################################################################################################
+# Essa variável pode ser definida como '' ou ''. Configurando-o para '' significa que o texto das linhas que estão sendo editadas 
+# será rolado horizontalmente em uma única linha de tela quando eles são maiores do que a largura da tela, em vez de encapsular 
+# em uma nova linha de tela. Esta variável é automaticamente definida como '' para terminais de altura 1.
+###set horizontal-scroll-mode On

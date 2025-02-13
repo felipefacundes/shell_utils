@@ -1,0 +1,51 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script checks the partition table type of a specified disk and provides usage instructions in either English or Portuguese 
+based on the system's language settings. It uses an associative array to store messages in both languages, allowing for dynamic output 
+depending on the user's locale. If no disk is specified, the script prompts the user with usage information and an example. 
+If a valid disk is provided, it retrieves and displays the partition table type. The script also includes error handling 
+to guide users on how to check partition IDs if the specified disk is not found.
+DOCUMENTATION
+
+# Associative array to store messages in both languages
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["usage"]="Uso: ${0##*/} disco"
+        ["example"]="Exemplo: ${0##*/} sda"
+        ["partition_table"]="Tabela de partições é: "
+        ["check_partition"]="Verifique o ID da partição"
+        ["use_partitions"]="Use: partititions_unmounted ou lsblk"
+    )
+else
+    MESSAGES=(
+        ["usage"]="Usage: ${0##*/} disk"
+        ["example"]="Example: ${0##*/} sda"
+        ["partition_table"]="Partition table is: "
+        ["check_partition"]="Check partition id"
+        ["use_partitions"]="Use: partititions_unmounted or lsblk"
+    )
+fi
+
+# Check the disk partition table
+
+if [ -z "$1" ]
+    then
+    echo "${MESSAGES["usage"]}"
+    echo "${MESSAGES["example"]}"
+else
+    disk=$1
+    part_type=$(udevadm info -q property -n "$disk" | grep ID_PART_TABLE_TYPE | cut -f2 -d'=')
+    
+    if ls /dev/"${disk}" > /dev/null 2>&1
+    then
+        echo "${MESSAGES["partition_table"]}$part_type"
+    else
+        echo -e "\n${MESSAGES["check_partition"]}"
+        echo "${MESSAGES["use_partitions"]}"
+    fi
+fi

@@ -1,0 +1,266 @@
+#!/bin/bash
+#
+# Developed by Greg McNeil 2/22/2019 .... converted by Fred Weinhaus 5/5/2019
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: typewriter [-f font] [-p pointsize] [-t txtcolor] [-b bgcolor] textfile outfile
+# USAGE: typewriter [-h or -help]
+#
+# OPTIONS:
+#
+# -f     font          font or font file; only monospaced fonts work; default=CourierNewB
+# -p     pointsize     pointsize for font; integer>0; default=24
+# -t     txtcolor      color of text; any valid IM color allowed; default=black
+# -b     bgcolor       color of background; any valid IM color allowed; default=white
+# 
+# textfile is a text file containing the lines of text
+###
+#
+# NAME: TYPEWRITER
+# 
+# PURPOSE:  Creates a typewriter style scrolling text animation.
+# 
+# DESCRIPTION: TYPEWRITER creates a typewriter style scrolling text animation.
+# 
+# ARGUMENTS: 
+# 
+# -f font ... FONT is the font or font file. Only monospaced fonts will work. The 
+# default=CourierNewB
+# 
+# -p pointsize ... POINTSIZE for font. Values are integers>0. The default=24
+# 
+# -t txtcolor ... TXTCOLOR is the color of the text. Any valid IM color is allowed. 
+# The default=black
+# 
+# -b bgcolor ... BGCOLOR is the color of the background. Any valid IM color is allowed. 
+# The default=white
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+font="CourierNewB"		#font
+pointsize=24			#pointsise
+txtcolor="black"		#text color
+bgcolor="white"			#background color
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 10 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-f)    # get  fontname
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FONT SPECIFICATION ---"
+					   checkMinus "$1"
+					   fontname="$1"
+					   ;;
+				-p)    # get pointsize
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID POINTSIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   pointsize=`expr "$1" : '\([0-9]*\)'`
+					   [ "$pointsize" = "" ] && errMsg "--- POINTSIZE=$pointsize MUST BE A NON-NEGATIVE INTEGER ---"
+					   pointsizetestA=`echo "$pointsize <= 0" | bc`
+					   [ $pointsizetestA -eq 1 ] && errMsg "--- POINTSIZE=$psize MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-t)    # get  txtcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TXTCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   txtcolor="$1"
+					   ;;
+				-b)    # get bgcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BGCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgcolor="$1"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get textfile and outfile
+	textfile="$1"
+	outfile="$2"
+fi
+
+# test that textfile provided
+[ "$textfile" = "" ] && errMsg "NO TEXTFILE FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER */!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+
+if [ "$im_version" -ge "07000000" ]; then
+
+	# use subshell processing
+	# crop does the horizontal typing
+	# affine distort does the vertical scroll
+	# u.w is width of text line; v.w/10 is the width of an X character; 
+	# [fx:round(u.w/(v.w/10))] computation is number of characters.
+	(
+	while read line; do
+		convert \
+			-background "$bgcolor" -fill "$txtcolor" \
+			-pointsize $pointsize -font "$font" -kerning 1 \
+			label:"\ $line " \
+			label:"XXXXXXXXXX" \
+			-colors 16 -crop "%[fx:round(u.w/(v.w/10))]x1@" \
+			-delete -10--1 \
+			-coalesce +repage \
+			-set delay "%[fx:t==0||t==(n-1)?75:10]" \
+			\( -clone -1,-1,-1,-1 -distort affine "0,%[fx:(t+1)*h/n] 0,0" -set delay 10 \) \
+			-loop 0 miff:-
+	done < "$textfile"
+	) | convert - \
+			\( -clone 0--1 -layers merge +repage \) \
+			+insert -loop 0 \
+			"$outfile"
+
+else
+	# use subshell processing
+	# crop does the horizontal typing
+	# affine distort does the vertical scroll
+	# u.w is width of text line; v.w/10 is the width of an X character; 
+	# [fx:round(u.w/(v.w/10))] computation is number of characters.
+	# duplicate 7 frames at start and end in place of computed delay
+	(
+	while read line; do
+
+		wd=`convert \
+			-pointsize $pointsize -font "$font" \
+			label:"\ $line " \
+			label:"XXXXXXXXXX" \
+			-format "%[fx:round(u.w/(v.w/10))]\n" info: | head -n 1`
+
+		convert \
+			-background "$bgcolor" -fill "$txtcolor" \
+			-pointsize $pointsize -font "$font" -kerning 1 \
+			label:"\ $line " \
+			-colors 16 -crop "${wd}x1@" \
+			-coalesce +repage \
+			\( -clone 0,0,0,0,0,0,0 \) \
+			-insert 0 -insert 0 -insert 0 -insert 0 \
+			-insert 0 -insert 0 -insert 0 \
+			\( -clone -1,-1,-1,-1,-1,-1,-1 \) \
+			\( -clone -1,-1,-1,-1 -distort affine "0,%[fx:(t+1)*h/n] 0,0" \) \
+			-set delay 10 -loop 0 miff:-
+	done < "$textfile"
+	) | convert - \
+			\( -clone 0--1 -layers merge +repage \) \
+			+insert -loop 0 \
+			"$outfile"
+
+fi
+
+exit 0
+
+
+
+
+
+
+
+
+
+

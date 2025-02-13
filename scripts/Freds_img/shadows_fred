@@ -1,0 +1,332 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 2/23/2018 .......... revised 2/23/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: shadows [-t type] [-c color] [-r radius] [-s sigma] [-d direction] 
+# [-b bgcolor] [-a alpha] infile outfile
+# USAGE: shadows [-h or -help]
+#
+# OPTIONS:
+#
+# -t     type           type of shadow; inner (i) or outer (o); default=inner
+# -c     color          shadow color; any valid Imagemagick opaque color may be used; 
+#                       default=black.
+# -r     radius         radius of shadow; integer>=0; default=0 (determined from 
+#                       sigma)
+# -s     sigma          sigma (blur) of shadow; float>=0; default=5
+# -d     direction      direction of shadow; -360<=integer<=360; default=135
+# -b     bcolor         color to put under the alpha channel; any valid Imagemagick 
+#                       opaque color may be used; default is not to replace the image 
+#                       texture with color.
+# -a     alpha          flag to specify to leave alpha channel enabled; yes (y) or 
+#                       no (n); default=no; only allowed for type=inner
+#
+# infile must have an alpha channel 
+# 
+###
+#
+# NAME: SHADOWS 
+# 
+# PURPOSE: To apply drop shadows to an image.
+# 
+# DESCRIPTION: SHADOWS applies drop shadows to an image that has an alpha channel. 
+# The alpha channel should be binary or at worst binary but anti-aliased. If there 
+# is no alpha channel or the alpha channel is full opaque, then the no shadow will 
+# be created. The inner shadow will appear at the inside edges of the white part of 
+# the alpha channel. The outer shadow will appear at the outside edges of the white 
+# part of the alpha channel. In either case, the result will have the alpha channel 
+# removed to show the colors under the alpha channel. There is an option for the 
+# inner shadow to keep the alpha channel enabled. Note that the inner shadow may 
+# look like an outer bevel. This is an optical illusion.
+# 
+# OPTIONS: 
+# 
+# -t type ... TYPE of shadow. The choices are: inner (i) or outer (o). The default=inner.
+# 
+# -c color ... COLOR of shadow; any valid Imagemagick opaque color may be used.
+# The default=black.
+# 
+# -r radius ... RADIUS of the shadow. Values are integer>=0. The default=0. The actual 
+# value will be deterined from the sigma value.
+# 
+# -s sigma ... SIGMA (blur) of the shadow. Values are float>=0. The default=5.
+# 
+# -d direction ... DIRECTION of the shadow. Values are -360<=integer<=360 measure 
+# clockwise from the positive x axis. The default=135.
+# 
+# -b bcolor ... (background) BCOLOR to put under the alpha channel. Any valid 
+# Imagemagick opaque color may be used. The default is not to replace the image 
+# texture with color.
+# 
+# -a alpha ... ALPHA flag to specify whether to leave the alpha channel enabled or not. 
+# Values are on or off. The default=off. This option is only allowed for 
+# type=inner.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+type="inner"		# type of shadow
+color="black"		# color of shadow
+radius=0			# radius of shadow
+sigma=5				# sigma of shadow
+direction=135       # direction of shadow
+bcolor=""			# background color to put under the alpha channel
+alpha="off"			# enable alpha channel for inner shadow
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 16 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-t)    # get  type
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TYPE SPECIFICATION ---"
+					   checkMinus "$1"
+					   type=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$type" in 
+					   		inner|i) type="inner" ;;
+					   		outer|o) type="outer" ;;
+					   		*) errMsg "--- TYPE=$type IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-c)    # get  color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   color="$1"
+					   ;;
+				-r)    # get radius
+					   shift  # to get the next parameter - spread
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RADIUS SPECIFICATION ---"
+					   checkMinus "$1"
+					   radius=`expr "$1" : '\([0-9]*\)'`
+					   [ "$radius" = "" ] && errMsg "RADIUS=$radius MUST BE A NON-NEGATIVE INTEGER"
+					   ;;
+				-s)    # get sigma
+					   shift  # to get the next parameter - spread
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SIGMA SPECIFICATION ---"
+					   checkMinus "$1"
+					   sigma=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$sigma" = "" ] && errMsg "SIGMA=$sigma MUST BE A NON-NEGATIVE FLOAT"
+					   ;;
+				-d)    # get direction
+					   shift  # to get the next parameter - spread
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIRECTION SPECIFICATION ---"
+					   #checkMinus "$1"
+					   direction=`expr "$1" : '\([0-9]*\)'`
+					   [ "$direction" = "" ] && errMsg "DIRECTION=$direction MUST BE A NON-NEGATIVE INTEGER"
+		   			   test1=`echo "$direction > 360" | bc`
+		   			   test2=`echo "$direction < -360" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- DIRECTION=$direction MUST BE A INTEGER BETWEEN -360 AND 360 ---"
+					   ;;
+				-b)    # get  bcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bcolor="$1"
+					   ;;
+				-a)    # get  alpha
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ALPHA SPECIFICATION ---"
+					   checkMinus "$1"
+					   alpha=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$alpha" in 
+					   		on) ;;
+					   		off) ;;
+					   		*) errMsg "--- ALPHA=$alpha IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+inname=`convert $infile -format "%t" info:`
+
+# set up temporary images
+tmpA1="$dir/shadows_$$.mpc"
+tmpB1="$dir/shadows_$$.cache"
+trap "rm -f $tmpA1 $tmpB1;" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+#trap "rm -f $tmpA1 $tmpB1; exit 1" ERR
+
+# set up for adding color under alpha channel
+if [ "$bcolor" != "" ]; then
+	coloring="-background $bcolor -alpha background"
+else
+	coloring=""
+fi
+
+
+# read the input image into the temp files and test validity.
+convert -quiet "$infile" $coloring +repage $tmpA1 ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+
+# set up for negate for outer shadow
+if [ "$type" = "outer" ]; then
+	negating="-negate"
+else
+	negating=""
+fi
+
+# subtract 180 from direction
+angle=$((direction-180))
+
+if [ "$type" = "inner" -a "$alpha" = "on" ]; then
+	# read image
+	# clone and turn off alpha
+	# clone and extract alpha
+	# delete original
+	# clone alpha, colorize, a apply motion blur
+	# composite multiply: image (without alpha), shadow, mask
+	# delete image with no alpha, motion blur image
+	# put original alpha back onto image
+	# write output
+
+	convert $tmpA1 \
+	\( -clone 0 -alpha off \) \
+	\( -clone 0 -alpha extract \) \
+	-delete 0 \
+	\( -clone 1 \( +clone -fill "$color" -colorize 100 \) \
+		+swap +duplicate -compose over -composite \
+		-motion-blur ${radius}x${sigma}+${angle} \) \
+	\( -clone 0,2,1 -compose multiply -composite \) \
+	-delete 0,2 \
+	+swap -alpha off -compose copy_opacity -composite \
+	"$outfile"
+
+else
+	# read image
+	# clone and turn off alpha
+	# clone and extract alpha
+	# delete original
+	# clone alpha, colorize, a apply motion blur
+	# composite multiply: image (without alpha), shadow, mask
+	# write output
+
+	convert $tmpA1 \
+	\( -clone 0 -alpha off \) \
+	\( -clone 0 -alpha extract $negating \) \
+	-delete 0 \
+	\( -clone 1 \( +clone -fill "$color" -colorize 100 \) \
+		+swap +duplicate -compose over -composite \
+		-motion-blur ${radius}x${sigma}+${angle} \) \
+	-swap 1,2 \
+	-compose multiply -composite \
+	"$outfile"
+
+fi
+
+
+exit 0

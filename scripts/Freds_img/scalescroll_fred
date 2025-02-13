@@ -1,0 +1,278 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 7/20/2018 .......... 7/20/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: scalescroll [-f frames] [-d delay] [-D direction] infile outfile
+# USAGE: scalescroll [-h or -help]
+#
+# OPTIONS:
+#
+# -f     frames       number of frames to generate in the animation; integer>0; 
+#                     default=25
+# -d     delay        animation delay between frames; integer>0; default=20 
+# -D     direction    direction of the scrolling; choices are: left, right, up, down;
+#                     default=right
+#
+###
+#
+# NAME: SCALESCROLL 
+# 
+# PURPOSE: Creates a scaled scrolling animation.
+# 
+# DESCRIPTION: SCALESCROLL creates scaled scrolling animation. The scaling increase 
+# from one side and decreases from the other side. The scrolling can be either to the 
+# right, left, up or down directions.
+# 
+# 
+# OPTIONS: 
+# 
+# -f frames ... FRAMES are the number of frames to generate in the animation. Value 
+# are integers>0. The default=25.
+# 
+# -d delay ... DELAY is animation delay between frames in ticks. Values are integers>0. 
+# The default=20.
+# 
+# -D direction ... DIRECTION of the scrolling; choices are: left (l), right (r), 
+# up (u), down (d). The default=right
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+frames=25
+delay=20
+direction="right"
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 8 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -help|-h)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-f)    # get frames
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FRAMES SPECIFICATION ---"
+					   checkMinus "$1"
+					   frames=`expr "$1" : '\([0-9]*\)'`
+					   [ "$frames" = "" ] && errMsg "--- FRAMES=$frames MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$frames == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- FRAMES=$frames MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-d)    # get delay
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DELAY SPECIFICATION ---"
+					   checkMinus "$1"
+					   delay=`expr "$1" : '\([0-9]*\)'`
+					   [ "$delay" = "" ] && errMsg "--- DELAY=$delay MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$delay == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- DELAY=$delay MUST BE A POSITIVE INTEGER ---"
+					   ;;
+			   	-D)    # direction
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIRECTION SPECIFICATION ---"
+					   checkMinus "$1"
+					   direction=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$direction" in
+					   		left|l) direction="left" ;;
+					   		right|r) direction="right" ;;
+					   		up|u) direction="up" ;;
+					   		down|d) direction="down" ;;
+					   		*) errMsg "--- DIRECTION=$direction IS NOT A VALID CHOICE ---" ;;
+					   esac
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# set up temporaries
+tmp1A="$dir/scalescroll_1_$$.mpc"
+tmp1B="$dir/scalescroll_1_$$.cache"
+trap "rm -f $tmp1A $tmp1B;" 0
+trap "rm -f $tmp1A $tmp1B; exit 1" 1 2 3 15
+#trap "rm -f $tmp1A $tmp1B; exit 1" ERR
+
+
+
+# test input image
+convert -quiet "$infile" +repage "$tmp1A" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get image dimensions
+WxH=`convert -ping $tmp1A -format "%wx%h" info:`
+ww=`echo $WxH | cut -dx -f1`
+hh=`echo $WxH | cut -dx -f2`
+
+if [ "$direction" = "left" -o "$direction" = "right" ]; then
+	wh=$ww
+else
+	wh=$hh
+fi
+
+
+if [ "$direction" = "right" ]; then
+	(
+	incr=`convert xc: -format "%[fx:round($wh/$frames)]" info:`
+	for ((k=0; k<frames; k++)); do
+	dim1=$((k*incr))
+	dim2=$((wh-dim1))
+	if [ $dim1 -eq 0 ]; then
+	convert $tmp1A miff:-
+	else
+	convert \( $tmp1A -scale ${dim1}x! \) \( $tmp1A -scale ${dim2}x! \) +append miff:-
+	fi
+	done
+	) | convert -delay 20 - -loop 0 "$outfile"
+
+elif [ "$direction" = "left" ]; then
+	(
+	incr=`convert xc: -format "%[fx:round($wh/$frames)]" info:`
+	for ((k=0; k<frames; k++)); do
+	dim2=$((k*incr))
+	dim1=$((wh-dim2))
+	if [ $dim2 -eq 0 ]; then
+	convert $tmp1A miff:-
+	else
+	convert \( $tmp1A -scale ${dim1}x! \) \( $tmp1A -scale ${dim2}x! \) +append miff:-
+	fi
+	done
+	) | convert -delay 20 - -loop 0 "$outfile"
+
+elif [ "$direction" = "down" ]; then
+	(
+	incr=`convert xc: -format "%[fx:round($wh/$frames)]" info:`
+	for ((k=0; k<frames; k++)); do
+	dim1=$((k*incr))
+	dim2=$((wh-dim1))
+	if [ $dim1 -eq 0 ]; then
+	convert $tmp1A miff:-
+	else
+	convert \( $tmp1A -scale x${dim1}! \) \( $tmp1A -scale x${dim2}! \) -append miff:-
+	fi
+	done
+	) | convert -delay 20 - -loop 0 "$outfile"
+
+elif [ "$direction" = "up" ]; then
+	(
+	incr=`convert xc: -format "%[fx:round($wh/$frames)]" info:`
+	for ((k=0; k<frames; k++)); do
+	dim2=$((k*incr))
+	dim1=$((wh-dim2))
+	if [ $dim2 -eq 0 ]; then
+	convert $tmp1A miff:-
+	else
+	convert \( $tmp1A -scale x${dim1}! \) \( $tmp1A -scale x${dim2}! \) -append miff:-
+	fi
+	done
+	) | convert -delay 20 - -loop 0 "$outfile"
+fi
+
+exit 0
+
+
+
+

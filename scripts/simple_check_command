@@ -1,0 +1,26 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script checks if a given command exists in the system's binary directories. 
+
+Strengths:
+1. Validates the existence of commands in both standard and user-defined binary paths.
+2. Differentiates between system commands, aliases, and functions.
+3. Provides clear error messages for better user feedback.
+
+Capabilities:
+- Efficiently handles command verification.
+- Supports extensibility for custom binaries.
+DOCUMENTATION
+
+if [[ "$(ls /*bin/${1} | ls /*/*bin/${1})" =~ "/.?bin/" ]] >/dev/null 2>&1; then
+    exit 0
+elif [[ "$(type ${1})" =~ "is an alias" || "$(type ${1})" =~ "function" ]]; then
+    printf '%s: not a system command\n' "$1" >&2
+    exit 1
+else
+    printf '%s: command not found\n' "$1" >&2
+    exit 1
+fi

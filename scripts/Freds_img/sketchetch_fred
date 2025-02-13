@@ -1,0 +1,343 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 6/10/2017 .......... revised 6/10/2017
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: sketchetch [-m mode] [-e etch] [-B brightness] [-S saturation] [-h hue] 
+# [-c color] [-C coloramt] [-t type] [infile] [outfile]
+# 
+# USAGE: sketchetch [-help]
+# 
+# OPTIONS:
+# 
+# -m     mode           mode for processing; choices are: normal, grayscale, 
+#                       colorized, shaded and composite; default=normal
+# -e     etch           etch amount; integer>0; default=4
+# -B     brightness     brightness percent change; -100<=integer<=100; default=0
+# -S     saturation     saturation percent change; -100<=integer<=100; default=0
+# -H     hue            hue angle change in degrees; -360<=integer<=360; default=0
+# -c     color          colorizing color; any valid opaque IM color is allowed; 
+#                       default=sienna1
+# -C     coloramt       colorizing amount; 0<=integer<=100; default=50
+# -t     type           type of composite (compose mode); choices are: hardlight, 
+#                       overlay, and softlight; default=hardlight
+#
+###
+# 
+# NAME: SKETCHETCH 
+# 
+# PURPOSE: To create an etch-like sketch from an image.
+# 
+# DESCRIPTION: PIP creates an etch-like sketch from an image. There is an option for 
+# modes of normal, grayscale, colorized grayscale, shaded grayscale and three different 
+# composite types.
+# 
+# 
+# ARGUMENTS: 
+# 
+# -m mode ... MODE for processing. The choices are: normal, grayscale, colorized 
+# (from grayscale), shaded (from grayscale) and composite. The default=normal.
+# 
+# -e etch ... ETCH amount. Values are integers>0. The default=4.
+# 
+# -B brightness ... BRIGHTNESS percent change of the image. Value are -100<=integer<=100. 
+# The default=0.
+# 
+# -S saturation ... SATURATION percent change of the image. Value are -100<=integer<=100. 
+# The default=0.
+# 
+# -H hue ... HUE angle change of the image in degrees. Value are -360<=integer<=360. 
+# The default=0.
+# 
+# -c color ... COLOR is the colorizing color. Any valid opaque IM color is allowed. 
+# The default=sienna1.
+# 
+# -C coloramt ... COLORAMT is the colorizing amount. Values are 0<=integers<=100. 
+# The default=50.
+# 
+# -t type ... TYPE of composite (compose mode). The choices are: hardlight, overlay 
+# and softlight. The default=hardlight
+# 
+# Reference: 
+# http://www.creativecloseup.com/color-ink-sketch-effect-in-photoshop
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+# set default values
+mode="normal"		# normal, grayscale, colorized (grayscale), shaded (grayscale), composite
+etch=4				# etch amount
+brightness=0		# brightness change in percent
+saturation=0		# saturation change in percent
+hue=0				# hue change in deg
+color="sienna1"		# colorizing color
+coloramt=0			# color amount
+type="hardlight"	# compose type; hardlight, overlay, softlight
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 18 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		     -help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-m)    # get  mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$mode" in 
+					   		normal) ;;
+					   		grayscale) ;;
+					   		colorized) ;;
+					   		shaded) ;;
+					   		composite) ;;
+					   		*) errMsg "--- MODE=$mode IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				-e)    # get etch
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ETCH SPECIFICATION ---"
+					   checkMinus "$1"
+					   etch=`expr "$1" : '\([0-9]*\)'`
+					   [ "$etch" = "" ] && errMsg "--- ETCH=$etch MUST BE A NON-NEGATIVE INTEGER(s) ---"
+					   testA=`echo "$etch <= 0" | bc`
+					   [ $testA -eq 1 ] && errMsg "--- ETCH=$etch MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-B)    # get brightness
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BRIGHTNESS SPECIFICATION ---"
+					   #checkMinus "$1"
+					   brightness=`expr "$1" : '\([-0-9]*\)'`
+					   [ "$brightness" = "" ] && errMsg "--- BRIGHTNESS=$brightness MUST BE A NON-NEGATIVE INTEGER ---"
+					   testA=`echo "$brightness < -100" | bc`
+					   testB=`echo "$brightness > 100" | bc`
+					   [ $testA -eq 1 -o $testB -eq 1 ] && errMsg "--- BRIGHTNESS=$brightness MUST BE AN INTEGER BETWEEN -100 AND 100 ---"
+					   ;;
+				-S)    # get saturation
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SATURATION SPECIFICATION ---"
+					   #checkMinus "$1"
+					   saturation=`expr "$1" : '\([-0-9]*\)'`
+					   [ "$saturation" = "" ] && errMsg "--- SATURATION=$saturation MUST BE A NON-NEGATIVE INTEGER ---"
+					   testA=`echo "$saturation < -100" | bc`
+					   testB=`echo "$saturation > 100" | bc`
+					   [ $testA -eq 1 -o $testB -eq 1 ] && errMsg "--- SATURATION=$saturation MUST BE AN INTEGER BETWEEN -100 AND 100 ---"
+					   ;;
+				-H)    # get hue
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID HUE SPECIFICATION ---"
+					   #checkMinus "$1"
+					   hue=`expr "$1" : '\([-0-9]*\)'`
+					   [ "$hue" = "" ] && errMsg "--- HUE=$saturation MUST BE A NON-NEGATIVE INTEGER ---"
+					   testA=`echo "$hue < -360" | bc`
+					   testB=`echo "$hue > 360" | bc`
+					   [ $testA -eq 1 -o $testB -eq 1 ] && errMsg "--- HUE=$saturation MUST BE AN INTEGER BETWEEN -360 AND 360 ---"
+					   ;;
+				-c)    # get  color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   color="$1"
+					   ;;
+				-C)    # get coloramt
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLORAMT SPECIFICATION ---"
+					   checkMinus "$1"
+					   coloramt=`expr "$1" : '\([0-9]*\)'`
+					   [ "$coloramt" = "" ] && errMsg "--- COLORAMT=$coloramt MUST BE A NON-NEGATIVE INTEGER(s) ---"
+					   testA=`echo "$coloramt < 0" | bc`
+					   testB=`echo "$coloramt > 100" | bc`
+					   [ $testA -eq 1 -o $testB -eq 1 ] && errMsg "--- COLORAMT=$coloramt MUST BE INTEGER(s) BETWEEN 0 AND 100 ---"
+					   ;;
+				-t)    # get  type
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TYPE SPECIFICATION ---"
+					   checkMinus "$1"
+					   type=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$type" in 
+					   		hardlight) ;;
+					   		softlight) ;;
+					   		overlay) ;;
+					   		*) errMsg "--- TYPE=$type IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# setup temporary images
+tmpA1="$dir/sketchetch_1_$$.mpc"
+tmpB1="$dir/sketchetch_1_$$.cache"
+trap "rm -f $tmpA1 $tmpB1; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+
+# read the input image into the temporary cached image and test if valid
+convert -quiet -regard-warnings "$infile" -alpha off +repage $tmpA1 ||
+	echo "--- 1 FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+# set up etch
+etching=""
+for ((i=0; i<etch; i++)); do
+	etching="$etching -sharpen 0x1"
+done
+
+# set up brighness, saturation, hue and contrast
+bri=$((100+$brightness))
+sat=$((100+$saturation))
+hue=`convert xc: -format "%[fx:(200/360)*$hue+100]" info:`
+
+# set up modulation
+if [ "$brightness" = "0" -a "$saturation" = "0" -a "$hue" = "0" ]; then
+	modulating=""
+else
+	modulating="-modulate $bri,$sat,$hue"
+fi
+
+if [ "$mode" = "normal" ]; then
+	convert $tmpA1 \
+		\( +clone $etching \) \
+		-compose overlay -composite $modulating \
+		"$outfile"
+		
+elif [ "$mode" = "grayscale" ]; then
+	convert $tmpA1 \
+		\( +clone $etching \) \
+		-compose overlay -composite -modulate 100,0,100 \
+		"$outfile"
+		
+elif [ "$mode" = "colorize" ]; then
+	convert $tmpA1 \
+		\( +clone $etching \) \
+		-compose overlay -composite -modulate 100,0,100 \
+		\( +clone -fill $color -colorize $coloramount \) \
+		+swap -compose overlay -composite \
+		"$outfile"
+		
+elif [ "$mode" = "shaded" ]; then
+	convert $tmpA1 \
+		\( +clone $etching \) \
+		-compose overlay -composite -modulate 100,0,100 \
+		-shade 135x45 \
+		"$outfile"
+
+elif [ "$mode" = "composite" ]; then
+	convert $tmpA1 -write mpr:img \
+		\( +clone $etching \) \
+		-compose overlay -composite -modulate 100,0,100 \
+		-shade 135x45 \
+		mpr:img +swap -compose $type -composite \
+		"$outfile"
+fi
+
+exit 0
+
+
+

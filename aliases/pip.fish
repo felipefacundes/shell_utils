@@ -1,0 +1,5 @@
+alias pip_upgrade='~/.shell_utils/scripts/pip_upgrade.sh'
+alias pip-upgrade-all='pip_upgrade pip-upgrade-all'
+alias pip-upgrade-all_local='pip_upgrade pip_upgrade_all_local'
+alias pip-upgrade-all-2='pip_upgrade pip_upgrade_all_2'
+alias pip-upgrade-all-2_local='pip_upgrade pip_upgrade_all_2_local'

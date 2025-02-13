@@ -1,0 +1,91 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to manage and display a list of books stored in a specified directory, allowing users to read them in various formats.
+
+Purpose:
+The script provides a user-friendly interface for selecting and reading books in formats such as PDF, TXT, and EPUB.
+
+Strengths:
+1. Format Support: Handles multiple book formats (PDF, TXT, EPUB).
+2. User  Interaction: Prompts users to select a book by number, enhancing usability.
+3. Error Handling: Includes checks for valid input and format recognition.
+4. Temporary File Management: Converts PDF files to text for easier reading.
+5. Clear Output: Uses 'less' for paginated viewing of book content.
+
+Capabilities:
+- Lists available books in the specified directory.
+- Reads and displays the content of selected books based on their format.
+- Provides a clean exit option for users.
+DOCUMENTATION
+
+clear -T "$TERM"
+
+export books_folder="${HOME}/.shell_utils/books"
+cd "${books_folder}" || exit
+
+# Allowed formats: pdf, txt, epub
+books_list=(*.*)
+cd - >/dev/null || exit
+
+books_list(){
+
+    number=0
+    echo 'Books available:'
+
+    for list in "${books_list[@]}";
+        do
+            let number++
+            echo -e "${number})    ${list}\n"
+    done
+
+    echo -e "\n"'Enter "q" for exit'"\n"
+    echo 'And choose the book you want in the next step'
+
+}
+
+select_book(){
+        
+    read -r book
+    #re='^[0-9]+$'
+
+    #if ! [[ "${book}" =~ $re ]] ; then
+    if [ "${book}" -ge 0 ] > /dev/null 2>&1; then
+
+        declare -l ext_test
+        ext_test=$(echo "${books_folder}/${books_list[book]}" | awk -F. '{print $NF}')
+
+        if [ "${ext_test}" = txt ]; then            
+            cat "${books_folder}/${books_list[book]}" | less -i -R
+
+        elif [ "${ext_test}" = epub ]; then            
+            epr "${books_folder}/${books_list[book]}"
+
+        elif [ "${ext_test}" = pdf ]; then
+            rm -f /tmp/temp_book.txt
+            pdftotext -layout -nopgbrk "${books_folder}/${books_list[book]}" /tmp/temp_book.txt
+            cat /tmp/temp_book.txt | less -i -R
+
+        else
+            echo 'Unrecognized format'
+        fi
+        
+    else
+        echo -e "\nerror: \"${book}\" not is number!"
+
+    fi
+
+}
+
+if [ "${#books_list[@]}" -gt 0 ]; then
+
+    books_list | less -i -R
+    echo -e "Enter the number corresponding to the book. And then press ENTER.\n"
+    select_book
+        
+else
+    echo "books not found"
+
+fi

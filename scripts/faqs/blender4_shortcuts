@@ -1,0 +1,503 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+cat <<'EOF' | less -i -R
+youtube.com/cgboost      twitter.com/cgboost   instagram.com/cg_boost
+
+
+
+
+   BLENDER HOTKEY SHEET v16
+                      for Blender 4.0
+
+
+
+
+                                                ©2023 by cgboost.com
+                            CONTENT
+
+
+ GENERAL                      3        Face Sets                                8
+  View                        3        Painting                                 8
+  General                     3       MATERIALS & POSTPRODUCTION                9
+  Navigation                  3        Shader Editor, Geo Nodes, Compositing    9
+  Transform                   4        Compositing                              9
+  Selection                   4        Image Editor                             9
+  Modes                       4        UV Editor                                9
+  Menus                       4        Painting                                 9
+  Editors                     5        Texture Painting                         9
+  Hide/Unhide                 5        Vertex Painting                         10
+  Relationships               5        Weight Painting                         10
+  Camera                      5       ANIMATION                                11
+  File                        5        General                                 11
+  Rendering                   5        Timeline, Dopesheet and Graph Editor    11
+ EDIT MODE                    6        Graph Editor                            11
+  Selection                   6        Drivers                                 11
+  View                        6        Nonlinear Animation                     11
+  Tools                       6        Video Sequencer                         12
+  Proportional Editing        6       GREASE PENCIL                            13
+  Vertex Groups               6        Draw Mode                               13
+  Hide/Unhide                 6        Sculpt Mode                             13
+ SCULPTING                    7        Edit Mode                               13
+  Control                     7       ORGANISATION                             14
+  Masking                     7        Outliner                                14
+  Brushes                     7        File Browser                            14
+  Topology                    8
+
+
+
+
+                           CONTENT | Page 2
+back to content overview                                          ©2023 by cgboost.com
+                                                   GENERAL
+     FUNCTION IN 4.0               HOTKEY IN 4.0                 FUNCTION IN 4.0              HOTKEY IN 4.0
+
+
+                                                        View
+           Rotate                   MMB + Drag                         Zoom                   Mousewheel
+            Pan                  Shift + MMB + Drag                    Select             LMB (RMB optional)
+
+
+                                                       General
+    Animation Playback                 Space*                          Redo                  Shift + Ctrl + Z
+          Search¹                         F3                      Rename Object                     F2
+           Delete                         X                      Repeat Last Action              Shift + R
+        Join Objects                   Ctrl + J            Jump to Object on Hover²               Alt + Q
+    Mirror on X/Y/Z axis          Ctrl + M + X/Y/Z         Next/Previous Workspace        Ctrl + Page Up/Down
+           Undo                        Ctrl + Z                  Open Preferences                 Ctrl + ,
+
+
+                                                     Navigation
+      Views Pie Menu                      `                         Front View                 Numpad 1
+      Center Selected                 Numpad,                        Right View                Numpad 3
+   Toggle Maximize Area              Ctrl + Space                  Bottom View              Ctrl + Numpad 7
+  Toggle Full Screen Area         Ctrl + Alt + Space                 Back View              Ctrl + Numpad 1
+     Toggle X-Ray View                  Alt + Z                      Left View              Ctrl + Numpad 3
+   Toggle Wireframe View               Shift + Z                  Walk Navigation                Shift + `
+     Shading Pie Menu                     Z                       Show Overlays               Alt + Shift + Z
+Relative View Axis Switching      Alt + Drag MMB               Toggle Clipping Border             Alt + B
+          Top View                   Numpad 7                    Toggle Quad View             Ctrl + Alt + Q
+
+
+* You can manually define the function of the spacebar in the Preferences under Input: It can represent Animation
+Playback, the Tool Menu or the Search function. By default it is set to Animation Playback.
+¹ Now works in every open menu.
+² Works in every Object-specific Mode (Edit Mode, Sculpt Mode etc.). To quickly change the object you're working on.
+
+
+
+
+                                                  GENERAL | Page 3
+  back to content overview                                                                     ©2023 by cgboost.com
+     FUNCTION IN 4.0                 HOTKEY IN 4.0                FUNCTION IN 4.0                HOTKEY IN 4.0
+
+
+                                                     Transform
+        Move (Grab)                         G                Transform with locked Axis          G/R/S + MMB
+   Move along global axis              G + X/Y/Z                      Duplicate                     Shift + D
+    Move along local axis            G + XX/YY/ZZ                 Duplicate Linked                   Alt + D
+            Scale                           S                     Apply Transform                    Ctrl + A
+   Scale along global axis              S + X/Y/Z                  Reset Position                    Alt + G
+    Scale along local axis           S + XX/YY/ZZ                  Reset Rotation                    Alt + R
+           Rotate                           R                        Reset Scale                     Alt + S
+  Rotate along global axis             R + X/Y/Z                  Snapping Toggle                  Shift + Tab
+   Rotate along local axis           R + XX/YY/ZZ                  Set Snap Base                        B
+        Free Rotate                       R+R
+
+
+                                                      Selection
+           Select                         LMB¹                     Select Grouped                   Shift + G
+          Select All                        A                      Invert Selection                  Ctrl + I
+        Deselect All             Alt + A (doubletap A)              Select Linked                   Shift + L
+       Border Select                B or Drag LMB              Pick from Overlapping               Alt + LMB
+        Circle Select                       C
+
+
+                                                       Modes
+     Edit/Object Mode                     Tab                   All Modes (Pie Menu)               Ctrl + Tab
+
+
+                                                       Menus
+      Tool Shelf Toggle                     T                      Quick Favorites                      Q
+       Sidebar Toggle                       N                        Add Menu³                      Shift + A
+   Object Context Menu                   RMB²                      Pivot Pie Menu                       .
+   Orientation Pie Menu                     ,                    Snapping Pie Menu                  Shift + S
+
+
+¹ You can choose either Left Click (default) or Right Click Select in the Preferences under Input.
+² If you have chosen Right Click Select (in the Preferences under Input), the Object Context Menu is accessible via the
+W key.
+³ Now also works in the Modifier Tab.
+
+
+
+
+                                                 GENERAL | Page 4
+  back to content overview                                                                        ©2023 by cgboost.com
+     FUNCTION IN 4.0             HOTKEY IN 4.0                 FUNCTION IN 4.0         HOTKEY IN 4.0
+
+
+                                                     Editors
+        3D Viewport                Shift + F5                Graph Editor/Drivers        Shift + F6
+      Image/UV Editor              Shift + F10                    Text Editor           Shift + F11
+       Shader Editor               Shift + F3                   Python Console           Shift + F4
+Comp./Text./Geo Node Editor        Shift + F3                      Outliner              Shift + F9
+     Video Sequencer               Shift + F8                     Properties             Shift + F7
+     Movie Clip Editor             Shift + F2                     File Browser           Shift + F1
+   Dope Sheet/Timeline             Shift + F12
+
+
+                                                 Hide/Unhide
+            Hide                        H                        Hide Selected           Shift + H
+         Unhide All                  Alt + H                      Local View                 /
+
+
+                                                 Relationships
+         Set Parent                 Ctrl + P                   Link/Transfer Data         Ctrl + L
+        Clear Parent                 Alt + P
+
+
+                                                     Camera
+       Camera View                 Numpad 0             Set Active Object as Camera   Ctrl + Numpad 0
+   Align Camera to View       Ctrl + Alt + Numpad 0
+
+
+                                                      File
+            Save                     Ctrl + S                  File Context Menu            F4
+          Save As                Ctrl + Shift + S                Quit Blender             Ctrl + Q
+          New File                  Ctrl + N
+
+
+                                                    Rendering
+       Render Image                    F12                     Set Render Region          Ctrl + B
+     Render Animation              Ctrl + F12                Reset Render Region       Ctrl + Alt + B
+  Play Rendered Animation          Ctrl + F11
+
+
+
+
+                                               GENERAL | Page 5
+  back to content overview                                                              ©2023 by cgboost.com
+                                                 EDIT MODE
+     FUNCTION IN 4.0                 HOTKEY IN 4.0                   FUNCTION IN 4.0               HOTKEY IN 4.0
+
+
+                                                       Selection
+      Vertex Selection                      1                      Select Edge/Face Loop            Alt + LMB*
+       Edge Selection                       2                        Select Edge Ring            Ctrl + Alt + LMB*
+       Face Selection                       3                       Slide Edge Selection                 G+G
+        Select Linked                    Ctrl + L                      Select Mirror              Ctrl + Shift + M
+Select Linked under Cursor                  L                         Path Selection               Ctrl + LMB*
+   Grow/Shrink Selection                Ctrl + +/-
+
+
+                                                           View
+Align TopView to active face       Shift + Numpad 7          Align BackView to active face Shift + Ctrl + Numpad 1
+Align BottomView to act. face Shift + Ctrl + Numpad 7 Align RightView to active face            Shift + Numpad 3
+Align FrontView to active face     Shift + Numpad 1           Align LeftView to active face   Shift + Ctrl + Numpad 3
+
+
+                                                           Tools
+          Extrude                           E                           To Sphere                  Shift + Alt + S
+            Bevel                       Ctrl + B                           Split                           Y
+          Loopcut                       Ctrl + R                            Rip                            V
+          Knife Cut                         K                           Triangulate                     Ctrl + T
+            Inset                           I                         Merge Selected                      M
+          Separate                          P                      Recalculate Normals               Shift + N
+          Unwrap                            U                           Split Menu                      Alt + M
+          Fill Face                         F                      Connect Vertex Path                     J
+        Shrink/Fatten                    Alt + S                      Extrude Menu                      Alt + E
+           Rip Fill                      Alt + V               Vertex/Edge/Face Menu                    Ctrl + E
+            Shear                 Shift + Ctrl + Alt + S
+
+
+                                                Proportional Editing
+      Proportional Edit                     O                 Prop. Edit Falloff Pie Menu            Shift + O
+Proportional Edit Connected              Alt + O                   Prop. Edit Radius Size     Page Up/Down or Scroll
+
+
+                                                     Vertex Groups
+   Assign to Vertex Group               Ctrl + G              Remove from Vertex Group             Ctrl + Alt + G
+
+
+                                                     Hide/Unhide
+            Hide                            H                             Unhide                        Alt + H
+
+
+* Right Mouse Button, if the Select with is set to Right Mouse Button in the Preferences under Input.
+
+                                                EDIT MODE | Page 6
+  back to content overview                                                                         ©2023 by cgboost.com
+                                                 SCULPTING
+     FUNCTION IN 4.0                 HOTKEY IN 4.0                FUNCTION IN 4.0             HOTKEY IN 4.0
+
+
+                                                        Control
+         Brush Size                         F                    Switch Sculpt Object        Hover + Alt + Q
+       Brush Strength                   Shift + F             Set Transform Pivot Gizmo        Shift + RMB
+        Brush Angle                      Ctrl + F
+
+
+                                                        Masking
+            Mask                            M                 Expand Mask by Curvature       Shift + Alt + A*
+         Clear Mask                      Alt + M                      Invert Mask                Ctrl + I
+ Expand Mask by Topology                Shift + A                      Box Mask                     B
+
+
+                                                        Brushes
+            Draw                            V                            Pose             Shift + Space, Shift 1*
+            Grab                            G                           Nudge             Shift + Space, Shift 2*
+           Inflate                           I                       Rotate Brush         Shift + Space, Shift 3*
+        Snake Hook                          K                         Slide Relax         Shift + Space, Shift 4*
+            Pinch                           P                          Boundary           Shift + Space, Shift 5*
+           Smooth                   S or Shift + Drag                    Cloth            Shift + Space, Shift 6*
+         Clay Strips                        C                           Simplify          Shift + Space, Shift 7*
+           Crease                       Shift + C               Multires Displ. Eraser    Shift + Space, Shift 0*
+           Scrape                       Shift + T               Multires Displ. Smear     Shift + Space, Ctrl 1*
+        Draw Sharp                  Shift + Space, 1*                  Box Hide           Shift + Space, Ctrl 6*
+             Clay                   Shift + Space, 2*                  Box Trim           Shift + Space, Ctrl 9*
+        Clay Thumb                  Shift + Space, 3*                Line Project         Shift + Space, Alt 1*
+            Layer                   Shift + Space, 4*                 Mesh Filter         Shift + Space, Alt 2*
+            Blob                    Shift + Space, 5*                 Cloth Filter        Shift + Space, Alt 3*
+           Flatten                  Shift + Space, 6*                    Move             Shift + Space, Alt 5*
+             Fill                   Shift + Space, 7*                 Transform           Shift + Space, Alt 6*
+     Mutiplane Scrape               Shift + Space, 8*                   Rotate            Shift + Space, Alt 7*
+       Elastic Deform               Shift + Space, 9*                    Scale            Shift + Space, Alt 8*
+           Thumb                    Shift + Space, 0*
+
+
+* only accessible if the spacebar function is set to Play in the Preferences.
+
+
+
+
+                                                 SCULPTING | Page 7
+  back to content overview                                                                     ©2023 by cgboost.com
+     FUNCTION IN 4.0                 HOTKEY IN 4.0                FUNCTION IN 4.0             HOTKEY IN 4.0
+
+
+                                                       Topology
+          Remesh                         Ctrl + R                 Dyntopo Flood Fill             Ctrl + R
+ Incr./Decr. Multires Levels            Alt + 1/2                  Remesh Preview                   R
+
+
+                                                      Face Sets
+       Draw Face Sets            Shift + Space, Shift 9*             Edit Face Set        Shift + Space, Ctrl W*
+        Box Face Set             Shift + Space, Ctrl 7*           Show all Face Sets             Alt + H
+    Face Sets Pie Menu                   Alt + W                 Hide Active Face Set               H
+   Grow/Shrink Face Set         Ctrl + W / Ctrl + Alt + W       Hide Inactive Face Sets         Shift + H
+
+
+                                                       Painting
+            Paint                Shift + Space, Ctrl 2*               Color Filter        Shift + Space, Alt 4*
+           Smear                 Shift + Space, Ctrl 3*             Mask by Color         Shift + Space, Alt 5*
+
+
+* only accessible if the spacebar function is set to Play in the Preferences.
+
+
+
+
+                                                SCULPTING | Page 8
+  back to content overview                                                                    ©2023 by cgboost.com
+                          MATERIALS & POSTPRODUCTION
+     FUNCTION IN 4.0                 HOTKEY IN 4.0                 FUNCTION IN 4.0           HOTKEY IN 4.0
+
+
+                                   Shader Editor, Geo Nodes, Compositing
+           Group                         Ctrl + G               Delete with Reconnect           Ctrl + X
+          Ungroup                     Ctrl + Alt + G                Insert Reroute         Shift + RMB + Drag
+     Edit Group Toggle                     Tab                  Hide Unused Sockets             Ctrl + H
+     Join in New Frame                   Ctrl + J                   Minimize Node                  H
+          Cut Links                Ctrl + RMB + Drag                  Mute Node                    M
+         Mute Links             Ctrl + Alt + RMB + Drag      Skip Auto Node Attachment             Alt
+
+
+                                                     Compositing
+  Background Image Move                Alt + MMB             Background Image Zoom in            Alt + V
+Background Image Zoom out                   V
+
+
+                                                     Image Editor
+         New Image                       Alt + N                      Save Image                 Alt + S
+        Open Image                       Alt + O                    Save Image As            Shift + Alt + S
+
+
+                                                       UV Editor
+         Mark Seam                       Ctrl + E                        Stitch                  Alt + V
+         Select Split                       Y                             Pin                      P
+   Grow/Shrink Selection                Ctrl + +/-                      Unpin                    Alt + P
+
+
+                                                        Painting
+        Sample Color                     Shift X                   Brush Colors Flip               X
+         Brush Size                         F                 Select Faces for Face Mask       Alt + LMB
+       Brush Strength                   Shift + F            Expand Face Mask Selection     Alt + Shift + LMB
+       Stroke Method                      Alt + E
+
+
+                                                    Texture Painting
+            Draw                    Shift + Space, 1*                    Clone              Shift + Space, 4*
+           Soften                   Shift + Space, 2*                     Fill              Shift + Space, 5*
+           Smear                    Shift + Space, 3*                    Mask               Shift + Space, 6*
+
+
+* only accessible if the spacebar function is set to Play in the Preferences.
+
+
+
+
+                                  MATERIALS & POSTPRODUCTION | Page 9
+  back to content overview                                                                    ©2023 by cgboost.com
+     FUNCTION IN 4.0                 HOTKEY IN 4.0                FUNCTION IN 4.0           HOTKEY IN 4.0
+
+
+                                                    Vertex Painting
+            Draw                    Shift + Space, 1*                  Average            Shift + Space, 3*
+             Blur                     Shift + Drag                      Smear             Shift + Space, 4*
+        Invert Brush                   Ctrl + Drag                 Set Vertex Colors           Ctrl + X
+
+
+                                                    Weight Painting
+            Draw                    Shift + Space, 1*               Radial Gradient        Shift + Alt + A
+             Blur                     Shift + Drag                  Sample Weight             Shift + X
+        Invert Brush                   Ctrl + Drag                    Set Weight               Ctrl + X
+          Average                   Shift + Space, 3*        Select Linked under Cursor           L
+           Smear                    Shift + Space, 4*                Select Bones         Ctrl + Shift + LMB
+          Gradient                      Shift + A
+
+
+* only accessible if the spacebar function is set to Play in the Preferences.
+
+
+
+
+                                 MATERIALS & POSTPRODUCTION | Page 10
+  back to content overview                                                                  ©2023 by cgboost.com
+                                           ANIMATION
+    FUNCTION IN 4.0             HOTKEY IN 4.0                FUNCTION IN 4.0         HOTKEY IN 4.0
+
+
+                                                   General
+      Insert Keyframe                  I               List of Bones under Cursor   Alt + LMB(RMB)
+     Delete Keyframes               Alt + I
+
+
+                               Timeline, Dopesheet and Graph Editor
+    Play/Stop Animation             Space                      Select Linked               L
+Play/Stop Animation Reverse   Ctrl + Shift + Space           Jump to Keyframes         Ctrl + G
+     Set Preview Range          P + Drag LMB           Set Keyframe Handle Type            V
+   Clear Preview Range              Alt + P            Set Keyframe Interpolation          T
+   Next/Previous Frame            Left/Right           Set F-Curve Extrapolation       Shift + E
+  Jump to first/last frame    Shift + Left/Right             Add Time Marker              M
+  Toggle Frames/Seconds             Ctrl + T                  Rename Marker               F2
+     Mirror Keyframes              Ctrl + M                    Find Channels            Ctrl + F
+    Sample Keyframes            Shift + Alt + O                View Selected          Numpad ,
+     Select More/Less              Ctrl + +/-
+
+
+                                                Graph Editor
+   Add F-Curve Modifier         Shift + Ctrl + M               Smooth Keys              Alt + O
+       Hide Channels                   H               Set Keyframe Easing Type         Ctrl + E
+     Unhide Channels                Alt + H                    Smooth Curve             Alt + S
+        Blend Curve                 Alt + D              Frame Channel Curve          Alt + MMB
+ Toggle Channel Selection          Shift + W
+
+
+                                                   Drivers
+         Add Driver                 Ctrl + D                  Remove Driver          Ctrl + Alt + D
+
+
+                                           Nonlinear Animation
+      Add Action Strip             Shift + A                    Split Strips               Y
+       Add Transition              Shift + T                   Toggle Muting               H
+      Add Sound Clip               Shift + K                    Swap Strips             Alt + F
+      Add Meta-Strips               Ctrl + G             Move Strips Up/Down        Page Up/Down
+    Remove Meta-Strips           Ctrl + Alt + G
+
+
+
+
+                                           ANIMATION | Page 11
+  back to content overview                                                           ©2023 by cgboost.com
+  FUNCTION IN 4.0          HOTKEY IN 4.0           FUNCTION IN 4.0       HOTKEY IN 4.0
+
+
+                                        Video Sequencer
+       Cut Strips                K                    View Frame          Numpad 0
+      Mute Strips                H                   View Selected        Numpad ,
+     Unmute Strips            Alt + H             Snap Strips to Frame     Shift + S
+   Toggle Meta-Strip           Tab                 Slip Strip Contents        S
+    Make Meta-Strip          Ctrl + G                Remove Gaps          Backspace
+     UnMeta-Strip          Ctrl + Alt + G             Insert Gaps          Shift + =
+
+
+
+
+                                     ANIMATION | Page 12
+back to content overview                                                 ©2023 by cgboost.com
+                                            GREASE PENCIL
+     FUNCTION IN 4.0                 HOTKEY IN 4.0                FUNCTION IN 4.0            HOTKEY IN 4.0
+
+
+                                                     Draw Mode
+            Draw                    Shift + Space, 1*                     Box            Shift + Space, Shift 1*
+             Fill                   Shift + Space, 2*                    Circle          Shift + Space, Shift 2*
+            Erase                   Shift + Space, 3*             Annotate Polygon       Shift + Space, Shift 4*
+             Tint                   Shift + Space, 4*                 Box Erase                     B
+           Cutter                   Shift + Space, 5*                 Brush Size                    F
+        Eyedropper                  Shift + Space, 6*               Brush Strength              Shift + F
+            Line                    Shift + Space, 7*          Adjust stroke extension        Mousewheel
+           Polyline                 Shift + Space, 8*                 Interpolate        Shift + Space, Ctrl + E*
+             Arc                    Shift + Space, 9*             Create New Layer                  Y
+            Curve                   Shift + Space, 0*            Delete Active Frame             Alt + I
+
+
+                                                    Sculpt Mode
+         Select Box                         B                            Twist              Shift + Space, 7*
+           Smooth                   Shift + Space, 1*                    Pinch              Shift + Space, 8*
+          Thickness                 Shift + Space, 2*                    Clone              Shift + Space, 9*
+          Strength                  Shift + Space, 3*             Annotate Polygon       Shift + Space, Shift 4*
+         Randomize                  Shift + Space, 4*                 Brush Size                    F
+            Grab                    Shift + Space, 5*               Brush Strength              Shift + F
+            Push                    Shift + Space, 6*          Auto-Masking Pie Menu         Shift + Alt + A
+
+
+                                                      Edit Mode
+       Point Selection                      1                           Extrude                     E
+      Stroke Selection                      2                           Radius                   Alt + S
+  Stroke Section Selection                  3                            Bend                   Shift + W
+            Move                            G                            Shear            Shift + Ctrl + Alt + S
+           Rotate                           R                       Transform Fill          Shift + Space, 4*
+            Scale                           S
+
+
+* only accessible if the spacebar function is set to Play in the Preferences.
+
+
+
+
+                                            GREASE PENCIL | Page 13
+  back to content overview                                                                    ©2023 by cgboost.com
+                                ORGANISATION
+  FUNCTION IN 4.0          HOTKEY IN 4.0              FUNCTION IN 4.0        HOTKEY IN 4.0
+
+
+                                           Outliner
+    New Collection               C                    Link to Collection       Shift + M
+   Delete Collection             X                     Parent Objects      Shift + Drag/Drop
+  Move to Collection            M
+
+
+                                          File Browser
+      Next Folder           Alt + Right            Create New Directory            I
+    Previous Folder          Alt + Left                Add Bookmark            Ctrl + B
+       Parent File           Alt + Up
+
+
+
+
+                                ORGANISATION | Page 14
+back to content overview                                                     ©2023 by cgboost.com
+EOF

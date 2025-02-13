@@ -1,0 +1,64 @@
+#!/bin/bash
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Installs fonts on the system using the pacman package manager.
+DOCUMENTATION
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["usage"]="Uso: ${0##*/} [opção]"
+        ["description"]="Instala fontes no sistema usando o gerenciador de pacotes pacman."
+        ["options"]="Opções:"
+        ["minimum"]="  minimum     Instala um conjunto mínimo de fontes."
+        ["maximum"]="  maximum     Instala um conjunto completo de fontes."
+        ["examples"]="Exemplos:"
+        ["example_minimum"]="  ${0##*/} minimum   # Instala fontes básicas."
+        ["example_maximum"]="  ${0##*/} maximum   # Instala todas as fontes recomendadas."
+        ["note"]="Nota: Este script requer permissões de superusuário (sudo) para instalar pacotes."
+    )
+else
+    MESSAGES=(
+        ["usage"]="Usage: ${0##*/} [option]"
+        ["description"]="Installs fonts on the system using the pacman package manager."
+        ["options"]="Options:"
+        ["minimum"]="  minimum     Installs a minimal set of fonts."
+        ["maximum"]="  maximum     Installs a complete set of fonts."
+        ["examples"]="Examples:"
+        ["example_minimum"]="  ${0##*/} minimum   # Installs basic fonts."
+        ["example_maximum"]="  ${0##*/} maximum   # Installs all recommended fonts."
+        ["note"]="Note: This script requires superuser permissions (sudo) to install packages."
+    )
+fi
+
+help() {
+    echo -e "${MESSAGES[usage]}"
+    echo
+    echo -e "${MESSAGES[description]}"
+    echo
+    echo -e "${MESSAGES[options]}"
+    echo -e "${MESSAGES[minimum]}"
+    echo -e "${MESSAGES[maximum]}"
+    echo
+    echo -e "${MESSAGES[examples]}"
+    echo -e "${MESSAGES[example_minimum]}"
+    echo -e "${MESSAGES[example_maximum]}"
+    echo
+    echo -e "${MESSAGES[note]}"
+}
+
+case $1 in
+    minimum)
+        sudo pacman -S noto-fonts noto-fonts-extra ttf-bitstream-vera ttf-dejavu ttf-inconsolata ttf-liberation ttf-opensans ttf-ubuntu-nerd
+        sudo fc-cache
+    ;;
+    many|maximum)
+        sudo pacman -S wqy-bitmapfont wqy-microhei wqy-microhei-lite wqy-zenhei terminus-font adobe-source-han-sans-otc-fonts noto-fonts noto-fonts-extra noto-fonts-emoji noto-fonts-cjk gnu-free-fonts adobe-source-code-pro-fonts adobe-source-sans-pro-fonts adobe-source-serif-pro-fonts ttf-bitstream-vera ttf-dejavu ttf-inconsolata ttf-liberation ttf-opensans ttf-ubuntu-nerd
+        sudo fc-cache
+    ;;
+    *)
+        help
+    ;;
+esac

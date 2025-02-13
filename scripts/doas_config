@@ -1,0 +1,60 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script configures the doas command for a specified user on a Linux system, ensuring it is executed as root and that doas is installed. 
+It prompts the user for a valid username, validates the input, and creates a doas configuration file with the appropriate permissions.
+DOCUMENTATION
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["prompt_user"]="Informe seu usuário (padrão é $(getent passwd 1000 | cut -d':' -f1)): "
+        ["success"]="Configuração concluída com sucesso."
+        ["invalid_user"]="Erro: O nome de usuário não pode conter números ou caracteres especiais."
+        ["root"]="Este script só pode ser executado como root."
+        ["doas_not_found_install"]="'doas' não encontrado, instale-o com: pacman -S doas"
+    )
+else
+    MESSAGES=(
+        ["prompt_user"]="Enter your username (default is $(getent passwd 1000 | cut -d':' -f1)): "
+        ["success"]="Configuration completed successfully."
+        ["invalid_user"]="Error: Username cannot contain numbers or special characters."
+        ["root"]="This script can only be run as root."
+        ["doas_not_found_install"]="'doas' not found, install it with: pacman -S doas"
+    )
+fi
+
+# If root
+if [ "$EUID" -ne 0 ]; then
+    echo "${MESSAGES[root]}"
+    exit 1
+fi
+
+if ! command -v doas &>/dev/null; then
+    echo "${MESSAGES[doas_not_found_install]}"
+    exit 1
+fi
+
+# Prompt for username with validation loop
+while true; do
+    read -rp "${MESSAGES[prompt_user]}" user
+    user=${user:-$(getent passwd 1000 | cut -d':' -f1)}  # Default to $USER if no input
+
+    # Validate username
+    if [[ ! "$user" =~ [0-9] ]] && [[ ! "$user" =~ [[:punct:]] ]] && [[ ! "$user" =~ [[:cntrl:]] ]]; then
+        break  # Exit loop if valid
+    else
+        echo "${MESSAGES[invalid_user]}"
+    fi
+done
+
+# Create the sudoers configuration file
+cat <<EOF | tee /etc/doas.conf > /dev/null
+#permit persist :wheel
+permit persist $user as root
+EOF
+
+echo "${MESSAGES[success]}"

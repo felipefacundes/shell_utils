@@ -1,0 +1,96 @@
+#!/bin/bash
+# License: GPLv3
+# Initial Credits: klattimer
+# Credits: Felipe Facundes
+# Source: https://github.com/klattimer/LGWebOSRemote
+
+: <<'DOCUMENTATION'
+This script sets up a virtual Python environment for controlling an LG TV using the 'lgtv' command. 
+It checks for the existence of the virtual environment and installs the necessary package if it's not found. 
+The script provides a comprehensive help function that lists various commands available for interacting with the TV, 
+and it executes the 'lgtv' command with any provided arguments.
+DOCUMENTATION
+
+if [[ ! -d ~/.python/lgtv-venv ]]; then
+    python -m venv ~/.python/lgtv-venv
+    source ~/.python/lgtv-venv/bin/activate
+    export VIRTUAL_ENV="${HOME}/.python/lgtv-venv"
+    pip install git+https://github.com/klattimer/LGWebOSRemote
+fi
+
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    export VIRTUAL_ENV="${HOME}/.python/lgtv-venv"
+    source "${VIRTUAL_ENV}/bin/activate"
+fi
+
+complete_help() {
+    cat <<'EOF'
+lgtv scan
+lgtv --ssl auth <host> MyTV
+lgtv setDefault MyTV
+lgtv --name MyTV --ssl audioStatus
+lgtv --name MyTV --ssl audioVolume
+lgtv --name MyTV --ssl closeAlert <alertId>
+lgtv --name MyTV --ssl closeApp <appid>
+lgtv --name MyTV --ssl createAlert <message> <button>
+lgtv --name MyTV --ssl execute <command>
+lgtv --name MyTV --ssl getCursorSocket
+lgtv --name MyTV --ssl getForegroundAppInfo
+lgtv --name MyTV --ssl getPictureSettings
+lgtv --name MyTV --ssl getPowerState
+lgtv --name MyTV --ssl getSoundOutput
+lgtv --name MyTV --ssl getSystemInfo
+lgtv --name MyTV --ssl getTVChannel
+lgtv --name MyTV --ssl input3DOff
+lgtv --name MyTV --ssl input3DOn
+lgtv --name MyTV --ssl inputChannelDown
+lgtv --name MyTV --ssl inputChannelUp
+lgtv --name MyTV --ssl inputMediaFastForward
+lgtv --name MyTV --ssl inputMediaPause
+lgtv --name MyTV --ssl inputMediaPlay
+lgtv --name MyTV --ssl inputMediaRewind
+lgtv --name MyTV --ssl inputMediaStop
+lgtv --name MyTV --ssl listApps
+lgtv --name MyTV --ssl listLaunchPoints
+lgtv --name MyTV --ssl listChannels
+lgtv --name MyTV --ssl listInputs
+lgtv --name MyTV --ssl listServices
+lgtv --name MyTV --ssl mute <true|false>
+lgtv --name MyTV --ssl notification <message>
+lgtv --name MyTV --ssl notificationWithIcon <message> <url>
+lgtv --name MyTV --ssl off
+lgtv --name MyTV --ssl on
+lgtv --name MyTV --ssl openAppWithPayload <payload>
+lgtv --name MyTV --ssl openBrowserAt <url>
+lgtv --name MyTV --ssl openYoutubeId <videoid>
+lgtv --name MyTV --ssl openYoutubeURL <url>
+lgtv --name MyTV --ssl openYoutubeLegacyId <videoid>
+lgtv --name MyTV --ssl openYoutubeLegacyURL <url>
+lgtv --name MyTV --ssl sendButton <button>
+lgtv --name MyTV --ssl serialise
+lgtv --name MyTV --ssl setInput <input_id>
+lgtv --name MyTV --ssl setSoundOutput <tv_speaker|external_optical|external_arc|external_speaker|lineout|headphone|tv_external_speaker|tv_speaker_headphone|bt_soundbar>
+lgtv --name MyTV --ssl screenOff
+lgtv --name MyTV --ssl screenOn
+lgtv --name MyTV --ssl setTVChannel <channelId>
+lgtv --name MyTV --ssl setVolume <level>
+lgtv --name MyTV --ssl startApp <appid>
+lgtv --name MyTV --ssl swInfo
+lgtv --name MyTV --ssl volumeDown
+lgtv --name MyTV --ssl volumeUp
+EOF
+
+    exit 0
+}
+
+if [[ -z "$1" ]]; then
+    complete_help
+fi
+
+case $1 in
+    '-h'|'--help'|'--complete-help')
+        complete_help
+    ;;
+esac
+
+lgtv "$@"

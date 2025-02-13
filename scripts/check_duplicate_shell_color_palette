@@ -1,0 +1,12 @@
+#!/bin/bash
+grep -E "shell_color_palette\[.*]=.*'\\\\033\[[0-9;]+m'" ~/.shell_utils/variables/shell_colors.sh | sort | uniq -d -c
+grep -E "shell_color_palette\[.*]" ~/.shell_utils/variables/shell_colors.sh | sort | uniq -d -c
+grep -E "'\\\\033\[[0-9;]+m'" ~/.shell_utils/variables/shell_colors.sh | sort | uniq -d -c
+
+cat <<'EOF'
+Commands:
+
+grep -E "shell_color_palette\[.*]=.*'\\\\033\[[0-9;]+m'" ~/.shell_utils/variables/shell_colors.sh | sort | uniq -d -c
+grep -E "shell_color_palette\[.*]" ~/.shell_utils/variables/shell_colors.sh | sort | uniq -d -c
+grep -E "'\\\\033\[[0-9;]+m'" ~/.shell_utils/variables/shell_colors.sh | sort | uniq -d -c
+EOF

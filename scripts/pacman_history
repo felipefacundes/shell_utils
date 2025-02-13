@@ -1,0 +1,6 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+grep $(date +%Y-%m) /var/log/pacman.log | less
+echo -e 'grep $(date +%Y-%m) /var/log/pacman.log | less'

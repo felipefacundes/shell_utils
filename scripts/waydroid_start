@@ -1,0 +1,29 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Waydroid Start
+DOCUMENTATION
+
+#####################################################
+################## Waydroid Start ###################
+waydroid_container=$(pgrep -f waydroid)
+waydroid=$(pidof waydroid)
+
+if [[ -n "${waydroid_container}" ]]; then 
+    echo "Restart Service? y - yes | n - no"    
+    read -r o
+    if [[ "$o" = y ]]; then 
+        sudo systemctl stop waydroid-container.service
+        clear
+    fi
+fi
+
+if [ -z "${waydroid_container}" ]; then 
+    sudo waydroid init -s GAPPS -f
+fi
+
+if [ -z "${waydroid}" ]; then 
+    waydroid first-launch 2>/dev/null & sleep 0.1
+fi

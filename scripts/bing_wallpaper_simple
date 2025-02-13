@@ -1,0 +1,37 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script downloads a random wallpaper from Bing and sets it as the desktop background. 
+It creates a temporary directory for storing the wallpaper if it doesn't already exist. 
+A random index between 0 and 7 is generated to select a wallpaper from Bing's image archive. 
+The script retrieves the JSON data containing the wallpaper URL, constructs the full URL, and downloads the image. 
+Finally, it uses the 'feh' utility to set the downloaded image as the desktop wallpaper.
+DOCUMENTATION
+
+# Bing Random Wallpaper
+
+WP_DIR="/tmp/wallpapers"
+WP_FILE="$WP_DIR/bing_wallpaper.jpg"
+
+# Create the wallpapers directory if it doesn't exist
+mkdir -p $WP_DIR
+
+# Generate a random number between 0 and 7
+IDX=$((RANDOM % 8))
+
+# Download the JSON with the current Bing wallpaper information
+JSON=$(curl -s "https://www.bing.com/HPImageArchive.aspx?format=js&idx=$IDX&n=1&mkt=en-US")
+
+# Extract the wallpaper URL from the JSON response
+IMAGE_URL=$(echo $JSON | jq -r '.images[0].url')
+
+# Build the complete wallpaper URL
+IMAGE_URL="https://www.bing.com$IMAGE_URL"
+
+# Download the wallpaper to the specified directory
+curl -s -o $WP_FILE $IMAGE_URL
+
+# Set the wallpaper using feh (make sure you have feh installed)
+feh --bg-fill $WP_FILE

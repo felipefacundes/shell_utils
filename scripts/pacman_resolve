@@ -1,0 +1,38 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+The script is designed to refresh the Arch Linux package manager's keyring and database while ensuring 
+that the 'haveged' entropy generator is installed. 
+
+Strengths:
+1. Checks for the 'haveged' installation before proceeding.
+2. Cleans up and refreshes the package database and keyring.
+3. Safely regenerates keys using 'haveged' for improved entropy.
+
+Capabilities:
+- Automates package management tasks.
+- Ensures system security by refreshing keys.
+DOCUMENTATION
+
+if ! command -v haveged 1>/dev/null; then
+    echo 'haveged not installed. Please, install.'
+    exit 1
+fi
+
+sudo su -c '
+    rm -f /var/lib/pacman/db.lck
+    rm -f /var/lib/pacman/sync/*
+    pacman -Syy
+    rm -R /etc/pacman.d/gnupg
+    pacman -Sc
+    pacman -Sy gnupg archlinux-keyring
+
+    # Safe regeneration of keys
+    haveged -w 1024 &
+    pacman-key --init
+    pacman-key --populate archlinux
+    pacman-key --refresh-keys
+    pkill -9 haveged
+'

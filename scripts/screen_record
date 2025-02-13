@@ -1,0 +1,151 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Screen Record
+
+This script is a video screen capture tool that uses FFmpeg to record the user's screen. 
+The purpose of the script is to provide a flexible and customizable tool for capturing the user's 
+screen in different formats and configurations.
+
+The strengths of the script include:
+1. Resolution configuration: The script allows the user to define the screen capture resolution, 
+either using the current monitor resolution or setting a custom resolution.
+2. Frame rate configuration: The script allows the user to set the screen capture frame rate, with a default value of 15 fps.
+3. Video codec configuration: The script allows the user to choose between different video codecs, including libx264, libx265, 
+libvpx-vp9, mpeg4, mpeg2video, and libaom-av1.
+4. Audio sampling rate configuration: The script allows the user to set the audio sampling rate for the screen capture, 
+with a default value of 22050 Hz.
+5. Muxing support: The script supports muxing functionality, which allows the user to define the maximum muxing queue size.
+
+The script's capabilities include:
+* Capturing the user's screen in different video formats, including MP4, MKV, and WebM.
+* Recording the user's screen with different video codecs and frame rate settings.
+* Supporting muxing functionality to control the muxing queue size.
+* Allowing the user to define the resolution, frame rate, video codec, and audio sampling rate of the screen capture.
+* Providing a help output to help the user understand the available options and settings.
+DOCUMENTATION
+
+# Define a signal handler to capture SIGINT (Ctrl+C)
+trap 'kill $(jobs -p)' SIGINT #SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
+
+# Função de ajuda
+function show_help {
+    cat <<EOF
+Usage: ${0##*/} [args] -o video.ext
+Options:
+    -mon, -monitor <resolution>  Set monitor resolution (default: current)
+    -vf, -video_scale <scale>    Set video scale (e.g., 1920x1080)
+    -fr, -framerate <fps>        Set video framerate (default: 15)
+    -ar, -audio_rate <rate>      Set audio sampling rate (default: 22050)
+    -muxing, -muxing_enabled <on/off>  Enable or disable video muxing (default: off)
+    -max_muxing <value>          Set maximum muxing queue size (default: 9999)
+    -vc, -video_codec <codec>    Set video codec (default: libx264)
+    -list, -codec_list           List available video codecs
+    -o <output_file>             Set output file path and name
+EOF
+}
+
+
+function resolution_current_monitor {
+    xrandr --current | grep '*' | uniq | awk '{print $1}'
+}
+
+function codecs_list {
+  
+    cat <<'EOF'
+libx264 (H.264 codec, MP4 or MKV format)
+libx265 (H.265 codec, MP4 or MKV format)
+libvpx-vp9 (VP9 codec, WebM format)
+mpeg4 (MPEG-4 codec, MP4 format)
+mpeg2video (MPEG-2 codec, MPG format)
+libaom-av1 (AV1 codec, MKV format)
+EOF
+}
+
+mon=${mon:-$(resolution_current_monitor)}
+framerate=${framerate:-15}
+muxing=${muxing:-9999}
+arate=${arate:-22050}
+codec=${codec:-"libx264"}
+default_folder="${HOME}/Videos/Capture"
+
+[[ ! -d "$default_folder" ]] && mkdir -p "$default_folder"
+output_file=${output_file:-"${default_folder}/Screen_$(date +'%Y-%m-%d_%H:%M:%S').mp4"}
+
+# Parse dos argumentos
+while [[ $# -gt 0 ]]; do
+  key="$1"
+
+  case $key in
+    -mon|-monitor)
+      mon="$2"
+      shift 2
+      ;;
+    -vf|-video_scale)
+      vf_scale="${2//x/:}"
+      shift 2
+      ;;
+    -fr|-framerate)
+      framerate="$2"
+      shift 2
+      ;;
+    -ar|-audio_rate)
+      arate="$2"
+      shift 2
+      ;;
+    -muxing|-muxing_enabled)
+      if_muxing="$2"
+      shift 2
+      ;;
+    -max_muxing)
+      muxing="$2"
+      shift 2
+      ;;
+    -vc|-video_codec)
+      codec="$2"
+      shift 2
+      ;;
+    -list|-codec_list)
+      codecs_list
+      shift
+      exit 0
+      ;;
+    -o)
+      output_file="$2"
+      shift 2
+      ;;
+    *)
+      show_help
+      exit 0
+      ;;
+  esac
+done
+
+# https://stackoverflow.com/questions/39887869/ffmpeg-whatsapp-video-format-not-supported
+if [[ "$if_muxing" == "on" ]]; then
+
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:a libmp3lame -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -max_muxing_queue_size "$muxing" -f mp4 -vf scale="$vf_scale" "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:a libmp3lame -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -max_muxing_queue_size "$muxing" -f mp4 "$output_file"
+    fi
+
+elif [[ "$codec" == "libx264" ]]; then
+
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p "$output_file"
+    fi
+
+else
+
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v "$codec" -preset ultrafast -vf scale="$vf_scale" "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v "$codec" -preset ultrafast "$output_file"
+    fi
+
+fi

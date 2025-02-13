@@ -1,0 +1,72 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+# Bash Script Analysis - Letter Frequency Counter
+
+## Overview
+This Bash script is a sophisticated text analysis tool designed to identify and count letter 
+frequencies within a given phrase. Licensed under GPLv3 and created by Felipe Facundes, it demonstrates 
+advanced Bash scripting techniques and practical string manipulation.
+
+## Key Features and Capabilities
+
+### Robust Input Handling
+- Implements comprehensive command-line argument validation
+- Includes built-in help functionality (--help, -h flags)
+- Gracefully handles empty inputs with appropriate user feedback
+
+### Advanced String Processing
+- Efficiently removes whitespace from input text while preserving letter sequence
+- Utilizes Bash's native string manipulation capabilities for character extraction
+- Implements character-by-character analysis for precise letter counting
+
+### Data Structure Implementation
+- Uses associative arrays for efficient letter frequency tracking
+- Maintains a running count of each letter's occurrences
+- Demonstrates advanced Bash array manipulation techniques
+
+### Results Processing and Output
+- Tracks and updates the most frequently occurring letter in real-time
+- Provides detailed output showing each letter's frequency
+- Concludes with a clear summary showing the most repeated letter and its count
+
+### Technical Strengths
+- Memory efficient due to minimal variable usage
+- Well-documented with clear comments
+- Follows good coding practices with meaningful variable names
+- Modular design makes it easy to modify or extend functionality
+DOCUMENTATION
+
+sentence="$1"
+
+if [[ -z "$sentence" ]] || [[ "$sentence" == "--help" ]] || [[ "$sentence" == "-h" ]]; then
+    echo "Usage: ${0##*/} 'Phrase that will be analyzed the most repeated letter'"
+    exit 0
+fi
+
+# Removing whitespace from the sentence
+sentence_without_space=$(echo "$sentence" | tr -d ' ')
+
+# Initializing an associative array to count the letters
+declare -A letter_counter
+
+# Iterating over each letter in the sentence
+for (( i=0; i<${#sentence_without_space}; i++ )); do
+    letter="${sentence_without_space:$i:1}"
+    letter_counter["$letter"]=$((letter_counter["$letter"]+1))
+    echo "$letter ${letter_counter[$letter]}"
+done
+
+# Finding the most repeated letter
+most_repeated_letter=""
+repetition_count=0
+for letter in "${!letter_counter[@]}"; do
+    if [ ${letter_counter["$letter"]} -gt $repetition_count ]; then
+        repetition_count=${letter_counter["$letter"]}
+        most_repeated_letter="$letter"
+    fi
+done
+
+echo "The most repeated letter was: \"$most_repeated_letter\", which appeared $repetition_count times."

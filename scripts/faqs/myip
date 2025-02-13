@@ -1,0 +1,22 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+echo -e "IPv4: $(curl -s https://checkip.amazonaws.com)\nIPv6: $(curl -s https://icanhazip.com)\n"
+echo 'Commands:'
+cat <<'EOF'
+curl -s https://icanhazip.com  # IPv6
+curl -s checkip.dyndns.org | awk -F': ' '{print $2}' | awk -F'</body>' '{print $1}'
+curl -s checkip.dyndns.org | grep -Eo '[0-9\.]+'
+curl -s https://checkip.amazonaws.com
+curl -s https://ifconfig.me
+curl -s https://ipecho.net/plain
+curl -s https://api64.ipify.org
+curl -s https://api.ipify.org
+curl -s https://ipinfo.io/ip
+
+With perl:
+lwp-request checkip.dyndns.org | awk '{ print  $6}' | sed 's|</body></html>||g'
+EOF
+
+exit

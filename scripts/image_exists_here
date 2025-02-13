@@ -1,0 +1,44 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is designed to process image files in the current directory. 
+It accepts an optional application name as an argument, which is used to open each image file if provided. 
+If the script is run with the '-h' or '--help' flag, it displays usage instructions. The script checks each 
+file in the directory to determine if it is a regular image file and, if so, either opens it with the specified
+application or collects the image names in an array. Finally, it outputs the total number of images found and lists their names.
+DOCUMENTATION
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "Example: app=feh ${0##*/}"
+    exit 0 
+fi
+
+app="${app:-""}"
+images=()
+
+# Loop to loop through the files in the folder
+for image in *; do
+    # Check if the file is a regular file and if it is an image file
+    if [ -f "$image" ] && file -b --mime-type "$image" | grep -q "^image/"; then
+        if [[ "$app" ]]; then
+            echo
+            echo \'"$image"\'
+            echo
+            "$app" "$image"
+        else
+            images+=(\'"$image"\')
+        fi
+    fi
+done
+
+if [ ${#images[@]} -gt 0 ]; then
+    num_itens=${#images[@]}
+
+    echo -e "Images: $num_itens\n"
+
+    for item in "${images[@]}"; do
+        echo "$item"
+    done
+fi

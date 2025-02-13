@@ -1,0 +1,83 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Unsplash Random Wallpaper
+
+: <<'DOCUMENTATION'
+This Bash script allows users to define Unsplash random wallpapers at different resolutions. 
+Its strengths include the ability to automatically change wallpaper at defined intervals and 
+support for both Wayland and X11 desktop environments. In addition, it offers a clear help 
+interface to facilitate use.
+DOCUMENTATION
+
+#set -x
+script="${0##*/}"
+
+declare -A resolution
+
+resolution[hd]='1280/720'
+resolution[fullhd]='1920/1080'
+resolution[2k]='2048/1080'
+resolution[qhd]='2560/1440'
+resolution[4k]='3840/2160'
+resolution[8k]='7680/4320' #Size not available in unsplash
+
+mkdir -p /tmp/wallpapers
+cd /tmp/wallpapers || exit
+
+help() {
+    echo -e "Usage: ${script} <resolution> -t <time>\nExample: ${script} fullhd -t 1h\n"
+    echo -e "Or\n"
+    echo -e "Usage: ${script} <resolution> | To set only once without loop"
+    echo -e "\nAvailable resolutions: hd/hd2/fullhd"
+}
+
+set_wallpaper() {
+
+    case "${1}" in 
+
+        fullhd)
+            wget -q -O unsplash_wallpaper.jpg https://unsplash.it/"${resolution[fullhd]}"/?random   ;;
+        hd)
+            wget -q -O unsplash_wallpaper.jpg https://unsplash.it/"${resolution[hd]}"/?random       ;;
+        2k)
+            wget -q -O unsplash_wallpaper.jpg https://unsplash.it/"${resolution[2k]}"/?random       ;;
+        qhd)
+            wget -q -O unsplash_wallpaper.jpg https://unsplash.it/"${resolution[qhd]}"/?random       ;;
+        4k)
+            wget -q -O unsplash_wallpaper.jpg https://unsplash.it/"${resolution[4k]}"/?random       ;;
+        *)
+            help
+    esac
+
+    if [[ "${XDG_SESSION_TYPE}" = wayland ]]; then
+
+        if [[ "${XDG_CURRENT_DESKTOP}" = [Gg][Nn][Oo][Mm][Ee] ]]; then
+            gsettings set org.gnome.desktop.background picture-uri file://"${PWD}"/unsplash_wallpaper.jpg
+        else
+            if [ ! "$(pidof swww-daemon)" ]; then 
+                swww init & swww img unsplash_wallpaper.jpg
+            else
+                swww img unsplash_wallpaper.jpg
+            fi
+        fi
+        
+    elif [[ "${XDG_SESSION_TYPE}" = [xX]11 ]]; then
+        feh --bg-fill unsplash_wallpaper.jpg
+    fi
+}
+
+if [ -z "${1}" ]; then
+    help
+else
+    if [[ "${2}" = "-t" ]]; then
+        while :
+        do
+            set_wallpaper "${1}"
+            sleep "${3}"   # Change this if you want a different update frequency (e.g. 30m, 12h, 24h, etc...).
+        done
+    else
+        set_wallpaper "${1}"
+    fi
+fi

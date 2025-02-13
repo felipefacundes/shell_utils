@@ -1,0 +1,115 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script, created by Felipe Facundes, serves as a simple tool for managing a collection of favorite URLs (bookmarks / quickmarks). 
+It allows users to add new favorites, save them in designated files, and search through existing favorites. 
+
+Key Features:
+1. User -Friendly Interface: Utilizes Zenity for graphical prompts, making it accessible for users unfamiliar with command-line interfaces.
+2. File Management: Automatically creates a directory and a default file for storing favorites if they do not already exist.
+3. URL Validation: Ensures that only valid URLs are added to the favorites list, preventing errors.
+4. Duplicate Prevention: Checks for existing URLs before adding new ones, avoiding redundancy.
+5. Search Functionality: Allows users to search for specific terms within their saved favorites, enhancing usability.
+
+Overall, this script provides a straightforward way to manage and organize favorite URLs efficiently.
+DOCUMENTATION
+
+exec 2>/dev/null
+
+# Define the default favorites file
+FAVORITES_DIR=~/.quickmarks/
+FAVORITES_FILE=~/.quickmarks/quickmarks.txt
+
+[[ ! -d "$FAVORITES_DIR" ]] && mkdir -p "$FAVORITES_DIR"
+[[ ! -f "$FAVORITES_FILE" ]] && touch "$FAVORITES_FILE"
+
+# Function to add a new favorite
+favorite_if() {
+    # Check if the user wants to save to a new file
+    if zenity --question --title='Save to new file?' --text='Do you want to save to a new file?' 2>/dev/null; then
+        while true
+        do
+            # Get the name of the new file
+            declare -l new_file  # Lower Case
+            new_file=$(zenity --entry --title='File name' --text='Enter the name of the new file (will be saved in ~/.quickmarks/):' 2>/dev/null)
+            # Save the new favorite to the new file
+            if [[ "$new_file" ]]; then
+                echo "$url          #  $description" >> ~/.quickmarks/"${new_file}".txt
+                break
+            else
+                zenity --warning --text 'Destination file name, not defined!' 2>/dev/null
+                continue
+            fi
+        done
+    else
+        # Save the new favorite to the default file
+        echo "$url          # $description" >> $FAVORITES_FILE
+    fi
+}
+
+add_favorite() {
+    # Use zenity to get the URL and description of the new favorite
+    while true
+    do
+        url=$(zenity --entry --title='Add Favorite' --text='Enter the URL of the site:' | sed 's|[[:space:]]||g' 2>/dev/null)
+        exist=$(grep -ri "${url}" ~/.quickmarks/*.txt)
+
+        if [[ -z "${exist}" ]]; then
+            if [[ "$url" =~ ^(ssh|smb|sftp|ftp|http|https)://[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(/.*)?$ ]]; then
+                break
+            else
+                zenity --warning --text 'Invalid URL!' 2>/dev/null
+                continue
+            fi
+        elif [[ -z "${url}" ]]; then
+            break
+        else
+             zenity --warning --text 'The URL has already been added!' 2>/dev/null
+        fi
+    done
+
+    description=$(zenity --entry --title='Add Favorite' --text='Enter a description:' | sed ':a;N;$!ba;s|\n||g' 2>/dev/null)
+
+    if [[ "$url" ]] && [[ "$description" ]]; then
+        favorite_if
+    else
+        if [[ -z "$url" ]] && [[ -z "$description" ]]; then
+            zenity --warning --text 'You must fill in both fields: URL and Description!' 2>/dev/null
+        else
+            if [[ -z "$url" ]]; then
+                zenity --warning --text 'Could not create favorite! The URL was not provided!' 2>/dev/null
+            elif [[ -z "$description" ]]; then
+                zenity --warning --text 'Could not create favorite! The description for the URL was not provided!' 2>/dev/null
+            fi
+        fi
+    fi
+}
+
+# Function to search for a term in favorites files
+search_favorites() {
+    # Use zenity to get the search term
+    search_term=$(zenity --entry --title='Search Favorites' --text='Enter the term you want to search for:' 2>/dev/null)
+
+    # Search for the term in .txt files in ~/.quickmarks/ using grep
+    results=$(grep -ri "$search_term" ~/.quickmarks/*.txt | cut -d ':' -f 2-)
+
+    # Check if results is empty
+    if [[ -z "$results" ]]; then
+        zenity --info --title="Search Results" --text="No matches found." --width=300 2>/dev/null
+        return 1
+    else
+        # Display results in a zenity window
+        echo "$results" 2>&1 | tee >(zenity --text-info --title="Search Results" --width=1360 --height=768 >/dev/null)
+    fi
+}
+
+# Check which option was passed as an argument (-a to add favorite, -s to search)
+if [ "$1" == "-a" ]; then
+    add_favorite
+elif [ "$1" == "-s" ]; then
+    search_favorites
+else
+    echo "Invalid option. Use -a to add a favorite or -s to search."
+fi

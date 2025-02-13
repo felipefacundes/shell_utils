@@ -1,0 +1,110 @@
+#!/bin/env python
+# License: GPLv3
+# Credits: Felipe Facundes
+
+"""
+This Python script implements a calendar application using PyQt6 that displays holidays based on the user's locale settings. 
+It automatically detects the system language and country, providing a localized calendar interface. 
+The application highlights holidays in red and displays their names as tooltips for easy identification. 
+Users can view holidays for the current year and the next ten years, enhancing their awareness of important dates. 
+The script is designed to be user-friendly and visually appealing, making it a practical tool for managing holiday information.
+
+Dependencies:
+1. 'PyQt6' - Third-party library for creating the GUI (install via pip).
+2. 'holidays' - Third-party library for holiday data (install via pip).
+3. 'python-dateutil' - Third-party library for date manipulation (install via pip).
+4. 'six' - Third-party library for compatibility between Python 2 and 3 (install via pip).
+5. 'locale' - Native library for locale-specific settings (no installation needed).
+6. 'sys' - Native library for system-specific parameters and functions (no installation needed).
+
+Installation of Dependencies:
+- Create a virtual environment and install the required libraries using the following commands:
+
+  python -m venv .venv
+  source .venv/bin/activate
+  pip install pyqt6 holidays --break-system-packages
+
+- Ensure the following versions are installed:
+  - 'holidays==0.40'
+  - 'PyQt6==6.6.1'
+  - 'python-dateutil==2.8.2'
+  - 'six==1.16.0'
+"""
+
+import sys
+from PyQt6.QtWidgets import QApplication, QMainWindow, QCalendarWidget, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import QLocale, Qt, QDate, QTranslator
+import holidays
+import locale
+
+country = locale.getlocale()[0].split("_")[1].upper()
+print(country)
+
+class CalendarApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle("Calendar")
+        self.setGeometry(100, 100, 400, 300)
+
+        # Get system language
+        system_language = QLocale.system().name()
+
+        # Create translator for system language
+        translator = QTranslator()
+        translator.load(system_language)
+
+        # Set the language for the app
+        QApplication.installTranslator(translator)
+
+        # Set the language for the calendar
+        locale = QLocale(system_language)
+        self.calendar = QCalendarWidget()
+        self.calendar.setLocale(locale)
+        self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+        self.calendar.setGridVisible(True)
+        self.update_calendar()
+
+        # Set label to display calendar language
+        locale_language = QLocale.languageToString(locale.language())
+        self.language_label = QLabel(f"{locale_language}")
+        self.language_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Vertical layout for organizing calendar and label
+        layout = QVBoxLayout()
+        layout.addWidget(self.language_label)
+        layout.addWidget(self.calendar)
+
+        # Central widget for the layout
+        central_widget = QWidget()
+        central_widget.setLayout(layout)
+        self.setCentralWidget(central_widget)
+
+        self.show()
+
+    def update_calendar(self):
+        # Get the holidays for the current year and the next 10 years in the country
+        current_year = int(QDate.currentDate().toString("yyyy"))
+        end_year = current_year + 10
+        country_holidays = holidays.CountryHoliday(country, years=range(current_year, end_year + 1))
+
+        # Set holiday as special style in calendar
+        for date, name in country_holidays.items():
+            qdate = QDate(date.year, date.month, date.day)
+            text_format = self.calendar.dateTextFormat(qdate)
+            text_format.setForeground(Qt.GlobalColor.red)
+            text_format.setToolTip(name)  # Add holiday name as tooltip
+            text_format.setFontPointSize(12)  # Increase tooltip font size
+            self.calendar.setDateTextFormat(qdate, text_format)
+            self.calendar.setGridVisible(True)
+
+
+def main():
+    app = QApplication(sys.argv)
+    window = CalendarApp()
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()

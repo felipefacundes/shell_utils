@@ -1,0 +1,1 @@
+alias chatgpt_logview="~/.shell_utils/scripts/logviewer"

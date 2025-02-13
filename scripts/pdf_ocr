@@ -1,0 +1,76 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+The script is designed to convert raster image PDFs into searchable OCR PDFs using Tesseract, Poppler, and Ghostscript. 
+
+Strengths:
+1. Converts raster PDFs to searchable text PDFs.
+2. Supports multiple languages for OCR processing.
+3. Provides a help function for user guidance.
+4. Cleans up temporary files after processing.
+
+Capabilities:
+- Utilizes Tesseract for OCR.
+- Uses Poppler to convert PDF to images.
+- Employs Ghostscript for PDF generation.
+DOCUMENTATION
+
+set -e
+
+TEMP=$(mktemp -d)
+SCRIPT="${0##*/}"
+DIR_FILE="${PWD}"
+
+PDFRaster2PDFOCR()
+{
+    pdftoppm -jpeg "$2" "${TEMP}"/result
+    NAME=`echo "$2" | cut -d'.' -f1`
+
+    cd "${TEMP}"
+    for i in *.[jJpP][nNpP][gG]
+        do n=`echo "${i}" | cut -d'.' -f1`
+        echo "${n}"
+        tesseract "$i" "${n}" -l "$3" --dpi 1200 pdf
+    done
+    rm *.[jJpP][nNpP][gG]
+
+    gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -dPDFSETTINGS=/default -sOutputFile="${NAME}"_OCR.pdf *.pdf
+    mv "${NAME}"_OCR.pdf "${DIR_FILE}"/"${NAME}"_OCR.pdf
+    rm -rf "${TEMP}"
+
+    clear
+    echo -e "\033[1;32mFinish.\n"
+    echo -e "\033[1;36mResult:\033[0m"
+    echo -e "${NAME}_OCR.pdf\n"
+}
+
+Help()
+{
+    echo -e "$SCRIPT 1.0\n"
+    echo -e "\033[1;32mThis script converts a raster image PDF to a pdf with image and ocr technology, that is, with searchable text.\n"
+    echo -e "\033[1;32mTo use this script it is necessary to have: tesseract, poppler and ghostscript installed.\n"
+    echo -e "\033[1;36mExample:\n\033[0m $SCRIPT 'o' <My_File.pdf> <language> | \033[0;33m $SCRIPT o My_File.pdf eng\033[0m\n"
+    echo -e "\033[1;36mUsage:\n\033[0m $SCRIPT [o] [l] [h]\n"
+    echo -e "\033[1;36mArguments:\033[0m"
+    echo -e "\033[1;33m  o      \033[0m     'o' to convert pdf to ocr pdf (with searchable text)"
+    echo -e "\033[1;33m  l      \033[0m     'l' to list available and installed languages for tesseract to have access and support."
+    echo -e "\033[1;33m  h      \033[0m     'h' to display this help."
+}
+
+case "$1" in
+    "o")
+        PDFRaster2PDFOCR "$1" "$2" "$3"
+        ;;
+    "l")
+        tesseract --list-langs
+        ;;
+    "h")
+        Help
+        ;;
+    *)
+        Help
+        ;;
+esac
+exit 1

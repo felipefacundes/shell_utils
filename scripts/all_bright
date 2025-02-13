@@ -1,0 +1,399 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+# XRandr Brightness Control Script Summary
+
+This Bash script provides a comprehensive solution for managing monitor brightness in Linux environments, 
+with several notable features and capabilities:
+
+### Key Features
+- Multi-monitor support with the ability to control brightness across all connected displays 
+simultaneously or individually
+- Extensive language support with localization for multiple languages including Portuguese, French, 
+  Spanish, German, Russian, Romanian, Hebrew, Arabic, Chinese, Korean, and Japanese
+- Persistent brightness value storage using temporary files to maintain settings between executions
+- Fine-grained brightness control with values ranging from 0.00 to 0.99
+- Built-in safety checks to ensure xrandr is installed and monitors are properly connected
+
+### Technical Strengths
+- Robust error handling and input validation
+- Efficient use of system commands and resource management
+- Modular design with separate functions for increasing, decreasing, and setting specific brightness values
+- Support for both incremental adjustments and direct value settings
+- Clean and maintainable code structure with clear function separation
+
+### User Interface
+- Comprehensive help system available in multiple languages
+- Simple command-line interface with intuitive arguments ('+', '-', '=', etc.)
+- Clear feedback through system notifications for maximum/minimum brightness levels
+- Easy-to-use monitor listing functionality for multi-display setups
+
+### Implementation Details
+- Uses xrandr for direct hardware communication
+- Maintains state through temporary files in /tmp
+- Implements proper error checking for system dependencies
+- Provides flexible brightness adjustment options with both percentage and decimal values
+DOCUMENTATION
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["install"]="Instale o pacote xorg-xrandr"
+        ["brightness_max"]="O brilho está no máximo"
+        ["brightness_min"]="O brilho está no mínimo"
+        ["brightness"]="Brilho"
+        ["help_title_01"]="Este script, por padrão, ajusta o brilho de todos os monitores conectados e ativos."
+        ["help_title_02"]="Se o sistema reconhecer um ou mais monitores como conectados, mas eles estiverem desconectados ou inativos, o script não funcionará."
+        ["help_title_03"]="Identifique se os monitores estão conectados e ativos."
+        ["help_example"]="Exemplo:"
+        ["help_usage"]="Uso:"
+        ["help_arguments"]="Argumentos:"
+        ["help_or"]="ou"
+        ["help_in_de_crease"]="'d' ou '-' para diminuir o brilho, ou 'i' ou '+' para aumentar o brilho."
+        ["help_set"]="'=' ou 'set' para definir o brilho em um valor específico entre 0.00 e 0.99."
+        ["help_list"]="'l' para listar monitores conectados"
+        ["help_monitor"]="'m' para definir um valor específico no monitor."
+        ["help_monitor_value"]="'m' <monitor> <valor>"
+        ["help_help"]="'h' para exibir esta ajuda"
+    )
+elif [[ "${LANG,,}" =~ fr_ ]]; then
+    MESSAGES=(
+        ["install"]="Installez le paquet xorg-xrandr"
+        ["brightness_max"]="La luminosité est au maximum"
+        ["brightness_min"]="La luminosité est au minimum"
+        ["brightness"]="Luminosité"
+        ["help_title_01"]="Ce script, par défaut, ajuste la luminosité de tous les moniteurs connectés et actifs."
+        ["help_title_02"]="Si le système reconnaît un ou plusieurs moniteurs comme connectés, mais qu'ils sont déconnectés ou inactifs, le script ne fonctionnera pas."
+        ["help_title_03"]="Identifiez si les moniteurs sont connectés et actifs."
+        ["help_example"]="Exemple :"
+        ["help_usage"]="Utilisation :"
+        ["help_arguments"]="Arguments :"
+        ["help_or"]="ou"
+        ["help_in_de_crease"]="'d' ou '-' pour diminuer la luminosité, ou 'i' ou '+' pour augmenter la luminosité."
+        ["help_set"]="'=' ou 'set' pour définir la luminosité à une valeur spécifique entre 0.00 et 0.99."
+        ["help_list"]="'l' pour lister les moniteurs connectés"
+        ["help_monitor"]="'m' pour définir une valeur spécifique sur le moniteur."
+        ["help_monitor_value"]="'m' <moniteur> <valeur>"
+        ["help_help"]="'h' pour afficher cette aide"
+    )
+elif [[ "${LANG,,}" =~ es_ ]]; then
+    MESSAGES=(
+        ["install"]="Instala el paquete xorg-xrandr"
+        ["brightness_max"]="El brillo está al máximo"
+        ["brightness_min"]="El brillo está al mínimo"
+        ["brightness"]="Brillo"
+        ["help_title_01"]="Este script, por defecto, ajusta el brillo de todos los monitores conectados y activos."
+        ["help_title_02"]="Si el sistema reconoce uno o más monitores como conectados, pero están desconectados o inactivos, el script no funcionará."
+        ["help_title_03"]="Identifica si los monitores están conectados y activos."
+        ["help_example"]="Ejemplo:"
+        ["help_usage"]="Uso:"
+        ["help_arguments"]="Argumentos:"
+        ["help_or"]="o"
+        ["help_in_de_crease"]="'d' o '-' para disminuir el brillo, o 'i' o '+' para aumentar el brillo."
+        ["help_set"]="'=' o 'set' para establecer el brillo en un valor específico entre 0.00 y 0.99."
+        ["help_list"]="'l' para listar monitores conectados"
+        ["help_monitor"]="'m' para establecer un valor específico en el monitor."
+        ["help_monitor_value"]="'m' <monitor> <valor>"
+        ["help_help"]="'h' para mostrar esta ayuda"
+    )
+elif [[ "${LANG,,}" =~ de_ ]]; then
+    MESSAGES=(
+        ["install"]="Installieren Sie das Paket xorg-xrandr"
+        ["brightness_max"]="Die Helligkeit ist auf Maximum"
+        ["brightness_min"]="Die Helligkeit ist auf Minimum"
+        ["brightness"]="Helligkeit"
+        ["help_title_01"]="Dieses Skript passt standardmäßig die Helligkeit aller angeschlossenen und aktiven Monitore an."
+        ["help_title_02"]="Wenn das System einen oder mehrere Monitore als angeschlossen erkennt, diese jedoch getrennt oder inaktiv sind, funktioniert das Skript nicht."
+        ["help_title_03"]="Identifizieren Sie, ob die Monitore angeschlossen und aktiv sind."
+        ["help_example"]="Beispiel:"
+        ["help_usage"]="Verwendung:"
+        ["help_arguments"]="Argumente:"
+        ["help_or"]="oder"
+        ["help_in_de_crease"]="'d' oder '-' um die Helligkeit zu verringern, oder 'i' oder '+' um die Helligkeit zu erhöhen."
+        ["help_set"]="'=' oder 'set' um die Helligkeit auf einen bestimmten Wert zwischen 0.00 und 0.99 einzustellen."
+        ["help_list"]="'l' um angeschlossene Monitore aufzulisten"
+        ["help_monitor"]="'m' um einen bestimmten Wert für den Monitor festzulegen."
+        ["help_monitor_value"]="'m' <monitor> <wert>"
+        ["help_help"]="'h' um diese Hilfe anzuzeigen"
+    )
+elif [[ "${LANG,,}" =~ ru_ ]]; then
+    MESSAGES=(
+        ["install"]="Установите пакет xorg-xrandr"
+        ["brightness_max"]="Яркость на максимуме"
+        ["brightness_min"]="Яркость на минимуме"
+        ["brightness"]="Яркость"
+        ["help_title_01"]="Этот скрипт по умолчанию регулирует яркость всех подключенных и активных мониторов."
+        ["help_title_02"]="Если система распознает один или несколько мониторов как подключенные, но они отключены или неактивны, скрипт не будет работать."
+        ["help_title_03"]="Определите, подключены ли мониторы и активны."
+        ["help_example"]="Пример:"
+        ["help_usage"]="Использование:"
+        ["help_arguments"]="Аргументы:"
+        ["help_or"]="или"
+        ["help_in_de_crease"]="'d' или '-' для уменьшения яркости, или 'i' или '+' для увеличения яркости."
+        ["help_set"]="'=' или 'set' для установки яркости на конкретное значение от 0.00 до 0.99."
+        ["help_list"]="'l' для отображения подключенных мониторов"
+        ["help_monitor"]="'m' для установки конкретного значения на мониторе."
+        ["help_monitor_value"]="'m' <монитор> <значение>"
+        ["help_help"]="'h' для отображения этой помощи"
+    )
+elif [[ "${LANG,,}" =~ ro_ ]]; then
+    MESSAGES=(
+        ["install"]="Instalați pachetul xorg-xrandr"
+        ["brightness_max"]="Luminozitatea este la maximum"
+        ["brightness_min"]="Luminozitatea este la minimum"
+        ["brightness"]="Luminozitate"
+        ["help_title_01"]="Acest script, în mod implicit, ajustează luminozitatea tuturor monitoarelor conectate și active."
+        ["help_title_02"]="Dacă sistemul recunoaște unul sau mai multe monitoare ca fiind conectate, dar acestea sunt deconectate sau inactive, scriptul nu va funcționa."
+        ["help_title_03"]="Identificați dacă monitoarele sunt conectate și active."
+        ["help_example"]="Exemplu:"
+        ["help_usage"]="Utilizare:"
+        ["help_arguments"]="Argumente:"
+        ["help_or"]="sau"
+        ["help_in_de_crease"]="'d' sau '-' pentru a reduce luminozitatea, sau 'i' sau '+' pentru a crește luminozitatea."
+        ["help_set"]="'=' sau 'set' pentru a seta luminozitatea la o valoare specifică între 0.00 și 0.99."
+        ["help_list"]="'l' pentru a lista monitoarele conectate"
+        ["help_monitor"]="'m' pentru a seta o valoare specifică pe monitor."
+        ["help_monitor_value"]="'m' <monitor> <valoare>"
+        ["help_help"]="'h' pentru a afișa această ajutor"
+    )
+elif [[ "${LANG,,}" =~ he_ ]]; then
+    MESSAGES=(
+        ["install"]="התקן את חבילת xorg-xrandr"
+        ["brightness_max"]="הבהירות היא במקסימום"
+        ["brightness_min"]="הבהירות היא במינימום"
+        ["brightness"]="בהירות"
+        ["help_title_01"]="הסקריפט הזה, כברירת מחדל, מתכוונן את הבהירות של כל המסכים המחוברים והפעילים."
+        ["help_title_02"]="אם המערכת מזהה מסך אחד או יותר כמחוברים, אך הם מנותקים או לא פעילים, הסקריפט לא יעבוד."
+        ["help_title_03"]="זהה אם המסכים מחוברים ופעילים."
+        ["help_example"]="דוגמה:"
+        ["help_usage"]="שימוש:"
+        ["help_arguments"]="ארגומנטים:"
+        ["help_or"]="או"
+        ["help_in_de_crease"]="'d' או '-' כדי להקטין את הבהירות, או 'i' או '+' כדי להגדיל את הבהירות."
+        ["help_set"]="'=' או 'set' כדי לקבוע את הבהירות לערך ספציפי בין 0.00 ל-0.99."
+        ["help_list"]="'l' כדי לרשום את המסכים המחוברים"
+        ["help_monitor"]="'m' כדי לקבוע ערך ספציפי על המסך."
+        ["help_monitor_value"]="'m' <מסך> <ערך>"
+        ["help_help"]="'h' כדי להציג את העזרה הזו"
+    )
+elif [[ "${LANG,,}" =~ ar_ ]]; then
+    MESSAGES=(
+        ["install"]="قم بتثبيت حزمة xorg-xrandr"
+        ["brightness_max"]="السطوع في الحد الأقصى"
+        ["brightness_min"]="السطوع في الحد الأدنى"
+        ["brightness"]="سطوع"
+        ["help_title_01"]="هذا السكربت، بشكل افتراضي، يضبط سطوع جميع الشاشات المتصلة والنشطة."
+        ["help_title_02"]="إذا تعرف النظام على شاشة واحدة أو أكثر على أنها متصلة، لكنها مفصولة أو غير نشطة، فلن يعمل السكربت."
+        ["help_title_03"]="حدد ما إذا كانت الشاشات متصلة ونشطة."
+        ["help_example"]="مثال:"
+        ["help_usage"]="استخدام:"
+        ["help_arguments"]="الوسائط:"
+        ["help_or"]="أو"
+        ["help_in_de_crease"]="'d' أو '-' لتقليل السطوع، أو 'i' أو '+' لزيادة السطوع."
+        ["help_set"]="'=' أو 'set' لتعيين السطوع إلى قيمة محددة بين 0.00 و 0.99."
+        ["help_list"]="'l' لعرض الشاشات المتصلة"
+        ["help_monitor"]="'m' لتعيين قيمة محددة على الشاشة."
+        ["help_monitor_value"]="'m' <شاشة> <قيمة>"
+        ["help_help"]="'h' لعرض هذه المساعدة"
+    )
+elif [[ "${LANG,,}" =~ zh_ ]]; then
+    MESSAGES=(
+        ["install"]="安装 xorg-xrandr 包"
+        ["brightness_max"]="亮度已达到最大值"
+        ["brightness_min"]="亮度已达到最小值"
+        ["brightness"]="亮度"
+        ["help_title_01"]="该脚本默认调整所有连接和活动显示器的亮度。"
+        ["help_title_02"]="如果系统识别到一个或多个显示器已连接，但它们已断开或不活动，则脚本将无法工作。"
+        ["help_title_03"]="确定显示器是否已连接并处于活动状态。"
+        ["help_example"]="示例："
+        ["help_usage"]="用法："
+        ["help_arguments"]="参数："
+        ["help_or"]="或"
+        ["help_in_de_crease"]="'d' 或 '-' 以降低亮度，或 'i' 或 '+' 以增加亮度。"
+        ["help_set"]="'=' 或 'set' 将亮度设置为 0.00 到 0.99 之间的特定值。"
+        ["help_list"]="'l' 列出连接的显示器"
+        ["help_monitor"]="'m' 设置显示器上的特定值。"
+        ["help_monitor_value"]="'m' <显示器> <值>"
+        ["help_help"]="'h' 显示此帮助信息"
+    )
+elif [[ "${LANG,,}" =~ ko_ ]]; then
+    MESSAGES=(
+        ["install"]="xorg-xrandr 패키지를 설치하세요"
+        ["brightness_max"]="밝기가 최대입니다"
+        ["brightness_min"]="밝기가 최소입니다"
+        ["brightness"]="밝기"
+        ["help_title_01"]="이 스크립트는 기본적으로 모든 연결된 활성 모니터의 밝기를 조정합니다."
+        ["help_title_02"]="시스템이 하나 이상의 모니터를 연결된 것으로 인식하지만, 이들이 분리되었거나 비활성 상태인 경우, 스크립트는 작동하지 않습니다."
+        ["help_title_03"]="모니터가 연결되어 있고 활성 상태인지 확인하세요."
+        ["help_example"]="예시:"
+        ["help_usage"]="사용법:"
+        ["help_arguments"]="인수:"
+        ["help_or"]="또는"
+        ["help_in_de_crease"]="'d' 또는 '-'로 밝기를 줄이고, 'i' 또는 '+'로 밝기를 높입니다."
+        ["help_set"]="'=' 또는 'set'으로 0.00에서 0.99 사이의 특정 값으로 밝기를 설정합니다."
+        ["help_list"]="'l'로 연결된 모니터를 나열합니다"
+        ["help_monitor"]="'m'으로 모니터에 특정 값을 설정합니다."
+        ["help_monitor_value"]="'m' <모니터> <값>"
+        ["help_help"]="'h'로 이 도움말을 표시합니다"
+    )
+elif [[ "${LANG,,}" =~ ja_ ]]; then
+    MESSAGES=(
+        ["install"]="xorg-xrandr パッケージをインストールします"
+        ["brightness_max"]="明るさは最大です"
+        ["brightness_min"]="明るさは最小です"
+        ["brightness"]="明るさ"
+        ["help_title_01"]="このスクリプトは、デフォルトで接続されているすべてのアクティブなモニターの明るさを調整します。"
+        ["help_title_02"]="システムが1つ以上のモニターを接続されていると認識しているが、それらが切断されているか非アクティブな場合、スクリプトは機能しません。"
+        ["help_title_03"]="モニターが接続されていてアクティブかどうかを確認します。"
+        ["help_example"]="例:"
+        ["help_usage"]="使用法:"
+        ["help_arguments"]="引数:"
+        ["help_or"]="または"
+        ["help_in_de_crease"]="'d' または '-' で明るさを減少させ、'i' または '+' で明るさを増加させます。"
+        ["help_set"]="'=' または 'set' で明るさを 0.00 から 0.99 の間の特定の値に設定します。"
+        ["help_list"]="'l' で接続されているモニターをリストします"
+        ["help_monitor"]="'m' でモニターに特定の値を設定します。"
+        ["help_monitor_value"]="'m' <モニター> <値>"
+        ["help_help"]="'h' でこのヘルプを表示します"
+    )
+else
+    MESSAGES=(
+        ["install"]="Install the xorg-xrandr package"
+        ["brightness_max"]="Brightness is at maximum"
+        ["brightness_min"]="Brightness is at minimum"
+        ["brightness"]="Brightness"
+        ["help_title_01"]="This script, by default, adjusts the brightness of all connected and active monitors."
+        ["help_title_02"]="If the system recognizes one or more monitors as connected, but they are either disconnected or inactive, the script will not work."
+        ["help_title_03"]="Identify whether the monitors are connected and active."
+        ["help_example"]="Example:"
+        ["help_usage"]="Usage:"
+        ["help_arguments"]="Arguments:"
+        ["help_or"]="or"
+        ["help_in_de_crease"]="'d' or '-' to decrease brightness, or 'i' or '+' to increase brightness."
+        ["help_set"]="'=' or 'set' to set the brightness to a specific value between 0.00 and 0.99."
+        ["help_list"]="'l' to list connected monitors"
+        ["help_monitor"]="'m' to set a specific value on the monitor."
+        ["help_monitor_value"]="'m' <monitor> <value>"
+        ["help_help"]="'h' to display this help"
+    )
+fi
+
+if ! command -v xrandr &>/dev/null; then
+    echo "${MESSAGES[install]}"
+    exit 1
+fi
+
+set -e
+
+bright_file="/tmp/variable_brightness.value"
+connected=$(xrandr | grep -w connected | awk '{print $1}')
+
+if [ ! -s "$bright_file" ]; then
+    rm -f "$bright_file"
+fi
+if [ ! -e "$bright_file" ]; then
+    touch "$bright_file"
+    echo 99 | tee "$bright_file" &>/dev/null
+fi
+
+update_value() {
+    value=$(cat "$bright_file") &>/dev/null
+}
+
+update_value
+
+help() {
+    echo -e "${0##*/} 1.0\n"
+    echo -e "\033[1;32m${MESSAGES[help_title_01]}"
+    echo -e "\033[1;32m${MESSAGES[help_title_02]}"
+    echo -e "\n${MESSAGES[help_title_03]}\033[0m\n"
+    echo -e "\033[1;36m${MESSAGES[help_example]}\033[0m ${0##*/} d\n"
+    echo -e "\033[1;36m${MESSAGES[help_usage]}\033[0m ${0##*/} [d] [-] [i] [+] [=] [set] [l] [m] [h]\n"
+    echo -e "\033[1;36m${MESSAGES[help_arguments]}\033[0m\n"
+    echo -e "\033[1;33m- ${MESSAGES[help_or]} +   \033[0m     ${MESSAGES[help_in_de_crease]}"
+    echo -e "\033[1;33m= ${MESSAGES[help_or]} set \033[0m     ${MESSAGES[help_set]}"
+    echo -e "\033[1;33m  l      \033[0m     ${MESSAGES[help_list]}"
+    echo -e "\033[1;33m  m      \033[0m     ${MESSAGES[help_monitor]}"
+    echo -e "               ${MESSAGES[help_example]} ${MESSAGES[help_monitor_value]} | \033[0;33m${0##*/} m $(echo "$connected" | head -n1 | awk '{ print $1 }') 0.5\033[0m"
+    echo -e "\033[1;33m  h      \033[0m     ${MESSAGES[help_help]}"
+}
+
+increase() {
+    update_value
+    if (( "$value" < "99" )); then
+        echo $(($value + 3)) | tee "$bright_file" &>/dev/null
+    fi
+    update_value
+    if [ "$value" -ge "99" ]; then
+        notify-send "Brightness" "Brightness is at maximum";
+        echo 99 | tee "$bright_file" &>/dev/null
+    fi
+    update_value
+    for display in $connected; do
+        if (( "$value" > "10" )); then
+            xrandr --output "$display" --brightness 0."$value"
+        elif (( "$value" < "10" )) && (( "$value" > "0" )); then
+            xrandr --output "$display" --brightness 0.0"$value"
+        fi
+    done
+}
+
+decrease() {
+    update_value
+    if (( "$value" <= "99" )) && (( "$value" > "0" )); then
+        echo $(($value - 3)) | tee "$bright_file" &>/dev/null
+    fi
+    update_value
+    if (( "$value" < "0" )); then
+        echo 0 | tee "$bright_file" &>/dev/null
+    fi
+    update_value
+    for display in $connected; do
+        if (( "$value" > "10" )); then
+            xrandr --output "$display" --brightness 0."$value"
+        elif (( "$value" < "10" )) && (( "$value" > "0" )); then
+            xrandr --output "$display" --brightness 0.0"$value"
+        elif (( "$value" == "0" )); then
+            xrandr --output "$display" --brightness 0.0
+        fi
+    done
+}
+
+set_all() {
+    for display in $connected; do
+        xrandr --output "$display" --brightness "$2"
+    done
+}
+
+set_monitor() {
+    for display in $connected; do
+        xrandr --output "$2" --brightness "$3"
+    done
+}
+
+case "$1" in
+    "i"|"+")
+        increase
+        ;;
+    "d"|"-")
+        decrease
+        ;;
+    "="|"set")
+        set_all "$1" "$2"
+        ;;
+    "m")
+        set_monitor "$1" "$2" "$3"
+        ;;
+    "l")
+        echo "$connected"
+        ;;
+    "h")
+        help
+        ;;
+    *)
+        help
+        ;;
+esac

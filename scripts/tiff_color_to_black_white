@@ -1,0 +1,25 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script processes all PNG files in the current directory by converting them to PGM format and then to TIFF format. 
+It sets specific image properties such as density, quality, and color depth during the conversion. 
+Finally, it cleans up by removing the intermediate PGM files.
+DOCUMENTATION
+
+for i in *.[jJpP][nNpP][gG];
+    do name=`echo "${i}" | cut -d'.' -f1`
+    echo "${name}"
+    convert "${i}" -density 300x300 -quality 100% "${name}".pgm
+    convert "${name}".pgm -depth 8 \
+            -colorspace Gray -type grayscale \
+            -channel rgba -alpha set -fuzz 50% \
+            -fill none -opaque white \
+            -fill white -opaque black \
+            -fill black -opaque none \
+            -colors 2 -strip \
+            -alpha off -negate -threshold 1% \
+            -density 300x300 -quality 100% "${name}".pgm "${name}".tiff
+    rm "${name}".pgm
+done

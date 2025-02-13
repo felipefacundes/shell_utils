@@ -1,0 +1,361 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 5/2/2018 .......... revised 1/29/2022
+# Revision for hamming computation provided by Niels Luttge 1/29/2022
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: hamming [-p1 phash1] [-p2 phash2] [-s source] [-m method] [infile1] [infile2]
+#
+# USAGE: hamming [-h|-help]
+#
+# OPTIONS:
+# 
+# -p1    phash1        optional first perceptual hash to compare to the second perceptual 
+#                      hash; binary string of values; number of binary digits must match 
+#                      that of the second perceptual hash; takes precedence over 
+#                      perceptual hashes provided in two optional input images
+# -p2    phash2        optional second perceptual hash to compare to the first perceptual 
+#                      hash; binary string of values; number of binary digits must match 
+#                      that of the first perceptual hash; takes precedence over 
+#                      perceptual hashes provided in two optional input images
+# -s     source        source location in infiles' meta date to retrieve the perceptual 
+#                      hash values; choices are: the "comment" or "label" fields in 
+#                      the images' meta data; default=comment
+# -m     method        hash method identifies which perceptual hash value to retrieve 
+#                      from the two images' meta data fields; choices are: bmh, bdh, 
+#                      avh, pfh; default=bmh
+# 
+###
+#
+# NAME: HAMMING 
+# 
+# PURPOSE: To compute the percent hamming distance between two binary string perceptual hashes.
+# 
+# DESCRIPTION: HAMMING computes the percent hamming distance between two binary string 
+# perceptual hashes. The two hashes strings may be privided directly or they may be 
+# extracted from two input images in which one or more has hashes have been stored 
+# for one of several hash methods. The potential hash methods that may be stored in 
+# the images are as follows: 
+# 
+# Block Mean Hash (bmh): The preprocess image is scale to 16x16 pixels, which is the 
+# same as averaging non-overlapping blocks of 16x16 pixels. The hash is computed by 
+# comparing the global mean of the 256x256 image to each of the 16x16 pixel value. If  
+# the value is larger than the global mean, the hash is set to 1; otherwise 0. This  
+# forms a 256 length binary string for the hash.
+#
+# Block Difference Hash (bdh): The preprocessed image is scale to 9x8 pixels. Then each 
+# pixel is subtracted from its neighbor to the right, thresholded at 0 and divided by 
+# 255. This forms a 128 length binary string. The preprocessed image is scale again,  
+# but this time to 8x9 pixels. Then each pixel is subtracted from its neighbor below, 
+# thresholded at 0 and divided by 255. This forms another 128 length binary string. 
+# Finally the two 128 length strings are appended to form a 256 length string for 
+# the binary hash.
+# 
+# Annular Variance Hash (avh): The preprocessed image is converted to 256x256 polar 
+# format with the columns representing angles and the rows representing radius. Thus 
+# each row is an annulus (circular ring) of the preprocessed image. The variance of 
+# each row is computed to get the variance as a function of radius as a list of 256 
+# values. Each value is compared to the next one. If the next one is larger, then a 
+# value of 1 is assigned; othewise a value of 0 is assigned. This produces a 255 length 
+# binary string for the hash.
+# 
+# Polar FFT Hash (pfh): The preprocessed image is converted to 256x256 polar format 
+# with the columns representing angles and the rows representing radius. The FFT 
+# magnitude is then computed and the center 15x15 pixels are extracted and listed 
+# as 225 graylevel values in row first order. Each pixel's graylevel is then compared 
+# to the next one. If the next one is larger, then a value of 1 is assigned; othewise 
+# a value of 0 is assigned. This produces a 224 length binary string for the hash.
+# 
+# References:
+# https://en.wikipedia.org/wiki/Hamming_distance
+# https://classroom.synonym.com/calculate-hamming-distance-2656.html
+# 
+# 
+# OPTIONS: 
+#
+# -p1 phash1 ... PHASH1 is the optional first perceptual hash to compare to the 
+# second perceptual hash. The hash is a binary string of values. The number of binary 
+# digits in the string must match that of the second perceptual hash. Using PHASH1 and 
+# PHASH2 takes precedence over perceptual hashes provided in two optional input images.
+# Infiles do not need to be provided if both phash1 and phash2 are provided.
+# 
+# -p2 phash2 ... PHASH21 is the optional second perceptual hash to compare to the 
+# first perceptual hash. The hash is a binary string of values. The number of binary 
+# digits in the string must match that of the second perceptual hash. Using PHASH1 and 
+# PHASH2 takes precedence over perceptual hashes provided in two optional input images.
+# Infiles do not need to be provided if both phash1 and phash2 are provided.
+# 
+# -s source ... SOURCE location in in the two infiles' meta date to retrieve the 
+# perceptual hash values. The choices are: the "comment" (c) or "label" (l) fields in 
+# the images' meta data. The default=comment.
+# 
+# -m method ... METHOD identifies which perceptual hash value to retrieve from the 
+# two images' meta data fields. More than one hash may be stored in the meta data field, 
+# but only one may be specified for computing the hamming distance. The choices are:
+# bmh (block mean hash), bdh (block difference hash), avh (annular variance hash), 
+# pfh (polar fft hash). The default=bmh.
+#
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+phash1=""			# first perceptual hash string
+phash2=""			# second perceptual hash string
+method="bmh"		# hash method
+source="comment"	# save hash location
+
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# function to store comment or label data
+storeMetaData()
+	{		
+	# write to comment or label meta data
+	if [ "$save" = "comment" ]; then
+		if [ "$comment" = "" ]; then
+			comment="$img $method $phash"
+		else
+			comment="$comment\n$img $method $phash"
+		fi
+	elif [ "$save" = "label" ]; then
+		if [ "$label" = "" ]; then
+			label="$img $method $phash"
+		else
+			label="$label\n$img $method $phash"
+		fi
+	fi
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 6 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+			   -p1)    # get phash1
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PHASH1 SPECIFICATION ---"
+					   checkMinus "$1"
+					   phash1=`expr "$1" : '\([01]*\)'`
+					   [ "$phash1" = "" ] && errMsg "--- PHASH1=$phash1 IS NOT A VALID VALUE ---"
+					   ;;
+			   -p2)    # get phash2
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PHASH2 SPECIFICATION ---"
+					   checkMinus "$1"
+					   phash2=`expr "$1" : '\([01]*\)'`
+					   [ "$phash2" = "" ] && errMsg "--- PHASH2=$phash2 IS NOT A VALID VALUE ---"
+					   ;;
+				-m)    # method
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID METHOD SPECIFICATION ---"
+					   checkMinus "$1"
+					   method=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$method" in 
+							bmh) ;;
+							bdh) ;;
+							avh) ;;
+							pfh) ;;
+							*) errMsg "--- METHOD=$method IS AN INVALID VALUE ---" 
+					   esac
+				   	   ;;
+				-s)    # source
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SOURCE SPECIFICATION ---"
+					   checkMinus "$1"
+					   source=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$source" in 
+							comment|c) source="comment" ;;
+							label|l) source="label" ;;
+							*) errMsg "--- SOURCE=$source IS AN INVALID VALUE ---" 
+					   esac
+				   	   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get two infiles
+	infile1="$1"
+	infile2="$2"
+fi
+
+
+# check if PHASH1 and PHASH2 both provide from -p1 and -p2
+if [ "$phash1" = "" -a "$phash2" != "" ] || [ "$phash1" != "" -a "$phash2" = "" ]; then
+	errMsg "--- ONLY ONE OF PHASH1 OR PHASH2 VALUE PROVIDED ---"
+fi
+
+	
+# if neither PHASH1 nor PHASH2 provide from -p1 and -p2, then read two images and get meta data
+if [ "$phash1" = "" -a "$phash2" = "" ]; then
+
+	OLDIFS=$IFS
+	IFS=$'\n'
+	if [ -f "$infile1" -a -r "$infile1" -a -s "$infile1" ]; then
+			if [ "$source" = "comment" ]; then
+				arr1=(`convert "$infile1" -format "%c" info:`)
+			elif [ "$source" = "label" ]; then
+				arr1=(`convert "$infile1" -format "%l" info:`)
+			fi
+	else
+		errMsg "--- FILE $infile1 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+	fi
+
+	if [ -f "$infile2" -a -r "$infile2" -a -s "$infile2" ]; then
+			if [ "$source" = "comment" ]; then
+				arr2=(`convert "$infile2" -format "%c" info:`)
+			elif [ "$source" = "label" ]; then
+				arr2=(`convert "$infile2" -format "%l" info:`)
+			fi
+	else
+		errMsg "--- FILE $infile2 DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+	fi
+	IFS=$OLDIFS
+
+	# check if data1 or data2 empty
+	arr1_num=${#arr1[*]}
+	arr2_num=${#arr2[*]}
+	#echo "arr1=${arr1[*]};"
+	#$echo "arr2=${arr1[*]};"
+
+	if [ $arr1_num -eq 0 -o $arr2_num -eq 0 ]; then
+		errMsg "--- META DATA IS MISSING FROM ONE OR BOTH IMAGES ---"
+	fi
+	
+	# read hash values from both IMAGES
+	for((i=0; i<arr1_num; i++)); do
+		meta_method=`echo "${arr1[$i]}" | cut -d\  -f1`
+		hash=`echo "${arr1[$i]}" | cut -d\  -f2`
+		if [ "$meta_method" = "$method" ]; then
+			phash1=$hash
+			break
+		fi
+	done
+
+	for((j=0; j<arr1_num; j++)); do
+		meta_method=`echo "${arr2[$j]}" | cut -d\  -f1`
+		hash=`echo "${arr2[$i]}" | cut -d\  -f2`
+		if [ "$meta_method" = "$method" ]; then
+			phash2=$hash
+			break
+		fi
+	done
+
+fi
+
+
+# compute hamming distance
+# count the number of differences between each corresponding phash digit positions
+num1=${#phash1}
+num2=${#phash2}
+if [ $num1 -eq 0 -o $num2 -eq 0 ]; then
+	errMsg "--- ONE OR BOTH IMAGES DO NOT STORE PHASHES FOR THE REQUESTED METHOD $method ---"
+elif [ $num1 -ne $num2 ]; then
+	errMsg "--- UNEQUAL PHASH LENGTHS: $num1 $num2 ---"
+else # $num1 -eq $num2
+	dist=0
+	for (( i=0; i<$num1; i++ )); do
+		if [[ ${phash1:$i:1} -ne ${phash2:$i:1} ]]; then 
+			((dist=dist+1))
+		fi
+	done
+	# print integer dot decimal to two places
+	echo "$((100*$dist/$num1)).$((100*$dist%$num1*100/$num1))"
+fi
+
+exit 0
+
+
+

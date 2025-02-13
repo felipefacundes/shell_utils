@@ -1,0 +1,227 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 5/14/2020 .......... revised 5/14/2020
+#
+# USAGE: midgradient [-l length] [-t thickness] [-c1 color1] [-c2 color2] 
+# [-d direction] [-o offset] outfile
+# USAGE: midgradient [-help]
+#
+# OPTIONS:
+# 
+# -l     length        length in pixels along the gradient; integer>0; 
+#                      default=256
+# -t     thickness     thickness in pixels of the gradient; integer>0;
+#                      default=50
+# -c1    color1        color at start of gradient; any valid Imagemagick 
+#                      color; default=red
+# -c2    color2        color at end of gradient; any valid Imagemagick 
+#                      color; default=blue
+# -d     direction     direction angle of the gradient relative to 
+#                      default direction 0 pointing up; integer choice of 
+#                      0, 90, 180 or 270; default=0
+# -o     offset        offset point in percent along gradient of mid-color 
+#                      (equal blend of color1 and color2); 0<=integer<=100; 
+#                      default=50 (middle of the gradient)
+# 
+###
+# 
+# NAME: MIDGRADIENT
+# 
+# PURPOSE: To create a two-color gradient with adjustable mid-color location.
+# 
+# DESCRIPTION: MIDGRADIENT creates a two-color gradient with adjustable 
+# mid-color location. The gradient can vary, up/down or left/right according 
+# to a direction or rotation angle relative to 0 upwards from color1 to color2.
+# 
+# 
+# OPTIONS: 
+#
+# -l length ... LENGTH in pixels along the gradient. Values are integers>0. 
+# The default=256.
+# 
+# -t thickness ... THICKNESS in pixels of the gradient. Values are integers>0.
+# The default=50.
+# 
+# -c1 color1 ... COLOR1 is the color at start of gradient. Any valid 
+# Imagemagick color is allowed. The default=red.
+# 
+# -c2 color2 ... COLOR2 is the color at end of gradient. Any valid 
+# Imagemagick color is allowed. The default=blue.
+# 
+# -d direction ... DIRECTION angle of the gradient relative to the default 
+# direction of 0 pointing upward. Choices are integer of  0, 90, 180 or 270. 
+# The default=0.
+# 
+# -o offset ... OFFSET point in percent along gradient of mid-color 
+# (equal blend of color1 and color2). Values are 0<=integers<=100.
+# The default=50 (middle of the gradient).
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+length=256
+thickness=50
+color1="red"
+color2="blue"
+direction=0
+offset=50
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^###/q;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -n '/^######/q;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 13 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		     -help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-l)    # get length
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID LENGTH SPECIFICATION ---"
+					   checkMinus "$1"
+					   length=`expr "$1" : '\([0-9]*\)'`
+					   [ "$length" = "" ] && errMsg "--- LENGTH=$length MUST BE An INTEGER ---"
+					   test=`echo "$length == 0" | bc`
+					   [ $test -eq 1 ] && errMsg "--- LENGTH=$length MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-t)    # get thickness
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID THICKNESS SPECIFICATION ---"
+					   checkMinus "$1"
+					   thickness=`expr "$1" : '\([0-9]*\)'`
+					   [ "$thickness" = "" ] && errMsg "--- THICKNESS=$thickness MUST BE An INTEGER ---"
+					   test=`echo "$thickness == 0" | bc`
+					   [ $test -eq 1 ] && errMsg "--- THICKNESS=$thickness MUST BE A POSITIVE INTEGER ---"
+					   ;;
+			   -c1)    # get color1
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR1 SPECIFICATION ---"
+					   checkMinus "$1"
+					   color1="$1"
+					   ;;
+			   -c2)    # get color2
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR2 SPECIFICATION ---"
+					   checkMinus "$1"
+					   color2="$1"
+					   ;;
+				-d)    # get direction
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIRECTION SPECIFICATION ---"
+					   checkMinus "$1"
+					   direction=`expr "$1" : '\([0-9]*\)'`
+					   case "$direction" in 
+					   		0) ;;
+					   		90) ;;
+					   		180) ;;
+					   		270) ;;
+					   		*) errMsg "--- DIRECTION=$direction IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-o)    # get offset
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID OFFSET SPECIFICATION ---"
+					   checkMinus "$1"
+					   offset=`expr "$1" : '\([0-9]*\)'`
+					   [ "$offset" = "" ] && errMsg "--- OFFSET=$offset MUST BE An INTEGER ---"
+					   test1=`echo "$offset < 0" | bc`
+					   test2=`echo "$offset > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- OFFSET=$offset MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	# get outfile
+	outfile=$1
+fi
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "--- NO OUTPUT FILE SPECIFIED ---"
+
+
+color12=`convert \
+	\( -size 1x1 xc:white -fill "$color1" -colorize 100 \) \
+	\( -size 1x1 xc:white -fill "$color2" -colorize 100 \) \
+	-evaluate-sequence mean -format "%[pixel:u.p]" info:`
+
+len1=`convert xc: -format "%[fx:round($offset*$length/100)]" info:`
+len2=$((length-len1))
+
+convert \
+	-size ${thickness}x${len1} gradient:"${color2}-${color12}" \
+	-size ${thickness}x${len2} gradient:"${color12}-${color1}" \
+	-append -rotate $direction \
+	"$outfile"
+
+
+exit 0

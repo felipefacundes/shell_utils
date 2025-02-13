@@ -1,0 +1,8 @@
+alias typescript='~/.shell_utils/scripts/typing'
+alias typescripting='typescript'
+alias digitar='typescript'
+alias digitando='typescript'
+alias escrever='typescript'
+alias escrevendo='typescript'
+alias datilografar='typescript'
+alias datilografando='typescript'

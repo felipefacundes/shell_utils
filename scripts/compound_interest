@@ -1,0 +1,111 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script calculates the final amount of money after applying compound interest over a specified period. 
+It allows users to input the principal amount, interest rate, duration in days, and the type of interest (daily or monthly). 
+The script is designed to be user-friendly, providing error messages and usage instructions in both Portuguese and English.
+
+Strengths:
+1. Multilingual Support: Offers messages in both Portuguese and English, making it accessible to a wider audience.
+2. User  Guidance: Includes a help function that provides clear instructions on how to use the script and the required parameters.
+3. Input Validation: Checks for the correct number of arguments and validates the interest type, ensuring that users provide valid input.
+4. Accurate Calculations: Utilizes the compound interest formula to compute the final amount accurately based on user inputs.
+5. Formatted Output: Displays the final amount in a user-friendly format, enhancing readability.
+
+Capabilities:
+- Calculates compound interest based on user-defined parameters.
+- Supports both daily and monthly interest calculations.
+- Provides detailed error messages and usage examples to assist users.
+- Utilizes the 'bc' command for precise mathematical calculations, ensuring accuracy in financial computations.
+DOCUMENTATION
+
+# Global associative array for messages
+declare -A MESSAGES
+
+update_message() {
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        MESSAGES=(
+            ["usage"]="Uso: ${0##*/} <principal> <taxa de juros> <período (em dias)> <diario|mensal>"
+            ["params"]="Parâmetros:"
+            ["main"]="  <principal>         - Valor inicial (exemplo: 1000)"
+            ["interest_rate"]="  <taxa de juros>     - Percentual de juros (exemplo: 5 para 5%)"
+            ["period"]="  <período (em dias)> - Quantidade de dias para aplicar os juros compostos"
+            ["interest_type"]="  <diario|mensal>     - Tipo de juros, pode ser 'diario' ou 'mensal'"
+            ["example"]="Exemplo de uso:"
+            ["error_invalid_args"]="Erro: número de argumentos inválido."
+            ["error_invalid_interest_type"]="Erro: tipo de juros deve ser 'diario' ou 'mensal'."
+            ["final_amount"]="Montante final após $days_period dias: R$ %.2f\n"
+        )
+    else
+        MESSAGES=(
+            ["usage"]="Usage: ${0##*/} <main> <interest rate> <period (in days)> <daily|monthly>"
+            ["params"]="Parameters:"
+            ["main"]="  <main>         - Initial amount (example: 1000)"
+            ["interest_rate"]="  <interest rate>     - Interest percentage (example: 5 for 5%)"
+            ["period"]="  <period (in days)> - Number of days to apply compound interest"
+            ["interest_type"]="  <daily|monthly>     - Type of interest, can be 'daily' or 'monthly'"
+            ["example"]="Example usage:"
+            ["error_invalid_args"]="Error: invalid number of arguments."
+            ["error_invalid_interest_type"]="Error: interest type must be 'daily' or 'monthly'."
+            ["final_amount"]="Final amount after $days_period days: $%.2f\n"
+        )
+    fi
+}
+
+update_message
+
+# Help function
+function help {
+    echo -e "${MESSAGES["usage"]}"
+    echo
+    echo -e "${MESSAGES["params"]}"
+    echo -e "${MESSAGES["main"]}"
+    echo -e "${MESSAGES["interest_rate"]}"
+    echo -e "${MESSAGES["period"]}"
+    echo -e "${MESSAGES["interest_type"]}"
+    echo
+    echo -e "${MESSAGES["example"]}"
+    echo -e "  ${0##*/} 1000 5 30 diario"
+    echo -e "  ${0##*/} 2000 10 60 mensal"
+}
+
+# Check if all parameters were passed
+if [ "$#" -ne 4 ]; then
+    echo -e "${MESSAGES["error_invalid_args"]}"
+    help
+    exit 1
+fi
+
+# Assign parameters to variables
+main=$1
+interest_rate=$2
+days_period=$3
+interest_type=$4
+
+# Check if the interest type is valid
+if [[ "$interest_type" != "diario" && "$interest_type" != "mensal" ]]; then
+    echo -e "${MESSAGES["error_invalid_interest_type"]}"
+    help
+    exit 1
+fi
+
+# Convert interest rate percentage to decimal
+decimal_rate=$(echo "scale=6; $interest_rate / 100" | bc)
+
+# Calculate the number of periods
+if [ "$interest_type" == "diario" ]; then
+    number_periods=$days_period
+else
+    number_periods=$(echo "$days_period / 30" | bc)
+fi
+
+# Compound interest formula: A = P * (1 + r)^n
+# First, calculate (1 + decimal_rate)^number_periods
+base=$(echo "1 + $decimal_rate" | bc)
+upstream=$(echo "$main * ($base ^ $number_periods)" | bc -l)
+
+update_message
+# Display the result in the appropriate format
+LC_NUMERIC=C printf "${MESSAGES["final_amount"]}" "$upstream"

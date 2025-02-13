@@ -1,0 +1,4 @@
+#!/bin/bash
+sudo pacman -S grub ntfs-3g fuse3 dosfstools efibootmgr exfatprogs mtools gpart lzop udftools fuseiso libisoburn sdl xz gettext \
+    device-mapper bash-completion bash freetype2 xfsprogs polkit os-prober
+sudo mkinitcpio -P

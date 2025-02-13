@@ -1,0 +1,92 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This bash script provides a user-friendly interface for selecting and viewing '.log' files from a specified directory using whiptail 
+for menu navigation. It allows users to either display the log contents with 'cat' or replay them with 'scriptreplay', 
+enhancing log file accessibility. Unfortunately, it does not utilize 'grep' for searching within log files, which limits its 
+functionality for users looking to filter specific log entries.
+DOCUMENTATION
+
+# Specify the default path for logs
+logs_folder="${ENVIRONMENT_VARIABLE:-${HOME}/.chatgpt}"
+
+# Create a menu with the .log files in the specified folder
+logs_menu() {
+    # List the .log files in the specified folder
+    log_files=( "$logs_folder"/*.log )
+    if [ ${#log_files[@]} -eq 0 ]; then
+        whiptail --msgbox "No .log files found in the folder: $logs_folder" 8 40
+        exit 1
+    fi
+
+    # Create an array with the menu options
+    menu_options=()
+    for ((i=0; i<${#log_files[@]}; i++)); do
+        menu_options+=( "$(($i+1))" "${log_files[$i]}" )
+    done
+
+    # Display the menu with whiptail and capture the selected option
+    selected_file_option=$(whiptail --title "Available .log Files" --menu "Select the number of the desired .log file:" 20 60 10 "${menu_options[@]}" 3>&1 1>&2 2>&3)
+
+    # Check if the option is valid
+    if [[ $selected_file_option =~ ^[0-9]+$ ]] && ((selected_file_option >= 1 && selected_file_option <= ${#log_files[@]})); then
+        selected_file="${log_files[selected_file_option-1]}"
+    else
+        exit 0
+    fi
+}
+
+# Create a submenu with the available commands to display the log content
+commands_submenu() {
+    # Display the submenu with whiptail and capture the selected option
+    selected_command_option=$(whiptail --title "Available Commands" --menu "Select the number of the desired command:" 12 40 4 \
+        "1" "cat" \
+        "2" "scriptreplay" \
+        3>&1 1>&2 2>&3)
+
+    case $selected_command_option in
+        1)
+            cat "$selected_file"
+        ;;
+        2)
+            # Capture the name of the corresponding .tim file
+            tim_file="${selected_file%.*}.tim"
+
+            # Check if the .tim file exists
+            if [ ! -f "$tim_file" ]; then
+                whiptail --msgbox "Corresponding .tim file not found: $tim_file" 8 40
+                return
+            fi
+
+            scriptreplay -T "$tim_file" "$selected_file"
+        ;;
+        *)
+            return
+        ;;
+    esac
+
+}
+
+while true; do
+    # Call the logs_menu function to display the main menu
+    logs_menu
+
+    # Call the commands_submenu function to display the commands submenu
+    commands_submenu
+
+    # Ask if the user wants to view another log using whiptail and capture the response
+    sleep 1; echo -e "\n"
+    read -p "Press enter to continue"
+    response=$(whiptail --title "Continue?" --yesno "Do you want to view another .log file?" 8 40 --yes-button "Yes" --no-button "No" 3>&1 1>&2 2>&3)
+
+    if [ "$?" -eq 0 ]; then
+        response="yes"
+        clear
+    else
+        whiptail --msgbox "Exiting the program." 8 40
+        exit 0
+    fi
+
+done

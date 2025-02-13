@@ -1,0 +1,26 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script adjusts the brightness of the connected display using the 'xrandr' command. 
+It first retrieves the name of the connected display and checks if the user has provided a valid brightness level (from 1 to 9). 
+If the input is valid, it sets the brightness to 1.0 for a value of 1, or to a corresponding fractional value for inputs between 2 and 9. 
+If the input is invalid, it displays usage instructions.
+DOCUMENTATION
+
+connected="$(xrandr | awk '/ connected/ {print $1; exit}')"
+
+for display in $connected; do
+    if [[ ! $1 =~ ^[1-9]$ ]]; then
+        echo "Usage: ${0##*/} from 1 to 9"
+        echo "Example: ${0##*/} 5"
+    else
+        if (( $1 == 1 )); then
+            xrandr --output "$display" --brightness 1.0
+        else
+            brightness_value=$(printf "0.%s" "$1")
+            xrandr --output "$display" --brightness "$brightness_value"
+        fi
+    fi
+done

@@ -1,0 +1,111 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+# Bing Random Wallpaper Script
+
+This Bash script automates the process of fetching and setting random wallpapers from Bing's daily images collection. 
+It supports multiple desktop environments and display servers, making it versatile for various Linux setups.
+
+## Purpose
+The script serves as an automated wallpaper manager that downloads high-quality images from Bing and sets them as desktop backgrounds, 
+either once or at specified intervals.
+
+## Key Features
+1. Supports multiple display resolutions (1280x720, 1366x768, 1920x1080)
+2. Compatible with both Wayland and X11 display servers
+3. Provides special integration for GNOME desktop environment
+4. Includes support for alternative window managers through swww and feh
+5. Implements random selection from Bing's recent images (last 9 days)
+6. Offers flexible scheduling options for wallpaper updates
+7. Maintains temporary storage management for downloaded images
+
+## Technical Capabilities
+- Resolution Management: Pre-defined resolution options for different screen sizes
+- API Integration: Interfaces with Bing's image archive API
+- JSON Processing: Uses jq for parsing API responses
+- Session Detection: Automatic detection of display server type (Wayland/X11)
+- Desktop Environment Support: Handles different desktop environments with appropriate methods
+- Timer Implementation: Optional time-based wallpaper rotation
+- Error Handling: Basic directory and parameter validation
+DOCUMENTATION
+
+# Bing Random Wallpaper
+
+#set -x
+script="${0##*/}"
+declare -A resolution
+resolution[hd]='1280x720'
+resolution[hd2]='1366x768'
+resolution[fullhd]='1920x1080'
+
+WP_DIR="/tmp/wallpapers"
+WP_FILE="$WP_DIR/bing_wallpaper.jpg"
+
+# Create the wallpapers directory if it does not exist
+[[ ! -d "$WP_DIR" ]] && mkdir -p "$WP_DIR"
+
+help() {
+    echo -e "Usage: ${script} <resolution> -t <time>\nExample: ${script} fullhd -t 1h\n"
+    echo -e "Or\n"
+    echo -e "Usage: ${script} <resolution> | To set only once without loop"
+    echo -e "\nAvailable resolutions: hd/hd2/fullhd"
+}
+
+set_wallpaper() {
+
+    case "${1}" in 
+        fullhd) export RES="${resolution[fullhd]}" ;;
+        hd) export RES="${resolution[hd]}" ;;
+        hd2) export RES="${resolution[hd2]}" ;;
+        *) help ;;
+    esac
+
+    if [[ "$RES" ]]; then
+        # Generate a random number between 0 and 9
+        IDX=$((RANDOM % 9))
+
+        # Download Json with Bing Current Wallpaper Information
+        JSON=$(curl -s "https://www.bing.com/HPImageArchive.aspx?format=js&idx=$IDX&n=1&mkt=en-US")
+
+        # Extract the JSON Response Wallpaper URL
+        IMAGE_URL=$(echo $JSON | jq -r '.images[0].urlbase')
+
+        # Build the full url of the wallpaper with the desired resolution
+        IMAGE_URL="https://www.bing.com${IMAGE_URL}_$RES.jpg"
+
+        # Download the wallpaper to the specified directory
+        curl -s -o $WP_FILE $IMAGE_URL
+    fi
+
+    if [[ "${XDG_SESSION_TYPE}" = wayland ]]; then
+
+        if [[ "${XDG_CURRENT_DESKTOP}" = [Gg][Nn][Oo][Mm][Ee] ]]; then
+            gsettings set org.gnome.desktop.background picture-uri file://"$WP_FILE"
+        else
+            if [ ! "$(pidof swww-daemon)" ]; then 
+                swww init & swww img "$WP_FILE"
+            else
+                swww img "$WP_FILE"
+            fi
+        fi
+        
+    elif [[ "${XDG_SESSION_TYPE}" = [xX]11 ]]; then
+        feh --bg-fill "$WP_FILE"
+    fi
+}
+
+if [ -z "${1}" ]; then
+    help
+else
+    if [[ "${2}" = "-t" ]]; then
+        while :
+        do
+            set_wallpaper "${1}"
+            sleep "${3}"   # Change this if you want a different update frequency (e.g. 30m, 12h, 24h, etc...).
+        done
+    else
+        set_wallpaper "${1}"
+    fi
+fi

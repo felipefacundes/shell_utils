@@ -1,0 +1,35 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script checks if the /mnt directory is mounted and manages package files by creating a backup directory, moving existing packages, 
+and cleaning up the /mnt directory structure, ensuring it is run as root.
+DOCUMENTATION
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Error: This script must be run as root"
+    exit 1
+fi
+
+# Check if /mnt is mounted
+if mountpoint -q /mnt && test -d /mnt/var/cache/pacman/pkg/; then
+
+    cd /mnt/var/cache/pacman/pkg/ || exit 1
+    mkdir pkg_bkp
+    mv *.pkg.* pkg_bkp/
+    mv pkg_bkp /mnt/
+    cd /mnt || exit 1
+    rm -rf var
+    mkdir -p /mnt/var/cache/pacman/
+    mkdir -p /mnt/var/lib/machines/
+    mkdir -p /mnt/proc/bus/usb/
+    mv pkg_bkp /mnt/var/cache/pacman/pkg
+    cd /mnt/boot/ || exit 1
+    rm -rf *
+    exit 0
+    
+else
+    echo "Error: /mnt is not mounted or the folder /mnt/var/cache/pacman/pkg/ does not exist."
+    exit 1
+fi

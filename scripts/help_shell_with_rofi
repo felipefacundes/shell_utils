@@ -1,0 +1,130 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Imagine creating helper functions and typing whatever you want in the terminal, just creating a 
+simple function instead of an entire script—this is the premise of help_shell.
+
+The help_shell script is an efficient and user-friendly tool designed to dynamically 
+display help information for your Bash functions.
+
+Define your functions below. Add as many functions as you like in a similar manner
+
+- Dynamic Help Display: Automatically lists all available functions with descriptions extracted from comments.
+- Interactive Search: Search for functions by name or description using a clean and intuitive menu powered by whiptail.
+- Flexible Usage: Allows for specifying functions as command-line arguments or interacting via the dynamic menu.
+- Integration Ready: Seamlessly integrates with the shell_utils framework, leveraging pre-defined variables and resources.
+DOCUMENTATION
+
+shell_utils=~/.shell_utils
+helps_dir="${shell_utils}/scripts/helps"
+
+shopt -s globstar
+source "${shell_utils}/variables/shell_colors.sh"
+
+for file in "${helps_dir}"/**/*.sh; do
+    source "${file}"
+done
+
+show_documentation() {
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0"
+}
+
+# Display help dynamically
+help() {
+    echo -e "$(show_documentation | head -7)\n"
+    echo "Usage: ${0##*/} [function1 function2 ...]"
+    echo -e "\n-h, --help,"
+    echo -e "
+# Display this help message.
+"
+    echo -e "Available functions:\n"
+ 
+    for func_name in $(declare -F | cut -d " " -f 3); do
+        # Extract the first comment line of the function
+        description=$(type "$func_name" | grep -m 1 '^#')  # Or | awk '/^#/ {print; exit}' or | sed -n '/^#/p' | head -n 1
+        # Remove the '#' character from the description
+        description=${description/#\# /}
+        echo -e "  ${func_name} <=> $description"
+    done
+
+    echo -e "\nEnter q to quit this help.\n"
+}
+
+# Check if help option was provided
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    help | less -i -R
+    exit 0
+fi
+
+if [[ -z "$1" ]]; then
+    # Initialize an empty array to hold the menu items
+    menu_items=()
+
+    if [[ $XDG_SESSION_TYPE = wayland ]]; then
+        menu_selector='wofi --show dmenu -p'
+    else
+        menu_selector='rofi -dmenu -i -p'
+    fi
+
+    if pidof wofi; then
+        exit 1
+    fi
+
+    for func_name in $(declare -F | cut -d " " -f 3); do
+        # Extract the first comment line of the function
+        description=$(type "$func_name" | grep -m 1 '^#')  # Or | awk '/^#/ {print; exit}' or | sed -n '/^#/p' | head -n 1
+        # Remove the '#' character from the description
+        description=${description/#\# /}
+        # Add the function name and description to the menu items
+        menu_items+=("${func_name} <=> $description")
+    done
+
+    # Pass the menu items to Rofi or Wofi and get the selected item
+    selected_item=$(printf '%s\n' "${menu_items[@]}" | eval "$menu_selector" \"Select a help function:\")
+
+    # Use awk to extract the function name from the selected item
+    func_name=$(echo "$selected_item" | awk '{print $1}')
+    
+    # Check if the selected item is a function
+    if declare -f "$func_name" > /dev/null; then
+        if [ -t 1 ]; then
+            clear
+            # Call the function
+            "$(printf '%s\n' "$func_name")"
+            read -p "Press enter to continue"
+        else
+            text='Run this script as a command directly in the terminal'
+            notify-send "$text"; sleep 5; notify-send "$text"
+        fi
+    else
+        echo "Function '$func_name' not found."
+    fi
+    exit 0
+fi
+
+# Iterate over the passed arguments
+for func_name in "$@"; do
+    # Check if the function exists
+    if declare -f "$func_name" > /dev/null; then
+        # Call the function
+        "$(printf '%s\n' "$func_name")"
+    else
+        echo "Function '$func_name' not found."
+    fi
+done
+
+# Example script invocation:
+# ./your_script.sh function1 function2

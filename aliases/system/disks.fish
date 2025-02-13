@@ -1,0 +1,6 @@
+alias check_scheme_partition_table='~/.shell_utils/scripts/disk_check_table'
+alias check_the_disk_partition_table='~/.shell_utils/scripts/disk_check_table'
+alias check_disk_type_partition_table='~/.shell_utils/scripts/disk_check_table'
+alias disk_partition_table='~/.shell_utils/scripts/disk_check_table'
+alias disk_type_table='~/.shell_utils/scripts/disk_check_table'
+alias partitions_unmounted='unmounted_partitions'

@@ -1,0 +1,15 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A utility to facilitate the use of the TAR command
+DOCUMENTATION
+
+file="$1"
+
+if [[ -z "$1" ]]; then
+    echo 'tar -cf file_name.tar file_or_dir'
+else
+    tar -cf "${file%.*}.tar" "$file"
+fi

@@ -1,0 +1,85 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is an image conversion tool using ImageMagick, designed to apply a specific color to images or entire directories of images. 
+The primary purpose is to automate image color modification with ease and flexibility.
+
+Key Strengths:
+1. Argument Validation: The script checks for valid argument count and ensures the output color format is correct.
+2. Dependency Checking: Verifies ImageMagick installation before attempting any image conversions.
+3. Image Conversion Capabilities: Supports conversion of single images or entire directories based on provided arguments.
+4. Flexible Processing: Offers a loop option for batch processing multiple images simultaneously.
+5. User Feedback: Provides clear progress updates and error messages during execution.
+
+Capabilities:
+- Color-based image transformation
+- Batch processing of images in a directory
+- Hexadecimal color format handling
+- Robust error management
+- Automatic input validation
+
+The script offers a straightforward solution for developers and designers who need quick, scriptable image color modifications, 
+with built-in safeguards to prevent incorrect usage.
+DOCUMENTATION
+
+# Check if the number of arguments is valid
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+    echo "Usage: ${0##*/} [--loop] <input_image_or_folder> <output_color> <output_image_or_folder>"
+    exit 1
+fi
+
+# Extract the arguments
+loop=false
+if [[ $1 == "--loop" ]] || [[ $1 == "-l" ]]; then
+    loop=true
+    shift
+fi
+
+input="$1"
+output_color="$2"
+output="$3"
+
+# Check if ImageMagick is installed
+if ! command convert >/dev/null; then
+    echo "ImageMagick is not installed. Please install it and try again."
+    exit 1
+fi
+
+# Filter and format the output color
+filtered_color=$(echo "$output_color" | sed -e 's/[^0-9A-Fa-f]//g' -e 's/^/#/')
+
+# Check if the output color is in the correct format
+if [[ ! "$filtered_color" =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+    echo "Invalid format for the output color. Please provide the complete hexadecimal value with #, for example: \"#3AC936\"."
+    exit 1
+fi
+
+# Function to convert a single image
+convert_image() {
+    local input_image="$1"
+    local output_image="$2"
+
+    magick "$input_image" -fill "$filtered_color" -colorize 100% "$output_image"
+    echo "Image converted: $input_image -> $output_image"
+}
+
+# Check if input is a directory
+if [[ -d $input ]]; then
+    if [[ $loop == true ]]; then
+        # Convert all images in the directory
+        for file in "$input"/*; do
+            if [[ -f $file ]]; then
+                base_name=$(basename "$file")
+                convert_image "$file" "$output/$base_name"
+            fi
+        done
+    else
+        echo "Error: The input is a directory. Please use the --loop argument to convert all images in the directory."
+        exit 1
+    fi
+else
+    # Convert a single image
+    convert_image "$input" "$output"
+fi

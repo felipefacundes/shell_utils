@@ -1,0 +1,8 @@
+#!/bin/bash
+
+xdotool getmouselocation --shell
+tput setaf 3
+echo -e "\ncommands:"
+echo 'xdotool getmouselocation --shell'
+echo 'xdotool getmouselocation'
+tput sgr0

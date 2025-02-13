@@ -1,0 +1,69 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script configures autologin for a specified tty on a Linux system, prompting the user for a tty number and username while validating the input. 
+It creates the necessary directory and configuration file to enable autologin, providing bilingual messages for user interaction.
+DOCUMENTATION
+
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["prompt_tty"]="Informe um número de tty de 1 a 6 (padrão é 1): "
+        ["prompt_user"]="Informe seu usuário (padrão é $USER): "
+        ["mkdir_error"]="Erro ao criar o diretório."
+        ["success"]="Configuração concluída com sucesso."
+        ["invalid_user"]="Erro: O nome de usuário não pode conter números ou caracteres especiais."
+        ["invalid_tty"]="Número de tty inválido. Por favor, insira um número entre 1 e 6."
+    )
+else
+    MESSAGES=(
+        ["prompt_tty"]="Enter a tty number from 1 to 6 (default is 1): "
+        ["prompt_user"]="Enter your username (default is $USER): "
+        ["mkdir_error"]="Error creating the directory."
+        ["success"]="Configuration completed successfully."
+        ["invalid_user"]="Error: Username cannot contain numbers or special characters."
+        ["invalid_tty"]="Invalid tty number. Please enter a number between 1 and 6."
+    )
+fi
+
+# Prompt for tty number with validation loop
+while true; do
+    read -rp "${MESSAGES[prompt_tty]}" number
+    number=${number:-1}  # Default to 1 if no input
+
+    # Validate tty number
+    if [[ "$number" =~ ^[1-6]$ ]]; then
+        break  # Exit loop if valid
+    else
+        echo "${MESSAGES[invalid_tty]}"
+    fi
+done
+
+# Prompt for username with validation loop
+while true; do
+    read -rp "${MESSAGES[prompt_user]}" user
+    user=${user:-$USER}  # Default to $USER if no input
+
+    # Validate username
+    if [[ ! "$user" =~ [0-9] ]] && [[ ! "$user" =~ [[:punct:]] ]] && [[ ! "$user" =~ [[:cntrl:]] ]]; then
+        break  # Exit loop if valid
+    else
+        echo "${MESSAGES[invalid_user]}"
+    fi
+done
+
+# Create the directory if it doesn't exist
+if ! test -d "/etc/systemd/system/getty@tty${number}.service.d/"; then
+    sudo su -c "mkdir -p /etc/systemd/system/getty@tty${number}.service.d/" || { echo "${MESSAGES[mkdir_error]}"; exit 1; }
+fi
+
+# Create the autologin configuration file
+cat <<EOF | sudo su -c "tee /etc/systemd/system/getty@tty${number}.service.d/autologin.conf" > /dev/null
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty -o '-p -f -- \\u' --noclear --autologin $user %I \$TERM
+EOF
+
+echo "${MESSAGES[success]}"

@@ -1,0 +1,10 @@
+alias ffpa='ffplay -autoexit -nodisp'
+alias ffp_sub='~/.shell_utils/scripts/ffplay_subtitled'
+alias ffp_leg='ffp_sub'
+alias ffp='ffp_sub'
+alias yd="yt-dlp -i"
+alias yt="yd"
+alias mpvl='mpv --loop'
+alias record_screen='~/.shell_utils/scripts/screen_record'
+alias gravar_tela='record_screen'
+alias gt='record_screen'

@@ -1,0 +1,43 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A versatile Bash script for video file handling that:
+- Efficiently identifies and processes video files in the current directory using MIME type detection
+- Provides flexibility to either play videos with a specified media player (e.g., mpv) or list all video files
+- Features built-in file counting and formatted output display, with proper error handling and help documentation
+DOCUMENTATION
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    echo "Example: app=mpv ${0##*/}"
+    exit 0 
+fi
+
+app="${app:-""}"
+videos=()
+
+# Loop to loop through the files in the folder
+for video in *; do
+    # Check if the file is a regular file and if it is an video file
+    if [ -f "$video" ] && file -b --mime-type "$video" | grep -q "^video/"; then
+        if [[ "$app" ]]; then
+            echo
+            echo \'"$video"\'
+            echo
+            "$app" "$video"
+        else
+            videos+=(\'"$video"\')
+        fi
+    fi
+done
+
+if [ ${#videos[@]} -gt 0 ]; then
+    num_itens=${#videos[@]}
+
+    echo -e "Videos: $num_itens\n"
+
+    for item in "${videos[@]}"; do
+        echo "$item"
+    done
+fi

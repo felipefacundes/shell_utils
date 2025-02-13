@@ -1,0 +1,406 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 9/18/2018 .......... revised 1/16/2022
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: xpand -d dimension [-m mode ] [-p protect] infile outfile
+# 
+# USAGE: xpand [h|-help]
+# 
+# OPTIONS:
+# 
+# -d     dimension      dimension for the output image in the stretch direction; 
+#                       may be expressed either as integer>0 for the width or the height 
+#                       as dictated by the mode or as a colon separated aspect ratio 
+#                       (A:B), where the first number (A) is always larger than the 
+#                       second number (B) and is applied as per the mode; dimension 
+#                       must specify an output larger than the input; Required Argument
+# -m     mode           mode for the stretch direction of the output; horizontal (h)
+#                       or vertical (v); typically used to expand the same direction  
+#                       as the input aspect; default=horizontal
+# -p     protect        protect range of the image as specified by a colon separate 
+#                       increasing pair of integer coordinates within the bounds of  
+#                       the input image; default is no protect region and the expansion 
+#                       will be relative to the of the image center. 
+#                       
+# 
+###
+# 
+# NAME: XPAND 
+# 
+# PURPOSE: To apply a non-uniform outward stretch of the image in one direction.
+# 
+# DESCRIPTION: XPAND applies a non-uniform outward stretch of the image in one direction.
+# This elastic expansion increases as one progresses further from the center towards 
+# the edges of the image or further from a protect region that may be specified
+# optionally. The scale of the protect region will be preserved in the output image. 
+# This process is in effect a dynamic aspect ratio enlargement that preserves the  
+# scale of some region of the input image. It is similar to that of the GoPro camera's 
+# SuperView. One popular use is to dynamically stretch a 4:3 aspect ratio image to 9:6 
+# aspect ratio. Note that the larger the change in aspect ratio, the more the image 
+# will be distorted away from the center or protect region. So this script is usually 
+# used for small aspect ratio changes.
+# 
+# ARGUMENTS: 
+# 
+# -d dimension ... DIMENSION for the output image in the stretch direction. This may  
+# be expressed either as integer>0 for the output width or the height as dictated by 
+# the mode (see below) or as a colon separated pair of integers as an aspect ratio (A:B), 
+# where the first number (A) is always larger than the second number (B) and is applied
+# as per the mode. The dimension must specify an output no smaller than the input. 
+# Required Argument.
+#
+# -m mode ... MODE for the stretch direction of the output. Choices are: horizontal (h)
+# or vertical (v). Typically, the script is used to expand in the same direction as the 
+# aspect of the input. The default=horizontal.
+# 
+# -p protect ... PROTECT range of the image where the scale will not be changed. 
+# This is specified by a colon separate pair of increasing integer coordinates that 
+# fall within the bounds of the input image. The coordinates are both in the same 
+# direction of the image as specified by the mode. The first coordinate must be 
+# smaller than the second coordinate in the protect range. The default is no protect 
+# region and the expansion will be relative to the of the image center. 
+# 
+# NOTE: This script may be a bit slow due to the use of -fx.
+# 
+# References:
+# http://www.semifluid.com/2014/03/16/gopro-superview-like-adaptive-aspect-ratio/
+# https://www.iamgopro.com/gopro-features/
+# https://www.goproforums.com/14-video-editing-software/8730-non-linear-stretch-plugin.html
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+dimension=""
+mode="horizontal"
+protect=""
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 8 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-d)    # get dimension
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIMENSION SPECIFICATION ---"
+					   checkMinus "$1"
+					   dimension="$1"
+					   ;;
+				-m)    # get mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$mode" in 
+					   		horizontal|h) mode=horizontal ;;
+					   		vertical|v) mode=vertical;;
+					   		*) errMsg "--- MODE=$mode IS AN INVALID VALUE ---"  ;;
+					   esac
+					   ;;
+				-p)    # get  protect
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PROTECT SPECIFICATION ---"
+					   checkMinus "$1"
+					   protect=`expr "$1" : '\([0-9]*[:][0-9]*\)'`
+					   [ "$protect" = "" ] && errMsg "--- PROTECT=$protect MUST BE A COLON SEPARATED PAIR OF NON-NEGATIVE INTEGER VALUES (with no sign) ---"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# setup temporary images
+tmpI="$dir/XPAND_$$.miff"
+trap "rm -f $tmpI; exit 0" 0
+trap "rm -f $tmpI; exit 1" 1 2 3 15
+
+# read the input image into the temporary cached image and test if valid
+convert -quiet -regard-warnings "$infile" +repage "$tmpI" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+# test validity of dimension
+colon_test=`echo "$dimension" | grep ":"`
+if [ "$colon_test" != "" ]; then
+	num=`echo "$dimension" | cut -d: -f1`
+	den=`echo "$dimension" | cut -d: -f2`
+
+	num=`expr "$num" : '\([0-9]*\)'`
+	[ "$num" = "" ] && errMsg "--- INVALID NUMERATOR OF ASPECT RATIO DIMENSION ---"
+
+	den=`expr "$den" : '\([0-9]*\)'`
+	[ "$den" = "" ] && errMsg "--- INVALID DENOMINATOR OF ASPECT RATIO DIMENSION ---"
+else
+	dimension=`expr "$dimension" : '\([0-9]*\)'`
+	[ "$dimension" = "" ] && errMsg "--- INVALID INTEGER DIMENSION SPECIFIED ---"
+fi	
+
+# get input dimension
+WxH=`convert -ping $tmpI -format "%wx%h" info:`
+wi=`echo "$WxH" | cut -dx -f1`
+hi=`echo "$WxH" | cut -dx -f2`
+
+# compute input center
+wic=`convert xc: -format "%[fx:($wi-1)/2]" info:`
+hic=`convert xc: -format "%[fx:($hi-1)/2]" info:`
+
+
+# non-uniform stretch in one dimension is of the form:
+# I=O+aO^2; I=input and O=output
+# use Imax with Omax;
+# I=O+O^2*(Imax-Omax)/(Omax)^2
+
+# compute output center
+if [ "$mode" = "horizontal" ]; then
+	if [ "$colon_test" != "" ]; then
+		dimension=`convert xc: -format "%[fx:round($wi*$num/$den)]" info:`
+	fi
+	test=`convert xc: -format "%[fx:$dimension>$wi?1:0]" info:`
+	[ $test -eq 0 ]	&& 	echo "--- OUTPUT WIDTH MUST BE LARGER THAN INPUT WIDTH  ---"
+		
+	if [ "$protect" = "" ]; then
+		woc=`convert xc: -format "%[fx:($dimension-1)/2]" info:`
+		convert -size ${dimension}x${hi} xc: $tmpI \
+			-fx "v.p{ ( (i-$woc) + sign(i-$woc)*pow((i-$woc),2)*($wic-$woc)/pow($woc,2) + $wic ),j}" \
+			"$outfile"
+	else
+		x1=`echo "$protect" | cut -d: -f1`
+		x2=`echo "$protect" | cut -d: -f2`
+		[ $x1 -lt 0 -o $x1 -ge $x2 ] && echo "--- INVALID PROTECT RANGE LOW VALUE  ---"
+		[ $x2 -gt $((wi-1)) -o $x2 -le $x1 ] && echo "--- INVALID PROTECT RANGE HIGH VALUE ---"
+
+		if [ $x1 -eq 0 ]; then
+			# left side
+			wi1=$((x2-x1+1))
+			crop1="${wi1}x${hi}+0+0"
+			# right side
+			wi2=$((wi-wi1))
+			crop2="${wi2}x${hi}+$((x2+1))+0"
+			# output
+			wo2=$((dimension-wi1))
+			convert $tmpI -write mpr:img +delete \
+				\( mpr:img[$crop1] \) \
+				\( -size ${wo2}x$hi xc: mpr:img[$crop2] \
+				-fx "v.p{ ( i + pow(i,2)*(v.w-u.w)/pow(u.w,2) ),j}" \) \
+				+append "$outfile"
+
+		elif [ $x2 -eq $((wi-1)) ]; then
+			# right side
+			wi2=$((x2-x1+1))
+			crop2="${wi2}x${hi}+$((x1+1))+0"
+			# left side
+			wi1=$((wi-wi2))
+			crop1="${wi1}x${hi}+0+0"
+			# output
+			wo1=$((dimension-wi2))
+			convert $tmpI -write mpr:img +delete \
+				\( -size ${wo1}x$hi xc: \( mpr:img[$crop1] -rotate 180 \) \
+					-fx "v.p{ ( i + pow(i,2)*(v.w-u.w)/pow(u.w,2) ),j}" -rotate 180 \) \
+				\( mpr:img[$crop2] \) \
+				+append "$outfile"
+
+		else
+			# middle
+			wi2=$((x2-x1+1))
+			crop2="${wi2}x${hi}+$((x1+1))+0"
+			# left side
+			wi1=$(($x1+1))
+			crop1="${wi1}x${hi}+0+0"
+			# right side
+			wi3=$((wi-wi1-wi2))
+			crop3="${wi3}x${hi}+$((x2+1))+0"
+			# output (in proportion)
+			wo1=`convert xc: -format "%[fx:round($wi1*($dimension-$wi2)/($wi-$wi2))]" info:`
+			wo3=`convert xc: -format "%[fx:round($wi3*($dimension-$wi2)/($wi-$wi2))]" info:`
+			convert $tmpI -write mpr:img +delete \
+				\( -size ${wo1}x$hi xc: \( mpr:img[$crop1] -rotate 180 \) \
+					-fx "v.p{ ( i + pow(i,2)*(v.w-u.w)/pow(u.w,2) ),j}" -rotate 180 \) \
+				\( mpr:img[$crop2] \) \
+				\( -size ${wo3}x$hi xc: mpr:img[$crop3] \
+					-fx "v.p{ ( i + pow(i,2)*(v.w-u.w)/pow(u.w,2) ),j}" \) \
+				+append "$outfile"
+			
+		fi
+	fi
+
+
+
+elif [ "$mode" = "vertical" ]; then
+	if [ "$colon_test" != "" ]; then
+		dimension=`convert xc: -format "%[fx:round($hi*$num/$den)]" info:`
+	fi
+	test=`convert xc: -format "%[fx:$dimension>$hi?1:0]" info:`
+	[ $test -eq 0 ]	&& 	echo "--- OUTPUT HEIGHT MUST BE LARGER THAN INPUT HEIGHT  ---"
+
+	if [ "$protect" = "" ]; then
+		hoc=`convert xc: -format "%[fx:($dimension-1)/2]" info:`
+		convert -size ${wi}x${dimension} xc: $tmpI  \
+			-fx "v.p{ i, ( (j-$hoc) + sign(j-$hoc)*pow((j-$hoc),2)*($hic-$hoc)/pow($hoc,2) + $hic )}" \
+			"$outfile"
+	else
+		y1=`echo "$protect" | cut -d- -f1`
+		y2=`echo "$protect" | cut -d- -f2`
+		[ $y1 -lt 0 -o $y1 -ge $y2 ] && echo "--- INVALID PROTECT RANGE LOW VALUE  ---"
+		[ $y2 -gt $((hi-1)) -o $y2 -le $y1 ] && echo "--- INVALID PROTECT RANGE HIGH VALUE ---"
+
+		if [ $y1 -eq 0 ]; then
+			# top side
+			hi1=$((y2-y1+1))
+			crop1="${wi}x${hi1}+0+0"
+			# bottom side
+			hi2=$((hi-hi1))
+			crop2="${wi}x${hi2}+0+$((y2+1))"
+			# output
+			ho2=$((dimension-hi1))
+			convert $tmpI -write mpr:img +delete \
+				\( mpr:img[$crop1] \) \
+				\( -size ${wi}x$ho2 xc: mpr:img[$crop2] \
+					-fx "v.p{ ( i,j + pow(j,2)*(v.h-u.h)/pow(u.h,2) ) )}" \) \
+				-append "$outfile"
+
+		elif [ $y2 -eq $((hi-1)) ]; then
+			# bottom side
+			hi2=$((y2-y1+1))
+			crop2="${wi}x${hi2}+0+$((y1+1))"
+			# top side
+			hi1=$((hi-hi2))
+			crop1="${wi}x${hi1}+0+0"
+			# output
+			ho1=$((dimension-hi2))
+			convert $tmpI -write mpr:img +delete \
+				\( -size ${wi}x$ho1 xc: \( mpr:img[$crop1] -rotate 180 \) \
+					-fx "v.p{ ( i,j + pow(j,2)*(v.h-u.h)/pow(u.h,2) ) )}" -rotate 180 \) \
+				\( mpr:img[$crop2] \) \
+				-append "$outfile"
+
+		else
+			# middle
+			hi2=$((y2-y1+1))
+			crop2="${wi}x${hi2}+0+$((y1+1))"
+			# top side
+			hi1=$(($y1+1))
+			crop1="${wi}x${hi1}+0+0"
+			# bottom side
+			hi3=$((hi-hi1-hi2))
+			crop3="${wi}x${hi3}+0+$((y2+1))"
+			# output (in proportion)
+			ho1=`convert xc: -format "%[fx:round($hi1*($dimension-$hi2)/($hi-$hi2))]" info:`
+			ho3=`convert xc: -format "%[fx:round($hi3*($dimension-$hi2)/($hi-$hi2))]" info:`
+			convert $tmpI -write mpr:img +delete \
+				\( -size ${wi}x$ho1 xc: \( mpr:img[$crop1] -rotate 180 \) \
+					-fx "v.p{ ( i,j + pow(j,2)*(v.h-u.h)/pow(u.h,2) ) )}" -rotate 180 \) \
+				\( mpr:img[$crop2] \) \
+				\( -size ${wi}x$ho3 xc: mpr:img[$crop3] \
+					-fx "v.p{ ( i,j + pow(j,2)*(v.h-u.h)/pow(u.h,2) ) )}" \) \
+				-append "$outfile"
+			
+		fi
+	fi
+fi
+
+
+	
+exit 0

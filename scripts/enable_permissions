@@ -1,0 +1,78 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+The Bash script is a powerful file permission and validation utility designed to 
+automatically process script files in the current directory. Its key strengths include:
+
+1. Multilingual Support: Implements an associative array for error messages in both 
+Portuguese and English, automatically selecting based on the system's language settings.
+
+2. Comprehensive File Validation: Performs multiple checks on files, including:
+- Verifying if the file is a regular file
+- Confirming it's a plain text file
+- Checking for the presence of a shebang (#!) at the beginning
+- Ensuring executable permissions are set
+
+3. Automatic Permission Management: Automatically grants execution permissions to scripts that lack them, 
+with color-coded console output for clear user feedback (red for errors, green for successful actions).
+
+4. Robust Error Handling: Provides detailed, localized error messages for various 
+potential file processing issues, enhancing user understanding and script usability.
+
+The script is a versatile tool for system administrators and developers working in multilingual environments, 
+streamlining script preparation and validation processes.
+DOCUMENTATION
+
+# Associative array to store messages in both languages
+declare -A MESSAGES
+
+update_variables() {
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        MESSAGES=(
+            ["not_regular_file"]="'$file' não é um arquivo regular."
+            ["not_text_file"]="O arquivo '$file' não é um arquivo de texto plano."
+            ["missing_shebang"]="O arquivo '$file' não contém um shebang."
+            ["missing_exec_permission"]="O arquivo '$file' não tem permissão de execução."
+            ["exec_permission_granted"]="Permissão de execução concedida para '$file'."
+        )
+    else
+        MESSAGES=(
+            ["not_regular_file"]="'$file' is not a regular file."
+            ["not_text_file"]="The file '$file' is not a plain text file."
+            ["missing_shebang"]="The file '$file' does not contain a shebang."
+            ["missing_exec_permission"]="The file '$file' does not have execution permission."
+            ["exec_permission_granted"]="Execution permission granted for '$file'."
+        )
+    fi
+}
+
+# Loop over all files in the current directory
+for file in *; do
+    # Check if it's a regular file
+    if [[ -f "$file" ]]; then
+        # Check if it's a plain text file
+        if [[ $(file --mime-type -b "$file") =~ "text/" ]]; then
+            # Check if it contains a shebang at the beginning
+            if grep -q "^#!" "$file"; then
+                # Check if it's executable
+                if [[ ! -x "$file" ]]; then
+                    update_variables
+                    echo -e '\033[0;31m'"\n${MESSAGES["missing_exec_permission"]}"'\033[0m'
+                    chmod +x "$file"
+                    echo -e '\033[1;32m'"${MESSAGES["exec_permission_granted"]}"'\033[0m'
+                fi
+            else
+                update_variables
+                echo -e '\033[0;31m'"\n${MESSAGES["missing_shebang"]}"'\033[0m'
+            fi
+        else
+            update_variables
+            echo -e '\033[0;31m'"\n${MESSAGES["not_text_file"]}"'\033[0m'
+        fi
+    else
+        update_variables
+        echo -e '\033[0;31m'"\n${MESSAGES["not_regular_file"]}"'\033[0m'
+    fi
+done

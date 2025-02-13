@@ -1,0 +1,192 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script is a sophisticated bilingual image conversion utility with 
+advanced image processing capabilities. Its key strengths include:
+
+1. Multilingual Support: Automatically detects system language and provides 
+localized messages, help instructions, and error handling in Portuguese and English.
+
+2. Advanced ImageMagick Integration: Offers highly optimized image conversion 
+with multiple sophisticated processing techniques:
+
+- Adaptive resizing
+- Contrast stretching
+- Color space optimization
+- Adaptive blurring and sharpening
+
+3. Flexible Resolution Management: Allows users to:
+
+- Set custom image resolutions via environment variables
+- Convert images to various standard resolutions (HD, Full HD, 4K, 8K)
+- Preview example resolutions in the help menu
+
+4. Robust Error Handling: Implements comprehensive validation checks, including:
+
+- Verifying resolution configuration
+- Checking input file existence
+- Providing clear, color-coded error messages
+
+5. User-Friendly Command-Line Interface: Delivers an educational and configurable tool with:
+
+- Detailed help documentation
+- Clear usage instructions
+- Informative prerequisites and notes
+
+The script demonstrates advanced bash scripting techniques, showcasing dynamic message 
+localization, system command integration, and intelligent image processing.
+DOCUMENTATION
+
+# Associative array for bilingual messages
+declare -A MESSAGES
+
+# Detect language
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["help_title"]="Ajuda para o script de conversão de imagens (${0##*/}):"
+        ["help_desc"]="Este script converte imagens para uma resolução desejada com ajustes otimizados."
+        ["prerequisites"]="Pré-requisitos:"
+        ["prereq_1"]="1. Instale o ImageMagick: 'sudo apt install imagemagick' (para sistemas baseados em Debian)."
+        ["prereq_2"]="2. Configure a resolução desejada com o comando 'export resolution=XxY'."
+        ["examples"]="\nExemplos de resolução:"
+        ["example_hd"]="  HD: 1280x720"
+        ["example_fullhd"]="  Full HD: 1920x1080"
+        ["example_4k"]="  4K: 3840x2160"
+        ["example_8k"]="  8K Fulldome: 8192x8192 (67.1 megapixels)"
+        ["usage_title"]="\nUso:"
+        ["usage_1"]="1. Defina a variável de ambiente com a resolução desejada."
+        ["usage_1_example"]="   Exemplo: export resolution=1920x1080"
+        ["usage_2"]="2. Execute o script fornecendo o arquivo de imagem como argumento."
+        ["usage_2_example"]="   Exemplo: ./${0##*/} imagem.jpg"
+        ["command"]="\nComando executado pelo script:"
+        ["notes"]="\nNotas:"
+        ["note_1"]="1. O script verifica se a variável 'resolution' está definida antes de executar."
+        ["note_2"]="2. O arquivo convertido será sobrescrito."
+        ["note_3"]="3. Este script é para fins educativos e pode ser ajustado conforme necessário."
+        ["error_resolution"]="Erro: A variável de ambiente 'resolution' não está definida."
+        ["error_resolution_tip"]="Defina a resolução desejada antes de executar o script."
+        ["error_no_file"]="Erro: Nenhum arquivo de imagem fornecido."
+        ["error_invalid_file"]="Erro: O arquivo '%s' não existe."
+        ["conversion_start"]="Iniciando a conversão da imagem para a resolução %s..."
+        ["conversion_done"]="Conversão concluída! O arquivo convertido é '%s'."
+    )
+else
+    MESSAGES=(
+        ["help_title"]="Help for the image conversion script (${0##*/}):"
+        ["help_desc"]="This script converts images to a desired resolution with optimized adjustments."
+        ["prerequisites"]="Prerequisites:"
+        ["prereq_1"]="1. Install ImageMagick: 'sudo apt install imagemagick' (for Debian-based systems)."
+        ["prereq_2"]="2. Set the desired resolution using 'export resolution=XxY'."
+        ["examples"]="\nResolution examples:"
+        ["example_hd"]="  HD: 1280x720"
+        ["example_fullhd"]="  Full HD: 1920x1080"
+        ["example_4k"]="  4K: 3840x2160"
+        ["example_8k"]="  8K Fulldome: 8192x8192 (67.1 megapixels)"
+        ["usage_title"]="\nUsage:"
+        ["usage_1"]="1. Set the environment variable to the desired resolution."
+        ["usage_1_example"]="   Example: export resolution=1920x1080"
+        ["usage_2"]="2. Run the script, providing the image file as an argument."
+        ["usage_2_example"]="   Example: ./${0##*/} image.jpg"
+        ["command"]="\nCommand executed by the script:"
+        ["notes"]="\nNotes:"
+        ["note_1"]="1. The script checks if the 'resolution' variable is set before running."
+        ["note_2"]="2. The converted file will be overwritten."
+        ["note_3"]="3. This script is for educational purposes and can be adjusted as needed."
+        ["error_resolution"]="Error: The 'resolution' environment variable is not set."
+        ["error_resolution_tip"]="Set the desired resolution before running the script."
+        ["error_no_file"]="Error: No image file provided."
+        ["error_invalid_file"]="Error: The file '%s' does not exist."
+        ["conversion_start"]="Starting image conversion to resolution %s..."
+        ["conversion_done"]="Conversion completed! The converted file is '%s'."
+    )
+fi
+
+# Function to display the help menu
+function show_help {
+    tput setaf 6
+    echo -e "\n${MESSAGES["help_title"]}"
+    echo -e "${MESSAGES["help_desc"]}\n"
+    tput setaf 3
+    echo "${MESSAGES["prerequisites"]}"
+    echo "${MESSAGES["prereq_1"]}"
+    echo "${MESSAGES["prereq_2"]}"
+    echo -e "${MESSAGES["examples"]}"
+    echo "${MESSAGES["example_hd"]}"
+    echo "${MESSAGES["example_fullhd"]}"
+    echo "${MESSAGES["example_4k"]}"
+    echo "${MESSAGES["example_8k"]}"
+    tput setaf 6
+    echo -e "${MESSAGES["usage_title"]}"
+    tput setaf 3
+    echo "${MESSAGES["usage_1"]}"
+    echo "${MESSAGES["usage_1_example"]}"
+    echo "${MESSAGES["usage_2"]}"
+    echo "${MESSAGES["usage_2_example"]}"
+    tput setaf 6
+    echo -e "${MESSAGES["command"]}"
+    tput setaf 3
+    echo 'convert -adaptive-resize "$resolution" -contrast-stretch 0,3% -strip \\'
+    echo '        -modulate 99,99 -colorspace sRGB -depth 16 -channel rgba \\'
+    echo '        -adaptive-blur 0.05 -density 400 -strip +repage -fuzz 50% \\'
+    echo '        -quality 100% -adaptive-sharpen 2x2.5+2.7+01'
+    tput setaf 9
+    echo -e "${MESSAGES["notes"]}"
+    echo "${MESSAGES["note_1"]}"
+    echo "${MESSAGES["note_2"]}"
+    echo "${MESSAGES["note_3"]}"
+    tput sgr0
+}
+
+# Check for --help argument
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    show_help
+    exit 0
+fi
+
+# Check if resolution is set
+if [[ -z "$resolution" ]]; then
+    tput setaf 1
+    echo "${MESSAGES["error_resolution"]}"
+    echo "${MESSAGES["error_resolution_tip"]}"
+    tput sgr0
+    exit 1
+fi
+
+# Check if a file is provided
+if [[ -z "$1" ]]; then
+    tput setaf 1
+    echo "${MESSAGES["error_no_file"]}"
+    tput sgr0
+    exit 1
+fi
+
+# File path
+input_file="$1"
+
+# Check if file exists
+if [[ ! -f "$input_file" ]]; then
+    tput setaf 1
+    printf "${MESSAGES["error_invalid_file"]}" "$input_file"
+    echo
+    tput sgr0
+    exit 1
+fi
+
+# Execute conversion
+tput setaf 6
+printf "${MESSAGES["conversion_start"]}" "$resolution"
+echo
+tput sgr0
+
+convert -adaptive-resize "$resolution" -contrast-stretch 0,3% -strip \
+        -modulate 99,99 -colorspace sRGB -depth 16 -channel rgba \
+        -adaptive-blur 0.05 -density 400 -strip +repage -fuzz 50% \
+        -quality 100% -adaptive-sharpen 2x2.5+2.7+01 "$input_file" "${input_file%.jpg}_converted.jpg"
+
+# Completion message
+tput setaf 2
+printf "${MESSAGES["conversion_done"]}" "${input_file%.jpg}_converted.jpg"
+echo
+tput sgr0

@@ -1,0 +1,6 @@
+alias calc='~/.shell_utils/scripts/math'
+alias calculator='~/.shell_utils/scripts/math'
+alias calculate='~/.shell_utils/scripts/math'
+alias mat='~/.shell_utils/scripts/math'
+alias calculo='~/.shell_utils/scripts/math'
+alias calcular='~/.shell_utils/scripts/math'

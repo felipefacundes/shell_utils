@@ -1,0 +1,46 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script is a simple utility that uses the diff command to compare all .sh shell files with .fish files, 
+aiming to improve the control of adjustments and corrections in Shell Utils.
+DOCUMENTATION
+
+dir="$1"
+output="${HOME}/.${0##*/}.$(date +"%Y%m%d%H%M%S")"
+bgreen='\033[1;32m'
+bred='\033[1;31m'
+nc='\033[0m'
+
+shopt -s globstar
+
+clear
+
+if ! test -d "$dir" && test -z "$dir"; then
+    echo 'Informe Folder'
+    echo -e "\nUsage: ${0##*/} directory"
+    exit 1
+fi
+
+for file in "${dir}"/**/*.sh; do
+    filename=${file%.*}
+    only_file=$(basename "$filename")
+    if ! test -f "$output"; then
+        touch "$output"
+        echo "$output" | tee "$output"
+        echo | tee -a "$output"
+    fi
+    if test -f "${filename}.fish"; then
+        if ! diff "${filename}.sh" "${filename}.fish" >/dev/null; then
+            {
+            echo '==================================================='
+            echo -e "${bred}Left: ${only_file}.sh${nc} | ${bgreen}Right: ${only_file}.fish${nc}"
+            diff --color="always" "${filename}.sh" "${filename}.fish"
+            echo '==================================================='
+            } >> "$output"
+        fi
+    fi
+done
+
+less -i "$output"

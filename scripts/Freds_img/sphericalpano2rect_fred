@@ -1,0 +1,352 @@
+#!/bin/bash
+# 
+# Developed by Fred Weinhaus 9/20/2017 .......... revised 9/20/2017
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: sphericalpano2rect [-c coords] [-u units] [-f fov] [-m maxsize] [-b bgcolor] 
+# [-i intepolation] infile outfile
+# USAGE: sphericalpano2rect [-h or -help]
+# 
+# OPTIONS:
+# 
+# -c     coords            coordinates in the panorama image (cx,cy) to be used as the 
+#                          center of the output image; floats>=0; default=center of 
+#                          panorama
+# -u     units             units for center coordinates: degrees or pixels; floats>=0;  
+#                          default=pixels
+# -f     fov               field of view of the output image (xfov,yfov) in degrees; 
+#                          0<floats<180; default=60,60
+# -m     maxsize           maximum size of the output image in pixels corresponding to   
+#                          the larger field of view dimension; default=512
+# -b     bgcolor           background color for virtual-pixel; any valid IM color is 
+#                          allowed; default=black
+# -i     interpolation     intepolation method; any valid IM interpolation method is 
+#                          allowed; default=bilinear
+# 
+###
+# 
+# NAME: SPHERICALPANO2RECT 
+# 
+# PURPOSE: To generate a perspective (rectilinear) image from a region of a spherical 
+# panorama image.
+# 
+# DESCRIPTION: SPHERICALPANO2RECT generates a perspective (rectilinear) image from a 
+# region of a spherical panorama image. The region is identified by a point 
+# on the panorama image in pixels or degrees and the specified output field of view. 
+# 
+# ARGUMENTS: 
+# 
+# -c coords ... COORDS is the coordinates in the panorama image (cx,cy) to be used as  
+# the center of the output image (look point). Values are floats>=0. The default=center
+# of panorama. Two comma separated values are required, if provided.
+# 
+# -u units ... UNITS for specifying the look coordinates. Choices are degrees (d) or 
+# pixels (p). VAlues are floats>=0. The default=pixels.
+# 
+# -f fov ... FOV are the fields of view of the output image (xfov,yfov) in degrees. 
+# Values are 0<floats<180. The default="60,60". If only one value is supplied, it will 
+# be use for both dimensions. Smaller values zoom in (telephoto lens) and larger values  
+# zoom out (wide angle lens). For 35 mm film, a 50 mm focal length lens will have a 
+# diagonal field of view of about 47 degrees. Values larger than about 120 degrees 
+# for the field of view will show distortions.
+# 
+# -m maxsize ... MAXSIZE is the maximum size of the output image in pixels corresponding  
+# to the the larger field of view dimension. The default=512.
+# 
+# -b bgcolor ... BGCOLOR is the background color for virtual-pixels. Any valid IM color 
+# is allowed. The default=black.
+# 
+# -i interpolation ... INTEPOLATION method. Any valid IM interpolation method is allowed. 
+# The default=bilinear.
+# 
+# NOTE: This script will be slow due to the use of -fx. On my dual core INTEL Mac mini 
+# with 2.8 GHz processor and OSX Sierra, it takes about 10 sec to create a 512x512  
+# perspective output starting from a 2000x1000 pixel spherical panorama. Processing  
+# time increases/decreases approximately with the square of the output dimension.
+# 
+# REFERENCES:
+# https://en.wikipedia.org/wiki/Perspective_projection_distortion
+# http://mathworld.wolfram.com/SphericalCoordinates.html
+# https://en.wikipedia.org/wiki/Field_of_view
+# https://www.nikonians.org/reviews/fov-tables
+# https://en.wikipedia.org/wiki/Angle_of_view
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+coords=""
+units="pixels"
+fov=60
+maxsize=512
+bgcolor="black"
+interpolation="bilinear"
+
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 12 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-c)    # center
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COORDS SPECIFICATION ---"
+					   checkMinus "$1"
+					   coords=`expr "$1" : '\([.0-9]*,[.0-9]*\)'`
+					   [ "$coords" = "" ] && errMsg "--- COORDS=$coords MUST BE A PAIR OF NON-NEGATIVE FLOATS SEPARATED BY A COMMA ---"
+					   coords="$1,"
+		   			   cx=`echo "$coords" | cut -d, -f1`
+		   			   cy=`echo "$coords" | cut -d, -f2`
+					   ;;
+			   	-u)    # units
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID UNITS SPECIFICATION ---"
+					   checkMinus "$1"
+					   units=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$units" in
+					   		pixels|p) units="pixels" ;;
+					   		degrees|d) units="degrees" ;;
+					   		*) errMsg "--- UNITS=$units IS NOT A VALID CHOICE ---" ;;
+					   esac
+					   ;;
+				-f)    # fov
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FOV SPECIFICATION ---"
+					   checkMinus "$1"
+					   fov=`expr "$1" : '\([.0-9]*,[.0-9]*\)'`
+					   [ "$fov" = "" ] && errMsg "--- FOV=$fov MUST BE A NON-NEGATIVE FLOAT ---"
+					   ;;
+				-m)    # maxsize
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MAXSIZE SPECIFICATION ---"
+					   checkMinus "$1"
+					   maxsize=`expr "$1" : '\([0-9]*\)'`
+					   [ "$maxsize" = "" ] && errMsg "--- MAXSIZE=$maxsize MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-b)    # get  bgcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BACKGROUND COLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgcolor="$1"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+tmpA="$dir/sphericalpano2rect_$$.mpc"
+tmpB="$dir/sphericalpano2rect_$$.cache"
+trap "rm -f $tmpA $tmpB;" 0
+trap "rm -f $tmpA $tmpB; exit 1" 1 2 3 15
+#trap "rm -f $tmpA $tmpB; exit 1" ERR
+
+
+# read input image
+convert -quiet "$infile" +repage $tmpA ||
+	echo  "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+
+# Pertinent equations:
+# fov=field of view (aperture) and corresponds to dimension N of perspective image
+# perspective: N=2*f*tan(fov/2); f=(N/2)/tan((fov/2)*(pi/180))=N/(2*tan(fov*pi/360))
+# x=f*tan(theta); y=f*tan(phi); angles relative to center of output
+# theta=atan(x/f); phi=atan(y/f)
+# panorama: x=(theta_pano+theta_look)*width/360; y=-(phi_pano+phi_look)*height/180; x,y and theta,phi at top left corner of panorama
+
+# NOTE: phi added as a constant to -fx as of IM 6.7.3.4. So need to change its name if used in -fx
+
+# get input panorama image dimensions
+WxH=`convert $tmpA -format "%wx%h" info:`
+ww=`echo "$WxH" | cut -dx -f1`
+hh=`echo "$WxH" | cut -dx -f2`
+#echo "ww=$ww; hh=$hh;"
+
+# get radians per pixel in panorama input
+rppx=`convert xc: -format "%[fx:2*pi/($ww-1)]" info:`
+rppy=`convert xc: -format "%[fx:pi/($hh-1)]" info:`
+#echo "rppx=$rppx; rppy=$rppy;"
+
+# get pixels per radian in panorama input
+pprx=`convert xc: -format "%[fx:($ww-1)/(2*pi)]" info:`
+ppry=`convert xc: -format "%[fx:($hh-1)/pi]" info:`
+#echo "pprx=$pprx; ppry=$ppry;"
+
+# get look point in panorama in radians as theta (thlook), phi (phlook)
+if [ "$coords" = "" ]; then
+	pi=`convert xc: -format "%[fx:pi]" info:`
+	pid2=`convert xc: -format "%[fx:pi/2]" info:`
+	thlook=$pi
+	phlook=$pid2
+elif [ "$units" = "pixels" ]; then
+	thlook=`convert xc: -format "%[fx:$cx*$rppx]" info:`
+	phlook=`convert xc: -format "%[fx:$cy*$rppy]" info:`
+elif [ "$units" = "degrees" ]; then
+	thlook=`convert xc: -format "%[fx:$cx*(pi/180)]" info:`
+	phlook=`convert xc: -format "%[fx:$cy*(pi/180)]" info:`
+fi
+#echo "coords=$coords; cx=$cx; cy=$cy; thlook=$thlook; phlook=$phlook;"
+
+# extract and test xfov and yfov
+xfov=`echo "$fov" | cut -d, -f1`
+yfov=`echo "$fov" | cut -d, -f2`
+xtest=`convert xc: -format "%[fx: (($xfov <= 0) || ($xfov >= 180))?1:0]" info:`
+ytest=`convert xc: -format "%[fx: (($yfov <= 0) || ($yfov >= 180))?1:0]" info:`
+[ $xtest -eq 1 -o $ytest -eq 1 ] && errMsg "--- FOV=$fov MUST BE A FLOAT GREATER THAN 0 AND LESS THAN 180 ---"
+#echo "xfov=$xfov; yfov=$yfov;"
+
+# get width and height and inverse focal length of perspective from fov and maxsize
+test=`convert xc: -format "%[fx:($xfov>=$yfov)?1:0]" info:`
+if [ $test -eq 1 ]; then
+	wd=$maxsize
+	ht=`convert xc: -format "%[fx:floor($maxsize*$yfov/$xfov)]" info:`
+	focinv=`convert xc: -format "%[fx:2*tan($xfov*pi/360)/$maxsize]" info:`
+else
+	ht=$maxsize
+	wd=`convert xc: -format "%[fx:floor($maxsize*$xfov/$yfov)]" info:`
+	focinv=`convert xc: -format "%[fx:2*tan($yfov*pi/360)/$maxsize]" info:`
+fi
+xcd=`convert xc: -format "%[fx:($wd-1)/2]" info:`
+ycd=`convert xc: -format "%[fx:($ht-1)/2]" info:`
+foc=`convert xc: -format "%[fx:1/$focinv]" info:`
+#echo "wd=$wd; ht=$ht; focinv=$focinv; xcd=$xcd; ycd=$ycd; foc=$foc;"
+
+
+# set up coords in input; xd positive right and yd positive down
+xd="xd=(i-$xcd);"
+yd="yd=(j-$ycd);"
+
+# get theta,phi relative to center of output perspective and add theta_look and phi_look to get angles in panorama
+#xd=f*tan(theta)
+#yd=f*tan(phi)
+# use inverse equations and 
+# add theta_look and phi_look to get absolute angles from top left of panorama
+# note yd is positive down and we want phi positive down
+pi2=`convert xc: -format "%[fx:2*pi]" info:`
+th="th=mod(atan($focinv*xd)+$thlook,$pi2);"
+ph="ph=atan($focinv*yd)+$phlook;"
+
+
+# get xs,ys in input panorama from th and ph
+# xs positive right; ys positive down
+xs="xs=th*$pprx;"
+ys="ys=ph*$ppry;"
+
+if [ "$bgcolor" = "transparent" -o "$bgcolor" = "none" ]
+	then
+	# create alpha channel
+	virtual="-matte -channel RGBA -virtual-pixel background -background $bgcolor"
+else
+	virtual="-virtual-pixel background -background $bgcolor"
+fi
+
+# generate output perspective image
+convert \( -size ${wd}x${ht} xc: \) $tmpA $virtual -interpolate $interpolation -monitor \
+	-fx "$xd $yd $th $ph $xs $ys v.p{xs,ys}" +monitor \
+	"$outfile"
+
+exit 0

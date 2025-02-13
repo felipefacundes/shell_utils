@@ -1,0 +1,90 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script serves as a session management tool for Linux desktop environments, allowing users to perform actions such as shutdown, 
+reboot, hibernate, logout, lock screen, and suspend in an intuitive manner.
+
+Strengths:
+1. User -friendly interface: Utilizes icons to represent options, making interaction more visual and accessible.
+2. Compatibility with various window managers: Detects the desktop environment and adjusts logout commands accordingly.
+3. Support for Wayland and X11: Automatically adapts to the session type, using different menu selectors.
+4. Integration of custom scripts: Incorporates external scripts to manage shutdown and other actions, allowing for customization.
+5. Process verification: Prevents simultaneous execution of the menu, avoiding conflicts.
+
+Capabilities:
+- Enables users to choose from multiple session management options.
+- Executes specific commands based on user selection.
+- Ensures a smooth and efficient user experience across different desktop environments.
+DOCUMENTATION
+
+# icons
+declare -A icons
+icons[lockscreen]="" #"\uf023"
+icons[switchuser]="󰓋" #"\uf518"
+icons[logout]="󰗽" #"\uf842"
+icons[suspend]="⏾" #"\uf9b1"
+icons[hibernate]="󰒲" #"\uf7c9"
+icons[reboot]="" #"\ufc07"
+icons[shutdown]="" #"\uf011"
+icons[cancel]="󰜺" #"\u00d7"
+
+case "$XDG_SESSION_DESKTOP" in
+    i3)
+        logout='i3-msg exit'
+        ;;
+    openbox)
+        logout='openbox --exit'
+        ;;
+    awesome)
+        logout='awesome-client "awesome.quit()"'
+        ;;
+    *)
+        logout='pkill -KILL -u "$USER"'
+        ;;
+esac
+
+
+if [[ $XDG_SESSION_TYPE = wayland ]]; then
+    menu_selector='wofi --show dmenu'
+    lock='swaylock'
+else
+    menu_selector='rofi -dmenu -p'
+    lock='i3lock'
+fi
+
+if pidof wofi; then
+    exit 1
+fi
+
+show_menu() {
+    options="${icons[shutdown]}  - Shutdown\n${icons[reboot]}  - Reboot\n${icons[hibernate]}  - Hibernate\n${icons[logout]}  - Logout\n${icons[lockscreen]}  - Lockscreen\n${icons[suspend]}  - Suspend\n${icons[cancel]}  - Cancel"
+    selected_option=$(echo -e "$options" | eval "$menu_selector" "Choose Option")
+
+    case "$selected_option" in
+        "${icons[shutdown]}  - Shutdown")
+            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -p
+            ;;
+        "${icons[reboot]}  - Reboot")
+            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -r
+            ;;
+        "${icons[hibernate]}  - Hibernate")
+            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -h
+            ;;
+        "${icons[logout]}  - Logout")
+            eval "$logout"
+            ;;
+        "${icons[lockscreen]}  - Lockscreen")
+            eval "$lock"            
+            ;;
+        "${icons[suspend]}  - Suspend")
+            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -s
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+}
+
+show_menu

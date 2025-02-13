@@ -1,0 +1,12 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# FIXES THE START ERROR FOR MINIDLNA
+
+pkill -9 minidlnad;
+rm -rf ~/.config/minidlna/cache;
+rm -f ~/.config/minidlna/minidlna.pid;
+rm -f ~/.config/minidlna/minidlna.log;
+minidlnad -f ~/.config/minidlna/minidlna.conf -P ~/.config/minidlna/minidlna.pid
+

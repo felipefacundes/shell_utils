@@ -1,0 +1,114 @@
+#!/usr/bin/env python
+# License: GPLv3
+# Credits: Felipe Facundes
+
+"""
+The script creates a calendar application using PyQt6 that allows users to select a year and month to view holidays. 
+
+Strengths:
+1. User-friendly interface with dropdowns for year and month selection.
+2. Displays holidays specific to the selected country and year.
+3. Customizes holiday dates with bold, underlined text in red for easy identification.
+
+Capabilities:
+- Integrates with the 'holidays' library to fetch holiday data.
+- Updates the calendar view dynamically based on user selections.
+
+Dependencies:
+1. PyQt6 (third-party, install via pip)
+2. holidays (third-party, install via pip)
+3. sys (native, no installation needed)
+4. locale (native, no installation needed)
+
+Installation of Dependencies:
+- To install the third-party dependencies, run the following commands:
+
+  pip install PyQt6
+  pip install holidays
+"""
+
+import sys
+from PyQt6.QtCore import Qt, QDate, QLocale
+from PyQt6.QtWidgets import QApplication, QMainWindow, QComboBox, QLabel, QVBoxLayout, QWidget, QCalendarWidget
+from PyQt6.QtGui import QFont, QColor
+
+import holidays
+import locale
+
+country = locale.getlocale()[0].split("_")[1].upper()
+
+class CalendarWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Calendar")
+        self.resize(400, 500)
+
+        self.year_label = QLabel("Year:")
+        self.year_combo = QComboBox()
+        self.year_combo.addItem("Select year")
+        self.year_combo.addItems([str(year) for year in range(1999, 2040)])
+
+        self.month_label = QLabel("Month")
+        self.month_combo = QComboBox()
+        self.month_combo.addItem("Select a Month")
+        self.month_combo.addItem("January")
+        self.month_combo.addItem("February")
+        self.month_combo.addItem("March")
+        self.month_combo.addItem("April")
+        self.month_combo.addItem("May")
+        self.month_combo.addItem("June")
+        self.month_combo.addItem("July")
+        self.month_combo.addItem("August")
+        self.month_combo.addItem("September")
+        self.month_combo.addItem("October")
+        self.month_combo.addItem("November")
+        self.month_combo.addItem("December")
+
+        self.calendar_widget = QCalendarWidget()
+        self.calendar_widget.setFont(QFont("Arial", 11))
+
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.year_label)
+        self.layout.addWidget(self.year_combo)
+        self.layout.addWidget(self.month_label)
+        self.layout.addWidget(self.month_combo)
+        self.layout.addWidget(self.calendar_widget)
+
+        self.widget = QWidget()
+        self.widget.setLayout(self.layout)
+        self.setCentralWidget(self.widget)
+
+        self.year_combo.currentIndexChanged.connect(self.update_calendar)
+        self.month_combo.currentIndexChanged.connect(self.update_calendar)
+
+    def update_calendar(self):
+        year = int(self.year_combo.currentText())
+        month_index = self.month_combo.currentIndex()
+
+        holidays_set = holidays.CountryHoliday(country, years=year)
+
+        self.calendar_widget.setLocale(QLocale("en_US"))
+
+        if holidays_set:
+            for date, holiday in holidays_set.items():
+                self.calendar_widget.setDateTextFormat(date, self.get_holiday_format(holiday))
+
+        self.calendar_widget.setCurrentPage(year, month_index)
+
+    def get_holiday_format(self, holiday):
+        text_format = self.calendar_widget.dateTextFormat(QDate.currentDate())
+        font = QFont()
+        font.setBold(True)
+        text_format.setFont(font)
+        text_format.setFontUnderline(True)
+        text_format.setForeground(QColor("red"))
+        tooltip = ' '.join(holiday)
+        text_format.setToolTip(tooltip)
+        return text_format
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = CalendarWindow()
+    window.show()
+    sys.exit(app.exec())

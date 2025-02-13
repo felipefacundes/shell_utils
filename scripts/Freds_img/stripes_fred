@@ -1,0 +1,296 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 1/19/2022 .......... 1/19/2022
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: stripes [-t thickness] [-m mode] [-c1 color1] [-c2 color2] [-a angle] 
+# [-r rounding] infile outfile 
+# USAGE: stripes [-help]
+#
+# OPTIONS:
+#
+# -t      thickness     thickness of each of two stripes composing the border; 
+#                       integer>=0; default=10
+# -m      mode          mode of striped border; choices are: inside or outside;
+#                       default=inside
+# -c1     color1        color of first stripe; default=red
+# -c2     color2        color of second stripe; default=blue
+# -a      angle         angle of stripes; -180<=integer<=180; default=45
+# -r      rounding      rounding of corners; integer>=0; default=0
+# 
+# 
+###
+# 
+# NAME: STRIPES 
+# 
+# PURPOSE: Adds a striped border to an image.
+# 
+# DESCRIPTION: STRIPES adds a striped border to an image. The angle of the 
+# stripes may be specified along with the thickness and rounding of the border.
+# The border may be specified either inside or outside the input image. 
+# 
+# 
+# OPTIONS: 
+# 
+# -t thickness ... THICKNESS of each of two stripes composing the border. 
+# Values are integers>=0. The default=10.
+# 
+# -m mode ... MODE of striped border. The choices are: inside (i) or 
+# outside (o). The default is inner.
+# 
+# -c1 color1 ... COLOR1 is the color of the first stripe. Any valid 
+# Imagemagick opaque color may be specified. The default=red.
+# 
+# -c2 color2 ... COLOR2 is the color of the second stripe. Any valid 
+# Imagemagick opaque color may be specified. The default=blue.
+#
+# -a angle ... ANGLE of stripes in degrees. Values are -180<=integer<=180. 
+# The default=45.
+#  
+# -r rounding ... ROUNDING of the corners. Values are integers>=0. 
+# The default=0.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+thickness=10
+mode="inside"
+color1="red"
+color2="blue"
+angle=45
+rounding=0
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 14 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		     -help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-t)    # get thickness
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID THICKNESS SPECIFICATION ---"
+					   checkMinus "$1"
+					   thickness=`expr "$1" : '\([0-9]*\)'`
+					   [ "$thickness" = "" ] && errMsg "--- THICKNESS=$thickness MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   ;;
+		 		-m)    # mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   # test mode values
+					   mode="$1"
+					   mode=`echo "$mode" | tr "[:upper:]" "[:lower:]"`
+					   case "$mode" in 
+					   		inside|i) mode="inside" ;;
+					   		outside|o) mode="outside" ;;
+					   		*) errMsg "--- MODE=$mode IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-c1)   # get color1
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR1 SPECIFICATION ---"
+					   checkMinus "$1"
+					   color1="$1"
+					   ;;
+				-c2)   # get color2
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR2 SPECIFICATION ---"
+					   checkMinus "$1"
+					   color2="$1"
+					   ;;
+				-a)    # get angle
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ANGLE SPECIFICATION ---"
+					   #checkMinus "$1"
+					   angle=`expr "$1" : '\([-.0-9]*\)'`
+					   [ "$angle" = "" ] && errMsg "--- ANGLE=$angle MUST BE A NON-NEGATIVE FLOAT ---"
+					   testA=`echo "$angle < -180" | bc`
+					   testB=`echo "$angle > 180" | bc`
+					   [ $testA -eq 1 -o $testB -eq 1 ] && errMsg "--- ANGLE=$angle MUST BE A FLOAT BETWEEN -180 AND 180 ---"
+					   ;;
+				-r)    # get rounding
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID ROUNDING SPECIFICATION ---"
+					   checkMinus "$1"
+					   rounding=`expr "$1" : '\([0-9]*\)'`
+					   [ "$rounding" = "" ] && errMsg "--- ROUNDING=$rounding MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	if [ $# -eq 2 ]; then
+		infile="$1"
+		outfile="$2"
+	else
+		errMsg "--- INCONSISTENT NUMBER OF IMAGES PROVIDED ---"
+	fi
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# create temp files
+tmpA1="$dir/stripes_1_$$.mpc"
+tmpB1="$dir/stripes_1_$$.cache"
+trap "rm -f $tmpA1 $tmpB1;" 0
+trap "rm -f $tmpA1 $tmpB1; exit 1" 1 2 3 15
+#trap "rm -f $tmpA1 $tmpB1; exit 1" ERR
+
+# test input image
+convert -quiet "$infile" +repage $tmpA1 ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE ---"
+
+# get image wd, ht
+ww=`convert -ping $tmpA1 -format "%w" info:`
+hh=`convert -ping $tmpA1 -format "%h" info:`
+
+# compute wd and ht depending upon mode
+if [ "$mode" = "outside" ]; then
+	wd=$((ww+4*thickness))
+	ht=$((hh+4*thickness))
+	wd2=$ww
+	ht2=$hhd
+	shaving=""
+	method="over"
+elif [ "$mode" = "inside" ]; then
+	wd=$ww
+	ht=$hh
+	wd2=$((ww-4*thickness))
+	ht2=$((hh-4*thickness))
+	thickness2=$((2*thickness))
+	shaving="-shave ${thickness2}x${thickness2}"
+	method="dst_over"
+fi
+
+# compute diagonal
+diag=`convert xc: -format "%[fx:round(hypot($wd,$ht))]" info:`
+
+#echo "wd=$wd; ht=$ht; wd2=$wd2; ht2=$ht2; diag=$diag;"
+#echo "shaving=$shaving;"
+#echo "thickness=$thickness; thickness2=$thickness2; color1=$color1; color2=$color2; angle=$angle; rounding=$rounding;"
+#echo "infile=$infile; outfile=$outfile;"
+
+# process image
+convert \
+-size ${diag}x${thickness} xc:"$color1" xc:"$color2" -append \
+-write mpr:stripe +delete \
+-size ${diag}x${diag} tile:mpr:stripe +repage \
+-virtual-pixel white -distort SRT $angle +repage \
+-gravity center -crop ${wd}x${ht}+0+0 +repage \
+\( -size ${wd}x${ht} xc:white \
+-size ${wd2}x${ht2} xc:black \
+-gravity center -compose over -composite \
+\( -size ${rounding}x${rounding} xc:black \
+-draw "fill white circle ${rounding},${rounding} ${rounding},0" \
+-write mpr:arc +delete \) \
+\( mpr:arc \) -gravity northwest -composite \
+\( mpr:arc -flip \) -gravity southwest -composite \
+\( mpr:arc -flop \) -gravity northeast -composite \
+\( mpr:arc -rotate 180 \) \
+-gravity southeast -composite \) \
+-alpha off -compose copy_opacity -composite \
+\( $tmpA1 $shaving \) -gravity center -compose $method -composite \
+"$outfile"
+
+exit 0

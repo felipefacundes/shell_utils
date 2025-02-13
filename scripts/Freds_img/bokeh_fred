@@ -1,0 +1,531 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 5/18/2019 .......... revised 5/18/2019
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: bokeh [-d domain] [-s shape] [-r radius] [-p percent] [-t thresh] [-g gain] 
+# [-S sharp] [-T type] [-G graphic] infile outfile
+# USAGE: bokeh [-h or -help]
+# 
+# OPTIONS:
+# 
+# -d     domain      convolution domain; choices are: spatial (s) or fourier (f); 
+#                    default=spatial
+# -s     shape       shape of convolution kernel; choices are: triangle, square, 
+#                    pentagon, hexagon, circle, ring, star; default=pentagon
+# -r     radius      radius of shape; width and height of shape image will be 
+#                    approximately twice the radius; integer>0; default=15 
+# -p     percent     percent of radius to use for the inner radius of the ring; 
+#                    0<integer<100; default=85; unused for other shapes
+# -t     thresh      threshold to select only highlights in the image to apply the 
+#                    bokeh effect; 0<=integer<=100; default indicates no thresholding; 
+#                    nominal value is 90
+# -g     gain        gain to apply to emphasize bokeh effect; float>=0; default=0 
+#                    (no emphasis); nominal is 2 when thresh not specified and 10 
+#                    when a threshold value is supplied
+# -S     sharp       sharpening of bokeh effect; integer>=0; default=10
+# -T     type        type of bokeh coloring when thresh is supplied; choices are:
+#                    grayscale, truecolor or some actual color specification as name, 
+#                    hex or rgb values
+# -g     graphic     graphic mode; choices are: view (v) or save (s) shape image; if 
+#                    save, the graphic will be saved as shapename.gif, where shapename 
+#                    is the name of the shape as listed above
+# 
+###
+# 
+# NAME: BOKEH 
+# 
+# PURPOSE: To create a bokeh blurring effect to an image.
+# 
+# DESCRIPTION: BOKEH creates a bokeh blurring effect to an image. This can be applied 
+# to the whole image or to just the image highlights. A choice of numerous shapes 
+# and sizes may be selected. The coloring of the bokeh effect may also be specified.
+# 
+# 
+# ARGUMENTS: 
+# 
+# -d domain ... DOMAIN is the convolution domain for applying the bokeh blurring. The 
+# choices are: spatial (s) or fourier (f). The default=spatial. Use fourier, when 
+# applying the bokeh effect to large images, if speed is an issue. Different artifacts 
+# may be observe at the sides of the image when processing with one or the other domain.
+# 
+# -s shape ... SHAPE of the convolution kernel. The choices are: triangle, square, 
+# pentagon, hexagon, circle, ring and star. The default=pentagon.
+# 
+# -r radius ... RADIUS of the shape. The width and height of the shape image will be 
+# approximately twice the radius. Values are integer>0. The default=15.
+# 
+# -p percent ... PERCENT of the (outer) radius to use for the inner radius of the ring. 
+# Values are 0<integer<100. The default=85. Not unused for other shapes.
+# 
+# -t thresh ... THRESH is the threshold used to select only highlights in the image 
+# to apply the bokeh effect. Values are 0<=integer<=100. The default indicates no 
+# thresholding, so that the bokeh effect is applied to the whole image. Nominal values 
+# are approximately 90.
+# 
+# -g gain ... GAIN to apply to emphasize (brighten) the bokeh effect. Values are 
+# float>=0. The default=0 (no emphasis). Nominal value is 2 when a threshold value is 
+# not specified and 10 when a threshold value is supplied. Gain when no thesholding 
+# will brighten the image, but to a lesser extent than in the highlight regions.
+# 
+# -S sharp ... SHARP applies a sharpening of the bokeh effect. Values are integer>=0. 
+# The default=10.
+# 
+# -T type ... TYPE of bokeh coloring when thresh is supplied. The choices are:
+# grayscale, truecolor or some actual opaque color specification as a color name, 
+# hex value or rgb values. Grayscale will apply a grayscale brokeh effect. Truecolor 
+# will apply the bokeh effect using the image's color in that region. A color 
+# specification will colorize the bokeh effect using that color. The default=truecolor
+# 
+# -G graphic ... GRAPHIC mode. The choices are: view (v) or save (s) the shape image. 
+# The default is neither. If save is specified, then the graphic image will be saved 
+# as shapename.gif to the current directory, where shapename is the name of the 
+# shape as listed above.
+# 
+# REQUIREMENTS: NetPBM (PGM image format) for domain=spatial. Imagemagick 6.8.7-1 or 
+# higher (due to the use of -complex) and HDRI compiled for domain=fourier.
+# 
+# REFERENCES:
+# https://en.wikipedia.org/wiki/Bokeh
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+# 
+
+# set default values
+domain="spatial"			# convolution domain; spatial or fourier 
+shape="pentagon"			# triangle, square, pentagon, hexagon, circle, ring, star
+radius=15					# radius of circle or outer radius of ring; default=15
+percent="85"				# ring inner radius percent of outer radius; nominal=85
+thresh=""					# threshold to apply only to highlights; nominal=90
+gain="0"					# gain; nominal=2 when thresh="0" and 10 when thresh != "0"
+sharp="10"					# sharpening; default=10
+type="truecolor"			# type of bokeh coloring when thresholding; "grayscale" or "truecolor" or an actual color 
+graphic=""					# view or save shape image
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 20 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-d)    # get  domain
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DOMAIN SPECIFICATION ---"
+					   checkMinus "$1"
+					   domain="$1"
+					   domain=`echo "$domain" | tr "[:upper:]" "[:lower:]"`
+					   case "$domain" in 
+					   		spatial|s) domain="spatial" ;;
+					   		fourier|b) domain="fourier" ;;
+					   		*) errMsg "--- DOMAIN=$domain IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-s)    # get  shape
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SHAPE SPECIFICATION ---"
+					   checkMinus "$1"
+					   shape="$1"
+					   shape=`echo "$shape" | tr "[:upper:]" "[:lower:]"`
+					   case "$shape" in 
+					   		triangle) ;;
+					   		square) ;;
+					   		pentagon) ;;
+					   		hexagon) ;;
+					   		circle) ;;
+					   		ring) ;;
+					   		star) ;;
+					   		*) errMsg "--- SHAPE=$shape IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-r)    # get  radius
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RADIUS SPECIFICATION ---"
+					   checkMinus "$1"
+					   radius=`expr "$1" : '\([0-9]*\)'`
+					   [ "$radius" = "" ] && errMsg "--- RADIUS=$radius MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   ;;
+				-p)    # get  percent
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PERCENT SPECIFICATION ---"
+					   checkMinus "$1"
+					   percent=`expr "$1" : '\([0-9]*\)'`
+					   [ "$percent" = "" ] && errMsg "--- PERCENT=$percent MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test1=`echo "$percent <= 0" | bc`
+					   test2=`echo "$percent >= 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- PERCENT=$percent MUST BE AN INTEGER BETWEEN 1 AND 99 ---"
+					   ;;
+				-t)    # get  thresh
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID THRESH SPECIFICATION ---"
+					   checkMinus "$1"
+					   thresh=`expr "$1" : '\([0-9]*\)'`
+					   [ "$thresh" = "" ] && errMsg "--- THRESH=$thresh MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   test1=`echo "$thresh < 0" | bc`
+					   test2=`echo "$thresh > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- THRESH=$thresh MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+					   ;;
+				-g)    # get  gain
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GAIN SPECIFICATION ---"
+					   checkMinus "$1"
+					   gain=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$gain" = "" ] && errMsg "--- GAIN=$gain MUST BE A NON-NEGATIVE FLOAT (with no sign) ---"
+					   ;;
+				-S)    # get  sharp
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SHARP SPECIFICATION ---"
+					   checkMinus "$1"
+					   sharp=`expr "$1" : '\([0-9]*\)'`
+					   [ "$sharp" = "" ] && errMsg "--- SHARP=$sharp MUST BE A NON-NEGATIVE INTEGER VALUE (with no sign) ---"
+					   ;;
+				-T)    # get type
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TYPE SPECIFICATION ---"
+					   checkMinus "$1"
+					   type="$1"
+					   ;;
+				-G)    # get  graphic
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GRAPHIC SPECIFICATION ---"
+					   checkMinus "$1"
+					   graphic="$1"
+					   graphic=`echo "$graphic" | tr "[:upper:]" "[:lower:]"`
+					   case "$graphic" in 
+					   		view|v) graphic="view" ;;
+					   		save|s) graphic="save" ;;
+					   		*) errMsg "--- GRAPHIC=$shape IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# setup temporary images
+tmpA1="$dir/bokeh_1_$$.mpc"
+tmpB1="$dir/bokeh_1_$$.cache"
+tmpS="$dir/bokeh_shape_$$.miff"
+trap "rm -f $tmpA1 $tmpB1 $tmpS; exit 0" 0
+trap "rm -f $tmpA1 $tmpB1 $tmpS; exit 1" 1 2 3 15
+
+# read the input image into the temporary cached image and test if valid
+convert -quiet "$infile" +repage -alpha off $tmpA1 ||
+	echo "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO size  ---"
+
+# function to create regular polygon vertices
+polygonVertices()
+	{
+	num=$1
+	rad1=$2
+	rad2=$3
+	offset=$4
+	ptArr=()
+	for ((i=0; i<num; i++)); do
+	ang=$((i*360/num + offset))
+	xx[$i]=`convert xc: -format "%[fx:$rad2*cos($ang*pi/180)+$rad1-0.5]" info:`
+	yy[$i]=`convert xc: -format "%[fx:$rad2*sin($ang*pi/180)+$rad1-0.5]" info:`
+	ptArr[$i]="${xx[$i]},${yy[$i]}"
+	done
+	}
+
+# compute diameter from radius
+diam=$((2*radius))
+
+# create shape image
+if [ "$shape" = "triangle" ]; then
+	polygonVertices "3" "$radius" "$radius" "-90"
+	convert -size ${diam}x${diam} xc:black -fill white -draw "polygon ${ptArr[*]}" -alpha off \
+		-trim +repage -bordercolor black -border 1 $tmpS
+
+elif [ "$shape" = "square" ]; then
+	polygonVertices "4" "$radius" "$radius" "-45"
+	convert -size ${diam}x${diam} xc:black -fill white -draw "polygon ${ptArr[*]}" -alpha off \
+		-trim +repage -bordercolor black -border 1 $tmpS
+
+elif [ "$shape" = "pentagon" ]; then
+	polygonVertices "5" "$radius" "$radius" "-90"
+	convert -size ${diam}x${diam} xc:black -fill white -draw "polygon ${ptArr[*]}" -alpha off \
+		-trim +repage -bordercolor black -border 1 $tmpS
+
+elif [ "$shape" = "hexagon" ]; then
+	polygonVertices "6" "$radius" "$radius" "0"
+	convert -size ${diam}x${diam} xc:black -fill white -draw "polygon ${ptArr[*]}" -alpha off \
+		-trim +repage -bordercolor black -border 1 $tmpS
+
+elif [ "$shape" = "star" ]; then
+	polygonVertices "5" "$radius" "$radius" "-90"
+	ptArr1=(${ptArr[*]})
+	
+	golden_ratio=1.61803398875
+	radius2=`convert xc: -format "%[fx:$radius/($golden_ratio*$golden_ratio)]" info:`
+	polygonVertices "5" "$radius" "$radius2" "90"
+	ptArr2=(${ptArr[*]})
+
+	ptArr=()
+	ptArr=(${ptArr1[0]} ${ptArr2[3]} ${ptArr1[1]} ${ptArr2[4]} ${ptArr1[2]} ${ptArr2[0]} ${ptArr1[3]} ${ptArr2[1]} ${ptArr1[4]} ${ptArr2[2]})
+	
+	convert -size ${diam}x${diam} xc:black -fill white -draw "polygon ${ptArr[*]}" -alpha off \
+		-trim +repage -bordercolor black -border 1 $tmpS
+
+elif [ "$shape" = "circle" ]; then
+	cent=`convert xc: -format "%[fx:$radius-0.5]" info:`
+	convert -size ${diam}x${diam} xc:black -fill white -draw "circle $cent,$cent $diam,$cent" -alpha off \
+		-bordercolor black -border 1 $tmpS
+
+elif [ "$shape" = "ring" ]; then
+	[ "$percent" = "" ] && echo "--- PERCENT MUST BE BETWEEN 0 AND 100 ---"
+	cent=`convert xc: -format "%[fx:$radius-0.5]" info:`
+	diam2=`convert xc: -format "%[fx:$diam*$percent/100]" info:`
+	convert -size ${diam}x${diam} xc:black \
+		-draw "fill white circle $cent,$cent $diam,$cent fill black circle $cent,$cent $diam2,$cent" -alpha off \
+		-bordercolor black -border 1 $tmpS
+
+fi
+
+# set up for sharpening
+if [ "$sharp" != "0" ]; then
+	sharpening="-sharpen 0x$sharp"
+else
+	sharpening=""
+fi
+
+# set up for gain
+if [ "$gain" != "0" ]; then
+	gproc="-sigmoidal-contrast ${gain}x0%"
+else
+	gproc=""
+fi
+
+# set up for type
+if [ "$type" = "grayscale" ]; then
+	thresholding="-threshold $thresh%"
+	coloring=""
+	colorval=""
+elif [ "$type" = "truecolor" ]; then
+	thresholding="-black-threshold $thresh%"
+	coloring=""
+	colorval=""
+else
+	thresholding="-threshold $thresh%"
+	coloring="+level-colors"
+	colorval="black,$type"
+fi
+
+
+# set up for HDRI processing if domain is fourier
+if [ "$domain" = "fourier" ]; then
+
+	# test for valid version of IM 7 with 
+	im_version=`convert -list configure | \
+		sed '/^LIB_VERSION_NUMBER */!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+	# needs IM 6.8.7-1 or higher for -complex
+	[ "$im_version" -lt "06080701 " ] && echo "--- REQUIRES IM VERSION 6.8.7-1 OR HIGHER ---"
+
+	# test for hdri enabled
+	if [ "$im_version" -ge "07000000" ]; then
+		hdri_on=`convert -version | grep "HDRI"`	
+	else
+		hdri_on=`convert -list configure | grep "enable-hdri"`
+	fi
+	[ "$hdri_on" = "" ] && echo "--- REQUIRES HDRI ENABLED IN IM COMPILE ---"
+
+	# get image dimensions for later cropping as inputs are padded to square, even dimensions
+	width=`convert -ping $tmpA1 -format "%w" info:`
+	height=`convert -ping $tmpA1 -format "%h" info:`
+	#echo "width=$width; height=$height;"
+
+	# get padded to even square size
+	dim=`convert xc: -format "%[fx:floor((2*max($width,$height)+1)/2)]" info:`
+	#echo "dim=$dim"
+
+	# get center point adjusted for padding an odd dimension image to square even dimensions
+	# need to subtract 1 to get it to align with spatial approach
+	cx=`convert xc: -format "%[fx:floor(($dim+1)/2)-1]" info:`
+	cy=`convert xc: -format "%[fx:floor(($dim+1)/2)-1]" info:`
+	#echo "cx=$cx; cy=$cy;"
+
+	# center pad filter if needed
+	if [ $dim -ne $width -o $dim -ne $height ]; then
+		convert $tmpS -gravity center -background black -extent ${dim}x${dim} PNG24:$tmpS
+	fi
+
+	# compute HDRI fourier normalization
+	# after IM 06050410 #HDRI was auto scaled by quantumrange
+	norm=`convert $tmpS -format "%[fx:1/mean]\n" info: | head -n 1`
+	#echo "norm=$norm"
+fi
+
+
+# process image
+if [ "$domain" = "spatial" -a "$thresh" = "" ]; then
+	[ "$gain" = "" ] && gain=1
+	dims=`convert $tmpS -format "%wx%h" info:`
+	# convert image to PGM text format and reformat to Imagemagick filter/kernel format
+	# remove rows 1 and 3
+	# replace W H by WxH: in the new line 1
+	# do spatial convolution of filter from shape with image
+	kernel=`convert $tmpS -compress none -depth 8 PGM:- | sed "1d;3d" | sed "1 s/^.*$/$dims:/"`
+	convert $tmpA1 \
+		-define convolve:scale=\! -morphology convolve "$kernel" \
+		-define convolve:scale=1 $gproc $sharpening \
+		"$outfile"
+
+elif [ "$domain" = "spatial" -a "$thresh" != "" ]; then
+	dims=`convert $tmpS -format "%wx%h" info:`
+	# convert image to PGM text format and reformat to Imagemagick filter/kernel format
+	# remove rows 1 and 3
+	# replace W H by WxH: in the new line 1
+	# do spatial convolution of filter from shape with thresholded image
+	# then compose plus with original
+	kernel=`convert $tmpS -compress none -depth 8 PGM:- | sed "1d;3d" | sed "1 s/^.*$/$dims:/"`
+	convert $tmpA1 \
+		\( +clone $thresholding \
+			-define convolve:scale=\! -morphology convolve "$kernel" \
+			-define convolve:scale=1 $sharpening $gproc $coloring $colorval \) \
+		 -compose plus -composite \
+		"$outfile"
+
+elif [ "$domain" = "fourier" -a "$thresh" = "" ]; then
+	# do +fft, complex multiply, +ift on image and shape
+	convert \( $tmpS -roll -${cx}-${cy} -virtual-pixel mirror +fft -evaluate multiply $norm \) \
+		\( $tmpA1 -virtual-pixel mirror +fft \) \
+		-complex multiply \
+		-virtual-pixel mirror +ift \
+		-crop ${width}x${height}+0+0 +repage \
+		$sharpening $gproc \
+		"$outfile"
+
+elif [ "$domain" = "fourier" -a "$thresh" != "" ]; then
+	# do +fft, complex multiply, +ift on thresholded image and shape
+	# then compose plus with original
+	convert $tmpA1 \
+		\( $tmpS -roll -${cx}-${cy} -virtual-pixel mirror +fft -evaluate multiply $norm \) \
+		\( -clone 0 $thresholding \
+		-virtual-pixel mirror +fft \) \
+		\( -clone 1-4 -complex multiply \
+		-virtual-pixel mirror +ift \
+		-crop ${width}x${height}+0+0 +repage \
+		$sharpening $gproc $coloring "$colorval" \) \
+		-delete 1-4 \
+		-compose plus -composite \
+		"$outfile"
+
+fi
+
+# view or save shape image
+if [ "$graphic" = "view" ]; then
+	convert $tmpS show:
+elif [ "$graphic" = "save" ]; then
+	convert $tmpS "${shape}.gif"
+fi
+
+exit 0

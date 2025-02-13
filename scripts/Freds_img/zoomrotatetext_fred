@@ -1,0 +1,408 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 8/8/2018 .......... 8/8/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: zoomrotatetext -t "text" [-w width ] [-f font] [-c color] [-b bgcolor ] 
+# [-r revolutions] [-D direction] [-m mode ] [-p pause] [-F frames] [-d delay]   
+# [infile] outfile
+# USAGE: zoomrotatetext [-h or -help]
+#
+# OPTIONS:
+#
+# -t     text            text string to be used to create the animation; required 
+#                        argument 
+# -w     width           width of text in pixels; integer>0; default=400; 
+#                        output will be square of size determined from the text 
+#                        diagonal dimension                     
+# -f     font            font to use for the text; font name or path to font file; 
+#                        default=arial
+# -c     color           color of text; any valid IM color is allowed; default=black
+# -b     bgcolor         background color for the animation frames; any valid IM color 
+#                        is allowed; default=white
+# -r     revolutions     number of 360 degree revolutions of the text; integer>0; 
+#                        default=4
+# -D     direction       direction of the revolutions; clockwise or counterclockwise; 
+#                        default=clockwise
+# -m     mode            mode for the zoom; 1 (zoom out once only), 2 (zoom out, 
+#                        then zoom in, then zoom out again once only), 3 (zoom out, 
+#                        then zoom in, then repeat continuosly); default=2
+# -p     pause           number of frames to pause between zoom in/out steps with 
+#                        method 2 or 3; integer>0; default=10
+# -F     frames          number of frames to generate in the animation; integer>0; 
+#                        default=30
+# -d     delay           animation delay between frames; integer>0; default=10 
+#
+# infile is optional and will be tiled (or cropped) to replace the background color
+# 
+###
+#
+# NAME: ZOOMROTATETEXT
+# 
+# PURPOSE: Creates a zoomed and rotating text animation.
+# 
+# DESCRIPTION: ZOOMROTATETEXT creates a zoomed and rotating text animation. The number  
+# of revolutions may be specified as well as the mode for the zoom.
+# 
+# 
+# OPTIONS: 
+# 
+# -t text ... TEXT string to be used to create the animation. This is a required argument
+# 
+# -w width ... WIDTH of text in pixels. Values are integers>0. The default=400. The  
+# output will be square of size determined from the text diagonal dimension.                    
+# 
+# -f font ... FONT to use for the text. Either the font name or path to font file may 
+# be used. The default=arial.
+# 
+# -c color ... COLOR of the text. Any valid IM color is allowed. The default=black.
+# 
+# -b bgcolor ... BGCOLOR is the background color for the animation frames. Any valid 
+# IM color is allowed. The default=white.
+# 
+# -r revolutions ... REVOLUTIONS is the number of 360 degree revolutions of the text. 
+# Values are integers>0. The default=4.
+# 
+# -D direction ... DIRECTION of the revolutions. Choices are: clockwise (cw) or 
+# counterclockwise (ccw). The default=clockwise.
+# 
+# -m mode ... MODE for the zoom. Choices are: 1 (zoom out once only), 2 (zoom out, 
+# then zoom in, then zoom out again once only), 3 (zoom out, then zoom in, then 
+# repeat continuosly). The default=2
+# 
+# -p pause ... Pause is the number of frames to pause between zoom in/out steps with 
+# method 2 or 3. Values are integers>0. The default=10.
+# 
+# -F frames ... FRAMES is the number of frames to generate in the animation. Values are 
+# integers>0. The default=30.
+# 
+# -d delay ... DELAY is the animation delay between frames. Values are integers>0. The 
+# default=10.
+#  
+# infile is optional and will be tiled (or cropped) to replace the background color.
+# 
+# REQUIREMENTS: Imagemagick 6.6.8-10 due to the use of -duplicate.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+text=""
+width=400
+font="arial"
+bcolor="white"
+color="black"
+revolutions=4
+direction="clockwise"
+mode=2
+pause=10
+frames=30
+delay=10
+zoomstart=0.01
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 24 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -help|-h)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+		   		-t)	   # get text
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TEXT SPECIFICATION ---"
+					   #checkMinus "$1"
+			   		   text="$1"
+			   		   ;;
+				-w)    # get width
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID WIDTH SPECIFICATION ---"
+					   checkMinus "$1"
+					   width=`expr "$1" : '\([0-9]*\)'`
+					   [ "$width" = "" ] && errMsg "--- WIDTH=$width MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$width == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- WIDTH=$width MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-f)    # get font
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FONT SPECIFICATION ---"
+					   checkMinus "$1"
+					   font="$1"
+		   			   ;;
+				-c)    # get  color
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   color="$1"
+					   ;;
+				-b)    # get  bgcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BGCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgcolor="$1"
+					   ;;
+				-r)    # get revolutions
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID REVOLUTIONS SPECIFICATION ---"
+					   checkMinus "$1"
+					   revolutions=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$revolutions" = "" ] && errMsg "--- REVOLUTIONS=$revolutions MUST BE A NON-NEGATIVE INTEGER ---"
+					   test1=`echo "$revolutions == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- REVOLUTIONS=$revolutions MUST BE A POSITIVE INTEGER ---"
+					   ;;
+			   	-D)    # direction
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIRECTION SPECIFICATION ---"
+					   checkMinus "$1"
+					   direction=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$direction" in
+					   		clockwise|cw) direction="clockwise" ;;
+					   		counterclockwise|ccw) direction="counterclockwise" ;;
+					   		*) errMsg "--- DIRECTION=$direction IS NOT A VALID CHOICE ---" ;;
+					   esac
+					   ;;
+			   	-m)    # mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$mode" in
+					   		1) ;;
+					   		2) ;;
+					   		3) ;;
+					   		*) errMsg "--- MODE=$mode IS NOT A VALID CHOICE ---" ;;
+					   esac
+					   ;;
+				-p)    # get pause
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PAUSE SPECIFICATION ---"
+					   checkMinus "$1"
+					   pause=`expr "$1" : '\([0-9]*\)'`
+					   [ "$pause" = "" ] && errMsg "--- PAUSE=$pause MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$pause == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- PAUSE=$pause MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-F)    # get frames
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FRAMES SPECIFICATION ---"
+					   checkMinus "$1"
+					   frames=`expr "$1" : '\([0-9]*\)'`
+					   [ "$frames" = "" ] && errMsg "--- FRAMES=$frames MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$frames == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- FRAMES=$frames MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-d)    # get delay
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DELAY SPECIFICATION ---"
+					   checkMinus "$1"
+					   delay=`expr "$1" : '\([0-9]*\)'`
+					   [ "$delay" = "" ] && errMsg "--- DELAY=$delay MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$delay == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- DELAY=$delay MUST BE A POSITIVE INTEGER ---"
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+						echo "$1"
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	if [ $# -eq 2 ]; then
+		infile="$1"
+		outfile="$2"
+	elif [ $# -eq 1 ]; then
+		outfile="$1"
+	else
+	errMsg "--- NO OUTPUT FILE SPECIFIED ---"
+	fi
+fi
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# set up temporaries
+tmp1A="$dir/zoomrotate_1_$$.mpc"
+tmp1B="$dir/zoomrotate_1_$$.cache"
+tmp2A="$dir/zoomrotate_2_$$.mpc"
+tmp2B="$dir/zoomrotate_2_$$.cache"
+trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B;" 0
+trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B; exit 1" 1 2 3 15
+#trap "rm -f $tmp1A $tmp1B; exit 1" ERR
+
+
+if [ "$direction" = "clockwise" ]; then
+	sgn=""
+elif [ "$direction" = "counterclockwise" ]; then
+	sgn="-"
+fi
+#echo "gravity1=$gravity1; gravity2=$gravity2; negating=$negating; sgn=$sgn;"
+
+if [ "$infile" != "" ]; then
+	bgcolor="none"
+fi
+
+# process animation
+
+convert -size ${width}x -background "$bgcolor" -fill "$color"  -gravity center -font $font label:"$text" $tmp1A
+
+# compute increments
+WxH=`convert $tmp1A -format "%wx%h" info:`
+ww=`echo $WxH | cut -dx -f1`
+hh=`echo $WxH | cut -dx -f2`
+diag=`convert xc: -format "%[fx:hypot($ww,$hh)]" info:`
+angle=$((360*revolutions))
+ang_inc=`convert xc: -format "%[fx:${sgn}$angle/($frames-1)]" info:`
+zoom_inc=`convert xc: -format "%[fx:(1-$zoomstart)/$frames)]" info:`
+echo "ww=$ww; hh=$hh; diag=$diag; angle=$angle; ang_inc=$ang_inc; zoom_inc=$zoom_inc;"
+
+
+if [ "$infile" != "" ]; then
+	convert -size ${diag}x${diag} tile:"$infile" $tmp2A
+	tileproc="$tmp2A +swap -gravity center -compose over -composite"
+else
+	tileproc=""
+fi
+
+# use subshell processing
+if [ "$mode" = "1" ]; then
+	(
+	for ((k=0; k<frames; k++)); do
+	rot=`convert xc: -format "%[fx:$k*$ang_inc]" info:`
+	scale=`convert xc: -format "%[fx:$zoomstart+$k*$zoom_inc]" info:`
+	convert $tmp1A -background "$bgcolor" -virtual-pixel background \
+	+distort SRT "$scale $rot" +repage \
+	-gravity center -extent ${diag}x${diag} $tileproc miff:- 
+	done
+	) | convert -delay $delay - -layers optimize -loop 1 "$outfile"
+
+elif [ "$mode" = "2" ]; then
+	(
+	for ((k=0; k<frames; k++)); do
+	rot=`convert xc: -format "%[fx:$k*$ang_inc]" info:`
+	scale=`convert xc: -format "%[fx:$zoomstart+$k*$zoom_inc]" info:`
+	convert $tmp1A -background "$bgcolor" -virtual-pixel background \
+	+distort SRT "$scale $rot" +repage \
+	-gravity center -extent ${diag}x${diag} $tileproc miff:- 
+	done
+	) | convert -delay $delay - -duplicate $pause \
+		\( -clone 0-$frames -reverse \) -duplicate $pause  \
+		\( -clone 0-$frames \) \
+		-layers optimize -loop 1 "$outfile"
+
+elif [ "$mode" = "3" ]; then
+	(
+	for ((k=0; k<frames; k++)); do
+	rot=`convert xc: -format "%[fx:$k*$ang_inc]" info:`
+	scale=`convert xc: -format "%[fx:$zoomstart+$k*$zoom_inc]" info:`
+	convert $tmp1A -background "$bgcolor" -virtual-pixel background \
+	+distort SRT "$scale $rot" +repage \
+	-gravity center -extent ${diag}x${diag} $tileproc miff:- 
+	done
+	) | convert -delay $delay - -duplicate $pause \
+		\( -clone 0-$frames -reverse \) -duplicate $pause  \
+		-layers optimize -loop 0 "$outfile"
+fi
+
+exit 0
+
+
+
+

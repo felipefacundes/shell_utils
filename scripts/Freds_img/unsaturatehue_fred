@@ -1,0 +1,313 @@
+#!/bin/bash
+#
+# Developed by Alan Gibson & Fred Weinhaus 8/17/2020 ..... revised 8/17/2020
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+# 
+# USAGE: unsaturatehue [-h hue] [-u units] [-s saturation] [-r range] [-t taper] 
+# [-c colorspace] infile outfile
+# 
+# USAGE: unsaturatehue [-help]
+# 
+# OPTIONS:
+# 
+# -h     hue            hue value to desaturate; choices are 0<integer<360 
+#                       if units=degrees or 0<integer<100 if units=percent; 
+#                       default=0 (red)
+# -u     units          units for hue; percent (p) or degrees (d); 
+#                       default=degrees
+# -s     saturation     percent saturation; integer>=0; default=0
+# -t     tolerance      tolerance (range) around specified hue to desaturate   
+#                       as specified by units; 0<=integer<=360 degrees or 
+#                       0<=integer<=100 percent; default=30 degrees
+# -r     ramping        ramping (tapering) off graduation beyond tolerance;  
+#                       as specified by units; integer>=0; default=15 degrees
+# -c     colorspace     colorspace in which to desaturate the image; 
+#                       choices are: HSL or HCL; default=HSL
+# 
+###
+#
+# NAME: UNSATURATEHUE
+# 
+# PURPOSE: To desaturate a given hue (range) in an image.
+# 
+# DESCRIPTION: UNSATURATEHUE desaturate a given hue (range) in an image. Hues  
+# are arranged in a cyclical order in the range 0 to 100 percent or 0 to 360 
+# degrees. Hues may be desaturated to any amount between 0 and 100 percent.
+# Units for hues may be either percent or degrees. Desaturation can be done 
+# in HSL or HCL colorspace.
+# 
+# OPTIONS: 
+# 
+# -h hue ... Hue value to desaturate. The choices are 0<integer<360, if 
+# units=degrees or 0<integer<100 if units=percent. The default=0 (red).
+# 
+# -u units ... UNITS for hue. Choices are percent (p) or degrees (d). 
+# The same units will be used for hue, tolerance and ramp. The default=degrees.
+#  
+# -s saturation ... SATURATION percent. Values are integer>=0. The default=0.
+# 
+# -t tolerance ... TOLERANCE (range) around specified hue to desaturate as 
+# specified by units. Values are 0<=integer<=360 degrees or 0<=integer<=100 
+# percent. The default=30 (degrees).
+# 
+# -r ramping ... RAMPING (tapering) off graduation beyond tolerance as specified by 
+# units. Values are integer>=0. The default=15 (degrees).
+# 
+# -c colorspace ... COLORSPACE in which to desaturate the image. The choices 
+# are: HSL or HCL. The default=HSL.
+# 
+# REQUIREMENTS: IM 6.5.3-7 so that -modulate uses HSL and not HSB colorspace. 
+# HCL modulation is available as of version 6.8.6-7.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+hue=0					# hue value (red)
+units="degrees"			# units for hue; percent or degrees
+saturation=0			# saturation percent
+tolerance=30			# tolerance in degrees
+ramping=15				# gaussian rolloff sigma
+colorspace="hsl"		# modulation color space
+
+# set directory for temporary files
+tmpdir="."		# suggestions are tmpdir="." or tmpdir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 18 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		     -help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-h)    # get hue
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID HUE SPECIFICATION ---"
+					   #checkMinus "$1"
+					   hue=`expr "$1" : '\([0-9]*\)'`
+					   [ "$hue" = "" ] && errMsg "--- HUE=$hue MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-u)    # get units
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID UNITS SPECIFICATION ---"
+					   checkMinus "$1"
+					   units=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$units" in 
+					   		percent|p) units="percent";;
+					   		degrees|d) units="degrees";;
+					   		*) errMsg "--- UNITS=$units IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				-s)    # get saturation
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID SATURATION SPECIFICATION ---"
+					   checkMinus "$1"
+					   saturation=`expr "$1" : '\([0-9]*\)'`
+					   [ "$saturation" = "" ] && errMsg "--- SATURATION=$saturation MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-t)    # get tolerance
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID TOLERANCE SPECIFICATION ---"
+					   checkMinus "$1"
+					   tolerance=`expr "$1" : '\([0-9]*\)'`
+					   [ "$tolerance" = "" ] && errMsg "--- TOLERANCE=$tolerance MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-r)    # get ramping
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RAMPING SPECIFICATION ---"
+					   checkMinus "$1"
+					   ramping=`expr "$1" : '\([0-9]*\)'`
+					   [ "$ramping" = "" ] && errMsg "--- RAMPING=$ramping MUST BE A NON-NEGATIVE INTEGER ---"
+					   ;;
+				-c)    # get colorspace
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID COLORSPACE SPECIFICATION ---"
+					   checkMinus "$1"
+					   colorspace=`echo "$1" | tr '[A-Z]' '[a-z]'`
+					   case "$colorspace" in 
+					   		hsl) ;;
+					   		hcl) ;;
+					   		*) errMsg "--- COLORSPACE=$colorspace IS AN INVALID VALUE ---" 
+					   	esac
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# define dir
+dir="$tmpdir/UNSATURATEHUE.$$"
+
+mkdir "$dir" || errMsg "--- FAILED TO CREATE TEMPORARY FILE DIRECTORY ---"
+trap "rm -rf $dir;" 0
+trap "rm -rf $dir; exit 1" 1 2 3 15
+trap "rm -rf $dir; exit 1" ERR
+
+
+# read input image
+convert -quiet "$infile" +repage $dir/tmpI.mpc ||
+echo  "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get im version
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER */!d; s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# test hue values
+if [ "$units" = "percent" ]; then
+	test=`convert xc: -format "%[fx:$hue>100?1:0]" info:`
+	[ $test -eq 1 ] && errMsg "--- HUE MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+elif [ "$units" = "degrees" ]; then
+	test=`convert xc: -format "%[fx:$hue>360?1:0]" info:`
+	[ $test -eq 1 ] && errMsg "--- HUE MUST BE AN INTEGER BETWEEN 0 AND 360 ---"
+fi
+
+# test tolerance values
+if [ "$units" = "percent" ]; then
+	test=`convert xc: -format "%[fx:$tolerance>100?1:0]" info:`
+	[ $test -eq 1 ] && errMsg "--- TOLERANCE MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+elif [ "$units" = "degrees" ]; then
+	test=`convert xc: -format "%[fx:$tolerance>360?1:0]" info:`
+	[ $test -eq 1 ] && errMsg "--- TOLERANCE MUST BE AN INTEGER BETWEEN 0 AND 360 ---"
+fi
+
+# test ramping values
+if [ "$units" = "percent" ]; then
+	test=`convert xc: -format "%[fx:$ramping>100?1:0]" info:`
+	[ $test -eq 1 ] && errMsg "--- RAMPIN MUST BE AN INTEGER BETWEEN 0 AND 100 ---"
+elif [ "$units" = "degrees" ]; then
+	test=`convert xc: -format "%[fx:$ramping>360?1:0]" info:`
+	[ $test -eq 1 ] && errMsg "--- RAMPIN MUST BE AN INTEGER BETWEEN 0 AND 360 ---"
+fi
+
+# convert arguments from degrees to percent
+if [ "$units" = "degrees" ]; then
+	hue=`convert xc: -format "%[fx:(100*$hue/360)]" info:`
+	tolerance=`convert xc: -format "%[fx:(100*$tolerance/360)]" info:`
+	ramping=`convert xc: -format "%[fx:(100*$ramping/360)]" info:`
+fi
+#echo "hue=$hue; tolerance=$tolerance; ramping=$ramping;"
+
+# compute addModulus value
+addval=`convert xc: -format "%[fx:50-$hue]" info:`
+#echo "addval=$addval;"
+
+# compute level values
+low=`convert xc: -format "%[fx:100-$tolerance-2*$ramping]" info:`
+high=`convert xc: -format "%[fx:100-$tolerance]" info:`
+#echo "low=$low; high=$high;"
+
+# do processing
+convert $dir/tmpI.mpc \
+	\( -clone 0 -define modulate:colorspace=$colorspace -modulate 100,$saturation,100 \) \
+	\( -clone 0 -colorspace $colorspace -channel 0 -separate +channel \
+		-evaluate AddModulus ${addval}% \
+		-solarize 50% -level 0x50% \
+		-level "${low}%,${high}%" \) \
+	-compose Over -composite \
+	"$outfile"
+
+
+exit 0
+

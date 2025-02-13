@@ -1,0 +1,67 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script creates a new user on a Linux system, ensuring it is executed as root and prompting for a username while validating the input. 
+It also checks for the existence of a default user and provides bilingual messages for user interaction.
+DOCUMENTATION
+
+declare -A MESSAGES
+
+update_variable() {
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        MESSAGES=(
+            ["prompt_user"]="Informe seu usuário: "
+            ["success"]="Usuário: $user criado com sucesso"
+            ["invalid_user"]="Erro: O nome de usuário não pode conter números ou caracteres especiais."
+            ["user_exists"]="Já existe um usuário padrão: $(getent passwd 1000 | cut -d':' -f1). Deseja criar outro usuário? (Y/N) "
+            ["root"]="Este script só pode ser executado como root."
+            ["exit"]="Operação cancelada pelo usuário."
+        )
+    else
+        MESSAGES=(
+            ["prompt_user"]="Enter your username: "
+            ["success"]="User: $user created successfully."
+            ["invalid_user"]="Error: Username cannot contain numbers or special characters."
+            ["user_exists"]="There is already a default user: $(getent passwd 1000 | cut -d':' -f1). Do you want to create another user? (Y/N) "
+            ["root"]="This script can only be run as root."
+            ["exit"]="Operation canceled by the user."
+        )
+    fi
+}
+update_variable
+
+# If not root
+if [ "$EUID" -ne 0 ]; then
+    echo "${MESSAGES[root]}"
+    exit 1
+fi
+
+if getent passwd 1000 >/dev/null; then
+    read -rp "${MESSAGES[user_exists]}" response
+
+    if [[ "$response" != [Yy] ]]; then
+        echo "${MESSAGES[exit]}"
+        exit 1
+    fi
+fi
+
+# Prompt for username with validation loop
+while true; do
+    read -rp "${MESSAGES[prompt_user]}" user
+
+    # Validate username
+    if [[ ! "$user" =~ [0-9] ]] && [[ ! "$user" =~ [[:punct:]] ]] && [[ ! "$user" =~ [[:cntrl:]] ]]; then
+        break  # Exit loop if valid
+    else
+        echo "${MESSAGES[invalid_user]}"
+    fi
+done
+
+# Create the sudoers configuration file
+useradd -m -g users -G daemon,disk,wheel,rfkill,dbus,network,video,audio,storage,power,users,input -s /bin/bash "$user"
+usermod -a -G daemon,disk,wheel,rfkill,dbus,network,video,audio,storage,power,users,input "$user"
+
+update_variable
+echo "${MESSAGES[success]}"

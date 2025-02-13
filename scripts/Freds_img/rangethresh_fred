@@ -1,0 +1,310 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 8/16/2019 .......... revised 8/16/2019
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: rangethresh [-r redrange] [-g greenrange] [-b bluerange] [-u units] 
+# [-c colorspace] infile outfile
+# USAGE: rangethresh [-h or -help]
+#
+# OPTIONS:
+#
+# -r     redrange       range values for the red channel expressed as a comma separated 
+#                       pair of numbers "low,high" with no spaces; can be expressed in 
+#                       range 0 to 255 or 0 to 100 depending upon the units argument; 
+#                       0<=float<=255; default="0,255";
+# -g     greenrange     range values for the green channel expressed as a comma separated 
+#                       pair of numbers "low,high" with no spaces; can be expressed in 
+#                       range 0 to 255 or 0 to 100 depending upon the units argument; 
+#                       0<=float<=255; default="0,255";
+# -b     bluerange      range values for the blue channel expressed as a comma separated 
+#                       pair of numbers "low,high" with no spaces; can be expressed in 
+#                       range 0 to 255 or 0 to 100 depending upon the units argument; 
+#                       0<=float<=255; default="0,255";
+# -u     units          units for the ranges; choices are: 8bit or percent; default="8bit"
+# -c     colorspace     colorspace in which to process the image; any valid 3-channel 
+#                       colorspace is allowed; default=sRGB; note that values must  
+#                       correspond to the channels of the colorspace
+#
+###
+#
+# NAME: RANGETHRESH 
+# 
+# PURPOSE: To convert an image to binary using range values for each channel of the input.
+# 
+# DESCRIPTION: RANGETHRESH converts an image to binary using range values for each 
+# channel of the input. This script only works for 3-channel color images, not single 
+# channel grayscale images.
+# 
+# 
+# OPTIONS: 
+# 
+# -r redrange ... REDRANGE is the range values for the red channel expressed as a 
+# comma separated pair of numbers "low,high" with no spaces. Values can be expressed 
+# in range 0 to 255 or range 0 to 100 depending upon the units argument. Values are 
+# 0<=float<=255; The default="0,255".
+# 
+# -g greenrange ... GREENRANGE is the range values for the red channel expressed as a 
+# comma separated pair of numbers "low,high" with no spaces. Values can be expressed 
+# in range 0 to 255 or range 0 to 100 depending upon the units argument. Values are 
+# 0<=float<=255; The default="0,255".
+# 
+# -b bluerange ... BLUERANGE is the range values for the red channel expressed as a 
+# comma separated pair of numbers "low,high" with no spaces. Values can be expressed 
+# in range 0 to 255 or range 0 to 100 depending upon the units argument. Values are 
+# 0<=float<=255; The default="0,255".
+# 
+# -u units ... UNITS for the ranges. The choices are: 8bit (8) or percent (p). 
+# The default="8bit".
+# 
+# -c colorspace ... COLORSPACE in which to process the image. Any valid 3-channel 
+# Imagemagick colorspace is allowed. The default=sRGB. Note that range values must  
+# correspond to the channels of the colorspace.
+# 
+# REQUIREMENTS: This script only works for 3-channel color images, not single channel 
+# grayscale images. For grayscale images, use the Imagemagick 7 -range-threshold.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+redrange="0,255"
+greenrange="0,255"
+bluerange="0,255"
+units="8bit"
+colorspace="sRGB"
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 12 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -h|-help)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-r)    # get redrange
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID REDRANGE SPECIFICATION ---"
+					   checkMinus "$1"
+					   redrange=`expr "$1" : '\([.0-9]*,*[.0-9]*\)'`
+					   [ "$redrange" = "" ] && errMsg "--- REDRANGE=$redrange MUST BE A COMMA SEPARATED PAIR OF FLOATS WITH NO SPACES ---"
+					   ;;
+				-g)    # get greenrange
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID GREENRANGE SPECIFICATION ---"
+					   checkMinus "$1"
+					   greenrange=`expr "$1" : '\([.0-9]*,*[.0-9]*\)'`
+					   [ "$greenrange" = "" ] && errMsg "--- GREENRANGE=$greenrange MUST BE A COMMA SEPARATED PAIR OF FLOATS WITH NO SPACES ---"
+					   ;;
+				-b)    # get bluerange
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BLUERANGE SPECIFICATION ---"
+					   checkMinus "$1"
+					   bluerange=`expr "$1" : '\([.0-9]*,*[.0-9]*\)'`
+					   [ "$bluerange" = "" ] && errMsg "--- BLUERANGE=$bluerange MUST BE A COMMA SEPARATED PAIR OF FLOATS WITH NO SPACES ---"
+					   ;;
+				-u)    # units
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID UNITS SPECIFICATION ---"
+					   checkMinus "$1"
+					   # test mode values
+					   units="$1"
+					   units=`echo "$units" | tr "[:upper:]" "[:lower:]"`
+					   case "$units" in 
+							percent|p) units="percent" ;;
+							8bit|8) units="8bit" ;;
+							*) errMsg "--- UNITS=$units IS AN INVALID VALUE ---" 
+						esac
+					   ;;
+				-c)    # get colorspace
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   checkMinus "$1"
+					   ;;
+				 -)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+				*)     # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	infile="$1"
+	outfile="$2"
+fi
+
+
+# test that infile provided
+[ "$infile" = "" ] && errMsg "NO INPUT FILE SPECIFIED"
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+# setup temporary images and auto delete upon exit
+# use mpc/cache to hold input image temporarily in memory
+tmpA="$dir/rangethreshold_$$.mpc"
+tmpB="$dir/rangethreshold_$$.cache"
+trap "rm -f $tmpA $tmpB;" 0
+trap "rm -f $tmpA $tmpB; exit 1" 1 2 3 15
+#trap "rm -f $tmpA $tmpB; exit 1" ERR
+
+convert -quiet "$infile" +repage $tmpA ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# test for valid version of IM
+im_version=`convert -list configure | \
+	sed '/^LIB_VERSION_NUMBER */!d;  s//,/;  s/,/,0/g;  s/,0*\([0-9][0-9]\)/\1/g' | head -n 1`
+
+# test for valid ranges
+if [ "$units" = "percent" ]; then
+	
+	redlow=`echo "$redrange" | cut -d, -f1`
+	redhigh=`echo "$redrange" | cut -d, -f2`
+	test=`convert xc: -format "%[fx:$redlow<0||$redhigh>100?0:1]" info:`
+	[ $test -eq 0 ] && errMsg "--- REDRANGE VALUES MUST BE FLOATS BETWEEN 0 AND 100 ---"
+	
+	greenlow=`echo "$greenrange" | cut -d, -f1`
+	greenhigh=`echo "$greenrange" | cut -d, -f2`
+	test=`convert xc: -format "%[fx:$greenlow<0||$greenhigh>100?0:1]" info:`
+	[ $test -eq 0 ] && errMsg "--- GREENRANGE VALUES MUST BE FLOATS BETWEEN 0 AND 100 ---"
+
+	bluelow=`echo "$bluerange" | cut -d, -f1`
+	bluehigh=`echo "$bluerange" | cut -d, -f2`
+	test=`convert xc: -format "%[fx:$bluelow<0||$bluehigh>100?0:1]" info:`
+	[ $test -eq 0 ] && errMsg "--- REDRANGE VALUES MUST BE FLOATS BETWEEN 0 AND 100 ---"
+
+elif [ "$units" = "8bit" ]; then
+
+	redlow=`echo "$redrange" | cut -d, -f1`
+	redhigh=`echo "$redrange" | cut -d, -f2`
+	test=`convert xc: -format "%[fx:$redlow<0||$redhigh>255?0:1]" info:`
+	[ $test -eq 0 ] && errMsg "--- REDRANGE VALUES MUST BE FLOATS BETWEEN 0 AND 255 ---"
+	redlow=`convert xc: -format "%[fx:100*$redlow/255]" info:`
+	redhigh=`convert xc: -format "%[fx:100*$redhigh/255]" info:`
+
+	greenlow=`echo "$greenrange" | cut -d, -f1`
+	greenhigh=`echo "$greenrange" | cut -d, -f2`
+	test=`convert xc: -format "%[fx:$greenlow<0||$greenhigh>255?0:1]" info:`
+	[ $test -eq 0 ] && errMsg "--- GREENRANGE VALUES MUST BE FLOATS BETWEEN 0 AND 255 ---"
+	greenlow=`convert xc: -format "%[fx:100*$greenlow/255]" info:`
+	greenhigh=`convert xc: -format "%[fx:100*$greenhigh/255]" info:`
+
+	bluelow=`echo "$bluerange" | cut -d, -f1`
+	bluehigh=`echo "$bluerange" | cut -d, -f2`
+	test=`convert xc: -format "%[fx:$bluelow<0||$bluehigh>255?0:1]" info:`
+	[ $test -eq 0 ] && errMsg "--- BLUERANGE VALUES MUST BE FLOATS BETWEEN 0 AND 255 ---"
+	bluelow=`convert xc: -format "%[fx:100*$bluelow/255]" info:`
+	bluehigh=`convert xc: -format "%[fx:100*$bluehigh/255]" info:`
+fi
+
+# do processing
+if [ "$im_version" -ge "07000809" ]; then
+	convert $tmpA -colorspace $colorspace -separate +channel \
+		\( -clone 0 -range-threshold "%[fx:$redlow],%[fx:$redlow],%[fx:$redhigh],%[fx:$redhigh]%" \) \
+		\( -clone 1 -range-threshold "%[fx:$greenlow],%[fx:$greenlow],%[fx:$greenhigh],%[fx:$greenhigh]%" \) \
+		\( -clone 2 -range-threshold "%[fx:$bluelow],%[fx:$bluelow],%[fx:$bluehigh],%[fx:$bluehigh]%" \) \
+		-delete 0-2 \
+		-evaluate-sequence multiply "$outfile"
+else
+	convert $tmpA -colorspace $colorspace -separate +channel \
+		\( -clone 0 -black-threshold $redlow% -white-threshold $redhigh% -fill black -opaque white -fill white +opaque black \) \
+		\( -clone 1 -black-threshold $greenlow% -white-threshold $greenhigh% -fill black -opaque white -fill white +opaque black \) \
+		\( -clone 2 -black-threshold $bluelow% -white-threshold $bluehigh% -fill black -opaque white -fill white +opaque black \) \
+		-delete 0-2 \
+		-evaluate-sequence multiply "$outfile"
+fi
+
+
+
+
+exit 0
+

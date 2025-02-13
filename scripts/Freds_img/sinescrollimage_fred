@@ -1,0 +1,410 @@
+#!/bin/bash
+#
+# Developed by Fred Weinhaus 7/30/2018 .......... 7/30/2018
+#
+# ------------------------------------------------------------------------------
+# 
+# Licensing:
+# 
+# Copyright © Fred Weinhaus
+# 
+# My scripts are available free of charge for non-commercial use, ONLY.
+# 
+# For use of my scripts in commercial (for-profit) environments or 
+# non-free applications, please contact me (Fred Weinhaus) for 
+# licensing arrangements. My email address is fmw at alink dot net.
+# 
+# If you: 1) redistribute, 2) incorporate any of these scripts into other 
+# free applications or 3) reprogram them in another scripting language, 
+# then you must contact me for permission, especially if the result might 
+# be used in a commercial or for-profit environment.
+# 
+# My scripts are also subject, in a subordinate manner, to the ImageMagick 
+# license, which can be found at: http://www.imagemagick.org/script/license.php
+# 
+# ------------------------------------------------------------------------------
+# 
+####
+#
+# USAGE: sinescrollimage [-w width ] [-b bgcolor ] [-a amplitude ] [-r repeats] 
+# [-p phase] [-f frames] [-d delay] [-D direction] [-m mode ] [-R range] 
+# infile [bgfile] outfile
+# USAGE: sinescrollimage [-h or -help]
+#
+# OPTIONS:
+#
+# -w     width         width of animation in pixels; integer>0; default=500; height will 
+#                      be determined from input image height and the amplitude
+# -b     bgcolor       background color for the animation frames; any valid IM color 
+#                      is allowed; default=white
+# -a     amplitude     amplitude of the sine wave as a multiplier of the input image 
+#                      height; float>=0; default=1
+# -r     repeats       number of repeats of the sine waveform to span the image width;
+#                      float>0; default=1; (typically in half or integer values)
+# -p     phase         phase of the sinusoidal wave; choices are 0 and 90; default=0
+# -f     frames        number of frames to generate in the animation; integer>0; 
+#                      default=25
+# -d     delay         animation delay between frames; integer>0; default=30 
+# -D     direction     direction of the scrolling; choices are: left or right;
+#                      default=left
+# -m     mode          mode for the type of sine wave; choices are: constant (amplitude) 
+#                      and tapered (to zero amplitude); default=constant
+# -R     range         range of the sine taper as percent of width of the image; 
+#                      1<=integer<=100; default=100 (tapered over the full width); 
+#                      nominal value is 75 
+#
+# bgfile is optional and will be tiled (or cropped) to replace the background color
+# 
+###
+#
+# NAME: SINESCROLLIMAGE
+# 
+# PURPOSE: Creates a sinusoidal curved scrolling image banner animation.
+# 
+# DESCRIPTION: SINESCROLLIMAGE creates sinusoidal curved scrolling image banner animation.  
+# The scrolling can be either to the right or left. The amplitude of the sine wave  
+# can be either constant or tapered to zero.
+# 
+# 
+# OPTIONS: 
+# 
+# -w width ... WIDTH of text in pixels. Values are integers>0. The default=500. The 
+# output height will be determined from the input image height and the amplitude.
+# 
+# -b bgcolor ... BGCOLOR is the background color for the animation frames. Any valid 
+# IM color is allowed. The default=white.
+# 
+# -a amplitude ... AMPLITUDE (height up or down) of the text sine wave as a multiplier 
+# of the input image height. Values are floats>=0. The default=1.
+# 
+# -r repeats ... REPEATS are the number of repeats of the sine waveform cycle to span the 
+# image width. Values are floats>0. The default=1. (typically, in half or integer 
+# values).
+# 
+# -p phase ... PHASE of the sinusoidal wave. The choices are 0 and 180. The default=0.
+#
+# -f frames ... FRAMES is the number of frames to generate in the animation. Values are 
+# integers>0. The default=25.
+# 
+# -d delay ... DELAY is the animation delay between frames. Values are integers>0. The 
+# default=30.
+#  
+# -D direction ... DIRECTION of the scrolling. Choices are: left (l) or right (r).
+# The default=left.
+# 
+# -m mode ... MODE for the type of sine wave amplitude. The choices are: constant (c) 
+#  and tapered (t) to zero amplitude. The default=constant.
+# 
+# -R range ... RANGE of the sine taper to zero amplitude as percent of width of the 
+# image. Values are 1<=integer<=100. The default=100 (tapered over the full width). 
+# A nominal value is 75. 
+# 
+# bgfile is optional and will be tiled (or cropped) to replace the background color.
+# 
+# CAVEAT: No guarantee that this script will work on all platforms, 
+# nor that trapping of inconsistent parameters is complete and 
+# foolproof. Use At Your Own Risk. 
+# 
+######
+#
+
+# set default values
+text=""
+width=500
+bgcolor="white"
+amplitude=1
+repeats=1
+phase=0
+frames=25
+delay=30
+direction="left"
+mode="constant"
+range=100
+
+# set directory for temporary files
+dir="."    # suggestions are dir="." or dir="/tmp"
+
+# set up functions to report Usage and Usage with Description
+PROGNAME=`type $0 | awk '{print $3}'`  # search for executable on path
+PROGDIR=`dirname $PROGNAME`            # extract directory of program
+PROGNAME=`basename $PROGNAME`          # base name of program
+usage1() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^###/g;  /^#/!q;  s/^#//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+usage2() 
+	{
+	echo >&2 ""
+	echo >&2 "$PROGNAME:" "$@"
+	sed >&2 -e '1,/^####/d;  /^######/g;  /^#/!q;  s/^#*//;  s/^ //;  4,$p' "$PROGDIR/$PROGNAME"
+	}
+
+
+# function to report error messages
+errMsg()
+	{
+	echo ""
+	echo $1
+	echo ""
+	usage1
+	exit 1
+	}
+
+
+# function to test for minus at start of value of second part of option 1 or 2
+checkMinus()
+	{
+	test=`echo "$1" | grep -c '^-.*$'`   # returns 1 if match; 0 otherwise
+    [ $test -eq 1 ] && errMsg "$errorMsg"
+	}
+
+# test for correct number of arguments and get values
+if [ $# -eq 0 ]
+	then
+	# help information
+   echo ""
+   usage2
+   exit 0
+elif [ $# -gt 23 ]
+	then
+	errMsg "--- TOO MANY ARGUMENTS WERE PROVIDED ---"
+else
+	while [ $# -gt 0 ]
+		do
+			# get parameter values
+			case "$1" in
+		  -help|-h)    # help information
+					   echo ""
+					   usage2
+					   exit 0
+					   ;;
+				-w)    # get width
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID WIDTH SPECIFICATION ---"
+					   checkMinus "$1"
+					   width=`expr "$1" : '\([0-9]*\)'`
+					   [ "$width" = "" ] && errMsg "--- WIDTH=$width MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$width == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- WIDTH=$width MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-b)    # get  bgcolor
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID BGCOLOR SPECIFICATION ---"
+					   checkMinus "$1"
+					   bgcolor="$1"
+					   ;;
+				-a)    # get amplitude
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID AMPLITUDE SPECIFICATION ---"
+					   checkMinus "$1"
+					   amplitude=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$amplitude" = "" ] && errMsg "--- AMPLITUDE=$amplitude MUST BE A NON-NEGATIVE FLOAT ---"
+					   ;;
+				-r)    # get repeats
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID REPEATS SPECIFICATION ---"
+					   checkMinus "$1"
+					   repeats=`expr "$1" : '\([.0-9]*\)'`
+					   [ "$repeats" = "" ] && errMsg "--- REPEATS=$repeats MUST BE A NON-NEGATIVE FLOAT ---"
+					   test1=`echo "$repeats == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- REPEATS=$repeats MUST BE A POSITIVE FLOAT ---"
+					   ;;
+			   	-p)    # phase
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID PHASE SPECIFICATION ---"
+					   checkMinus "$1"
+					   phase=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$phase" in
+					   		0) phase=0 ;;
+					   		180) phase=180 ;;
+					   		*) errMsg "--- PHASE=$phase IS NOT A VALID CHOICE ---" ;;
+					   esac
+					   ;;
+				-f)    # get frames
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID FRAMES SPECIFICATION ---"
+					   checkMinus "$1"
+					   frames=`expr "$1" : '\([0-9]*\)'`
+					   [ "$frames" = "" ] && errMsg "--- FRAMES=$frames MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$frames == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- FRAMES=$frames MUST BE A POSITIVE INTEGER ---"
+					   ;;
+				-d)    # get delay
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DELAY SPECIFICATION ---"
+					   checkMinus "$1"
+					   delay=`expr "$1" : '\([0-9]*\)'`
+					   [ "$delay" = "" ] && errMsg "--- DELAY=$delay MUST BE A NON-NEGATIVE INTEGER (with no sign) ---"
+					   test1=`echo "$delay == 0" | bc`
+					   [ $test1 -eq 1 ] && errMsg "--- DELAY=$delay MUST BE A POSITIVE INTEGER ---"
+					   ;;
+			   	-D)    # direction
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID DIRECTION SPECIFICATION ---"
+					   checkMinus "$1"
+					   direction=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$direction" in
+					   		left|l) direction="left" ;;
+					   		right|r) direction="right" ;;
+					   		*) errMsg "--- DIRECTION=$direction IS NOT A VALID CHOICE ---" ;;
+					   esac
+					   ;;
+			   	-m)    # mode
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID MODE SPECIFICATION ---"
+					   checkMinus "$1"
+					   mode=`echo "$1" | tr "[:upper:]" "[:lower:]"`
+					   case "$mode" in
+					   		constant|c) mode="constant" ;;
+					   		tapered|t) mode="tapered" ;;
+					   		*) errMsg "--- MODE=$mode IS NOT A VALID CHOICE ---" ;;
+					   esac
+					   ;;
+				-R)    # get range
+					   shift  # to get the next parameter
+					   # test if parameter starts with minus sign 
+					   errorMsg="--- INVALID RANGE SPECIFICATION ---"
+					   checkMinus "$1"
+					   range=`expr "$1" : '\([0-9]*\)'`
+					   [ "$range" = "" ] && errMsg "--- RANGE=$range MUST BE A NON-NEGATIVE INTEGER ---"
+					   test1=`echo "$range < 1" | bc`
+					   test2=`echo "$range > 100" | bc`
+					   [ $test1 -eq 1 -o $test2 -eq 1 ] && errMsg "--- RANGE=$range MUST BE AN INTEGER BETWEEN 1 AND 100 ---"
+					   ;;
+			 	-)    # STDIN and end of arguments
+					   break
+					   ;;
+				-*)    # any other - argument
+					   errMsg "--- UNKNOWN OPTION ---"
+					   ;;
+		     	 *)    # end of arguments
+					   break
+					   ;;
+			esac
+			shift   # next option
+	done
+	#
+	# get infile and outfile
+	if [ $# -eq 3 ]; then
+		infile="$1"
+		bgfile="$2"
+		outfile="$3"
+	elif [ $# -eq 2 ]; then
+		infile="$1"
+		outfile="$2"
+	else
+		errMsg "--- NO OUTPUT FILE SPECIFIED ---"
+	fi
+fi
+
+# test that outfile provided
+[ "$outfile" = "" ] && errMsg "NO OUTPUT FILE SPECIFIED"
+
+
+# set up temporaries
+tmp1A="$dir/sinescrollimage_1_$$.mpc"
+tmp1B="$dir/sinescrollimage_1_$$.cache"
+tmp2A="$dir/sinescrollimage_2_$$.mpc"
+tmp2B="$dir/sinescrollimage_2_$$.cache"
+tmp3A="$dir/sinescrollimage_3_$$.mpc"
+tmp3B="$dir/sinescrollimage_3_$$.cache"
+trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B $tmp3A $tmp3B;" 0
+trap "rm -f $tmp1A $tmp1B $tmp2A $tmp2B $tmp3A $tmp3B; exit 1" 1 2 3 15
+#trap "rm -f $tmp1A $tmp1B; exit 1" ERR
+
+
+# test input image
+convert -quiet "$infile" +repage "$tmp1A" ||
+	errMsg "--- FILE $infile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+
+# get image dimensions
+WxH=`convert -ping $tmp1A -format "%wx%h" info:`
+ww=`echo $WxH | cut -dx -f1`
+hh=`echo $WxH | cut -dx -f2`
+
+
+#invert range
+range=$((100-range))
+#echo "range=$range"
+
+if [ "$direction" = "left" ]; then
+	gravity1="west"
+	gravity2="east"
+	negating=""
+	sgn="-"
+elif [ "$direction" = "right" ]; then
+	gravity1="east"
+	gravity2="west"
+	negating="-negate"
+	sgn="+"
+fi
+#echo "gravity1=$gravity1; gravity2=$gravity2; negating=$negating; sgn=$sgn;"
+
+
+# process animation
+ww1=$((width-1))
+ww2=$((width+ww))
+displace=`convert xc: -format "%[fx:$hh*$amplitude/2]" info:`
+ht=`convert xc: -format "%[fx:ceil($hh+$amplitude*$hh)]" info:`
+
+if [ "$bgfile" != "" ]; then
+	convert -quiet -size ${width}x${ht} tile:"$bgfile" $tmp3A ||
+		errMsg "--- FILE $bgfile DOES NOT EXIST OR IS NOT AN ORDINARY FILE, NOT READABLE OR HAS ZERO SIZE  ---"
+	bgcolor="none"
+fi
+
+# extent input image with transparency on one side
+convert $tmp1A -gravity $gravity2 -background "$bgcolor" -extent ${ww2}x${ht}! $tmp1A
+
+# create sine image and extend with white on the other side
+# note first extent simply expands the height from the input image height to the final height
+if [ "$mode" = "tapered" ]; then
+convert $tmp1A -extent ${width}x${ht}! \
+	-sparse-color barycentric "0,0 black $ww1,0 white" $negating -write mpr:grad \
+	-function Sinusoid "$repeats,$phase" \
+	\( mpr:grad -black-threshold ${range}% -level ${range}x100% \)  \
+	+swap -define compose:args='1,0,-0.5,0.5' -compose mathematics -composite \
+	-gravity $gravity1 -background white -extent ${ww2}x${ht}! $tmp2A
+elif [ "$mode" = "constant" ]; then
+convert $tmp1A -extent ${width}x${ht}! \
+	-sparse-color barycentric "0,0 black $ww1,0 white" \
+	-function Sinusoid "$repeats,$phase" \
+	-gravity $gravity1 -background white -extent ${ww2}x${ht}! $tmp2A
+fi
+
+
+
+
+if [ "$bgfile" != "" ]; then
+	tileproc="$tmp3A +swap -gravity center -compose over -composite"
+else
+	tileproc=""
+fi
+
+# use subshell processing
+(
+for ((k=0; k<frames; k++)); do
+roll=`convert xc: -format "%[fx:$k*round($ww2/$frames)]" info:`
+convert \( $tmp1A -roll ${sgn}${roll}+0 \) $tmp2A -background "$bgcolor" -virtual-pixel background \
+-define compose:args=0,$displace -compose displace -composite -compose over \
+-gravity $gravity1 -crop ${width}x${ht}+0+0 +repage $tileproc miff:- 
+done
+) | convert -delay $delay - -loop 0 "$outfile"
+
+
+exit 0
+
+
+
+

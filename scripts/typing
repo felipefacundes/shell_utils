@@ -1,0 +1,141 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script is a flexible text printing utility with customizable speed and color options. 
+Its key strengths and capabilities include:
+
+1. Dynamic Text Rendering: Allows printing text characters sequentially with adjustable speed, 
+creating a typewriter-like effect where each character appears gradually.
+
+2. Flexible Input Handling: 
+- Supports multiple text inputs
+- Accepts optional speed modification (-s/--speed)
+- Supports optional color customization (-c/--color)
+- Includes a built-in help function for user guidance
+
+3. Technical Features:
+- Uses Perl for precise speed calculation
+- Implements color printing via ANSI escape codes
+- Handles multiple text arguments
+- Provides default behavior with sensible defaults
+- Resets terminal color after execution
+
+The script is particularly useful for creating visually engaging text displays in terminal environments, 
+with high flexibility for user customization.
+DOCUMENTATION
+
+# Global associative array for multilingual messages
+declare -A MESSAGES
+
+# Determine language (default to English if not detected)
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [usage]="Uso: ${0##*/} [-s|-speed] [-c|-color] Texto1 [Texto2 ... TextoN]"
+        [speed]="-s, -speed,\n            velocidade | padrão: 10"
+        [color]="-c, -color,\n            cor | exemplo: '\\\033[0;31m'"
+        [example]="Exemplo:\n        ${0##*/} -s 5 -c '\\\033[0;31m' 'Texto1' 'Texto2' 'Texto3'"
+    )
+elif [[ "${LANG,,}" =~ fr_ ]]; then
+    MESSAGES=(
+        [usage]="Utilisation : ${0##*/} [-s|-speed] [-c|-color] Texte1 [Texte2 ... TexteN]"
+        [speed]="-s, -speed,\n            vitesse | par défaut : 10"
+        [color]="-c, -color,\n            couleur | exemple : '\\\033[0;31m'"
+        [example]="Exemple :\n        ${0##*/} -s 5 -c '\\\033[0;31m' 'Texte1' 'Texte2' 'Texte3'"
+    )
+elif [[ "${LANG,,}" =~ de_ ]]; then
+    MESSAGES=(
+        [usage]="Verwendung: ${0##*/} [-s|-speed] [-c|-color] Text1 [Text2 ... TextN]"
+        [speed]="-s, -speed,\n            Geschwindigkeit | Standard: 10"
+        [color]="-c, -color,\n            Farbe | Beispiel: '\\\033[0;31m'"
+        [example]="Beispiel:\n        ${0##*/} -s 5 -c '\\\033[0;31m' 'Text1' 'Text2' 'Text3'"
+    )
+elif [[ "${LANG,,}" =~ ro_ ]]; then
+    MESSAGES=(
+        [usage]="Utilizare: ${0##*/} [-s|-speed] [-c|-color] Text1 [Text2 ... TextN]"
+        [speed]="-s, -speed,\n            viteză | implicit: 10"
+        [color]="-c, -color,\n            culoare | exemplu: '\\\033[0;31m'"
+        [example]="Exemplu:\n        ${0##*/} -s 5 -c '\\\033[0;31m' 'Text1' 'Text2' 'Text3'"
+    )
+else
+    MESSAGES=(
+        [usage]="Usage: ${0##*/} [-s|-speed] [-c|-color] Text1 [Text2 ... TextN]"
+        [speed]="-s, -speed,\n            speed | default: 10"
+        [color]="-c, -color,\n            color | example: '\\\033[0;31m'"
+        [example]="Example:\n        ${0##*/} -s 5 -c '\\\033[0;31m' 'Text1' 'Text2' 'Text3'"
+    )
+fi
+
+speed=${speed:-10}
+color=""
+
+show_documentation() {
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0"
+}
+
+help() {
+    # Display help message in the selected language
+    echo -e "$(show_documentation | head -10)\n"
+    echo -e "----------------------------------------------------\n"
+    echo -e "${MESSAGES[usage]}\n"
+    echo -e "${MESSAGES[speed]}\n"
+    echo -e "${MESSAGES[color]}\n"
+    echo -e "${MESSAGES[example]}"
+}
+
+# Show help and exit if no arguments are provided
+[[ $# -lt 1 ]] && help && exit 0
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -s|-speed)
+            speed=$2
+            shift 2
+            continue
+            ;;
+        -c|-color)
+            color=$2
+            shift 2
+            continue
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Store all remaining arguments as an array
+texts=("$@")
+# Calculate the delay based on the speed parameter
+range=$(perl -E "say 1/$speed")
+
+# Loop through the provided texts
+for text in "${texts[@]}"; do
+    for (( i=0; i<${#text}; i++ )); do
+        # Print each character with optional color
+        if [[ -n "$color" ]]; then
+            printf "${color}%s" "$(echo "$text" | cut -c $((i+1)))"
+        else
+            printf "%s" "$(echo "$text" | cut -c $((i+1)))"
+        fi
+        sleep "$range"
+    done
+    printf "\n" # Move to the next line after each text
+    sleep 0.2 # Optional: Small pause between lines for better readability
+done
+
+# Reset color to default
+[[ -n "$color" ]] && printf '\033[0m'

@@ -1,0 +1,46 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+## Bash Script Analysis: Letter Frequency Counter
+
+This script demonstrates a well-structured approach to text analysis in Bash, with several notable features and strengths:
+
+### Key Capabilities:
+1. Command-line argument handling with built-in help functionality, showing good user interface design
+2. Robust text processing using standard Unix tools (tr, grep, sort, uniq, awk)
+3. Error handling for empty inputs and help flag detection
+4. Efficient pipeline processing for character frequency analysis
+5. Clear output formatting with quotation marks around the detected letter
+
+### Technical Strengths:
+1. Uses parameter expansion ${0##*/} for proper script name display in help message
+2. Implements space removal using 'tr' for accurate letter counting
+3. Creates an efficient processing pipeline that combines multiple Unix tools
+4. Provides clear usage instructions through help flags (-h, --help)
+5. Licensed under GPLv3, indicating commitment to open source principles
+
+### Areas of Excellence:
+- Clean code structure with clear variable naming
+- Efficient use of built-in bash features
+- Error handling for edge cases
+- Professional documentation standards
+- Modular design that could be easily extended
+DOCUMENTATION
+
+sentence="$1"
+
+if [[ -z "$sentence" ]] || [[ "$sentence" == "--help" ]] || [[ "$sentence" == "-h" ]]; then
+    echo "Usage: ${0##*/} 'Phrase that will be analyzed the most repeated letter'"
+    exit 0
+fi
+
+# Removing white spaces from the sentence
+sentence_without_space=$(echo "$sentence" | tr -d ' ')
+
+# Finding the most repeated letter
+most_repeated_letter=$(echo "$sentence_without_space" | grep -o . | sort | uniq -c | sort -nr | head -n1 | awk '{print $2}')
+repetition_count=$(echo "$sentence_without_space" | grep -o "$most_repeated_letter" | wc -l)
+
+echo "The letter that appeared most frequently was: \"$most_repeated_letter\", which appeared $repetition_count times."

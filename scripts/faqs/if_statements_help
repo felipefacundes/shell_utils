@@ -1,0 +1,159 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# If Statements Help
+# If statements are used to execute a block of code if a certain condition is met.
+
+: <<'DOCUMENTATION'
+The provided Bash script serves as a reference guide for using 'if' statements and conditional expressions in shell scripting. 
+It highlights the significance of mnemonic operators, which simplify the understanding and usage of logical conditions. 
+The script outlines various operators and their descriptions, such as logical AND ('&&'), logical OR ('||'), and file existence checks. 
+By using these operators effectively, users can create more readable and maintainable scripts that respond dynamically to different conditions. 
+This understanding is crucial for writing robust shell scripts that handle various scenarios based on command outcomes.
+DOCUMENTATION
+
+shell_utils=~/.shell_utils
+source "${shell_utils}/variables/shell_colors.sh"
+
+echo 1 - English
+echo 2 - Portuguese
+read -r option
+case "$option" in
+
+"1")
+cat <<'EOF' | less -i -R
+English:
+
+        Operator                Description
+
+    ! EXPRESSION                The EXPRESSION is false.
+         &&                     Logical AND
+         ||                     Logical OR
+
+[ CONDITION1 -o CONDITION2 ]    CONDITION1 or CONDITION2
+[ -n STRING ] or [ STRING ]     The length of STRING is greater than zero.
+    [ -z STRING ]               The lengh of STRING is zero (ie it is empty).
+
+[ STRING1 -ne STRING2 ]         STRING1 is not equal to STRING2
+[ STRING1 != STRING2 ]          STRING1 is not equal to STRING2
+(( STRING1 != STRING2 ))        STRING1 is not equal to STRING2
+
+[ INTEGER1 -eq INTEGER2 ] 	INTEGER1 is numerically equal to INTEGER2
+[ STRING1 = STRING2 ]           STRING1 is equal to STRING2
+(( STRING1 == STRING2 ))        STRING1 is equal to STRING2
+
+[ INTEGER1 -gt INTEGER2 ] 	INTEGER1 is numerically greater than INTEGER2
+[ INTEGER1 > INTEGER2 ] 	INTEGER1 is numerically greater than INTEGER2
+(( INTEGER1 > INTEGER2 )) 	INTEGER1 is numerically greater than INTEGER2
+
+[ INTEGER1 -lt INTEGER2 ] 	INTEGER1 is numerically less than INTEGER2
+(( INTEGER1 < INTEGER2 ))       INTEGER1 is numerically less than INTEGER2
+
+[ INTEGER1 -ge INTEGER2 ] 	INTEGER1 is numerically greater or equal than INTEGER2
+(( INTEGER1 >= INTEGER2 )) 	INTEGER1 is numerically greater or equal than INTEGER2
+
+[ INTEGER1 -le INTEGER2 ] 	INTEGER1 is numerically less or equal than INTEGER2
+(( INTEGER1 <= INTEGER2 ))	INTEGER1 is numerically less or equal than INTEGER2
+
+    [ -a FILE ]	                FILE exists.
+    [ -b FILE ]	                FILE exists and is a block-special file.
+    [ -c FILE ]	                FILE exists and is a character-special file.
+    [ -d FILE ]	                FILE exists and is a directory.
+    [ -e FILE ] 	        FILE exists.
+    [ -f FILE ]	                FILE exists and is a regular file.
+    [ -g FILE ]	                FILE exists and its SGID bit is set.
+    [ -h FILE ]	                FILE exists and is a symbolic link.
+    [ -k FILE ]	                FILE exists and its sticky bit is set.
+    [ -p FILE ]	                FILE exists and is a named pipe (FIFO).
+    [ -r FILE ]	                FILE exists and the read permission is granted.
+    [ -s FILE ]	                FILE exists and it's size is greater than zero (ie. it is not empty).
+    [ -t FD ]	                FILE descriptor FD is open and refers to a terminal.
+    [ -u FILE ]	                FILE exists and its SUID (set user ID) bit is set.
+    [ -w FILE ]	                FILE exists and the write permission is granted.
+    [ -x FILE ]	                FILE exists and the execute permission is granted.
+    [ -O FILE ]	                FILE exists and is owned by the effective user ID.
+    [ -G FILE ]	                FILE exists and is owned by the effective group ID.
+    [ -L FILE ]	                FILE exists and is a symbolic link.
+    [ -N FILE ]	                FILE exists and has been modified since it was last read.
+    [ -S FILE ]	                FILE exists and is a socket.
+[ FILE1 -nt FILE2 ]	        True if FILE1 has been changed more recently than FILE2, or if FILE1 exists and FILE2 does not.
+[ FILE1 -ot FILE2 ]	        True if FILE1 is older than FILE2, or is FILE2 exists and FILE1 does not.
+[ FILE1 -ef FILE2 ]	        True if FILE1 and FILE2 refer to the same device and inode numbers.
+ [ -o OPTIONNAME ]              True if shell option 'OPTIONNAME' is enabled.
+
+See more:
+            https://tldp.org/LDP/Bash-Beginners-Guide/html/sect_07_01.html
+EOF
+;;
+
+"2")
+echo -e "
+${shell_color_palette[biblack_on_white]}Portuguese:
+
+${shell_color_palette[biblack_on_cyan]}      Operador                  Descrição                                                                                           |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_white]}    ! EXPRESSION                A EXPRESSÃO é falsa.                                                                                |
+${shell_color_palette[biblack_on_cyan]}         &&                     E Lógico.                                                                                           |
+${shell_color_palette[biblack_on_white]}         ||                     Ou Lógico.                                                                                          |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_cyan]}[ CONDITION1 -o CONDITION2 ]    CONDITION1 ou CONDITION2                                                                            |
+${shell_color_palette[biblack_on_white]}[ -n STRING ] or [ STRING ]     O comprimento de STRING é maior que zero.                                                           |
+${shell_color_palette[biblack_on_cyan]}    [ -z STRING ]               O comprimento de STRING é zero (ou seja, está vazio).                                               |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_white]}[ STRING1 -ne STRING2 ]         STRING1 não é igual a STRING2                                                                       |
+${shell_color_palette[biblack_on_cyan]}[ STRING1 != STRING2 ]          STRING1 não é igual a STRING2                                                                       |
+${shell_color_palette[biblack_on_white]}(( STRING1 != STRING2 ))        STRING1 não é igual a STRING2                                                                       |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_white]}[ INTEGER1 -eq INTEGER2 ] 	INTEGER1 é numericamente igual a INTEGER2                                                           |
+${shell_color_palette[biblack_on_cyan]}[ STRING1 = STRING2 ]           STRING1 é igual a STRING2                                                                           |
+${shell_color_palette[biblack_on_white]}(( STRING1 == STRING2 ))        STRING1 é igual a STRING2                                                                           |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_cyan]}[ INTEGER1 -gt INTEGER2 ] 	INTEGER1 é numericamente maior que INTEGER2                                                         |
+${shell_color_palette[biblack_on_white]}[ INTEGER1 > INTEGER2 ] 	INTEGER1 é numericamente maior que INTEGER2                                                         |
+${shell_color_palette[biblack_on_cyan]}(( INTEGER1 > INTEGER2 )) 	INTEGER1 é numericamente maior que INTEGER2                                                         |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_white]}[ INTEGER1 -lt INTEGER2 ] 	INTEGER1 é numericamente menor que INTEGER2                                                         |
+${shell_color_palette[biblack_on_cyan]}(( INTEGER1 < INTEGER2 ))       INTEGER1 é numericamente menor que INTEGER2                                                         |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_white]}[ INTEGER1 -ge INTEGER2 ] 	INTEGER1 é numericamente maior ou igual que INTEGER2                                                |
+${shell_color_palette[biblack_on_cyan]}(( INTEGER1 >= INTEGER2 )) 	INTEGER1 é numericamente maior ou igual que INTEGER2                                                |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_white]}[ INTEGER1 -le INTEGER2 ] 	INTEGER1 é numericamente menor ou igual que INTEGER2                                                |
+${shell_color_palette[biblack_on_cyan]}(( INTEGER1 <= INTEGER2 ))	INTEGER1 é numericamente menor ou igual que INTEGER2                                                |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_white]}    [ -a FILE ]	                O arquivo existe.                                                                                   |
+${shell_color_palette[biblack_on_cyan]}    [ -b FILE ]	                O arquivo existe e é um arquivo especial de bloco.                                                  |
+${shell_color_palette[biblack_on_white]}    [ -c FILE ]	                O arquivo existe e é um arquivo especial de caracteres.                                             |
+${shell_color_palette[biblack_on_cyan]}    [ -d FILE ]	                O arquivio existe e é um diretório.                                                                 |
+${shell_color_palette[biblack_on_white]}    [ -e FILE ] 	        O arquivo existe.                                                                                   |
+${shell_color_palette[biblack_on_cyan]}    [ -f FILE ]	                O arquivo existe e é um arquivo normal.                                                             |
+${shell_color_palette[biblack_on_white]}    [ -g FILE ]	                O arquivo existe e seu bit SGID é definido.                                                         |
+${shell_color_palette[biblack_on_cyan]}    [ -h FILE ]	                O arquivo existe e é um link simbólico.                                                             |
+${shell_color_palette[biblack_on_white]}    [ -k FILE ]	                O arquivo existe e seu sticky bit está definido.                                                    |
+${shell_color_palette[biblack_on_cyan]}    [ -p FILE ]	                O arquivo existe e é um pipe nomeado (FIFO).                                                        |
+${shell_color_palette[biblack_on_white]}    [ -r FILE ]	                O arquivo existe e a permissão de leitura é concedida.                                              |
+${shell_color_palette[biblack_on_cyan]}    [ -s FILE ]	                O arquivo existe e seu tamanho é maior que zero (ou seja, não está vazio).                          |
+${shell_color_palette[biblack_on_white]}    [ -t FD ]	                O arquivo descriptor FD está aberto e refere-se a um terminal.                                      |
+${shell_color_palette[biblack_on_cyan]}    [ -u FILE ]	                O arquivo existe e seu bit SUID (definir ID do usuário) é definido.                                 |
+${shell_color_palette[biblack_on_white]}    [ -w FILE ]	                O arquivo existe e a permissão de gravação é concedida.                                             |
+${shell_color_palette[biblack_on_cyan]}    [ -x FILE ]	                O arquivo existe e a permissão de execução é concedida.                                             |
+${shell_color_palette[biblack_on_white]}    [ -O FILE ]	                O arquivo existe e é de propriedade do ID de usuário efetivo.                                       |
+${shell_color_palette[biblack_on_cyan]}    [ -G FILE ]	                O arquivo existe e pertence ao ID do grupo efetivo.                                                 |
+${shell_color_palette[biblack_on_white]}    [ -L FILE ]	                O arquivo existe e é um link simbólico.                                                             |
+${shell_color_palette[biblack_on_cyan]}    [ -N FILE ]	                O arquivo existe e foi modificado desde a última leitura.                                           |
+${shell_color_palette[biblack_on_white]}    [ -S FILE ]	                O arquivo existe e é um socket.                                                                     |
+${shell_color_palette[biblack_on_cyan]}[ FILE1 -nt FILE2 ]	        Verdadeiro se FILE1 tiver sido alterado mais recentemente que FILE2 ou se FILE1 existir e FILE2 não.|
+${shell_color_palette[biblack_on_white]}[ FILE1 -ot FILE2 ]	        Verdadeiro se FILE1 for mais antigo que FILE2 ou se FILE2 existir e FILE1 não.                      |
+${shell_color_palette[biblack_on_cyan]}[ FILE1 -ef FILE2 ]	        Verdadeiro se FILE1 e FILE2 se referirem ao mesmo dispositivo e números de inode.                   |
+${shell_color_palette[biblack_on_white]} [ -o OPTIONNAME ]              Verdadeiro se a opção shell 'OPTIONNAME' estiver habilitada.                                        |
+${shell_color_palette[bwhite_on_black]}                                                                                                                                    |
+${shell_color_palette[biblack_on_cyan]}            Veja mais em:${shell_color_palette[biblack]}                                                                                                           |
+${shell_color_palette[biblack_on_white]}            https://tldp.org/LDP/Bash-Beginners-Guide/html/sect_07_01.html                                                          |
+" | less -i -R
+;;
+
+*)
+man test
+;;
+esac

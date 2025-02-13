@@ -1,0 +1,37 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This Bash script generates an image with colored squares based on a list of colors provided in an input text file. 
+It checks for the correct number of arguments, reads the colors, and creates a blank image where each square corresponds 
+to a color from the list. The output is saved as a specified PNG file.
+DOCUMENTATION
+
+# Check if the number of arguments is correct
+if [ $# -ne 2 ]; then
+    echo "Usage: ${0##*/} input_file.txt output_image.png"
+    exit 1
+fi
+
+# Read the input file
+colors=($(cat "$1"))
+
+# Calculate the number of colors and the size of the image
+num_colors=${#colors[@]}
+size=100
+width=$((num_colors * ${size}))
+height=${size}
+
+# Create a blank image
+convert -size ${width}x${height} xc:white "$2"
+
+# Define the initial position of the color square
+x=0
+y=0
+
+# Iterate over the colors and create squares in the image
+for color in "${colors[@]}"; do
+    convert "$2" -fill "$color" -draw "rectangle $x,$y $((x+${size})),$((y+${size}))" "$2"
+    x=$((x+${size}))
+done

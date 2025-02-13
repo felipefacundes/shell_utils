@@ -1,0 +1,17 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+shell_utils backup
+DOCUMENTATION
+
+rm -rf ~/.shell_utils.bkp
+echo 'Copy in progress, wait ..'
+cp -rf ~/.shell_utils ~/.shell_utils.bkp
+[[ -f ~/.shell_utils.tar ]] && rm -f ~/.shell_utils.tar
+cd ~/ >/dev/null 2>&1 || exit
+tar -cf .shell_utils.tar .shell_utils
+cd - >/dev/null 2>&1 || exit
+clear
+echo 'Backup successfully'

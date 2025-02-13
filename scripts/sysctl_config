@@ -1,0 +1,238 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# The DOCUMENTATION is at the end of the script.
+
+declare -A MESSAGES
+
+# Define multilingual messages
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["file_ready"]="Arquivo pronto e já configurado!"
+        ["file_not_found"]="Arquivo não encontrado, criando um novo..."
+        ["file_moved"]="Arquivo movido para backup."
+        ["proceed"]="Você deseja prosseguir? (y/n)"
+        ["exit"]="Operação cancelada pelo usuário."
+        ["help"]="Uso: ${0##*/} [opção]\n\nOpções:\n  -h, --help            Mostrar esta ajuda\n  doc, documentation    Mostrar a documentação detalhada\n"
+    )
+elif [[ "${LANG,,}" =~ fr_ ]]; then
+    MESSAGES=(
+        ["file_ready"]="Fichier prêt et déjà configuré !"
+        ["file_not_found"]="Fichier non trouvé, création d'un nouveau..."
+        ["file_moved"]="Fichier déplacé vers la sauvegarde."
+        ["proceed"]="Voulez-vous continuer? (y/n)"
+        ["exit"]="Opération annulée par l'utilisateur."
+        ["help"]="Utilisation : ${0##*/} [option]\n\nOptions:\n  -h, --help            Afficher cette aide\n  doc, documentation    Afficher la documentation détaillée\n"
+    )
+elif [[ "${LANG,,}" =~ es_ ]]; then
+    MESSAGES=(
+        ["file_ready"]="¡Archivo listo y ya configurado!"
+        ["file_not_found"]="Archivo no encontrado, creando uno nuevo..."
+        ["file_moved"]="Archivo movido a la copia de seguridad."
+        ["proceed"]="¿Desea continuar? (y/n)"
+        ["exit"]="Operación cancelada por el usuario."
+        ["help"]="Uso: ${0##*/} [opción]\n\nOpciones:\n  -h, --help            Mostrar esta ayuda\n  doc, documentation    Mostrar la documentación detallada\n"
+    )
+else
+    MESSAGES=(
+        ["file_ready"]="File ready and already configured!"
+        ["file_not_found"]="File not found, creating a new one..."
+        ["file_moved"]="File moved to backup."
+        ["proceed"]="Do you want to proceed? (y/n)"
+        ["exit"]="Operation canceled by the user."
+        ["help"]="Usage: ${0##*/} [option]\n\nOptions:\n  -h, --help            Show this help\n  doc, documentation    Show detailed documentation\n"
+    )
+fi
+
+dir=/etc
+file="${dir}/sysctl.conf"
+hash=$(md5sum "$file" 2>/dev/null | awk '{ print $1 }')
+default_hash="3cec75625a906df2fa5163469172681b"
+
+help() {
+    clear
+    echo -e "${MESSAGES["help"]}"
+    exit 0
+}
+
+sysctl_config() {
+cat <<'EOF' | sudo tee "$file"
+vm.swappiness=10
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.tcp_syncookies=1
+net.ipv4.ip_forward=1
+net.ipv4.tcp_dsack=0
+net.ipv4.tcp_sack=0
+fs.file-max=100000
+kernel.sched_migration_cost_ns=5000000
+kernel.sched_autogroup_enabled=0
+vm.dirty_background_bytes=16777216
+vm.dirty_bytes=50331648
+kernel.pid_max=4194304
+vm.oom_kill_allocating_task=1
+EOF
+}
+
+show_documentation() {
+    clear
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0" | less -R -i
+    exit 0
+}
+
+if ! command -v sudo &>/dev/null; then
+    echo 'sudo command not found'
+    exit 1
+fi
+
+# Check for arguments
+if [[ "$1" == "doc" || "$1" == "documentation" ]]; then
+    show_documentation
+elif [[ "$1" == "-h" || "$1" == "--help" || "$1" == "h" || "$1" == "help" ]]; then
+    help
+fi
+
+# Default action is to call sysctl_config
+if test -f "$file" && test "$hash" == "$default_hash" && [[ -z "$1" ]]; then
+    echo "${MESSAGES["file_ready"]}"
+    exit 0
+fi
+
+read -rp "${MESSAGES[proceed]} " answer
+
+if [[ "$answer" != [yY] ]]; then
+    echo -e "\n${MESSAGES[exit]}"
+    exit 1
+fi
+
+if test -f "$file" && test "$hash" != "$default_hash"; then
+    sudo mv -v --backup=t "$file" "${dir}/sysctl.backup"
+    echo "${MESSAGES["file_moved"]}"
+elif ! test -f "$file"; then
+    echo "${MESSAGES["file_not_found"]}"
+    sudo touch "$file"
+fi
+
+# Call the sysctl_config function by default
+sysctl_config
+
+: <<'DOCUMENTATION'
+This script configures the /etc/sysctl.conf file with various kernel parameters to optimize system performance and security, 
+while providing multilingual support for user messages. It includes functionality for checking the current configuration, 
+creating backups, and displaying detailed documentation on each parameter's purpose and potential risks.
+
+1. vm.swappiness=10
+    Descrição: Esta configuração determina a tendência do sistema em usar a memória swap. Um valor de 10 significa que o sistema preferirá usar 
+    a RAM em vez de swap, só começando a usar swap quando a RAM estiver bastante cheia.
+
+    Riscos: Um valor muito baixo pode levar a uma utilização ineficiente da memória, especialmente em sistemas com pouca RAM, pois pode resultar 
+    em falta de memória e, consequentemente, em um desempenho degradado.
+
+2. net.ipv4.conf.all.rp_filter=1
+    Descrição: Ativa a filtragem de retorno de pacotes (Reverse Path Filtering) para todas as interfaces de rede. Isso ajuda a prevenir ataques 
+    de spoofing, garantindo que os pacotes recebidos venham de uma interface que é a rota correta.
+
+    Riscos: Em algumas configurações de rede, especialmente em redes complexas ou com múltiplos caminhos, isso pode causar problemas de conectividade, 
+    pois pacotes legítimos podem ser descartados se não seguirem a rota esperada.
+
+3. net.ipv4.tcp_syncookies=1
+    Descrição: Ativa o uso de SYN cookies para proteger contra ataques de negação de serviço (DoS) que visam a sobrecarga da tabela de conexões TCP.
+
+    Riscos: Embora isso ajude a mitigar ataques, pode causar problemas de desempenho em conexões legítimas, especialmente em situações de alta carga, 
+    pois o uso de SYN cookies pode aumentar a latência.
+
+4. net.ipv4.ip_forward=1
+    Descrição: Habilita o encaminhamento de pacotes IP, permitindo que o sistema atue como um roteador.
+
+    Riscos: Se não for configurado corretamente, pode expor o sistema a riscos de segurança, permitindo que pacotes não autorizados sejam roteados 
+    através dele.
+
+5. net.ipv4.tcp_dsack=0
+    Descrição: Desativa o suporte a Duplicate Selective Acknowledgments (DSACK), que é uma extensão do TCP para melhorar a eficiência na retransmissão 
+    de pacotes.
+
+    Riscos: Desativar isso pode levar a uma menor eficiência na recuperação de pacotes perdidos, especialmente em redes com alta latência ou perda 
+    de pacotes.
+
+6. net.ipv4.tcp_sack=0
+    Descrição: Desativa o suporte a Selective Acknowledgments (SACK), que permite que o receptor informe ao remetente quais pacotes foram recebidos 
+    corretamente, melhorando a eficiência da retransmissão.
+
+    Riscos: Isso pode resultar em um desempenho de rede significativamente pior, especialmente em conexões com perda de pacotes, pois o remetente 
+    não saberá quais pacotes retransmitir.
+
+7. fs.file-max=100000
+    Descrição: Define o número máximo de arquivos que podem ser abertos simultaneamente no sistema.
+
+    Riscos: Um valor muito alto pode levar a um uso excessivo de recursos do sistema, especialmente em sistemas com muitos processos que abrem 
+    arquivos, potencialmente levando a problemas de desempenho.
+
+8. kernel.sched_migration_cost_ns=5000000
+    Descrição: Define o custo de migração de tarefas entre CPUs em nanosegundos. Um valor mais alto pode reduzir a frequência de migrações de tarefas.
+
+    Riscos: Um valor muito alto pode levar a uma utilização ineficiente da CPU, pois as tarefas podem não ser redistribuídas de maneira ideal entre 
+    os núcleos.
+
+9. kernel.sched_autogroup_enabled=0
+    Descrição: Desativa o recurso de agrupamento automático de tarefas, que tenta agrupar tarefas de usuários em grupos para melhorar a interação 
+    do usuário.
+
+    Riscos: Isso pode levar a uma pior experiência do usuário em sistemas com muitas tarefas interativas, pois as tarefas podem não ser priorizadas 
+    adequadamente.
+
+10. vm.dirty_background_bytes=16777216
+    Descrição: Define a quantidade de dados "sujo" (modificados, mas não gravados) que podem ser mantidos na memória antes que o sistema comece a 
+    gravar em disco.
+
+    Riscos: Um valor muito baixo pode levar a um aumento na atividade de I/O, enquanto um valor muito alto pode resultar em perda de dados em caso 
+    de falha de energia.
+
+11. vm.dirty_bytes=50331648
+    Descrição: Esta configuração define a quantidade total de dados "sujo" (modificados, mas não gravados) que podem ser mantidos na memória antes 
+    que o sistema comece a bloquear processos que tentam escrever mais dados. O valor de 50.331.648 bytes (ou aproximadamente 48 MB) significa que, 
+    uma vez que essa quantidade de dados sujos seja atingida, o sistema começará a restringir a alocação de memória para novos dados sujos.
+
+    Riscos:
+    Valor muito alto: Se o valor for muito alto, o sistema pode acumular uma quantidade significativa de dados não gravados na memória. Em caso 
+        de falha de energia ou travamento do sistema, esses dados podem ser perdidos, resultando em perda de informações ou corrupção de dados.
+    Valor muito baixo: Se o valor for muito baixo, o sistema pode começar a bloquear processos que tentam escrever novos dados antes que a 
+        quantidade de dados sujos atinja um nível que permita uma gravação eficiente. Isso pode levar a uma degradação de desempenho, pois os 
+        processos podem ser forçados a esperar para escrever dados em disco, resultando em latência e possíveis problemas de desempenho em 
+        aplicações que dependem de operações de escrita frequentes.
+
+12. kernel.pid_max=4194304
+    Descrição: Esta configuração define o número máximo de Process IDs (PIDs) que podem ser alocados pelo sistema. O valor padrão é geralmente 32768, 
+    mas pode ser aumentado para permitir que mais processos sejam criados simultaneamente.
+
+    Riscos: Um valor muito alto pode levar a um uso excessivo de recursos do sistema, especialmente em sistemas que não estão preparados para lidar 
+    com um grande número de processos. Isso pode resultar em degradação de desempenho, aumento da complexidade na gestão de processos e potencialmente 
+    em problemas de segurança, já que mais processos podem aumentar a superfície de ataque.
+
+13. vm.oom_kill_allocating_task=1
+    Descrição: Esta configuração determina se o sistema deve matar o processo que está tentando alocar memória quando o sistema está em estado de 
+    "Out of Memory" (OOM). Quando ativado (1), o sistema prioriza a morte do processo que está tentando alocar mais memória em vez de outros processos.
+
+    Riscos: Embora isso possa ajudar a liberar memória rapidamente, pode resultar na morte de processos críticos ou importantes que estão tentando 
+    alocar memória, levando a uma perda de dados ou a um estado inconsistente do sistema. Isso pode ser especialmente problemático em servidores ou 
+    sistemas que executam aplicações críticas, onde a interrupção de um processo pode causar falhas de serviço ou perda de dados.
+
+
+
+    Resumo
+
+    Essas configurações do kernel do Linux podem ser ajustadas para otimizar o desempenho e a segurança do sistema, mas cada uma delas vem com seus 
+    próprios riscos e trade-offs. É importante considerar o contexto em que o sistema está sendo utilizado e testar as configurações em um ambiente 
+    controlado antes de aplicá-las em produção.
+
+DOCUMENTATION
