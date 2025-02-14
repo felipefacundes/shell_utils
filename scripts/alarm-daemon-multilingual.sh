@@ -2,7 +2,7 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# Script Name: Alarm Analysis
+# Script Name: Alarm Daemon Multilingual
 
 : <<'DOCUMENTATION'
 # Bash Alarm Script Analysis

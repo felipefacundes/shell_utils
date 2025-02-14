@@ -19,6 +19,8 @@ Capabilities:
 - Provides feedback and error messages to enhance user experience.
 DOCUMENTATION
 
+#exec 2>/dev/null
+
 source ~/.shell_utils/variables/shell_colors.sh
 source ~/.shell_utils/variables/shell_colors_indexed_array.sh
 
@@ -28,7 +30,7 @@ create_config_file() {
     if [ ! -f "${config_file}" ]; then
         touch "${config_file}"
         echo "# Choose a theme number or 'n' for no theme." | tee "${config_file}"
-        echo 'ASCII Theme Index = 339' | tee -a "${config_file}"
+        echo 'ASCII Theme Index = 268' | tee -a "${config_file}"
         echo '# Choose a theme color.' | tee -a "${config_file}"
         echo 'Empty' | tee -a "${config_file}"
         sed -i -r '4 cASCII Theme Color Index = 41' "${config_file}" #Theme Color
@@ -83,13 +85,15 @@ load_ascii_art_theme() {
         if (( "${default_read}" == 2 )); then
 echo -e "
 $(lolcat -ft "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")"
-
+echo
         elif (( "${default_read}" == 1 )); then
 echo
 ccat "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}"
+echo
         else
             echo -e "${shell_color_palette_index[${color_index}]}
 $(cat "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")${shell_color_palette[color_off]}"
+echo
         fi
     fi
     return 0
@@ -105,6 +109,15 @@ fi
 leng_theme_list(){
     number=0
     for list in "${ascii_theme_list[@]}";
+        do
+            (( number++ )) || true
+            echo "${number}"
+    done
+}
+
+leng_color_index(){
+    number=0
+    for list in "${shell_color_palette_index[@]}";
         do
             (( number++ )) || true
             echo "${number}"
@@ -132,6 +145,7 @@ print_theme_list() {
 }
 
 leng=$(($(leng_theme_list | wc -l)-1))
+leng_color=$(leng_color_index | wc -l)
 
 color_shell_select(){
     number=0
@@ -144,7 +158,7 @@ color_shell_select(){
         for list in "${shell_color_palette_index[@]}";
             do
                 (( number++ )) || true
-                if [ "${number}" -le 2989 ]; then
+                if [ "${number}" -le "${leng_color}" ]; then
                     echo -e "${number})    Color: ${list}'\\${shell_color_palette_index[${number}]}'"
                 fi
         done
@@ -174,13 +188,13 @@ color_shell_select(){
             if [ -z "${2}" ]; then
                 background_list | less -Ri
                 return 0
-            elif test "${2}" -le 2989 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
+            elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
                 export background_color="${shell_color_palette_index["${2}"]}"
                 echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
                 echo -e "${shell_color_palette[bblack_on_white]}echo -e \"\${background_color}\" Text${shell_color_palette[color_off]}"
                 return 0
             else
-                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid background choice! Enter a number from 366 to 2989.\n"
+                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid background choice! Enter a number from 366 to ${leng_color}.\n"
                 echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
                 return 0
             fi
@@ -189,11 +203,11 @@ color_shell_select(){
             if [ -z "${2}" ]; then
                 color_list | less -Ri
                 return 0
-            elif test "${2}" -le 2989 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
+            elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
                 export color_shell="${shell_color_palette_index[${2}]}"
                 return 0
             else
-                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to 2989.\n"
+                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to ${leng_color}.\n"
                 echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
                 return 1
             fi
@@ -253,10 +267,10 @@ case "${1}" in
             while true; do
                 clear -T "${TERM}"
                 color_shell_select color
-                echo -e "${shell_color_palette[byellow]}Which color theme was chosen, from 2 to 2989?\n"
+                echo -e "${shell_color_palette[byellow]}Which color theme was chosen, from 2 to ${leng_color}?\n"
                 echo -e "${shell_color_palette[byellow]}Or enter 1 for NO color\n"
                 read -r read_select_color
-                if test "${read_select_color}" -le 2989 2>/dev/null && test "${read_select_color}" -gt 0 2>/dev/null; then
+                if test "${read_select_color}" -le "${leng_color}" 2>/dev/null && test "${read_select_color}" -gt 0 2>/dev/null; then
                     color_shell_select color "${read_select_color}"
                     sleep 0.2
                     sed -i "4 cASCII Theme Color Index = ${read_select_color}" "${config_file}" #Theme Color
@@ -264,12 +278,12 @@ case "${1}" in
                     break
                 else
                     clear -T "${TERM}"
-                    echo -e "${shell_color_palette[bred]}\"${read_select_color}\" is an invalid choice! Enter a number from 1 to 2989!"
+                    echo -e "${shell_color_palette[bred]}\"${read_select_color}\" is an invalid choice! Enter a number from 1 to ${leng_color}!"
                     sleep 2
                     clear
                 fi
             done
-        elif test "${2}" -le 2989 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
+        elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
             color_shell_select color "${2}"
             sleep 0.2
             sed -i "4 cASCII Theme Color Index = ${2}" "${config_file}" #Theme Color
@@ -277,7 +291,7 @@ case "${1}" in
             exit 0
         else
             clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter a number from 1 to 2989!"
+            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter a number from 1 to ${leng_color}!"
             sleep 2
             load_ascii_art_theme && load_ascii_art_theme
             exit 0
@@ -288,14 +302,14 @@ case "${1}" in
             while true; do
                 clear -T "${TERM}"
                 color_shell_select background
-                echo -e "${shell_color_palette[byellow]}Which color theme was chosen, from 1 to 2989?\n"
+                echo -e "${shell_color_palette[byellow]}Which color theme was chosen, from 1 to ${leng_color}?\n"
                 echo -e "${shell_color_palette[byellow]}Or enter 1 for NO color\n"
                 read -r read_select_background
                 if [[ "${read_select_background}" == 1 ]]; then
                     sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
                     load_ascii_art_theme && load_ascii_art_theme
                     break
-                elif test "${read_select_background}" -le 2989 2>/dev/null && test "${read_select_background}" -ge 366 2>/dev/null; then
+                elif test "${read_select_background}" -le "${leng_color}" 2>/dev/null && test "${read_select_background}" -ge 366 2>/dev/null; then
                     color_shell_select color "${read_select_background}"
                     sleep 0.2
                     sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
@@ -303,7 +317,7 @@ case "${1}" in
                     break
                 else
                     clear -T "${TERM}"
-                    echo -e "${shell_color_palette[bred]}\"${read_select_background}\" is an invalid choice! Enter a number from 366 to 2989!"
+                    echo -e "${shell_color_palette[bred]}\"${read_select_background}\" is an invalid choice! Enter a number from 366 to ${leng_color}!"
                     sleep 2
                     clear
                 fi
@@ -313,7 +327,7 @@ case "${1}" in
             sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
             load_ascii_art_theme
             exit 0
-        elif test "${2}" -le 2989 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
+        elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
             color_shell_select color "${2}"
             sleep 0.2
             sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
@@ -321,7 +335,7 @@ case "${1}" in
             exit 0
         else
             clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter a number from 366 to 2989!"
+            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter a number from 366 to ${leng_color}!"
             sleep 2
             load_ascii_art_theme && load_ascii_art_theme
             exit 0

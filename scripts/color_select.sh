@@ -43,6 +43,8 @@ DOCUMENTATION
 # Colors 2 .. 365
 # Backgrounds 366 .. 2989
 
+set -e
+
 source ~/.shell_utils/variables/shell_colors.sh
 source ~/.shell_utils/variables/shell_colors_indexed_array.sh
 
@@ -59,7 +61,17 @@ if ! command -v less &> /dev/null; then
     exit 1
 fi
 
+leng_color_index(){
+    number=0
+    for list in "${shell_color_palette_index[@]}";
+        do
+            (( number++ )) || true
+            echo "${number}"
+    done
+}
+
 number=0
+leng_color=$(leng_color_index | wc -l)
 
 color_list() {
     echo -e "${shell_color_palette[byellow]}Usage:${shell_color_palette[color_off]}\n"
@@ -69,7 +81,7 @@ color_list() {
     for list in "${shell_color_palette_index[@]}";
         do
             (( number++ )) || true
-            if [ "${number}" -le 2989 ]; then
+            if [ "${number}" -le "${leng_color}" ]; then
                 echo -e "${number})    Color: ${list}'\\${shell_color_palette_index[${number}]}'"
             fi
     done
@@ -101,19 +113,19 @@ case "${1}" in
         if [ -z "${2}" ]; then
             clear -T "${TERM}"
             color_list | less -i -R
-            echo -e "${shell_color_palette[byellow]}Which color was chosen, from 1 to 2989?\n"
+            echo -e "${shell_color_palette[byellow]}Which color was chosen, from 1 to ${leng_color}?\n"
             read -r set_color_shell
             export color_shell="${shell_color_palette_index["${set_color_shell}"]}"
             echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
             echo -e "${shell_color_palette[bgreen_on_black]}echo -e \"\\${color_shell}\"${shell_color_palette[color_off]}${color_shell}Text${shell_color_palette[color_off]}${shell_color_palette[bgreen_on_black]}${shell_color_palette[color_off]}"
             exit 0
-        elif [[ "${2}" -le 2989 && "${2}" -gt 0 ]]; then
+        elif [[ "${2}" -le "${leng_color}" && "${2}" -gt 0 ]]; then
             export color_shell="${shell_color_palette_index["${2}"]}"
             echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
             echo -e "${shell_color_palette[bgreen_on_black]}echo -e \"\\${color_shell}\"${shell_color_palette[color_off]}${color_shell}Text${shell_color_palette[color_off]}${shell_color_palette[bgreen_on_black]}${shell_color_palette[color_off]}"
             exit 0
         else
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to 2989.\n"
+            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to ${leng_color}.\n"
             echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
             exit 1
         fi
@@ -124,11 +136,11 @@ case "${1}" in
         if [ -z "${2}" ]; then
             clear -T "${TERM}"
             background_list | less -i -R
-            echo -e "${shell_color_palette[byellow]}Which color was chosen, from 366 to 2989?\n"
+            echo -e "${shell_color_palette[byellow]}Which color was chosen, from 366 to ${leng_color}?\n"
             read -r set_background_shell
-            if [[ "${set_background_shell}" -gt 2989 || "${set_background_shell}" -lt 366 ]]; then
+            if [[ "${set_background_shell}" -gt "${leng_color}" || "${set_background_shell}" -lt 366 ]]; then
                 clear
-                echo -e "${shell_color_palette[bred]}\"${set_background_shell}\" is an invalid background choice! Enter a number from 366 to 2989.\n"
+                echo -e "${shell_color_palette[bred]}\"${set_background_shell}\" is an invalid background choice! Enter a number from 366 to ${leng_color}.\n"
                 sleep 3
                 clear
                 exit 1
@@ -137,13 +149,13 @@ case "${1}" in
             echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
             echo -e "${shell_color_palette[bgreen_on_black]}echo -e \"\\${background_color}\"${shell_color_palette[color_off]}${background_color}Text${shell_color_palette[color_off]}${shell_color_palette[bgreen_on_black]}${shell_color_palette[color_off]}"
             exit 0
-        elif [[ "${2}" -le 2989 && "${2}" -ge 366 ]]; then
+        elif [[ "${2}" -le "${leng_color}" && "${2}" -ge 366 ]]; then
             export background_color="${shell_color_palette_index["${2}"]}"
             echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
             echo -e "${shell_color_palette[bgreen_on_black]}echo -e \"\\${background_color}\"${shell_color_palette[color_off]}${background_color}Text${shell_color_palette[color_off]}${shell_color_palette[bgreen_on_black]}${shell_color_palette[color_off]}"
             exit 0
         else
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid background choice! Enter a number from 366 to 2989.\n"
+            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid background choice! Enter a number from 366 to ${leng_color}.\n"
             echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
             exit 1
         fi
@@ -156,14 +168,14 @@ case "${1}" in
             while true; do
                 clear -T "${TERM}"
                 color_list | less -i -R
-                echo -e "${shell_color_palette[byellow]}Which color was chosen, from 1 to 2989?\n"
+                echo -e "${shell_color_palette[byellow]}Which color was chosen, from 1 to ${leng_color}?\n"
                 read -r set_color_shell
 
-                if [[ "${set_color_shell}" -le 2989 && "${set_color_shell}" -gt 0 ]]; then
+                if [[ "${set_color_shell}" -le "${leng_color}" && "${set_color_shell}" -gt 0 ]]; then
                     export color_shell="${shell_color_palette_index["${set_color_shell}"]}"
                     break
                 else
-                    echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to 2989.\n"
+                    echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to ${leng_color}.\n"
                     sleep 1.5
                     clear
                 fi
@@ -171,17 +183,17 @@ case "${1}" in
             while true; do
                 clear -T "${TERM}"
                 background_list | less -i -R
-                echo -e "${shell_color_palette[byellow]}Which background was chosen, from 366 to 2989?\n"
+                echo -e "${shell_color_palette[byellow]}Which background was chosen, from 366 to ${leng_color}?\n"
                 echo -e "${shell_color_palette[byellow]}Or enter 1 for NO background\n"
                 read -r set_background_color
 
-                if [[ "${set_background_color}" -ge 366 && "${set_background_color}" -le 2989 ]] || [ "${set_background_color}" = 1 ]; then
+                if [[ "${set_background_color}" -ge 366 && "${set_background_color}" -le "${leng_color}" ]] || [ "${set_background_color}" = 1 ]; then
                     export background_color="${shell_color_palette_index["${set_background_color}"]}"
                     echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
                     echo -e "${shell_color_palette[bgreen_on_black]}echo -e \"\\${color_shell}\"\"\\${background_color}\"${shell_color_palette[color_off]}${color_shell}${background_color}Text${shell_color_palette[color_off]}${shell_color_palette[bgreen_on_black]}${shell_color_palette[color_off]}"
                     break
                 else
-                    echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid background choice! Enter a number from 366 to 2989.\n"
+                    echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid background choice! Enter a number from 366 to ${leng_color}.\n"
                     sleep 1.5
                     clear
                 fi
@@ -200,24 +212,24 @@ case "${1}" in
     "s"|"set")
 
         if [[ "${2}" && -z "${3}" ]] > /dev/null 2>&1; then
-            echo -e "${shell_color_palette[bred]}Usage: ${0##*/} color [from 1 to 2989]"
+            echo -e "${shell_color_palette[bred]}Usage: ${0##*/} color [from 1 to ${leng_color}]"
             exit 1
         elif [[ "${2}" && "${3}" ]] > /dev/null 2>&1; then
 
-            if [[ "${2}" -le 2989 && "${2}" -gt 0 ]] > /dev/null 2>&1; then
+            if [[ "${2}" -le "${leng_color}" && "${2}" -gt 0 ]] > /dev/null 2>&1; then
                 export color_shell="${shell_color_palette_index["${2}"]}"
             else
-                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to 2989."
+                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to ${leng_color}."
                 exit 1
             fi
 
-            if [[ "${3}" -ge 366 && "${3}" -le 2989 ]] > /dev/null 2>&1; then
+            if [[ "${3}" -ge 366 && "${3}" -le "${leng_color}" ]] > /dev/null 2>&1; then
                 clear -T "${TERM}"
                 export background_color="${shell_color_palette_index["${3}"]}"
                 echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
                 echo -e "${shell_color_palette[bgreen_on_black]}echo -e \"\\${color_shell}\"\"\\${background_color}\"${shell_color_palette[color_off]}${color_shell}${background_color}Text${shell_color_palette[color_off]}"
             else
-                echo -e "${shell_color_palette[bred]}\"${3}\" is an invalid background choice! Enter a number from 366 to 2989."
+                echo -e "${shell_color_palette[bred]}\"${3}\" is an invalid background choice! Enter a number from 366 to ${leng_color}."
                 exit 1
             fi
         else
