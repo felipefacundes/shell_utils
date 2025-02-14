@@ -48,11 +48,11 @@ update_variables() {
     return 0
 }
 
-[[ "${list_index}" == "n" ]] > /dev/null 2>&1 && echo >/dev/null && exit 0
-[[ "${list_index}" =~ ^[[:alpha:]]+$ ]] >/dev/null 2>&1 && sed -i "2 cASCII Theme Index = 339" "${config_file}" && echo >/dev/null && exit 0
-[[ "${color_index}" =~ ^[[:alpha:]]+$ ]] >/dev/null 2>&1 && sed -i -r '4 cASCII Theme Color Index = 41' "${config_file}"
-[[ "${default_read}" =~ ^[[:alpha:]]+$ ]] >/dev/null 2>&1 && sed -i "6 cREADER = 0" "${config_file}"
-(( "${default_read}" > 2 )) >/dev/null 2>&1 && sed -i "6 cREADER = 0" "${config_file}"
+[[ "${list_index}" == "n" ]] && echo >/dev/null && exit 0
+[[ "${list_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "2 cASCII Theme Index = 339" "${config_file}" && echo >/dev/null && exit 0
+[[ "${color_index}" =~ ^[[:alpha:]]+$ ]] && sed -i -r '4 cASCII Theme Color Index = 41' "${config_file}"
+[[ "${default_read}" =~ ^[[:alpha:]]+$ ]] && sed -i "6 cREADER = 0" "${config_file}"
+(( "${default_read}" > 2 )) && sed -i "6 cREADER = 0" "${config_file}"
 
 update_variables
 
@@ -79,12 +79,12 @@ load_ascii_art_theme() {
     clear -T "${TERM}"
     update_variables && update_variables
 
-    if (( "${list_index}" >= 0 )) > /dev/null 2>&1; then
-        if (( "${default_read}" == 2 )) > /dev/null 2>&1; then
+    if (( "${list_index}" >= 0 )); then
+        if (( "${default_read}" == 2 )); then
 echo -e "
 $(lolcat -ft "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")"
 
-        elif (( "${default_read}" == 1 )) > /dev/null 2>&1; then
+        elif (( "${default_read}" == 1 )); then
 echo
 ccat "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}"
         else
@@ -203,7 +203,7 @@ color_shell_select(){
 
 update_variables && update_variables
 
-[[ "${2}" != "n" ]] && [[ "${2}" =~ ^[[:alpha:]]+$ ]] >/dev/null 2>&1 && clear -T "${TERM}" \
+[[ "${2}" != "n" ]] && [[ "${2}" =~ ^[[:alpha:]]+$ ]] && clear -T "${TERM}" \
 && echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid option! Use only numbers or ...\n${0##*/} theme n (for no theme)!" \
 && sleep 2 && load_ascii_art_theme && exit 1
 
@@ -215,11 +215,11 @@ case "${1}" in
                 clear -T "${TERM}"
                 echo -e "${shell_color_palette[byellow]}Choose an ASCII theme from 1 to ${leng} or 'n' for none:\n"
                 read -r read_select_ascii_theme
-                if [[ "${read_select_ascii_theme}" == "n" ]] > /dev/null 2>&1; then
+                if [[ "${read_select_ascii_theme}" == "n" ]]; then
                     sed -i "2 cASCII Theme Index = ${read_select_ascii_theme}" "${config_file}"
                     load_ascii_art_theme && load_ascii_art_theme
                     break
-                elif [ "${read_select_ascii_theme}" -le "${leng}" ] > /dev/null 2>&1; then
+                elif [ "${read_select_ascii_theme}" -le "${leng}" ]; then
                     sed -i "2 cASCII Theme Index = ${read_select_ascii_theme}" "${config_file}"
                     load_ascii_art_theme && load_ascii_art_theme
                     break
@@ -230,11 +230,11 @@ case "${1}" in
                     clear
                 fi
             done
-        elif [[ "${2}" == "n" ]] > /dev/null 2>&1; then
+        elif [[ "${2}" == "n" ]]; then
             sed -i "2 cASCII Theme Index = ${2}" "${config_file}"
             load_ascii_art_theme
             exit 0
-        elif [ "${2}" -le "${leng}" ] > /dev/null 2>&1; then
+        elif [ "${2}" -le "${leng}" ]; then
             clear -T "${TERM}"
             echo -e "Theme ${2} selected: ${ascii_theme_list[${2}]}\n"
             sed -i "2 cASCII Theme Index = ${2}" "${config_file}"

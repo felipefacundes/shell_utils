@@ -1,0 +1,85 @@
+#!/bin/bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This bash script analyzes the directory structure provided as an argument, counting all subdirectories and their files while 
+ignoring hidden directories like .git. It uses globstar (`**/*`) for recursive file traversal and outputs a simple summary 
+showing the total count of non-hidden subdirectories and the number of files in each. The output is clean and organized, 
+showing each directory's name followed by its total file count.
+DOCUMENTATION
+
+# Function to display usage information
+usage() {
+    echo "Usage: ${0##*/} <directory_path>"
+    exit 1
+}
+
+# Function to analyze directory
+analyze_directory() {
+    local dir="$1"
+    
+    # Check if directory exists
+    if [ ! -d "$dir" ]; then
+        echo "Error: '$dir' is not a valid directory"
+        exit 1
+    fi
+    
+    # Enable globstar for recursive matching
+    shopt -s nullglob
+    shopt -s globstar
+    
+    # Initialize arrays for subdirectories
+    declare -A subdir_files
+    subdirs=()
+    
+    # Change to the target directory
+    cd "$dir" || exit 1
+    
+    # Get all subdirectories first level only
+    for d in */; do
+        # Skip hidden directories
+        [[ $d == .* ]] && continue
+        
+        # Remove trailing slash
+        d=${d%/}
+        subdirs+=("$d")
+        
+        # Initialize file counter for this subdirectory
+        count=0
+        
+        # Count files in this subdirectory (including in nested directories)
+        for f in "$d"/**/*; do
+            # Skip if it's a directory or hidden file
+            [[ -d "$f" ]] && continue
+            [[ $(basename "$f") == .* ]] && continue
+            ((count++))
+        done
+        
+        subdir_files["$d"]=$count
+    done
+    
+    # Print results
+    echo -e "\nAnalysis of directory: $dir"
+    echo "Number of non-hidden subdirectories: ${#subdirs[@]}"
+    echo -e "\nFiles in each subdirectory:"
+    
+    if [ ${#subdirs[@]} -eq 0 ]; then
+        echo "No subdirectories found."
+    else
+        # Sort subdirectories alphabetically
+        IFS=$'\n' sorted_subdirs=($(sort <<<"${subdirs[*]}"))
+        unset IFS
+        
+        # Display results
+        for subdir in "${sorted_subdirs[@]}"; do
+            echo "- $subdir: ${subdir_files[$subdir]} file(s)"
+        done
+    fi
+}
+
+# Check if argument is provided
+[ $# -ne 1 ] && usage
+
+# Call the analysis function with the provided directory
+analyze_directory "$1"
