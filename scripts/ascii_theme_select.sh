@@ -52,7 +52,7 @@ update_variables() {
 [[ "${list_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "2 cASCII Theme Index = 339" "${config_file}" && echo >/dev/null && exit 0
 [[ "${color_index}" =~ ^[[:alpha:]]+$ ]] && sed -i -r '4 cASCII Theme Color Index = 41' "${config_file}"
 [[ "${default_read}" =~ ^[[:alpha:]]+$ ]] && sed -i "6 cREADER = 0" "${config_file}"
-(( "${default_read}" > 2 )) && sed -i "6 cREADER = 0" "${config_file}"
+test "${default_read}" -gt 2 2>/dev/null && sed -i "6 cREADER = 0" "${config_file}"
 
 update_variables
 
@@ -79,7 +79,7 @@ load_ascii_art_theme() {
     clear -T "${TERM}"
     update_variables && update_variables
 
-    if (( "${list_index}" >= 0 )); then
+    if test "${list_index}" -ge 0 2>/dev/null; then
         if (( "${default_read}" == 2 )); then
 echo -e "
 $(lolcat -ft "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")"
@@ -96,7 +96,7 @@ $(cat "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")${shell_color_pa
 }
 # It was a way I found to fix the color leakage from some color theme combinations.
 # Example: theme 2 (Abacus) with color 366
-if [[ "${color_index}" -ge 366 ]] && [[ "${default_read}" -lt 1 ]]; then
+if test "${color_index}" -ge 366 2>/dev/null && test "${default_read}" -lt 1 2>/dev/null; then
     load_ascii_art_theme && sleep 0.2 && load_ascii_art_theme
 else
     load_ascii_art_theme
@@ -174,7 +174,7 @@ color_shell_select(){
             if [ -z "${2}" ]; then
                 background_list | less -Ri
                 return 0
-            elif [[ "${2}" -le 2989 && "${2}" -ge 366 ]]; then
+            elif test "${2}" -le 2989 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
                 export background_color="${shell_color_palette_index["${2}"]}"
                 echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
                 echo -e "${shell_color_palette[bblack_on_white]}echo -e \"\${background_color}\" Text${shell_color_palette[color_off]}"
@@ -189,7 +189,7 @@ color_shell_select(){
             if [ -z "${2}" ]; then
                 color_list | less -Ri
                 return 0
-            elif [[ "${2}" -le 2989 && "${2}" -gt 0 ]]; then
+            elif test "${2}" -le 2989 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
                 export color_shell="${shell_color_palette_index[${2}]}"
                 return 0
             else
@@ -234,7 +234,7 @@ case "${1}" in
             sed -i "2 cASCII Theme Index = ${2}" "${config_file}"
             load_ascii_art_theme
             exit 0
-        elif [ "${2}" -le "${leng}" ]; then
+        elif test "${2}" -le "${leng}" 2>/dev/null; then
             clear -T "${TERM}"
             echo -e "Theme ${2} selected: ${ascii_theme_list[${2}]}\n"
             sed -i "2 cASCII Theme Index = ${2}" "${config_file}"
@@ -256,7 +256,7 @@ case "${1}" in
                 echo -e "${shell_color_palette[byellow]}Which color theme was chosen, from 2 to 2989?\n"
                 echo -e "${shell_color_palette[byellow]}Or enter 1 for NO color\n"
                 read -r read_select_color
-                if [[ "${read_select_color}" -le 2989 && "${read_select_color}" -gt 0 ]]; then
+                if test "${read_select_color}" -le 2989 2>/dev/null && test "${read_select_color}" -gt 0 2>/dev/null; then
                     color_shell_select color "${read_select_color}"
                     sleep 0.2
                     sed -i "4 cASCII Theme Color Index = ${read_select_color}" "${config_file}" #Theme Color
@@ -269,7 +269,7 @@ case "${1}" in
                     clear
                 fi
             done
-        elif [[ "${2}" -le 2989 && "${2}" -gt 0 ]]; then
+        elif test "${2}" -le 2989 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
             color_shell_select color "${2}"
             sleep 0.2
             sed -i "4 cASCII Theme Color Index = ${2}" "${config_file}" #Theme Color
@@ -295,7 +295,7 @@ case "${1}" in
                     sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
                     load_ascii_art_theme && load_ascii_art_theme
                     break
-                elif [[ "${read_select_background}" -le 2989 && "${read_select_background}" -ge 366 ]]; then
+                elif test "${read_select_background}" -le 2989 2>/dev/null && test "${read_select_background}" -ge 366 2>/dev/null; then
                     color_shell_select color "${read_select_background}"
                     sleep 0.2
                     sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
@@ -313,7 +313,7 @@ case "${1}" in
             sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
             load_ascii_art_theme
             exit 0
-        elif [[ "${2}" -le 2989 && "${2}" -ge 366 ]]; then
+        elif test "${2}" -le 2989 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
             color_shell_select color "${2}"
             sleep 0.2
             sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
@@ -333,7 +333,7 @@ case "${1}" in
                 clear -T "${TERM}"
                 echo -e "${shell_color_palette[byellow]}Enter 0 for less, 1 for ccat, and 2 for lolcat.\n"
                 read -r reader_default
-                if (( "${reader_default}" <= 2 )); then
+                if test "${reader_default}" -le 2 2>/dev/null; then
                     sed -i "6 cREADER = ${reader_default}" "${config_file}"
                     load_ascii_art_theme && load_ascii_art_theme
                     break
@@ -345,7 +345,7 @@ case "${1}" in
                 fi
             done
 
-        elif (( "${2}" <= 2 )); then
+        elif test "${2}" -le 2 2>/dev/null; then
             sed -i "6 cREADER = ${2}" "${config_file}"
             load_ascii_art_theme
             exit 0
