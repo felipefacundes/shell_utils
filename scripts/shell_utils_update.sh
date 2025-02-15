@@ -11,6 +11,7 @@ GITHUB_REPO="felipefacundes/shell_utils"
 LOCAL_PATH="${HOME}/.shell_utils"
 UPDATE_LOCK_FILE="/tmp/shell_utils_update.lock"
 UPDATE_CHECK_INTERVAL=3600 # Interval in seconds (1 hour)
+YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
 RED='\033[1;31m'
 NC='\033[0m'
@@ -21,8 +22,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
         ["framework_not_found"]="Shell Utils não encontrado. Clonando repositório..."
         ["repo_clone_error"]="${RED}Erro ao clonar repositório${NC}"
-        ["update_check"]="Verificando atualizações..."
-        ["updates_found"]="Novas atualizações encontradas. Atualizando..."
+        ["updates_found"]="${YELLOW}Novas atualizações encontradas. Atualizando...${NC}"
         ["update_success"]="${GREEN}Shell Utils atualizado com sucesso!${NC}"
         ["update_error"]="${RED}Erro ao atualizar Shell Utils${NC}"
         ["rebase_error"]="${RED}Erro durante o rebase. Abortando...${NC}"
@@ -33,8 +33,7 @@ elif [[ "${LANG,,}" =~ es_ ]]; then
     MESSAGES=(
         ["framework_not_found"]="Shell Utils no encontrado. Clonando repositorio..."
         ["repo_clone_error"]="${RED}Error al clonar el repositorio${NC}"
-        ["update_check"]="Verificando actualizaciones..."
-        ["updates_found"]="Nuevas actualizaciones encontradas. Actualizando..."
+        ["updates_found"]="${YELLOW}Nuevas actualizaciones encontradas. Actualizando...${NC}"
         ["update_success"]="${GREEN}¡Shell Utils actualizado con éxito!${NC}"
         ["update_error"]="${RED}Error al actualizar Shell Utils${NC}"
         ["rebase_error"]="${RED}Error durante el rebase. Abortando...${NC}"
@@ -45,8 +44,7 @@ else
     MESSAGES=(
         ["framework_not_found"]="Shell Utils directory not found. Cloning repository..."
         ["repo_clone_error"]="${RED}Error cloning repository${NC}"
-        ["update_check"]="Checking for updates..."
-        ["updates_found"]="New updates found. Updating..."
+        ["updates_found"]="${YELLOW}New updates found. Updating...${NC}"
         ["update_success"]="${GREEN}Shell Utils successfully updated!${NC}"
         ["update_error"]="${RED}Error updating Shell Utils${NC}"
         ["rebase_error"]="${RED}Error during rebase. Aborting...${NC}"
@@ -68,9 +66,6 @@ git_command() {
 # Function to perform update
 perform_update() {
     current_hash=$(git_command rev-parse HEAD)
-
-    # Change to the framework directory
-    cd "$LOCAL_PATH" || exit 1
     
     # Backup local configurations if necessary
     if [ -f "config.local" ]; then
@@ -139,7 +134,6 @@ if [ -f "$LAST_UPDATE_FILE" ]; then
 fi
 
 # Check for updates efficiently
-log_message "${MESSAGES["update_check"]}"
 git_command remote update &> /dev/null
 
 LOCAL=$(git_command rev-parse HEAD)
