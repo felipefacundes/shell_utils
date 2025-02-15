@@ -8,12 +8,12 @@ Enhanced with better error handling and efficient update checking
 DOCUMENTATION
 
 SHELL_UTILS_AUTO_UPDATE=${SHELL_UTILS_AUTO_UPDATE:=0}
+UPDATE_CHECK_INTERVAL=${UPDATE_CHECK_INTERVAL:=3600} # Interval in seconds (1 hour)
 CONFIG_DIR="${HOME}/.shell_utils_configs"
 CONFIG_FILE="${CONFIG_DIR}/shell_utils_update.conf"
 GITHUB_REPO="felipefacundes/shell_utils"
 LOCAL_PATH="${HOME}/.shell_utils"
 UPDATE_LOCK_FILE="/tmp/shell_utils_update.lock"
-UPDATE_CHECK_INTERVAL=3600 # Interval in seconds (1 hour)
 ARGUMENT="$1"
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
@@ -301,6 +301,7 @@ fi
 if [[ ! -f "$CONFIG_FILE" ]]; then
     touch "$CONFIG_FILE"
     echo 'SHELL_UTILS_AUTO_UPDATE=0' | tee "$CONFIG_FILE" 1>/dev/null
+    echo 'UPDATE_CHECK_INTERVAL=3600' | tee -a "$CONFIG_FILE" 1>/dev/null
 fi
 
 if [[ -f "$CONFIG_FILE" ]]; then
