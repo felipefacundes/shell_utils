@@ -87,6 +87,7 @@ perform_update() {
 
     # Restore local configurations if necessary
     if [ -f "config.local.backup" ]; then
+        [[ -f "config.local" ]] && rm config.local
         mv config.local.backup config.local
     fi
 
