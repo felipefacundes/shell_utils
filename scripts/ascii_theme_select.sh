@@ -62,15 +62,15 @@ update_variables
 
 if ! command -v lolcat &> /dev/null && (( "${default_read}" == 2 )); then
     clear -T "${TERM}"
-    echo -e "Error: lolcat is not installed. Please install lolcat for this script to work."
+    echo -e "${shell_color_palette[bred]}Error: lolcat is not installed. Please install lolcat for this script to work."
     exit 1
 elif ! command -v ccat &> /dev/null && (( "${default_read}" == 1 )); then
     clear -T "${TERM}"
-    echo -e "Error: ccat is not installed. Please install ccat for this script to work."
+    echo -e "${shell_color_palette[bred]}Error: ccat is not installed. Please install ccat for this script to work."
     exit 1
 elif ! command -v less &> /dev/null; then
     clear -T "${TERM}"
-    echo -e "Error: less is not installed. Please install less for this script to work."
+    echo -e "${shell_color_palette[bred]}Error: less is not installed. Please install less for this script to work."
     exit 1
 fi
 
@@ -101,7 +101,7 @@ echo
     return 0
 }
 # It was a way I found to fix the color leakage from some color theme combinations.
-# Example: theme 2 (Abacus) with color 366
+# Example: theme Abacus with color 366
 if test "${color_index}" -ge 366 2>/dev/null && test "${default_read}" -lt 1 2>/dev/null; then
     load_ascii_art_theme && sleep 0.2 && load_ascii_art_theme
 else

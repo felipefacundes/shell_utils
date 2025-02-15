@@ -51,6 +51,9 @@ git_command() {
 # Function to perform update
 perform_update() {
     local current_hash=$(git_command rev-parse HEAD)
+
+    # Change to the framework directory
+    cd "$LOCAL_PATH" || exit 1
     
     # Backup local configurations if necessary
     if [ -f "config.local" ]; then
@@ -107,7 +110,7 @@ fi
 cd "$LOCAL_PATH" || exit 1
 
 # Check for last update
-LAST_UPDATE_FILE="$LOCAL_PATH/.last_update"
+LAST_UPDATE_FILE="${HOME}/.shell_utils_last_update"
 if [ -f "$LAST_UPDATE_FILE" ]; then
     LAST_UPDATE=$(cat "$LAST_UPDATE_FILE")
     NOW=$(date +%s)
