@@ -29,9 +29,10 @@ for audio in *; do
     file -b --mime-type "$audio" | grep -q "^audio/" ); then
         if [[ "$app" ]]; then
             echo
-            echo \'"$audio"\'
+            echo -e "\"\033[1;33m${audio}\033[0m\""
             echo
-            "$app" "$audio"
+            IFS= eval "$app" "$audio"
+            echo
         else
             audios+=(\'"$audio"\')
         fi

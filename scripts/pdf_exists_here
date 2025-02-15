@@ -27,9 +27,10 @@ for pdf in *; do
     if [ -f "$pdf" ] && file -b --mime-type "$pdf" | grep -q "application/pdf"; then
         if [[ "$app" ]]; then
             echo
-            echo \'"$pdf"\'
+            echo -e "\"\033[1;33m${pdf}\033[0m\""
             echo
-            "$app" "$pdf"
+            IFS= eval "$app" "$pdf"
+            echo
         else
             pdfs+=(\'"$pdf"\')
         fi

@@ -23,9 +23,10 @@ for video in *; do
     if [ -f "$video" ] && file -b --mime-type "$video" | grep -q "^video/"; then
         if [[ "$app" ]]; then
             echo
-            echo \'"$video"\'
+            echo -e "\"\033[1;33m${video}\033[0m\""
             echo
-            "$app" "$video"
+            IFS= eval "$app" "$video"
+            echo
         else
             videos+=(\'"$video"\')
         fi
