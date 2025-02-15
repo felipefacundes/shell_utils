@@ -64,6 +64,7 @@ perform_update() {
         git_command rebase --abort
         printf "${RED}%s${NORMAL}\n" 'There was an error updating.'
         git_command reset --hard "$current_hash"
+        git_command pull
         return 1
     fi
 

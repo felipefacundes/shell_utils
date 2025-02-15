@@ -25,6 +25,8 @@ source ~/.shell_utils/variables/shell_colors.sh
 source ~/.shell_utils/variables/shell_colors_indexed_array.sh
 
 config_file="${HOME}/.ascii_themes_select.conf"
+primary_argument="$1"
+secondary_argument="$2"
 
 create_config_file() {
     if [ ! -f "${config_file}" ]; then
@@ -182,32 +184,32 @@ color_shell_select(){
         echo -e "\n"'Enter "q" for exit'"\n"
         return 0
     }
-    case "${1}" in
+    case "${primary_argument}" in
 
         "background")
-            if [ -z "${2}" ]; then
+            if [ -z "${secondary_argument}" ]; then
                 background_list | less -Ri
                 return 0
-            elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
-                export background_color="${shell_color_palette_index["${2}"]}"
+            elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -ge 366 2>/dev/null; then
+                export background_color="${shell_color_palette_index["${secondary_argument}"]}"
                 echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
                 echo -e "${shell_color_palette[bblack_on_white]}echo -e \"\${background_color}\" Text${shell_color_palette[color_off]}"
                 return 0
             else
-                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid background choice! Enter a number from 366 to ${leng_color}.\n"
+                echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid background choice! Enter a number from 366 to ${leng_color}.\n"
                 echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
                 return 0
             fi
             ;;
         "color")
-            if [ -z "${2}" ]; then
+            if [ -z "${secondary_argument}" ]; then
                 color_list | less -Ri
                 return 0
-            elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
-                export color_shell="${shell_color_palette_index[${2}]}"
+            elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -gt 0 2>/dev/null; then
+                export color_shell="${shell_color_palette_index[${secondary_argument}]}"
                 return 0
             else
-                echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid color choice! Enter a number from 1 to ${leng_color}.\n"
+                echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid color choice! Enter a number from 1 to ${leng_color}.\n"
                 echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
                 return 1
             fi
@@ -215,15 +217,28 @@ color_shell_select(){
     esac
 }
 
+change_reader() {
+    local arg="$1"
+    if [[ "$arg" == 2 ]] && ! command -v lolcat &>/dev/null; then
+        echo -e "${shell_color_palette[bred]}Error: lolcat is not installed. Please install lolcat for this script to work."
+        sleep 2 && load_ascii_art_theme && exit 1
+    elif [[ "$arg" == 1 ]] && ! command -v ccat &>/dev/null; then
+        echo -e "${shell_color_palette[bred]}Error: ccat is not installed. Please install lolcat for this script to work."
+        sleep 2 && load_ascii_art_theme && exit 1
+    else
+        sed -i "6 cREADER = ${arg}" "${config_file}"
+    fi
+}
+
 update_variables && update_variables
 
-[[ "${2}" != "n" ]] && [[ "${2}" =~ ^[[:alpha:]]+$ ]] && clear -T "${TERM}" \
-&& echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid option! Use only numbers or ...\n${0##*/} theme n (for no theme)!" \
+[[ "${secondary_argument}" != "n" ]] && [[ "${secondary_argument}" =~ ^[[:alpha:]]+$ ]] && clear -T "${TERM}" \
+&& echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid option! Use only numbers or ...\n${0##*/} theme n (for no theme)!" \
 && sleep 2 && load_ascii_art_theme && exit 1
 
-case "${1}" in
+case "${primary_argument}" in
     "l"|"t"|"theme"|"themes"|"list"|"list_themes")
-        if [ -z "${2}" ]; then
+        if [ -z "${secondary_argument}" ]; then
             while true; do
                 print_theme_list | less -Ri
                 clear -T "${TERM}"
@@ -244,26 +259,26 @@ case "${1}" in
                     clear
                 fi
             done
-        elif [[ "${2}" == "n" ]]; then
-            sed -i "2 cASCII Theme Index = ${2}" "${config_file}"
+        elif [[ "${secondary_argument}" == "n" ]]; then
+            sed -i "2 cASCII Theme Index = ${secondary_argument}" "${config_file}"
             load_ascii_art_theme
             exit 0
-        elif test "${2}" -le "${leng}" 2>/dev/null; then
+        elif test "${secondary_argument}" -le "${leng}" 2>/dev/null; then
             clear -T "${TERM}"
-            echo -e "Theme ${2} selected: ${ascii_theme_list[${2}]}\n"
-            sed -i "2 cASCII Theme Index = ${2}" "${config_file}"
+            echo -e "Theme ${secondary_argument} selected: ${ascii_theme_list[${secondary_argument}]}\n"
+            sed -i "2 cASCII Theme Index = ${secondary_argument}" "${config_file}"
             load_ascii_art_theme
             exit 0
         else
             clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter a number from 0 to ${leng} or 'n' for none!"
+            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter a number from 0 to ${leng} or 'n' for none!"
             sleep 2
             load_ascii_art_theme && load_ascii_art_theme
             exit 0
         fi
         ;;
     "c"|"color")
-        if [ -z "${2}" ]; then
+        if [ -z "${secondary_argument}" ]; then
             while true; do
                 clear -T "${TERM}"
                 color_shell_select color
@@ -283,22 +298,22 @@ case "${1}" in
                     clear
                 fi
             done
-        elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -gt 0 2>/dev/null; then
-            color_shell_select color "${2}"
+        elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -gt 0 2>/dev/null; then
+            color_shell_select color "${secondary_argument}"
             sleep 0.2
-            sed -i "4 cASCII Theme Color Index = ${2}" "${config_file}" #Theme Color
+            sed -i "4 cASCII Theme Color Index = ${secondary_argument}" "${config_file}" #Theme Color
             load_ascii_art_theme
             exit 0
         else
             clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter a number from 1 to ${leng_color}!"
+            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter a number from 1 to ${leng_color}!"
             sleep 2
             load_ascii_art_theme && load_ascii_art_theme
             exit 0
         fi
         ;;
     "b"|"background")
-        if [ -z "${2}" ]; then
+        if [ -z "${secondary_argument}" ]; then
             while true; do
                 clear -T "${TERM}"
                 color_shell_select background
@@ -323,32 +338,32 @@ case "${1}" in
                 fi
             done
 
-        elif [[ "${2}" == 1 ]]; then
+        elif [[ "${secondary_argument}" == 1 ]]; then
             sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
             load_ascii_art_theme
             exit 0
-        elif test "${2}" -le "${leng_color}" 2>/dev/null && test "${2}" -ge 366 2>/dev/null; then
-            color_shell_select color "${2}"
+        elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -ge 366 2>/dev/null; then
+            color_shell_select color "${secondary_argument}"
             sleep 0.2
             sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
             load_ascii_art_theme
             exit 0
         else
             clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter a number from 366 to ${leng_color}!"
+            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter a number from 366 to ${leng_color}!"
             sleep 2
             load_ascii_art_theme && load_ascii_art_theme
             exit 0
         fi
         ;;
     "read"|"reader")
-        if [ -z "${2}" ]; then
+        if [ -z "${secondary_argument}" ]; then
             while true; do
                 clear -T "${TERM}"
                 echo -e "${shell_color_palette[byellow]}Enter 0 for less, 1 for ccat, and 2 for lolcat.\n"
                 read -r reader_default
                 if test "${reader_default}" -le 2 2>/dev/null; then
-                    sed -i "6 cREADER = ${reader_default}" "${config_file}"
+                    change_reader "${reader_default}"
                     load_ascii_art_theme && load_ascii_art_theme
                     break
                 else
@@ -359,13 +374,13 @@ case "${1}" in
                 fi
             done
 
-        elif test "${2}" -le 2 2>/dev/null; then
-            sed -i "6 cREADER = ${2}" "${config_file}"
+        elif test "${secondary_argument}" -le 2 2>/dev/null; then
+            change_reader "${secondary_argument}"
             load_ascii_art_theme
             exit 0
         else
             clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${2}\" is an invalid choice! Enter 0, 1, or 2!"
+            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter 0, 1, or 2!"
             sleep 2
             load_ascii_art_theme && load_ascii_art_theme
             exit 1
