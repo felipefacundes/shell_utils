@@ -7,40 +7,57 @@ SHELL_UTILS CHECK UPDATE
 Enhanced with better error handling and efficient update checking
 DOCUMENTATION
 
+GITHUB_REPO="felipefacundes/shell_utils"
+LOCAL_PATH="${HOME}/.shell_utils"
+UPDATE_LOCK_FILE="/tmp/shell_utils_update.lock"
+UPDATE_CHECK_INTERVAL=3600 # Interval in seconds (1 hour)
+GREEN='\033[1;32m'
+RED='\033[1;31m'
+NC='\033[0m'
+
 declare -A MESSAGES
 # Check the system language and assign messages accordingly
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
         ["framework_not_found"]="Shell Utils não encontrado. Clonando repositório..."
-        ["repo_clone_error"]="Erro ao clonar repositório"
+        ["repo_clone_error"]="${RED}Erro ao clonar repositório${NC}"
         ["update_check"]="Verificando atualizações..."
         ["updates_found"]="Novas atualizações encontradas. Atualizando..."
-        ["update_success"]="Shell Utils atualizado com sucesso!"
-        ["update_error"]="Erro ao atualizar Shell Utils"
-        ["rebase_error"]="Erro durante o rebase. Abortando..."
+        ["update_success"]="${GREEN}Shell Utils atualizado com sucesso!${NC}"
+        ["update_error"]="${RED}Erro ao atualizar Shell Utils${NC}"
+        ["rebase_error"]="${RED}Erro durante o rebase. Abortando...${NC}"
+        ["rebase_abort"]="SHELL_UTILS: executando 'git rebase --abort'..."
+        ["was_an_error"]="${RED}Houve um erro de atualização.${NC}"
+    )
+elif [[ "${LANG,,}" =~ es_ ]]; then
+    MESSAGES=(
+        ["framework_not_found"]="Shell Utils no encontrado. Clonando repositorio..."
+        ["repo_clone_error"]="${RED}Error al clonar el repositorio${NC}"
+        ["update_check"]="Verificando actualizaciones..."
+        ["updates_found"]="Nuevas actualizaciones encontradas. Actualizando..."
+        ["update_success"]="${GREEN}¡Shell Utils actualizado con éxito!${NC}"
+        ["update_error"]="${RED}Error al actualizar Shell Utils${NC}"
+        ["rebase_error"]="${RED}Error durante el rebase. Abortando...${NC}"
+        ["rebase_abort"]="SHELL_UTILS: ejecutando 'git rebase --abort'..."
+        ["was_an_error"]="${RED}Hubo un error de actualización.${NC}"
     )
 else
     MESSAGES=(
         ["framework_not_found"]="Shell Utils directory not found. Cloning repository..."
-        ["repo_clone_error"]="Error cloning repository"
+        ["repo_clone_error"]="${RED}Error cloning repository${NC}"
         ["update_check"]="Checking for updates..."
         ["updates_found"]="New updates found. Updating..."
-        ["update_success"]="Shell Utils successfully updated!"
-        ["update_error"]="Error updating Shell Utils"
-        ["rebase_error"]="Error during rebase. Aborting..."
+        ["update_success"]="${GREEN}Shell Utils successfully updated!${NC}"
+        ["update_error"]="${RED}Error updating Shell Utils${NC}"
+        ["rebase_error"]="${RED}Error during rebase. Aborting...${NC}"
+        ["rebase_abort"]="SHELL_UTILS: running 'git rebase --abort'..."
+        ["was_an_error"]="${RED}There was an error updating.${NC}"
     )
 fi
 
-GITHUB_REPO="felipefacundes/shell_utils"
-LOCAL_PATH="${HOME}/.shell_utils"
-UPDATE_LOCK_FILE="/tmp/shell_utils_update.lock"
-UPDATE_CHECK_INTERVAL=3600 # Interval in seconds (1 hour)
-RED='\033[1;31m'
-NORMAL='\033[0m'
-
 # Function to log messages
 log_message() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
 # Function to handle git operations
@@ -50,7 +67,7 @@ git_command() {
 
 # Function to perform update
 perform_update() {
-    local current_hash=$(git_command rev-parse HEAD)
+    current_hash=$(git_command rev-parse HEAD)
 
     # Change to the framework directory
     cd "$LOCAL_PATH" || exit 1
@@ -62,13 +79,13 @@ perform_update() {
 
     # Attempt to update with rebase
     if ! git_command pull --rebase --stat origin main; then
-        log_message "${MESSAGES["rebase_error"]}"
-        printf '%s\n' "SHELL_UTILS: running 'git rebase --abort'..."
+        log_message "${MESSAGES[rebase_error]}"
+        printf '%s\n' "${MESSAGES[rebase_abort]}"
         git_command rebase --abort
         git_command reset --hard "$current_hash"
         if ! git_command pull; then
             git_command reset --hard "$current_hash"
-            printf "${RED}%s${NORMAL}\n" 'There was an error updating.'
+            echo -e "${MESSAGES[was_an_error]}"
             return 1
         fi
     fi
@@ -101,7 +118,7 @@ trap 'rm -f "$UPDATE_LOCK_FILE"' EXIT
 
 # Check if the local directory exists
 if [ ! -d "$LOCAL_PATH" ]; then
-    log_message "${MESSAGES["framework_not_found"]}"
+    log_message "${MESSAGES[framework_not_found]}"
     if ! git clone "https://github.com/$GITHUB_REPO.git" "$LOCAL_PATH"; then
         log_message "${MESSAGES["repo_clone_error"]}"
         exit 1
@@ -129,11 +146,14 @@ LOCAL=$(git_command rev-parse HEAD)
 REMOTE=$(git_command rev-parse @{u})
 
 if [ "$LOCAL" != "$REMOTE" ]; then
-    log_message "${MESSAGES["updates_found"]}"
+    log_message "${MESSAGES[updates_found]}"
+    echo
     if perform_update; then
-        log_message "${MESSAGES["update_success"]}"
+        echo
+        log_message "${MESSAGES[update_success]}"
     else
-        log_message "${MESSAGES["update_error"]}"
+        echo
+        log_message "${MESSAGES[update_error]}"
     fi
 fi
 
