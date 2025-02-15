@@ -35,7 +35,7 @@ GITHUB_REPO="felipefacundes/shell_utils"
 LOCAL_PATH="${HOME}/.shell_utils"
 UPDATE_LOCK_FILE="/tmp/shell_utils_update.lock"
 UPDATE_CHECK_INTERVAL=3600 # Interval in seconds (1 hour)
-RED='\033[0;31m'
+RED='\033[1;31m'
 NORMAL='\033[0m'
 
 # Function to log messages
@@ -63,12 +63,14 @@ perform_update() {
     # Attempt to update with rebase
     if ! git_command pull --rebase --stat origin main; then
         log_message "${MESSAGES["rebase_error"]}"
-        printf '%s\n' "oh-my-bash: running 'git rebase --abort'..."
+        printf '%s\n' "SHELL_UTILS: running 'git rebase --abort'..."
         git_command rebase --abort
-        printf "${RED}%s${NORMAL}\n" 'There was an error updating.'
         git_command reset --hard "$current_hash"
-        git_command pull
-        return 1
+        if ! git_command pull; then
+            git_command reset --hard "$current_hash"
+            printf "${RED}%s${NORMAL}\n" 'There was an error updating.'
+            return 1
+        fi
     fi
 
     # Restore local configurations if necessary
