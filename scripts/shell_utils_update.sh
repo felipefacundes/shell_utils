@@ -58,7 +58,7 @@ perform_update() {
     fi
 
     # Attempt to update with rebase
-    if ! git_command pull --rebase --stat origin master; then
+    if ! git_command pull --rebase --stat origin main; then
         log_message "${MESSAGES["rebase_error"]}"
         printf '%s\n' "oh-my-bash: running 'git rebase --abort'..."
         git_command rebase --abort
