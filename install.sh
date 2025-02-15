@@ -4,6 +4,7 @@
 
 # A Dynamic Collection of Shell Scripts with an Educational Purpose
 
+shell_utils_configs=~/.shell_utils_configs
 backup_date=$(date +"%Y%m%d%H%M%S")
 shell_utils_dir=~/.shell_utils
 byellow_on_blue='\033[33;1;44m'
@@ -16,6 +17,11 @@ parent_shell=$(ps -p $PPID -o comm=)
 
 if ! test -d "${shell_utils_dir}"; then
     git clone https://github.com/felipefacundes/shell_utils "${shell_utils_dir}"
+fi
+
+# Path to your shell_utils configs
+if [ ! -d "$shell_utils_configs" ]; then
+    mkdir -p "$shell_utils_configs"
 fi
 
 oh_my_zsh_defaults() {
@@ -54,12 +60,8 @@ oh_my_zsh_defaults() {
 }
 
 zsh_install() {
-    if test -f ~/.zshrc; then
-        mv -v --backup=t ~/.zshrc ~/.zshrc.shell_utils-backup-"$backup_date"
-        cp -f "${shell_utils_dir}/zshrc" ~/.zshrc
-    else
-        cp -f "${shell_utils_dir}/zshrc" ~/.zshrc
-    fi
+    test -f ~/.zshrc && mv -v --backup=t ~/.zshrc ~/.zshrc.shell_utils-backup-"$backup_date"
+    cp -f "${shell_utils_dir}/zshrc" ~/.zshrc
     echo -e "\n${byellow_on_blue}The SHELL_UTILS has been successfully installed! Destination: ${shell_utils_dir}${nc}"
     sleep "$delay" && zsh
 }
@@ -71,26 +73,16 @@ oh_my_bash_defaults() {
 }
 
 bash_install() {
-    if test -f ~/.bashrc; then
-        mv -v --backup=t ~/.bashrc ~/.bashrc.shell_utils-backup-"$backup_date"
-        cp -f "${shell_utils_dir}/bashrc" ~/.bashrc
-    else
-        cp -f "${shell_utils_dir}/bashrc" ~/.bashrc
-    fi
+    test -f ~/.bashrc && mv -v --backup=t ~/.bashrc ~/.bashrc.shell_utils-backup-"$backup_date"
+    cp -f "${shell_utils_dir}/bashrc" ~/.bashrc
     echo -e "\n${byellow_on_blue}The SHELL_UTILS has been successfully installed! Destination: ${shell_utils_dir}${nc}"
     sleep "$delay" && bash
 }
 
 fish_install() {
-    if ! test -d ~/.config/fish/conf.d; then
-        mkdir -p ~/.config/fish/conf.d
-    fi
-    if test -f ~/.config/fish/conf.d/shell_utils.fish; then
-        mv -v --backup=t "${shell_utils_dir}/shell_utils.fish" "${shell_utils_dir}/shell_utils.shell_utils-backup-$backup_date"
-        cp -f "${shell_utils_dir}/shell_utils.fish" ~/.config/fish/conf.d/shell_utils.fish
-    else
-        cp -f "${shell_utils_dir}/shell_utils.fish" ~/.config/fish/conf.d/shell_utils.fish
-    fi
+    test ! -d ~/.config/fish/conf.d && mkdir -p ~/.config/fish/conf.d
+    test -f ~/.config/fish/conf.d/shell_utils.fish && rm ~/.config/fish/conf.d/shell_utils.fish
+    ln -s "${shell_utils_dir}/shell_utils.fish" ~/.config/fish/conf.d/shell_utils.fish
     echo -e "\n${byellow_on_blue}The SHELL_UTILS has been successfully installed! Destination: ${shell_utils_dir}${nc}"
     sleep "$delay" && fish
 }

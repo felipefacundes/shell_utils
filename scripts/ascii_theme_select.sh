@@ -24,11 +24,13 @@ DOCUMENTATION
 source ~/.shell_utils/variables/shell_colors.sh
 source ~/.shell_utils/variables/shell_colors_indexed_array.sh
 
-config_file="${HOME}/.ascii_themes_select.conf"
+config_dir="${HOME}/.shell_utils_configs"
+config_file="${config_dir}/ascii_themes_select.conf"
 primary_argument="$1"
 secondary_argument="$2"
 
 create_config_file() {
+    [[ ! -d "${config_dir}" ]] && mkdir -p "${config_dir}"
     if [ ! -f "${config_file}" ]; then
         touch "${config_file}"
         echo "# Choose a theme number or 'n' for no theme." | tee "${config_file}"

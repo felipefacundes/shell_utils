@@ -1,10 +1,16 @@
 zsh_history=~/.zsh_history
 bash_history=~/.bash_history
 shell_utils=~/.shell_utils
+shell_utils_configs=~/.shell_utils_configs
 
 # Path to your shell_utils installation.
 if [ ! -d "$shell_utils" ]; then
     git clone https://github.com/felipefacundes/shell_utils "$shell_utils"
+fi
+
+# Path to your shell_utils configs
+if [ ! -d "$shell_utils" ]; then
+    mkdir -p "$shell_utils_configs"
 fi
 
 # Loops through all .sh files in the source directory and its subdirectories
@@ -90,6 +96,9 @@ sed -i 's|/dev/sd[abcdefghij]|/dev/sdX|g' "$bash_history"
 
 # Load ASCII Theme Art
 "$shell_utils/scripts/ascii_theme_select.sh"
+
+# SHELL_UTILS AUTO UPDATE
+"$shell_utils/scripts/shell_utils_update.sh"
 
 ########################################
 unset bash_history

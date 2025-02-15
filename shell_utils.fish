@@ -1,8 +1,14 @@
 set shell_utils ~/.shell_utils
+set shell_utils_configs ~/.shell_utils_configs
 
 # Path to your shell_utils installation.
 if not test -d "$shell_utils"
     git clone https://github.com/felipefacundes/shell_utils "$shell_utils"
+end
+
+# Path to your shell_utils configs
+if not test -d "$shell_utils_configs"
+    mkdir -p "$shell_utils_configs"
 end
 
 # Loops through all .fish files in the source directory and its subdirectories
@@ -70,6 +76,9 @@ sed -i 's|/dev/sd[abcdefghij]|/dev/sdX|g' ~/.local/share/fish/fish_history
 
 # Load ASCII Theme Art
 "$shell_utils/scripts/ascii_theme_select.sh"
+
+# SHELL_UTILS AUTO UPDATE
+"$shell_utils/scripts/shell_utils_update.sh"
 
 ########################################
 set -e source_file
