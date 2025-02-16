@@ -88,7 +88,7 @@ load_ascii_art_theme() {
     if test "${list_index}" -ge 0 2>/dev/null; then
         if (( "${default_read}" == 2 )); then
 echo -e "
-$(lolcat -ft "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")"
+$(lolcat -f "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")"
 echo
         elif (( "${default_read}" == 1 )); then
 echo
