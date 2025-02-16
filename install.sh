@@ -117,30 +117,25 @@ cd "${shell_utils_dir}/scripts/faqs" || exit
 enable_permissions
 cd "$my_dir" || exit
 
-case "$parent_shell" in
-    zsh)
+if [[ "$parent_shell" =~ "zsh" ]]; then
         echo "The script was called from ZSH."
         oh_my_zsh_defaults &
         pid=$!
         wait $pid
         zsh_install
         exit 0
-        ;;
-    bash)
+elif [[ "$parent_shell" =~ "bash" ]]; then
         echo "The script was called from BASH."
         oh_my_bash_defaults &
         pid=$!
         wait $pid
         bash_install
         exit 0
-        ;;
-    fish)
+elif [[ "$parent_shell" =~ "fish" ]]; then
         echo "The script was called from FISH."
         fish_install
         exit 0
-        ;;
-    *)
+else
         echo "The script was called from an unknown shell: $parent_shell"
         exit 1
-        ;;
-esac
+fi
