@@ -17,6 +17,7 @@ delay=2.5
 parent_shell=$(ps -p $PPID -o comm=)
 
 if [[ -n "$TERMUX_VERSION" ]] && [[ "$os" =~ "Android" ]]; then
+    termux-setup-storage
     apt update && apt upgrade && apt install git ncurses-utils
 fi
 
