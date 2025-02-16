@@ -31,7 +31,8 @@ for audio in *; do
             echo
             echo -e "\"\033[1;33m${audio}\033[0m\""
             echo
-            IFS= eval "$app" "$audio"
+            read -r -a cmd <<< "$app"
+            "${cmd[@]}" "$audio"
             echo
         else
             audios+=(\'"$audio"\')

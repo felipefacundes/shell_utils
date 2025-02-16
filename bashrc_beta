@@ -183,6 +183,58 @@ EOF
     return 0
 }
 
+_bash_autocomplete() {
+    local current_word words completions
+
+    COMPREPLY=()
+    current_word="${COMP_WORDS[COMP_CWORD]}"
+
+    # Gets the list of possible commands
+    words=$(echo ${COMP_WORDS[@]:1} | xargs -n1 echo | sort -u)
+
+    # Completes the command if there is only one option
+    if [ $(echo "$words" | wc -l) -eq 1 ]; then
+        COMPREPLY=("$words")
+        return
+    fi
+
+    # Gets the completion options for the current command
+    completions=$(compgen -W "$words" -- "$current_word")
+
+    COMPREPLY=($completions)
+    return 0
+}
+
+# Configure prompt behavior
+_bash_prompt_command() {
+    local exit_code="$?"
+
+    # Run autocomplete command only when no completions are available
+    if [ -z "$COMP_LINE" ]; then
+        return
+    fi
+
+    # Configures the autocomplete function
+    complete -F _bash_autocomplete
+
+    # Clear current prompt
+    PS1=""
+
+    # Define your custom prompt here
+    # Example: PS1="[\\u@\\h \\W]\\$ "
+    export PS1="\[\e[32m\]\t \[$txtgrn\]\u\[$txtwht\]@\[$txtgrn\]\h \[$txtylw\]\w\[$txtrst\] \[$txtcyn\]\$git_branch\[$txtred\]\$git_dirty\[$txtrst\]\n\$ "
+
+    # Show prompt
+    echo -ne "$PS1"
+    return 0
+}
+
+remove_timestamp_in_two_line_format_from_bash_history() {
+    [[ ! -f "$HISTFILE" ]] && touch "$HISTFILE"
+    [[ -f "$HISTFILE" ]] && sed -i '/^#/d' "$HISTFILE" >/dev/null 2>&1
+    return 0
+}
+
 remove_timestamp_in_single_line_format_from_bash_history() {
     [[ ! -f "$HISTFILE" ]] && touch "$HISTFILE"
     [[ -f "$HISTFILE" ]] && sed -i 's/^:[[:space:]][0-9]\{10\}:0;//g' "$HISTFILE" >/dev/null 2>&1
@@ -235,9 +287,31 @@ include_timestamp_in_bash_history() {
 # Fix several known issues of bash history, and amazingly, it is able to convert .zsh_history to standard .bash_history structure
 fix_bash_history() {
     remove_timestamp_in_single_line_format_from_bash_history
+    #remove_duplicate_commands_from_bash_history
     remove_unused_timestamps_from_bash_history
     include_timestamp_in_bash_history
+
+    #history -r # Reload history conflicts with: remove_failed_commands_from_bash_history_and_fix_bash_history
+    #history -s # Waning, no use!
+    #history -w # Recording history conflicts with some of these functions
     return 0
+}
+
+# Only works in PROMPT_COMMAND= or trap 'function' DEBUG
+remove_failed_commands_from_bash_history_and_fix_bash_history() {
+    if [ $? -ne 0 ]
+        then
+        #history -d $(($HISTCMD-1))  # Remove last command from history
+        #history -r # Reload history conflicts with delete: history -d $(($HISTCMD-1)) # <-- Use this line 
+        echo -ne "${shell_color_palette[bred]}Wrong command!${shell_color_palette[color_off]}\t"
+        #history -s; history -w  # Writing to the file can be a problem, it's best to just reload the history, which will prevent the wrong command from being written
+    elif grep -qE "^:[[:space:]]?[0-9]{10}:0;" "${HISTFILE}" >/dev/null 2>&1
+        then
+        fix_bash_history #; history -r
+    elif ! awk '/^#[0-9]+$/{ if (getline c && c !~ /^#[0-9]+$/) { print $0 ORS c } } !/^#[0-9]+$/{ exit 1 }' "${HISTFILE}" >/dev/null 2>&1
+        then
+        fix_bash_history #; history -r
+    fi
 }
 
 # Configure navigation keys
@@ -255,8 +329,13 @@ complete -abcdefgjksuv sudo
 complete -abcdefgjksuv doas
 
 # Configure command prompt
+fix_bash_history
+#trap 'remove_failed_commands_from_bash_history_and_fix_bash_history' DEBUG
+#export PROMPT_COMMAND="remove_failed_commands_from_bash_history_and_fix_bash_history; fix_bash_history; _bash_prompt_command"
+export PROMPT_COMMAND="_bash_prompt_command"
+###export GITAWAREPROMPT=~/.bash/git-aware-prompt
+###source $GITAWAREPROMPT/main.sh
 
-export PROMPT_COMMAND="fix_bash_history"
 ############################################################################
 
 fzf_bash() {
