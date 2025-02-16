@@ -34,7 +34,7 @@ create_config_file() {
     if [ ! -f "${config_file}" ]; then
         touch "${config_file}"
         echo "# Choose a theme number or 'n' for no theme." | tee "${config_file}"
-        echo 'ASCII Theme Index = 268' | tee -a "${config_file}"
+        echo 'ASCII Theme Index = 10' | tee -a "${config_file}"
         echo '# Choose a theme color.' | tee -a "${config_file}"
         echo 'Empty' | tee -a "${config_file}"
         sed -i -r '4 cASCII Theme Color Index = 41' "${config_file}" #Theme Color
