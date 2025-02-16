@@ -9,11 +9,12 @@ DOCUMENTATION
 
 SHELL_UTILS_AUTO_UPDATE=${SHELL_UTILS_AUTO_UPDATE:=0}
 UPDATE_CHECK_INTERVAL=${UPDATE_CHECK_INTERVAL:=3600} # Interval in seconds (1 hour)
+TMPDIR="${TMPDIR:-/tmp}"
 CONFIG_DIR="${HOME}/.shell_utils_configs"
 CONFIG_FILE="${CONFIG_DIR}/shell_utils_update.conf"
 GITHUB_REPO="felipefacundes/shell_utils"
 LOCAL_PATH="${HOME}/.shell_utils"
-UPDATE_LOCK_FILE="/tmp/shell_utils_update.lock"
+UPDATE_LOCK_FILE="${TMPDIR}/shell_utils_update.lock"
 ARGUMENT="$1"
 YELLOW='\033[1;33m'
 GREEN='\033[1;32m'
@@ -345,7 +346,7 @@ trap 'rm -f "$UPDATE_LOCK_FILE"' EXIT
 cd "$LOCAL_PATH" || exit 1
 
 # Check for last update
-LAST_UPDATE_FILE="/tmp/shell_utils_last_update"
+LAST_UPDATE_FILE="${TMPDIR}/shell_utils_last_update"
 if [ -f "$LAST_UPDATE_FILE" ]; then
     LAST_UPDATE=$(cat "$LAST_UPDATE_FILE")
     NOW=$(date +%s)
