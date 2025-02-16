@@ -8,12 +8,17 @@ shell_utils_configs=~/.shell_utils_configs
 backup_date=$(date +"%Y%m%d%H%M%S")
 shell_utils_dir=~/.shell_utils
 byellow_on_blue='\033[33;1;44m'
+os=$(uname -o)
 my_dir="$PWD"
 nc='\033[0m'
 delay=2.5
 
 # Detects the shell that called the script
 parent_shell=$(ps -p $PPID -o comm=)
+
+if [[ -n "$TERMUX_VERSION" ]] && [[ "$os" =~ "Android" ]]; then
+    apt update && apt upgrade && apt install git ncurses-utils
+fi
 
 if ! test -d "${shell_utils_dir}"; then
     git clone https://github.com/felipefacundes/shell_utils "${shell_utils_dir}"
@@ -91,14 +96,14 @@ enable_permissions() {
     for file in *; do
         # Check if it's a regular file
         if [[ -f "$file" ]]; then
-            # Check if it's a plain text file
-            if [[ $(file --mime-type -b "$file") =~ "text/" ]]; then
-                # Check if it contains a shebang at the beginning
-                if grep -q "^#!" "$file"; then
-                    # Check if it's executable
-                    if [[ ! -x "$file" ]]; then
-                        chmod +x "$file"
-                    fi
+            # Read the first line of the file
+            IFS= read -r first_line < "$file"
+            
+            # Check if the first line contains a shebang (#!)
+            if [[ $first_line == "#!"* ]]; then
+                # Check if it's executable
+                if [[ ! -x "$file" ]]; then
+                    chmod +x "$file"
                 fi
             fi
         fi

@@ -1,8 +1,8 @@
 #!/bin/bash
 # License: GPLv3
 # Credits: Felipe Facundes
-if [[ ! $DISPLAY && ${XDG_VTNR} == 1 ]]; then
-if [[ "${XDG_SESSION_TYPE}" = tty ]]; then
+if [[ ! $DISPLAY && ${XDG_VTNR} != 0 ]]; then
+if [[ "${XDG_SESSION_TYPE}" = [Tt][Tt][Yy] ]]; then
 #
 ### KEYBOARD
 export XKB_DEFAULT_LAYOUT=br
