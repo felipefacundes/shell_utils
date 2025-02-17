@@ -25,9 +25,11 @@ DOCUMENTATION
 # Define a signal handler to capture SIGINT (Ctrl+C)
 trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 icon=~/.shell_utils/icons/exclamation.png
 log_file=~/.battery_check_unplugged.log
-lock_file=/tmp/battery_check_unplugged.lock_file
+lock_file="${TMPDIR}/battery_check_unplugged.lock_file"
 shutdown=false
 
 while true

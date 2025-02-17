@@ -11,7 +11,7 @@ support for both Wayland and X11 desktop environments. In addition, it offers a 
 interface to facilitate use.
 DOCUMENTATION
 
-#set -x
+TMPDIR="${TMPDIR:-/tmp}"
 script="${0##*/}"
 
 declare -A resolution
@@ -23,8 +23,8 @@ resolution[qhd]='2560/1440'
 resolution[4k]='3840/2160'
 resolution[8k]='7680/4320' #Size not available in unsplash
 
-mkdir -p /tmp/wallpapers
-cd /tmp/wallpapers || exit
+mkdir -p "${TMPDIR}/wallpapers"
+cd "${TMPDIR}/wallpapers" || exit
 
 help() {
     echo -e "Usage: ${script} <resolution> -t <time>\nExample: ${script} fullhd -t 1h\n"

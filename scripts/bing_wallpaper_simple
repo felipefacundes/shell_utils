@@ -12,11 +12,13 @@ DOCUMENTATION
 
 # Bing Random Wallpaper
 
-WP_DIR="/tmp/wallpapers"
+TMPDIR="${TMPDIR:-/tmp}"
+
+WP_DIR="${TMPDIR}/wallpapers"
 WP_FILE="$WP_DIR/bing_wallpaper.jpg"
 
 # Create the wallpapers directory if it doesn't exist
-mkdir -p $WP_DIR
+mkdir -p "$WP_DIR"
 
 # Generate a random number between 0 and 7
 IDX=$((RANDOM % 8))

@@ -17,13 +17,15 @@ Below are its key strengths and capabilities:
 This script is a powerful tool for Sway users seeking enhanced window management capabilities.
 DOCUMENTATION
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 # Get regular windows
 regular_windows=$(swaymsg -t get_tree | jq -r '.nodes[1].nodes[].nodes[] | .. | (.id|tostring) + " " + .name?' | grep -e "[0-9]* .")
 
 # Get floating windows
 floating_windows=$(swaymsg -t get_tree | jq '.nodes[1].nodes[].floating_nodes[] | (.id|tostring) + " " + .name?' | grep -e "[0-9]* ." | tr -d '"')
 
-lock=/tmp/${0##*/}-lock
+lock="${TMPDIR}/${0##*/}-lock"
 enter=$'\n'
 
 if pidof wofi; then

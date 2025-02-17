@@ -19,6 +19,8 @@ Font: https://www.zimuel.it/blog/sign-and-verify-a-file-using-openssl
       https://gist.github.com/ezimuel/3cb601853db6ebc4ee49
 DOCUMENTATION
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 filename=$1
 privatekey=$2
 
@@ -27,6 +29,6 @@ if [[ $# -lt 2 ]] ; then
   exit 1
 fi
 
-openssl dgst -sha256 -sign "$privatekey" -out /tmp/"$filename".sha256 "$filename"
-openssl base64 -in /tmp/"$filename".sha256 -out signature.sha256
-rm /tmp/"$filename".sha256
+openssl dgst -sha256 -sign "$privatekey" -out "${TMPDIR}/${filename}.sha256" "$filename"
+openssl base64 -in "${TMPDIR}/${filename}.sha256" -out signature.sha256
+rm "${TMPDIR}/${filename}.sha256"

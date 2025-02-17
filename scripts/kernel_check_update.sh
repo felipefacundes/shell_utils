@@ -29,8 +29,10 @@ DOCUMENTATION
 # Define a signal handler to capture SIGINT (Ctrl+C)
 trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 delay=10
-kernel_booted_temp_file=/tmp/kernel_booted.temp_file
+kernel_booted_temp_file=${TMPDIR}/kernel_booted.temp_file
 
 if [[ ! -f "${kernel_booted_temp_file}" ]]; then
     touch "${kernel_booted_temp_file}"
@@ -60,7 +62,7 @@ has_the_kernel_been_updated() {
         do sleep "$delay"
         installed_kernel="$(LC_ALL=en pacman -Si linux | grep -i "^Version" | awk '{print $3}' | sed 's|-|.|g')"
         kernel_updated="$(LC_ALL=c ls -l /boot/initramfs-linux.img | awk '{print $6 $7 $8}')"
-        lock_file=/tmp/has_the_kernel_been_updated.lock_file
+        lock_file="${TMPDIR}/has_the_kernel_been_updated.lock_file"
         icon=~/.shell_utils/icons/exclamation.png
 
         if [[ "$kernel_initiated" != "$installed_kernel" ]]; then

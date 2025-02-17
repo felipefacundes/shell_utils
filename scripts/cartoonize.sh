@@ -70,6 +70,8 @@ else
     )
 fi
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 help() {
     cat << EOF
 ${MESSAGES[USAGE]}
@@ -94,7 +96,7 @@ EOF
 # Cartoonization functions
 cartoonize() {
     for i in *.[jJpP][nNpP][gG]; do
-        convert "$i" -colors 64 -paint 4 -compose over -compose multiply \
+        magick "$i" -colors 64 -paint 4 -compose over -compose multiply \
         -modulate 100,150,100 -posterize 24 -blur 0x2 -set filename:base "%[basename]" \
         "%[filename:base]-cartoon.png"
     done
@@ -102,7 +104,7 @@ cartoonize() {
 
 cartoonize2() {
     for i in *.[jJpP][nNpP][gG]; do
-        convert "$i" \( -clone 0 -blur 0x5 \) \( -clone 0 -fill black -colorize 100 \) \
+        magick "$i" \( -clone 0 -blur 0x5 \) \( -clone 0 -fill black -colorize 100 \) \
         \( -clone 0 -define convolve:scale="!" -define morphology:compose=Lighten \
         -morphology Convolve "Sobel:>" -negate -evaluate pow 5 -negate -level 30x100% \) \
         -delete 0 -compose over -composite -set filename:base "%[basename]" \
@@ -112,7 +114,7 @@ cartoonize2() {
 
 cartoonize3() {
     for i in *.[jJpP][nNpP][gG]; do
-        convert "$i" -colors 64 -paint 4 -compose over -compose multiply \
+        magick "$i" -colors 64 -paint 4 -compose over -compose multiply \
         -modulate 100,150,100 -posterize 24 -blur 0x2 -define morphology:compose=Lighten \
         -morphology Convolve "Sobel:>" -negate -evaluate pow 5 -negate -level 30x100% \
         -set filename:base "%[basename]" "%[filename:base]-cartoon.png"
@@ -121,23 +123,23 @@ cartoonize3() {
 
 cartoonize4() {
     for i in *.[jJpP][nNpP][gG]; do
-        convert -quiet "$i" +repage -depth 8 -selective-blur 0x5+10% /tmp/pre-cartoon1.mpc
-        convert /tmp/pre-cartoon1.mpc -level 0x60% -colorspace gray -posterize 6 -depth 8 \
-        -gamma 2.2 /tmp/pre-cartoon2.mpc
-        PreCartoon1=/tmp/pre-cartoon1.mpc
-        PreCartoon2=/tmp/pre-cartoon2.mpc
-        convert "$PreCartoon1" \( "$PreCartoon2" -blur 0x1 \) \( -clone 0 -clone 1 -compose over \
+        magick -quiet "$i" +repage -depth 8 -selective-blur 0x5+10% "${TMPDIR}/pre-cartoon1.mpc"
+        magick "${TMPDIR}/pre-cartoon1.mpc" -level 0x60% -colorspace gray -posterize 6 -depth 8 \
+        -gamma 2.2 "${TMPDIR}/pre-cartoon2.mpc"
+        PreCartoon1=${TMPDIR}/pre-cartoon1.mpc
+        PreCartoon2=${TMPDIR}/pre-cartoon2.mpc
+        magick "$PreCartoon1" \( "$PreCartoon2" -blur 0x1 \) \( -clone 0 -clone 1 -compose over \
         -compose multiply -composite -modulate 100,150,100 \) \( -clone 0 -colorspace gray \) \
         \( -clone 3 -negate -blur 0x2 \) \( -clone 3 -clone 4 -compose over -compose colordodge \
         -composite -evaluate pow 4 -threshold 90% -statistic median 3x3 \) -delete 0,1,3,4 \
         -compose over -compose multiply -composite "${i/.[jJpP][nNpP][gG]/-cartoon.png}"
-        rm /tmp/pre-cartoon1.mpc /tmp/pre-cartoon2.mpc
+        rm "${TMPDIR}/pre-cartoon1.mpc" "${TMPDIR}/pre-cartoon2.mpc"
     done
 }
 
 cartoonize4_other_method() {
     for i in *.[jJpP][pPnN][gG]; do 
-        convert "$i" +repage -depth 8 -selective-blur 0x5+10%% \( -clone 0 -level 0x60%% -colorspace gray \
+        magick "$i" +repage -depth 8 -selective-blur 0x5+10%% \( -clone 0 -level 0x60%% -colorspace gray \
         -posterize 6 -depth 8 -gamma 2.2 -blur 0x1 \) \( -clone 0 -clone 1 -compose multiply -composite \
         -modulate 100,150,100 \) \( -clone 0 -colorspace gray \) \( -clone 3 -negate -blur 0x2 \) \( -clone 3 \
         -clone 4 -compose colordodge -composite -evaluate pow 4 -threshold 90%% -statistic median 3x3 \) -delete 0,1,3,4 \
@@ -150,45 +152,45 @@ cartoonize5() {
     dx="-$convolution,0,$convolution,-$convolution,0,$convolution,-$convolution,0,$convolution"
     dy="$convolution,$convolution,$convolution,0,0,0,-$convolution,-$convolution,-$convolution"
     for i in *.[jJpP][nNpP][gG]; do
-        convert "$i" -quiet -regard-warnings -colorspace RGB +repage /tmp/pre-cartoon1.jpg
-        convert \( /tmp/pre-cartoon1.jpg -median 2 \) \( -size 1x256 gradient: -rotate 90 \
-        -fx "floor(u*10+0.5)/10" \) -clut /tmp/pre-cartoon2.jpg
-        convert \( /tmp/pre-cartoon1.jpg -colorspace gray -median 2 \) \( -clone 0 -bias 50% \
+        magick "$i" -quiet -regard-warnings -colorspace RGB +repage "${TMPDIR}/pre-cartoon1.jpg"
+        magick \( "${TMPDIR}/pre-cartoon1.jpg" -median 2 \) \( -size 1x256 gradient: -rotate 90 \
+        -fx "floor(u*10+0.5)/10" \) -clut "${TMPDIR}/pre-cartoon2.jpg"
+        magick \( "${TMPDIR}/pre-cartoon1.jpg" -colorspace gray -median 2 \) \( -clone 0 -bias 50% \
         -convolve "$dx" -solarize 50% \) \( -clone 0 -bias 50% -convolve "$dy" -solarize 50% \) \
         \( -clone 1 -clone 1 -compose multiply -composite -gamma 2 \) \( -clone 2 -clone 2 \
         -compose multiply -composite -gamma 2 \) -delete 0-2 -compose plus -composite \
-        -threshold 75% /tmp/pre-cartoon3.jpg
-        convert /tmp/pre-cartoon2.jpg /tmp/pre-cartoon3.jpg -compose multiply -composite \
+        -threshold 75% "${TMPDIR}/pre-cartoon3.jpg"
+        magick "${TMPDIR}/pre-cartoon2.jpg" "${TMPDIR}/pre-cartoon3.jpg" -compose multiply -composite \
         "${i/.[jJpP][nNpP][gG]/-cartoon.png}"
-        rm /tmp/pre-cartoon1.jpg /tmp/pre-cartoon2.jpg /tmp/pre-cartoon3.jpg
+        rm "${TMPDIR}/pre-cartoon1.jpg" "${TMPDIR}/pre-cartoon2.jpg" "${TMPDIR}/pre-cartoon3.jpg"
     done
 }
 
 cartoonize6() {
     for i in *.[jJpP][nNpP][gG]; do 
-        convert -quiet "$i" +repage -depth 8 -selective-blur 0x5+10% /tmp/pre-cartoon1.jpg
-        convert /tmp/pre-cartoon1.jpg -level 0x60 -set colorspace RGB -colorspace gray \
-        -posterize 6 -depth 8 -colorspace sRGB /tmp/pre-cartoon2.jpg
-        export PreCartoon1=/tmp/pre-cartoon1.jpg; export PreCartoon2=/tmp/pre-cartoon2.jpg
-        convert "$PreCartoon1" \( "$PreCartoon2" -blur 0x1 \) \( -clone 0 -clone 1 -compose over \
+        magick -quiet "$i" +repage -depth 8 -selective-blur 0x5+10% "${TMPDIR}/pre-cartoon1.jpg"
+        magick "${TMPDIR}/pre-cartoon1.jpg" -level 0x60 -set colorspace RGB -colorspace gray \
+        -posterize 6 -depth 8 -colorspace sRGB "${TMPDIR}/pre-cartoon2.jpg"
+        export PreCartoon1=${TMPDIR}/pre-cartoon1.jpg; export PreCartoon2=${TMPDIR}/pre-cartoon2.jpg
+        magick "$PreCartoon1" \( "$PreCartoon2" -blur 0x1 \) \( -clone 0 -clone 1 -compose over \
         -compose multiply -composite -modulate 100,150,100 \) \( -clone 0 -set colorspace RGB \
         -colorspace gray \) \( -clone 3 -negate -blur 0x4 \) \( -clone 3 -clone 4 -compose over \
         -compose colordodge -composite -evaluate pow 4 -threshold 4 -statistic median 3x3 \) \
         -delete 0,1,3,4 -compose over -compose multiply -composite "${i/.[jJpP][nNpP][gG]/-cartoon.png}"
-        rm /tmp/pre-cartoon1.jpg /tmp/pre-cartoon2.jpg
+        rm "${TMPDIR}/pre-cartoon1.jpg" "${TMPDIR}/pre-cartoon2.jpg"
     done
 }
 
 cartoonize7() {
     for i in *.[jJpP][nNpP][gG]; do
-        convert "$i" -colorspace gray -kuwahara 3 -unsharp 0x2+4+0 \
+        magick "$i" -colorspace gray -kuwahara 3 -unsharp 0x2+4+0 \
         \( xc:blue xc:red xc:yellow +append \) -clut "${i/.[jJpP][nNpP][gG]/-cartoon.png}"
     done
 }
 
 cartoonize8() {
     for i in *.[jJpP][nNpP][gG]; do
-        convert "$i" -kuwahara 3 -unsharp 0x2+4+0 "${i/.[jJpP][nNpP][gG]/-cartoon.png}"
+        magick "$i" -kuwahara 3 -unsharp 0x2+4+0 "${i/.[jJpP][nNpP][gG]/-cartoon.png}"
     done
 }
 

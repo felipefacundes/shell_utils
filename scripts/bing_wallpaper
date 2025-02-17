@@ -33,14 +33,15 @@ DOCUMENTATION
 
 # Bing Random Wallpaper
 
-#set -x
+TMPDIR="${TMPDIR:-/tmp}"
+
 script="${0##*/}"
 declare -A resolution
 resolution[hd]='1280x720'
 resolution[hd2]='1366x768'
 resolution[fullhd]='1920x1080'
 
-WP_DIR="/tmp/wallpapers"
+WP_DIR="${TMPDIR}/wallpapers"
 WP_FILE="$WP_DIR/bing_wallpaper.jpg"
 
 # Create the wallpapers directory if it does not exist

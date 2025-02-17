@@ -29,13 +29,15 @@ trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGAL
 # 15 minutes = (15 * 60) * 1000
 # get_mouse_pointer=`echo $(xdotool getmouselocation | grep -oP "[0-9]+ y:[0-9]+" | sed 's/ y://' | tr -d '\n')`
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 delay=10
 
 while true
     do sleep "$delay"
         numlockx on         # Enabled numlock
 
-        log_file="/tmp/suspend_if_inert.log"
+        log_file="${TMPDIR}/suspend_if_inert.log"
         config_file="${HOME}/.suspend_if_inert.conf"
 
             if [ ! -f "${log_file}" ]; then

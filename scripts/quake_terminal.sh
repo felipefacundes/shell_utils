@@ -4,7 +4,9 @@
 # Credits: noctuid
 # Script Name: tdrop
 
-MUTDROP_PATH=/tmp/tdrop_"$USER"_"$DISPLAY"
+TMPDIR="${TMPDIR:-/tmp}"
+
+MUTDROP_PATH="${TMPDIR}/tdrop_${USER}_${DISPLAY}"
 LOG_FILE="$MUTDROP_PATH"/log
 NOAUTOHIDE_FILE="$MUTDROP_PATH"/no_autohide
 GEO_DIR="$MUTDROP_PATH"/geometries

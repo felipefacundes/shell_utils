@@ -288,7 +288,8 @@ fi
 
 set -e
 
-bright_file="/tmp/variable_brightness.value"
+TMPDIR="${TMPDIR:-/tmp}"
+bright_file="${TMPDIR}/variable_brightness.value"
 connected=$(xrandr | grep -w connected | awk '{print $1}')
 
 if [ ! -s "$bright_file" ]; then

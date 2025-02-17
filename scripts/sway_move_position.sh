@@ -20,8 +20,10 @@ Capabilities:
 - Detects the main output for accurate window positioning.
 DOCUMENTATION
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 # File to store the position
-position_file="/tmp/sway_window_position"
+position_file="${TMPDIR}/sway_window_position"
 
 # If the file does not exist, create it with a standard position
 if [ ! -e "$position_file" ]; then

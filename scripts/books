@@ -21,71 +21,104 @@ Capabilities:
 - Provides a clean exit option for users.
 DOCUMENTATION
 
-clear -T "$TERM"
+#!/bin/bash
 
-export books_folder="${HOME}/.shell_utils/books"
-cd "${books_folder}" || exit
+clear
 
-# Allowed formats: pdf, txt, epub
-books_list=(*.*)
-cd - >/dev/null || exit
+TMPDIR="${TMPDIR:-/tmp}"
+XDG_DOCUMENTS_DIR=${XDG_DOCUMENTS_DIR:-$(xdg-user-dir DOCUMENTS 2>/dev/null || echo "$HOME/Documents")}
 
-books_list(){
+# Setting the eBook folders
+books_folder="${HOME}/.shell_utils/books"
+xdg_books_folder="${XDG_DOCUMENTS_DIR}/Books"
 
+[[ ! -d "${xdg_books_folder}" ]] && mkdir -p "${xdg_books_folder}"
+
+# Combining the two folders to get all ebooks
+books_list=("${books_folder}"/*.* "${xdg_books_folder}"/*.*)
+
+# ANSI color for highlighting the selected book
+highlight="\033[44;1;32m"  # Cyan background, bold green text
+nc="\033[0m"  # Reset
+
+# Function to display books list
+books_list_func() {
     number=0
-    echo 'Books available:'
-
-    for list in "${books_list[@]}";
-        do
-            let number++
-            echo -e "${number})    ${list}\n"
+    for list in "${books_list[@]}"; do
+        if [[ $number -eq $selected ]]; then
+            # Highlight the selected book
+            echo -e "$highlight$number)    ${list}$nc"
+        else
+            # Display other books normally
+            echo -e "$number)    ${list}"
+        fi
+        ((number++)) || true
     done
-
-    echo -e "\n"'Enter "q" for exit'"\n"
-    echo 'And choose the book you want in the next step'
-
 }
 
+# Interactive book selection
 select_book(){
-        
-    read -r book
-    #re='^[0-9]+$'
+    #read -r book
 
-    #if ! [[ "${book}" =~ $re ]] ; then
-    if [ "${book}" -ge 0 ] > /dev/null 2>&1; then
-
+    if [[ "${book}" -ge 0 && "${book}" -lt "${#books_list[@]}" ]]; then
         declare -l ext_test
-        ext_test=$(echo "${books_folder}/${books_list[book]}" | awk -F. '{print $NF}')
+        
+        # Uses `awk` to split the string by the dot and capture the last part (extension).
+        #ext_test=$(echo "${books_list[book]}" | awk -F. '{print $NF}')
 
-        if [ "${ext_test}" = txt ]; then            
-            cat "${books_folder}/${books_list[book]}" | less -i -R
+        # Uses Bash parameter expansion to capture everything after the last dot, without external utilities.
+        #ext_test="${books_list[book]##*.}"
 
-        elif [ "${ext_test}" = epub ]; then            
-            epr "${books_folder}/${books_list[book]}"
+        # Ensures the value of the variable is handled correctly with spaces, using quotes to preserve the full filename.
+        ext_test="${books_list[$selected]##*.}"
 
-        elif [ "${ext_test}" = pdf ]; then
-            rm -f /tmp/temp_book.txt
-            pdftotext -layout -nopgbrk "${books_folder}/${books_list[book]}" /tmp/temp_book.txt
-            cat /tmp/temp_book.txt | less -i -R
-
+        if [[ "${ext_test}" == [Tt][Xx][Tt] ]]; then
+            cat "${books_list[$selected]}" | less -i -R
+        elif [[ "${ext_test}" == [Ee][Pp][Uu][Bb] ]]; then
+            epr "${books_list[$selected]}"
+        elif [[ "${ext_test}" == [Pp][Dd][Ff] ]]; then
+            rm -f "${TMPDIR}/temp_book.txt"
+            pdftotext -layout -nopgbrk "${books_list[$selected]}" "${TMPDIR}/temp_book.txt"
+            cat "${TMPDIR}/temp_book.txt" | less -i -R
         else
             echo 'Unrecognized format'
         fi
-        
     else
-        echo -e "\nerror: \"${book}\" not is number!"
-
+        echo -e "\nerror: \"${selected}\" is not a valid number!"
     fi
-
 }
 
-if [ "${#books_list[@]}" -gt 0 ]; then
+# Interactive navigation with w/s for selecting a book
+selected=0
+while true; do
+    clear
+    echo -e "\nUse w/s to navigate, enter to select a book.\n"
+    books_list_func
+    echo -e "\nEnter the number corresponding to the book. And then press ENTER.\n"
 
-    books_list | less -i -R
-    echo -e "Enter the number corresponding to the book. And then press ENTER.\n"
-    select_book
-        
-else
-    echo "books not found"
+    read -r -n 1 -s key
 
-fi
+    case $key in
+        w|W)  # W key to move up
+            if [[ $selected -gt 0 ]]; then
+                selected=$((selected - 1))
+            fi
+            ;;
+        s|S)  # S key to move down
+            if [[ $selected -lt $((${#books_list[@]} - 1)) ]]; then
+                selected=$((selected + 1))
+            fi
+            ;;
+        "")  # Enter to select
+            break
+            ;;
+        *)   # Any other key
+            echo -e "\nInvalid key!"
+            ;;
+    esac
+done
+
+# Display the selected book with highlight
+clear
+echo -e "$highlight You selected: ${books_list[$selected]} $nc"
+select_book

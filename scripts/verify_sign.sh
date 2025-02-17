@@ -19,6 +19,7 @@ Font: https://www.zimuel.it/blog/sign-and-verify-a-file-using-openssl
       https://gist.github.com/ezimuel/3cb601853db6ebc4ee49
 DOCUMENTATION
 
+TMPDIR="${TMPDIR:-/tmp}"
 filename=$1
 signature=$2
 publickey=$3
@@ -28,6 +29,6 @@ if [[ $# -lt 3 ]] ; then
   exit 1
 fi
 
-openssl base64 -d -in $signature -out /tmp/$filename.sha256
-openssl dgst -sha256 -verify $publickey -signature /tmp/$filename.sha256 $filename
-rm /tmp/$filename.sha256
+openssl base64 -d -in "$signature" -out "${TMPDIR}/$filename.sha256"
+openssl dgst -sha256 -verify "$publickey" -signature "${TMPDIR}/$filename.sha256" "$filename"
+rm "${TMPDIR}/$filename.sha256"

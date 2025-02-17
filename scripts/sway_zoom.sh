@@ -20,8 +20,10 @@ Capabilities:
 - Provides usage instructions when incorrect arguments are supplied.
 DOCUMENTATION
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 # File to store the value of the scale
-scale_file="/tmp/sway_zoom_scale"
+scale_file="${TMPDIR}/sway_zoom_scale"
 
 # If the file does not exist, create it with a default value
 if [ ! -e "$scale_file" ]; then
