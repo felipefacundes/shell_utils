@@ -58,7 +58,7 @@ end
 # Function to display the menu
 function display_menu
     clear
-    echo "Use w/s to navigate, enter to select:"
+    echo -e "Use w/s to navigate, enter to select:\n"
     for i in (seq (count $installed_themes))
         if test $i -eq $selected
             echo -e "$i) $highlight$installed_themes[$i]$nc"
@@ -66,6 +66,7 @@ function display_menu
             echo "$i) $installed_themes[$i]"
         end
     end
+    echo -e "\nUse 'q' or 'e' to quit.\n"
 end
 
 # Interactive selection
@@ -85,6 +86,8 @@ while true
             if test $selected -lt (count $installed_themes)
                 set selected (math "$selected + 1")
             end
+        case q Q e E # Exit
+            exit 0
         case ""  # Enter to select
             break
     end

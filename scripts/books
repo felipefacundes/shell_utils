@@ -21,8 +21,6 @@ Capabilities:
 - Provides a clean exit option for users.
 DOCUMENTATION
 
-#!/bin/bash
-
 clear
 
 TMPDIR="${TMPDIR:-/tmp}"
@@ -38,6 +36,7 @@ xdg_books_folder="${XDG_DOCUMENTS_DIR}/Books"
 books_list=("${books_folder}"/*.* "${xdg_books_folder}"/*.*)
 
 # ANSI color for highlighting the selected book
+red="\033[1;31m"
 highlight="\033[44;1;32m"  # Cyan background, bold green text
 nc="\033[0m"  # Reset
 
@@ -88,32 +87,47 @@ select_book(){
     fi
 }
 
-# Interactive navigation with w/s for selecting a book
+# Interactive navigation with arrow keys (up/down) or w/s
 selected=0
+esc=$'\e'
+up=$'\e[A'
+down=$'\e[B'
+
 while true; do
     clear
-    echo -e "\nUse w/s to navigate, enter to select a book.\n"
+    echo -e "\nUse ↑/↓ or w/s to navigate, Enter to select a book.\n"
     books_list_func
-    echo -e "\nEnter the number corresponding to the book. And then press ENTER.\n"
+    echo -e "\nEnter the number corresponding to the book. And then press ENTER."
+    echo -e "\nOr use 'q' or 'e' to exit."
 
-    read -r -n 1 -s key
+    IFS= read -rsn1 key  # Read first character
 
-    case $key in
-        w|W)  # W key to move up
-            if [[ $selected -gt 0 ]]; then
+    if [[ "$key" == "$esc" ]]; then
+        # Get the rest of the escape sequence (2 more characters)
+        IFS= read -rsn2 rest
+        key+="$rest"
+    fi
+
+    case "$key" in
+        w|W|"$up")  # W or Up Arrow to move up
+            if [[ "$selected" -gt 0 ]]; then
                 selected=$((selected - 1))
             fi
             ;;
-        s|S)  # S key to move down
-            if [[ $selected -lt $((${#books_list[@]} - 1)) ]]; then
+        s|S|"$down")  # S or Down Arrow to move down
+            if [[ "$selected" -lt $((${#books_list[@]} - 1)) ]]; then
                 selected=$((selected + 1))
             fi
             ;;
         "")  # Enter to select
             break
             ;;
+        q|Q)  # Enter to select
+            exit 0
+            ;;
         *)   # Any other key
-            echo -e "\nInvalid key!"
+            echo -e "\n${red}Invalid key!${nc}"
+            sleep 2
             ;;
     esac
 done
