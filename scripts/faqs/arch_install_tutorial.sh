@@ -387,11 +387,11 @@ if [[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]]; then
     bblue_on_gray='\033[1;38;2;8;0;242;48;2;156;156;156m'
     gray='\033[1;38;2;156;156;156m'
 else
-    bbrown_on_beige='\033[1;93;100m'
-    white_on_black='\033[1;37;100m'
-    bgreen_on_blue='\033[32;1;44m'
-    bblue_on_gray='\033[1;34;40m'
-    gray='\033[1;30m'
+    bbrown_on_beige='\033[1;38;5;130;48;5;230m'
+    white_on_black='\033[38;5;15;48;5;16m'
+    bgreen_on_blue='\033[1;38;5;46;48;5;32m'
+    bblue_on_gray='\033[1;38;5;56;48;5;240m'
+    gray='\033[1;38;5;244m'
 fi
 byellow_on_gray='\033[1;33;40m'
 bblue_on_cyan='\033[1;46;34m'
