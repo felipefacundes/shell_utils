@@ -30,16 +30,11 @@ if [[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]]; then
     readonly COLOR_TITLE4='\033[1;38;2;135;206;250;48;2;25;25;25m'      # Light blue on dark gray
     readonly COLOR_TITLE5='\033[1;38;2;255;105;180;48;2;20;20;20m'      # Hot pink on dark gray
     readonly COLOR_TITLE6='\033[1;38;2;147;112;219;48;2;15;15;15m'      # Purple on dark gray
-    #readonly COLOR_CODE='\033[1;38;2;173;216;230m'                     # Light blue for inline code
-    #readonly COLOR_CODE='\033[38;2;212;229;16;48;2;114;99;96m'               
-    readonly COLOR_CODE='\033[38;2;129;250;72;48;2;108;94;87m'               
-    #readonly COLOR_BULLET='\033[1;38;2;50;205;50m'                     # Lime green for bullets
-    readonly COLOR_BULLET='\033[1;3;38;2;201;215;176m'                      
+    readonly COLOR_CODE='\033[1;38;2;173;216;230m'                      # Light blue for inline code
+    readonly COLOR_BULLET='\033[1;38;2;50;205;50m'                      # Lime green for bullets
     readonly COLOR_TABLE_HEADER='\033[1;38;2;0;191;255;48;2;50;50;50m'  # Sky blue for table headers
     readonly COLOR_LINK='\033[1;38;2;0;255;255m'                        # Cyan for links
     readonly GRAY='\033[1;38;2;156;156;156m'                            # Fill line
-    readonly COLOR_BOLD='\033[1;38;2;255;215;0m'
-    #readonly INLINE='\033[38;2;0;243;255;48;2;14;69;77m'
 else
     readonly COLOR_TITLE1='\033[1;38;5;214;48;2;40;40;40m'              # Orange text on dark gray
     readonly COLOR_TITLE2='\033[1;38;5;226;48;2;35;35;35m'              # Yellow text on dark gray
@@ -47,16 +42,11 @@ else
     readonly COLOR_TITLE4='\033[1;38;5;153;48;2;25;25;25m'              # Light blue on dark gray
     readonly COLOR_TITLE5='\033[1;38;5;213;48;2;20;20;20m'              # Hot pink on dark gray
     readonly COLOR_TITLE6='\033[1;38;5;99;48;2;15;15;15m'               # Purple on dark gray
-    #readonly COLOR_CODE='\033[1;38;5;153m'                             # Light blue for inline code
-    #readonly COLOR_CODE='\033[38;5;184;48;5;102m'                        
-    readonly COLOR_CODE='\033[38;5;155;48;5;241m'                        
-    #readonly COLOR_BULLET='\033[1;38;5;46m'                            # Lime green for bullets
-    readonly COLOR_BULLET='\033[1;3;38;5;187m'                             
+    readonly COLOR_CODE='\033[1;38;5;153m'                              # Light blue for inline code
+    readonly COLOR_BULLET='\033[1;38;5;46m'                             # Lime green for bullets
     readonly COLOR_TABLE_HEADER='\033[1;38;5;81;48;2;50;50;50m'         # Sky blue for table headers
     readonly COLOR_LINK='\033[1;38;5;51m'                               # Cyan for links
     readonly GRAY='\033[1;38;5;244m'                                    # Fill line
-    readonly COLOR_BOLD='\033[1;38;5;220m'
-    #readonly INLINE='\033[38;5;51;48;5;24m'
 fi
 
 readonly RED='\033[1;31m'                                               # Red color
@@ -204,7 +194,7 @@ highlight_code() {
 
 # Function to generate line separator
 line_shell() {
-    echo -e "${GRAY}${line//\-\-\-/}$(seq -s '━' "$(tput cols)" | tr -d '[:digit:]')"
+    echo -e "${GRAY}$(seq -s '━' "$(tput cols)" | tr -d '[:digit:]')"
 }
 
 # Function to fill background with text
@@ -224,13 +214,6 @@ centralize_text() {
     local padding=$(( (cols - text_len) / 2 ))
     printf "${color}%*s%s%*s${COLOR_RESET}\n" "$padding" "" "$text" "$padding" ""
 }
-
-detect_first_color() {
-    # Using AWK to capture any sequence anxe that starts with \ 033
-    first_color=$(echo -e "$line" | awk '{match($0, /\033\[[0-9;]*m/, arr); print arr[0]}')
-    export first_color="${COLOR_RESET}${first_color}"
-}
-
 
 # Improved help function
 show_help() {
@@ -260,23 +243,21 @@ process_markdown() {
     # Read and process the markdown file line by line
     while IFS= read -r line || [ -n "$line" ]; do
         # Remove HTML tags
-        if [[ "$line" =~ \*\*\<[^*]+\>\*\* ]] || [[ "$line" =~ \"\<[^*]+\>\" ]] || [[ "$line" =~ \'\<[^*]+\>\' ]] || [[ "$line" =~ \`\<[^*]+\>\` ]]; then
-            true
-        else
-            line=$(echo "$line" | sed 's/<[^>]*>//g')
-            # line="${line//<br>/}"
-            # line="${line//<\/br>/}"
-        fi
-
+        line="${line//<br>/}"
+        line="${line//<\/br>/}"
+        line="${line//<br\/>/}"
+        line="${line//<pre>/}"
+        line="${line//<\/pre>/}"
+        line="${line//<pre\/>/}"
+        line="${line//<code>/}"
+        line="${line//<\/code>/}"
+        line="${line//<code\/>/}"
+        
         # Handle code blocks
-        if [[ "$line" =~ \`\`\`([^\`]+)\`\`\` ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | sed -E "s/\`\`\`/'/g")
-            line=$(echo -e "$line" | awk -v highlight="${COLOR_CODE}" -v reset="${first_color}" '{gsub(/'\''([^'\'']*)'\''/, highlight "&" reset)}1')
-        elif [[ "$line" =~ ^(\`\`\`) ]]; then
+        if [[ "$line" =~ ^(\`\`\`) ]]; then
             if [ "$in_code_block" = false ]; then
                 in_code_block=true
-                code_block_lang=$(echo -e "$line" | sed 's/^```//')
+                code_block_lang=$(echo "$line" | sed 's/^```//')
             else
                 highlight_code "$code_block_content" "$code_block_lang"
                 in_code_block=false
@@ -291,105 +272,47 @@ process_markdown() {
             code_block_content+="$line"
             continue
         fi
-
-        # Handle Links
-        if [[ "$line" =~ \[([^\]]+)\]\(([^\)]+)\) ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | sed -e 's/\[[^]]*\]//g' -e 's/\!(//g' -e 's/(//g' -e 's/)//g' -e 's/\[//g' -e 's/\]//g')
-            line=$(echo -e "$line" | awk -v link_color="${COLOR_LINK}" -v reset="${first_color}" '{gsub(/https?:\/\/[^ ]+/, link_color "&" reset); print $0}')
-        fi
-
-        # Bold Text
-        if [[ "$line" =~ \*\*([^*]+)\*\* ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | awk -v bold="${COLOR_BOLD}" -v reset="${first_color}" '{gsub(/\*\*([^*]+)\*\*/, bold "&" reset)}1' | sed -E "s/\*\*//g")
-        fi
-
-        # Handle Lists (bullets or numbered)
-        if [[ "$line" =~ ^\* ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_BULLET}${line}${first_color}")
-        elif [[ "$line" =~ ^\-\  ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_BULLET}${line}${first_color}")
-        elif [[ "$line" =~ ^[0-9]+\.\  ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_BULLET}${line}${first_color}")
-        elif [[ "$line" =~ ^\ \* ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_BULLET}${line}${first_color}")
-        elif [[ "$line" =~ ^\ \-\  ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_BULLET}${line}${first_color}")
-        elif [[ "$line" =~ ^\ [0-9]+\.\  ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_BULLET}${line}${first_color}")
-        fi
-
-        # Handle Inline Code
-        if [[ "$line" =~ \`.*\` ]] || [[ "$line" =~ (.*)(\`[^\`]+\`)(.*) ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | awk -v highlight="${COLOR_CODE}" -v reset="${first_color}" '{gsub(/`([^`]+)`/, highlight "&" reset)}1' | sed -E "s/\`/'/g")
-        fi
-
-        # Handle Inline Code
-        if [[ "$line" =~ \*([^*]+).\* ]] || [[ "$line" =~ \*.([^*]+).\* ]] || [[ "$line" =~ \*.([^*]+)\* ]]; then
-            true
-        elif [[ "$line" =~ \*([^*]+)\* ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | awk -v bold="${COLOR_BULLET}" -v reset="${first_color}" '{gsub(/\*([^*]+)\*/, bold "&" reset)}1') #| sed -E "s/\*//g")
-        fi
-
+        
+        # Handle other markdown elements
+        # ------------------------------ 
         # Handle Titles (Headers)
-        if [[ "$line" =~ ^######[^#](.+)$ ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_TITLE6}${BASH_REMATCH[1]}${first_color}")   # Title level 6
-        elif [[ "$line" =~ ^#####[^#](.+)$ ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_TITLE5}${BASH_REMATCH[1]}${first_color}")   # Title level 5
-        elif [[ "$line" =~ ^####[^#](.+)$ ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_TITLE4}${BASH_REMATCH[1]}${first_color}")   # Title level 4
-        elif [[ "$line" =~ ^###[^#](.+)$ ]]; then
-            detect_first_color
-            line=$(echo -e "${COLOR_TITLE3}${BASH_REMATCH[1]}${first_color}")   # Title level 3
-        elif [[ "$line" =~ ^##[^#](.+)$ ]]; then
-            line=$(fill_background "${COLOR_TITLE2}" "${BASH_REMATCH[1]}")      # Title level 2
-        elif [[ "$line" =~ ^#[^#](.+)$ ]]; then
-            line=$(centralize_text "${COLOR_TITLE1}" "${BASH_REMATCH[1]}")      # Title level 1
-        fi
-
-        #if [[ "$line" =~ (.+)######[^#](.+)$ ]]; then
-        if [[ "$line" =~ (.*)######(.*) ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | awk -v bold="${COLOR_TITLE6}" -v reset="${first_color}" '{gsub(/######([^#]+)/, bold "&" reset)}1' | sed -E "s/######//g")
-        elif [[ "$line" =~ (.*)#####(.*) ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | awk -v bold="${COLOR_TITLE5}" -v reset="${first_color}" '{gsub(/#####([^#]+)/, bold "&" reset)}1' | sed -E "s/#####//g")
-        elif [[ "$line" =~ (.*)####(.*) ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | awk -v bold="${COLOR_TITLE4}" -v reset="${first_color}" '{gsub(/####([^#]+)/, bold "&" reset)}1' | sed -E "s/####//g")
-        elif [[ "$line" =~ (.*)###(.*) ]]; then
-            detect_first_color
-            line=$(echo -e "$line" | awk -v bold="${COLOR_TITLE3}" -v reset="${first_color}" '{gsub(/###([^#]+)/, bold "&" reset)}1' | sed -E "s/###//g")
-        fi
-
-        # Handle Horizontal Rule
-        if [[ "$line" =~ ^\-\-\- ]]; then
-            line_shell  # Call line generation function
+        if [[ $line =~ ^#[^#](.+)$ ]]; then
+            #echo -e "${COLOR_TITLE1}${BASH_REMATCH[1]}${COLOR_RESET}"  # Title level 1
+            centralize_text "${COLOR_TITLE1}" "${BASH_REMATCH[1]}"      # Title level 1
+        elif [[ $line =~ ^##[^#](.+)$ ]]; then
+            #echo -e "${COLOR_TITLE2}${BASH_REMATCH[1]}${COLOR_RESET}"  # Title level 2
+            fill_background "${COLOR_TITLE2}" "${BASH_REMATCH[1]}"      # Title level 2
+        elif [[ $line =~ ^###[^#](.+)$ ]]; then
+            echo -e "${COLOR_TITLE3}${BASH_REMATCH[1]}${COLOR_RESET}"   # Title level 3
+        elif [[ $line =~ ^####[^#](.+)$ ]]; then
+            echo -e "${COLOR_TITLE4}${BASH_REMATCH[1]}${COLOR_RESET}"   # Title level 4
+        elif [[ $line =~ ^#####[^#](.+)$ ]]; then
+            echo -e "${COLOR_TITLE5}${BASH_REMATCH[1]}${COLOR_RESET}"   # Title level 5
+        elif [[ $line =~ ^######[^#](.+)$ ]]; then
+            echo -e "${COLOR_TITLE6}${BASH_REMATCH[1]}${COLOR_RESET}"   # Title level 6
+        # Handle Lists (bullets or numbered)
+        elif [[ "$line" =~ ^\* ]]; then
+            echo -e "${COLOR_BULLET}${line//* /} ${COLOR_RESET}"
+        elif [[ "$line" =~ ^[0-9]+\.\  ]]; then
+            echo -e "${COLOR_BULLET}${line//\./} ${COLOR_RESET}"
         # Handle Blockquotes
         elif [[ "$line" =~ ^\> ]]; then
-            echo -e "${COLOR_TITLE3}${line}${COLOR_RESET}"
-        # Block code
-        elif [[ "$line" =~ ^\ {3} ]]; then
-            echo -e "${COLOR_CODE}${line//\   /}${COLOR_RESET}"
+            echo -e "${COLOR_TITLE3}> ${line//\> /}${COLOR_RESET}"
+        # Handle Inline Code
+        elif [[ "$line" =~ \`.*\` ]]; then
+            echo -e "${COLOR_CODE}${line//\`/}${COLOR_RESET}"
         # Handle Tables
         elif [[ "$line" =~ ^\| ]]; then
             echo -e "${COLOR_TABLE_HEADER}${line}${COLOR_RESET}"
+        # Handle Links
+        elif [[ "$line" =~ \[([^\]]+)\]\(([^\)]+)\) ]]; then
+            echo -e "${COLOR_LINK}${BASH_REMATCH[2]}${COLOR_RESET}"
+        # Handle Horizontal Rule
+        elif [[ "$line" =~ ^\-\-\- ]]; then
+            line_shell  # Call line generation function
         else
-            echo -e "$line"    # Regular text
+            echo "$line"    # Regular text
         fi
-
     done < "$input_file" | "${cmd[@]}"
 }
 
