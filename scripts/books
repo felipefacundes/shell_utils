@@ -2,6 +2,7 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+
 : <<'DOCUMENTATION'
 This Bash script is designed to manage and display a list of books stored in a specified directory, allowing users to read them in various formats.
 
@@ -41,98 +42,204 @@ highlight="\033[44;1;32m"  # Cyan background, bold green text
 nc="\033[0m"  # Reset
 
 # Function to display books list
-books_list_func() {
+display_books() {
+    local list=()
+    if [[ -n "$1" ]]; then
+        list=("${filtered_books[@]}")
+    else
+        list=("${books_list[@]}")
+    fi
+    
     number=0
-    for list in "${books_list[@]}"; do
+    for book in "${list[@]}"; do
         if [[ $number -eq $selected ]]; then
-            # Highlight the selected book
-            echo -e "$highlight$number)    ${list}$nc"
+            echo -e "$highlight$number)    ${book}$nc"
         else
-            # Display other books normally
-            echo -e "$number)    ${list}"
+            echo -e "$number)    ${book}"
         fi
         ((number++)) || true
     done
 }
 
-# Interactive book selection
-select_book(){
-    #read -r book
+markdown_reader() {
+    ~/.shell_utils/scripts/markdown_reader.sh "$@"
+}
 
-    if [[ "${book}" -ge 0 && "${book}" -lt "${#books_list[@]}" ]]; then
-        declare -l ext_test
-        
-        # Uses `awk` to split the string by the dot and capture the last part (extension).
-        #ext_test=$(echo "${books_list[book]}" | awk -F. '{print $NF}')
-
-        # Uses Bash parameter expansion to capture everything after the last dot, without external utilities.
-        #ext_test="${books_list[book]##*.}"
-
-        # Ensures the value of the variable is handled correctly with spaces, using quotes to preserve the full filename.
-        ext_test="${books_list[$selected]##*.}"
-
-        if [[ "${ext_test}" == [Tt][Xx][Tt] ]]; then
-            cat "${books_list[$selected]}" | less -i -R
-        elif [[ "${ext_test}" == [Ee][Pp][Uu][Bb] ]]; then
-            epr "${books_list[$selected]}"
-        elif [[ "${ext_test}" == [Pp][Dd][Ff] ]]; then
-            rm -f "${TMPDIR}/temp_book.txt"
-            pdftotext -layout -nopgbrk "${books_list[$selected]}" "${TMPDIR}/temp_book.txt"
-            cat "${TMPDIR}/temp_book.txt" | less -i -R
-        else
-            echo 'Unrecognized format'
-        fi
-    else
-        echo -e "\nerror: \"${selected}\" is not a valid number!"
+cmd_check() {
+    cmd="$1"
+    if ! command -v "$cmd" 1>/dev/null; then
+        echo -e "${red}${cmd} not found! Please, install ${2}!${nc}"
+        return 1
     fi
 }
 
-# Interactive navigation with arrow keys (up/down) or w/s
+margin() {
+    cmd_check fold coreutils
+    cmd_check awk gawk
+    cmd_check less less
+    #fold -w 150 "$1" | sed 's/^/          /' | less -i
+    fold -w 150 "$1" | awk '{print "          " $0 "          "}' | less -i
+}
+
+libre_office_convert() {
+    local file="$1"
+    local temp_dir="/tmp/temp_book"
+    [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
+    cmd_check libreoffice
+    libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1
+    margin "${temp_dir}"/*.txt
+}
+
+nodash() {
+	prog="$1"
+	shift
+	[[ "$1" == - ]] && shift
+	$prog "$@"
+}
+
+handle_w3m() {
+	if [[ "$1" == *\?* ]]; then
+		t=$(nexttmp)
+		ln -s "$1" "$t"
+		set "$t" "$1"
+	fi
+	nodash "w3m -dump -T text/html" "$1"
+}
+
+ishtml() {
+	[[ $1 == - ]] && arg1=-stdin || arg1="$1"
+	htmlopt=--unicode-snob
+	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
+	# 3 lines following can easily be reshuffled according to the preferred tool
+	cmd_check elinks elinks && nodash "elinks -dump -force-html" "$1" && return ||
+	cmd_check w3m w3m && handle_w3m "$1" && return ||
+	cmd_check lynx lynx && lynx -force_html -dump "$arg1" && return ||
+	# different versions of html2text existingi, force unicode
+	[[ "$1" == https://* ]] && return ||
+	cmd_check html2text python-html2text && nodash html2text "$htmlopt" "$1" | less -i
+}
+
+# Function to select and open a book
+select_book() {
+    local book_path="$1"
+    
+    if [[ -z "$book_path" ]]; then
+        local list=()
+        if [[ -n "$search_term" ]]; then
+            list=("${filtered_books[@]}")
+        else
+            list=("${books_list[@]}")
+        fi
+        book_path="${list[$selected]}"
+    fi
+    
+    ext_test="${book_path##*.}"
+
+    if [[ "${ext_test}" =~ ^([Mm][Dd])$ ]]; then
+        markdown_reader "$book_path"
+    elif [[ "${ext_test}" =~ ^([Oo][Dd][Tt])$ ]]; then
+        libre_office_convert "$book_path"
+    elif [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]]; then
+        libre_office_convert "$book_path"
+    elif [[ "${ext_test}" =~ ^([Xx][Mm][Ll])$ ]]; then
+        ishtml "$book_path"
+    elif [[ "${ext_test}" =~ ^([Hh][Tt][Mm])$ ]]; then
+        ishtml "$book_path"
+    elif [[ "${ext_test}" =~ ^([Hh][Tt][Mm][Ll])$ ]]; then
+        ishtml "$book_path"
+    elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc][Xx])$ ]]; then
+        libre_office_convert "$book_path"
+    elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]]; then
+        libre_office_convert "$book_path"
+    elif [[ "${ext_test}" =~ ^([Tt][Xx][Tt])$ ]]; then
+        margin "$book_path"
+    elif [[ "${ext_test}" =~ ^([Ee][Pp][Uu][Bb])$ ]]; then
+        cmd_check epr epr || exit 1
+        epr "$book_path" 2>/dev/null
+    elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
+        declare -l temp_file="${TMPDIR}/temp_book.txt"
+        [[ -f "${temp_file}" ]] && rm "${temp_file}"
+        rm -f "${temp_file}"
+        cmd_check pdftotext poppler || exit 1
+        pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null
+        margin "${temp_file}"
+    else
+        echo 'Unrecognized format'
+    fi
+}
+
+# Check if a book was provided as an argument
+if [[ -n "$1" ]]; then
+    select_book "$1"
+    exit 0
+fi
+
+# Interactive navigation
 selected=0
 esc=$'\e'
 up=$'\e[A'
 down=$'\e[B'
+search_term=""
+filtered_books=()
+
+temp_search_results="${TMPDIR}/grep_search_results.txt"
 
 while true; do
     clear
-    echo -e "\nUse ↑/↓ or w/s to navigate, Enter to select a book.\n"
-    books_list_func
-    echo -e "\nEnter the number corresponding to the book. And then press ENTER."
-    echo -e "\nOr use 'q' or 'e' to exit."
+    echo -e "\nUse ↑/↓ or w/s to navigate, Enter to select a book, 'f' to find by name, 'g' to grep content.\n"
+    display_books "$search_term"
+    echo -e "\nOr use 'q' to exit."
 
     IFS= read -rsn1 key  # Read first character
 
     if [[ "$key" == "$esc" ]]; then
-        # Get the rest of the escape sequence (2 more characters)
         IFS= read -rsn2 rest
         key+="$rest"
     fi
 
     case "$key" in
-        w|W|"$up")  # W or Up Arrow to move up
+        w|W|"$up")
             if [[ "$selected" -gt 0 ]]; then
                 selected=$((selected - 1))
             fi
             ;;
-        s|S|"$down")  # S or Down Arrow to move down
+        s|S|"$down")
             if [[ "$selected" -lt $((${#books_list[@]} - 1)) ]]; then
                 selected=$((selected + 1))
             fi
             ;;
-        "")  # Enter to select
+        f|F)
+            echo -e "\nEnter search term: "
+            read -r search_term
+            mapfile -t filtered_books < <(find "$books_folder" "$xdg_books_folder" -type f -iname "*${search_term}*" -print0 2>/dev/null | xargs -0 -n1 echo)
+            selected=0
+            ;;
+        g|G)
+            echo -e "\nEnter content search term: "
+            read -r search_term
+            grep -irl "$search_term" "$books_folder" "$xdg_books_folder" > "$temp_search_results" 2>/dev/null
+            mapfile -t filtered_books < "$temp_search_results"
+            selected=0
+            ;;
+        "")
             break
             ;;
-        q|Q)  # Enter to select
+        q|Q)
             exit 0
             ;;
-        *)   # Any other key
+        *)
             echo -e "\n${red}Invalid key!${nc}"
             sleep 2
             ;;
     esac
+
 done
 
 # Display the selected book with highlight
 clear
-echo -e "$highlight You selected: ${books_list[$selected]} $nc"
+if [[ -n "$search_term" ]]; then
+    echo -e "$highlight You selected: ${filtered_books[$selected]} $nc"
+else
+    echo -e "$highlight You selected: ${books_list[$selected]} $nc"
+fi
 select_book
