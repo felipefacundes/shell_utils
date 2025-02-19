@@ -71,17 +71,22 @@ exec 2>/dev/null
 declare -A MESSAGES
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
-        ["alarm_year"]="Ano do Alarme"
-        ["enter_alarm_year"]="Insira o ano do alarme:"
-        ["alarm_month"]="Mês do Alarme"
-        ["enter_alarm_month"]="Insira o mês do alarme (1-12):"
-        ["alarm_day"]="Dia do Alarme"
-        ["enter_alarm_day"]="Insira o dia do alarme (1-31):"
-        ["alarm_hour"]="Hora do Alarme"
-        ["enter_alarm_hour"]="Insira a hora do alarme (0-23):"
-        ["alarm_minute"]="Minuto do Alarme"
-        ["enter_alarm_minute"]="Digite o minuto de alarme (0-59):"
-        ["error_data"]="Dado vazio"
+        [alarm_year]="Ano do alarme"
+        [enter_alarm_year]="Digite o ano do alarme (4 dígitos)"
+        [alarm_month]="Mês do alarme"
+        [enter_alarm_month]="Digite o mês do alarme (01-12)"
+        [alarm_day]="Dia do alarme"
+        [enter_alarm_day]="Digite o dia do alarme (01-31)"
+        [alarm_hour]="Hora do alarme"
+        [enter_alarm_hour]="Digite a hora do alarme (00-23)"
+        [alarm_minute]="Minuto do alarme"
+        [enter_alarm_minute]="Digite o minuto do alarme (00-59)"
+        [year_invalid]="Ano inválido! Insira o ano vigente ou posterior."
+        [month_invalid]="Mês inválido! Use um valor entre 01 e 12."
+        [day_invalid]="Dia inválido! Use um valor entre 01 e 31."
+        [hour_invalid]="Hora inválida! Use um valor entre 00 e 23."
+        [minute_invalid]="Minuto inválido! Use um valor entre 00 e 59."
+        [error_data]="Erro nos dados"
         ["year_empty"]="O campo do ano está vazio."
         ["month_empty"]="O campo do mês está vazio."
         ["day_empty"]="O campo do dia está vazio."
@@ -117,16 +122,21 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
 elif [[ "${LANG,,}" =~ fr_ ]]; then
     MESSAGES=(
         ["alarm_year"]="Année de l'alarme"
-        ["enter_alarm_year"]="Entrez l'année de l'alarme :"
+        ["enter_alarm_year"]="Entrez l'année de l'alarme (4 chiffres)"
         ["alarm_month"]="Mois de l'alarme"
-        ["enter_alarm_month"]="Entrez le mois de l'alarme (1-12) :"
+        ["enter_alarm_month"]="Entrez le mois de l'alarme (01-12)"
         ["alarm_day"]="Jour de l'alarme"
-        ["enter_alarm_day"]="Entrez le jour de l'alarme (1-31) :"
+        ["enter_alarm_day"]="Entrez le jour de l'alarme (01-31)"
         ["alarm_hour"]="Heure de l'alarme"
-        ["enter_alarm_hour"]="Entrez l'heure de l'alarme (0-23) :"
+        ["enter_alarm_hour"]="Entrez l'heure de l'alarme (00-23)"
         ["alarm_minute"]="Minute de l'alarme"
-        ["enter_alarm_minute"]="Entrez la minute de l'alarme (0-59) :"
-        ["error_data"]="Donnée vide"
+        ["enter_alarm_minute"]="Entrez la minute de l'alarme (00-59)"
+        ["year_invalid"]="Année invalide ! Entrez l'année actuelle ou une année plus tard."
+        ["month_invalid"]="Mois invalide ! Utilisez une valeur entre 01 et 12."
+        ["day_invalid"]="Jour invalide ! Utilisez une valeur entre 01 et 31."
+        ["hour_invalid"]="Heure invalide ! Utilisez une valeur entre 00 et 23."
+        ["minute_invalid"]="Minute invalide ! Utilisez une valeur entre 00 et 59."
+        ["error_data"]="Erreur de données"
         ["year_empty"]="Le champ de l'année est vide."
         ["month_empty"]="Le champ du mois est vide."
         ["day_empty"]="Le champ du jour est vide."
@@ -162,16 +172,21 @@ elif [[ "${LANG,,}" =~ fr_ ]]; then
 elif [[ "${LANG,,}" =~ de_ ]]; then
     MESSAGES=(
         ["alarm_year"]="Alarmjahr"
-        ["enter_alarm_year"]="Geben Sie das Alarmjahr ein:"
+        ["enter_alarm_year"]="Geben Sie das Alarmjahr ein (4 Stellen)"
         ["alarm_month"]="Alarmmonat"
-        ["enter_alarm_month"]="Geben Sie den Alarmmonat ein (1-12):"
+        ["enter_alarm_month"]="Geben Sie den Alarmmonat ein (01-12)"
         ["alarm_day"]="Alarmtag"
-        ["enter_alarm_day"]="Geben Sie den Alarmtag ein (1-31):"
+        ["enter_alarm_day"]="Geben Sie den Alarmtag ein (01-31)"
         ["alarm_hour"]="Alarmstunde"
-        ["enter_alarm_hour"]="Geben Sie die Alarmstunde ein (0-23):"
+        ["enter_alarm_hour"]="Geben Sie die Alarmstunde ein (00-23)"
         ["alarm_minute"]="Alarmminute"
-        ["enter_alarm_minute"]="Geben Sie die Alarmminute ein (0-59):"
-        ["error_data"]="Leere Daten"
+        ["enter_alarm_minute"]="Geben Sie die Alarmminute ein (00-59)"
+        ["year_invalid"]="Ungültiges Jahr! Geben Sie das aktuelle Jahr oder ein späteres ein."
+        ["month_invalid"]="Ungültiger Monat! Verwenden Sie einen Wert zwischen 01 und 12."
+        ["day_invalid"]="Ungültiger Tag! Verwenden Sie einen Wert zwischen 01 und 31."
+        ["hour_invalid"]="Ungültige Stunde! Verwenden Sie einen Wert zwischen 00 und 23."
+        ["minute_invalid"]="Ungültige Minute! Verwenden Sie einen Wert zwischen 00 und 59."
+        ["error_data"]="Datenfehler"
         ["year_empty"]="Das Jahr-Feld ist leer."
         ["month_empty"]="Das Monat-Feld ist leer."
         ["day_empty"]="Das Tag-Feld ist leer."
@@ -207,16 +222,21 @@ elif [[ "${LANG,,}" =~ de_ ]]; then
 elif [[ "${LANG,,}" =~ ro_ ]]; then
     MESSAGES=(
         ["alarm_year"]="Anul alarmei"
-        ["enter_alarm_year"]="Introduceți anul alarmei:"
+        ["enter_alarm_year"]="Introduceți anul alarmei (4 cifre)"
         ["alarm_month"]="Luna alarmei"
-        ["enter_alarm_month"]="Introduceți luna alarmei (1-12):"
+        ["enter_alarm_month"]="Introduceți luna alarmei (01-12)"
         ["alarm_day"]="Ziua alarmei"
-        ["enter_alarm_day"]="Introduceți ziua alarmei (1-31):"
+        ["enter_alarm_day"]="Introduceți ziua alarmei (01-31)"
         ["alarm_hour"]="Ora alarmei"
-        ["enter_alarm_hour"]="Introduceți ora alarmei (0-23):"
+        ["enter_alarm_hour"]="Introduceți ora alarmei (00-23)"
         ["alarm_minute"]="Minutul alarmei"
-        ["enter_alarm_minute"]="Introduceți minutul alarmei (0-59):"
-        ["error_data"]="Date goale"
+        ["enter_alarm_minute"]="Introduceți minutul alarmei (00-59)"
+        ["year_invalid"]="An invalid! Introduceți anul curent sau unul ulterior."
+        ["month_invalid"]="Lună invalidă! Utilizați o valoare între 01 și 12."
+        ["day_invalid"]="Zi invalidă! Utilizați o valoare între 01 și 31."
+        ["hour_invalid"]="Oră invalidă! Utilizați o valoare între 00 și 23."
+        ["minute_invalid"]="Minut invalid! Utilizați o valoare între 00 și 59."
+        ["error_data"]="Eroare de date"
         ["year_empty"]="Câmpul pentru anul este gol."
         ["month_empty"]="Câmpul pentru lună este gol."
         ["day_empty"]="Câmpul pentru zi este gol."
@@ -252,16 +272,21 @@ elif [[ "${LANG,,}" =~ ro_ ]]; then
 elif [[ "${LANG,,}" =~ ru_ ]]; then
     MESSAGES=(
         ["alarm_year"]="Год будильника"
-        ["enter_alarm_year"]="Введите год будильника:"
+        ["enter_alarm_year"]="Введите год будильника (4 цифры)"
         ["alarm_month"]="Месяц будильника"
-        ["enter_alarm_month"]="Введите месяц будильника (1-12):"
+        ["enter_alarm_month"]="Введите месяц будильника (01-12)"
         ["alarm_day"]="День будильника"
-        ["enter_alarm_day"]="Введите день будильника (1-31):"
+        ["enter_alarm_day"]="Введите день будильника (01-31)"
         ["alarm_hour"]="Час будильника"
-        ["enter_alarm_hour"]="Введите час будильника (0-23):"
+        ["enter_alarm_hour"]="Введите час будильника (00-23)"
         ["alarm_minute"]="Минута будильника"
-        ["enter_alarm_minute"]="Введите минуту будильника (0-59):"
-        ["error_data"]="Пустые данные"
+        ["enter_alarm_minute"]="Введите минуту будильника (00-59)"
+        ["year_invalid"]="Недопустимый год! Введите текущий год или более поздний."
+        ["month_invalid"]="Недопустимый месяц! Используйте значение от 01 до 12."
+        ["day_invalid"]="Недопустимый день! Используйте значение от 01 до 31."
+        ["hour_invalid"]="Недопустимый час! Используйте значение от 00 до 23."
+        ["minute_invalid"]="Недопустимая минута! Используйте значение от 00 до 59."
+        ["error_data"]="Ошибка данных"
         ["year_empty"]="Поле года пустое."
         ["month_empty"]="Поле месяца пустое."
         ["day_empty"]="Поле дня пустое."
@@ -297,16 +322,21 @@ elif [[ "${LANG,,}" =~ ru_ ]]; then
 elif [[ "${LANG,,}" =~ zh_ ]]; then
     MESSAGES=(
         ["alarm_year"]="闹钟年份"
-        ["enter_alarm_year"]="请输入闹钟的年份："
+        ["enter_alarm_year"]="请输入闹钟年份（4位数字）"
         ["alarm_month"]="闹钟月份"
-        ["enter_alarm_month"]="请输入闹钟的月份（1-12）："
+        ["enter_alarm_month"]="请输入闹钟月份（01-12）"
         ["alarm_day"]="闹钟日期"
-        ["enter_alarm_day"]="请输入闹钟的日期（1-31）："
+        ["enter_alarm_day"]="请输入闹钟日期（01-31）"
         ["alarm_hour"]="闹钟小时"
-        ["enter_alarm_hour"]="请输入闹钟的小时（0-23）："
+        ["enter_alarm_hour"]="请输入闹钟小时（00-23）"
         ["alarm_minute"]="闹钟分钟"
-        ["enter_alarm_minute"]="请输入闹钟的分钟（0-59）："
-        ["error_data"]="数据为空"
+        ["enter_alarm_minute"]="请输入闹钟分钟（00-59）"
+        ["year_invalid"]="无效的年份！请输入当前年份或更晚的年份。"
+        ["month_invalid"]="无效的月份！请输入01到12之间的值。"
+        ["day_invalid"]="无效的日期！请输入01到31之间的值。"
+        ["hour_invalid"]="无效的小时！请输入00到23之间的值。"
+        ["minute_invalid"]="无效的分钟！请输入00到59之间的值。"
+        ["error_data"]="数据错误"
         ["year_empty"]="年份字段为空。"
         ["month_empty"]="月份字段为空。"
         ["day_empty"]="日期字段为空。"
@@ -342,16 +372,21 @@ elif [[ "${LANG,,}" =~ zh_ ]]; then
 elif [[ "${LANG,,}" =~ ko_ ]]; then
     MESSAGES=(
         ["alarm_year"]="알람 연도"
-        ["enter_alarm_year"]="알람 연도를 입력하세요:"
+        ["enter_alarm_year"]="알람 연도를 입력하세요 (4자리 숫자)"
         ["alarm_month"]="알람 월"
-        ["enter_alarm_month"]="알람 월을 입력하세요 (1-12):"
-        ["alarm_day"]="알람 날짜"
-        ["enter_alarm_day"]="알람 날짜를 입력하세요 (1-31):"
+        ["enter_alarm_month"]="알람 월을 입력하세요 (01-12)"
+        ["alarm_day"]="알람 일"
+        ["enter_alarm_day"]="알람 일을 입력하세요 (01-31)"
         ["alarm_hour"]="알람 시간"
-        ["enter_alarm_hour"]="알람 시간을 입력하세요 (0-23):"
+        ["enter_alarm_hour"]="알람 시간을 입력하세요 (00-23)"
         ["alarm_minute"]="알람 분"
-        ["enter_alarm_minute"]="알람 분을 입력하세요 (0-59):"
-        ["error_data"]="데이터 없음"
+        ["enter_alarm_minute"]="알람 분을 입력하세요 (00-59)"
+        ["year_invalid"]="잘못된 연도입니다! 현재 연도 또는 이후 연도를 입력하세요."
+        ["month_invalid"]="잘못된 월입니다! 01부터 12 사이의 값을 사용하세요."
+        ["day_invalid"]="잘못된 일입니다! 01부터 31 사이의 값을 사용하세요."
+        ["hour_invalid"]="잘못된 시간입니다! 00부터 23 사이의 값을 사용하세요."
+        ["minute_invalid"]="잘못된 분입니다! 00부터 59 사이의 값을 사용하세요."
+        ["error_data"]="데이터 오류"
         ["year_empty"]="연도 필드가 비어 있습니다."
         ["month_empty"]="월 필드가 비어 있습니다."
         ["day_empty"]="날짜 필드가 비어 있습니다."
@@ -386,17 +421,22 @@ elif [[ "${LANG,,}" =~ ko_ ]]; then
     )
 elif [[ "${LANG,,}" =~ he_ ]]; then
     MESSAGES=(
-        ["alarm_year"]="שנת ההתראה"
-        ["enter_alarm_year"]="הזן את שנת ההתראה:"
-        ["alarm_month"]="חודש ההתראה"
-        ["enter_alarm_month"]="הזן את חודש ההתראה (1-12):"
-        ["alarm_day"]="יום ההתראה"
-        ["enter_alarm_day"]="הזן את יום ההתראה (1-31):"
-        ["alarm_hour"]="שעת ההתראה"
-        ["enter_alarm_hour"]="הזן את שעת ההתראה (0-23):"
-        ["alarm_minute"]="דקת ההתראה"
-        ["enter_alarm_minute"]="הזן את דקת ההתראה (0-59):"
-        ["error_data"]="נתונים חסרים"
+        ["alarm_year"]="שנת התרעה"
+        ["enter_alarm_year"]="הזן את שנת ההתרעה (4 ספרות)"
+        ["alarm_month"]="חודש התרעה"
+        ["enter_alarm_month"]="הזן את חודש ההתרעה (01-12)"
+        ["alarm_day"]="יום התרעה"
+        ["enter_alarm_day"]="הזן את יום ההתרעה (01-31)"
+        ["alarm_hour"]="שעת התרעה"
+        ["enter_alarm_hour"]="הזן את שעת ההתרעה (00-23)"
+        ["alarm_minute"]="דקת התרעה"
+        ["enter_alarm_minute"]="הזן את דקת ההתרעה (00-59)"
+        ["year_invalid"]="!שנה לא חוקית הזן את השנה הנוכחית או מאוחרת יותר."
+        ["month_invalid"]="!חודש לא חוקי השתמש בערך בין 01 ל-12."
+        ["day_invalid"]="!יום לא חוקי השתמש בערך בין 01 ל-31."
+        ["hour_invalid"]="!שעה לא חוקית השתמש בערך בין 00 ל-23."
+        ["minute_invalid"]="!דקה לא חוקית השתמש בערך בין 00 ל-59."
+        ["error_data"]="שגיאת נתונים"
         ["year_empty"]="שדה השנה ריק."
         ["month_empty"]="שדה החודש ריק."
         ["day_empty"]="שדה היום ריק."
@@ -431,17 +471,22 @@ elif [[ "${LANG,,}" =~ he_ ]]; then
     )
 elif [[ "${LANG,,}" =~ ar_ ]]; then
     MESSAGES=(
-        ["alarm_year"]="سنة التنبيه"
-        ["enter_alarm_year"]="أدخل سنة التنبيه:"
-        ["alarm_month"]="شهر التنبيه"
-        ["enter_alarm_month"]="أدخل شهر التنبيه (1-12):"
-        ["alarm_day"]="يوم التنبيه"
-        ["enter_alarm_day"]="أدخل يوم التنبيه (1-31):"
-        ["alarm_hour"]="ساعة التنبيه"
-        ["enter_alarm_hour"]="أدخل ساعة التنبيه (0-23):"
-        ["alarm_minute"]="دقيقة التنبيه"
-        ["enter_alarm_minute"]="أدخل دقيقة التنبيه (0-59):"
-        ["error_data"]="بيانات فارغة"
+        ["alarm_year"]="سنة المنبه"
+        ["enter_alarm_year"]="أدخل سنة المنبه (4 أرقام)"
+        ["alarm_month"]="شهر المنبه"
+        ["enter_alarm_month"]="أدخل شهر المنبه (01-12)"
+        ["alarm_day"]="يوم المنبه"
+        ["enter_alarm_day"]="أدخل يوم المنبه (01-31)"
+        ["alarm_hour"]="ساعة المنبه"
+        ["enter_alarm_hour"]="أدخل ساعة المنبه (00-23)"
+        ["alarm_minute"]="دقيقة المنبه"
+        ["enter_alarm_minute"]="أدخل دقيقة المنبه (00-59)"
+        ["year_invalid"]="!سنة غير صالحة أدخل السنة الحالية أو لاحقًا."
+        ["month_invalid"]="!شهر غير صالح استخدم قيمة بين 01 و 12."
+        ["day_invalid"]="!يوم غير صالح استخدم قيمة بين 01 و 31."
+        ["hour_invalid"]="!ساعة غير صالحة استخدم قيمة بين 00 و 23."
+        ["minute_invalid"]="!دقيقة غير صالحة استخدم قيمة بين 00 و 59."
+        ["error_data"]="خطأ في البيانات"
         ["year_empty"]="حقل السنة فارغ."
         ["month_empty"]="حقل الشهر فارغ."
         ["day_empty"]="حقل اليوم فارغ."
@@ -476,17 +521,22 @@ elif [[ "${LANG,,}" =~ ar_ ]]; then
     )
 elif [[ "${LANG,,}" =~ ja_ ]]; then
     MESSAGES=(
-        ["alarm_year"]="アラーム年"
-        ["enter_alarm_year"]="アラーム年を入力してください:"
-        ["alarm_month"]="アラーム月"
-        ["enter_alarm_month"]="アラーム月を入力してください (1-12):"
-        ["alarm_day"]="アラーム日"
-        ["enter_alarm_day"]="アラーム日を入力してください (1-31):"
-        ["alarm_hour"]="アラーム時"
-        ["enter_alarm_hour"]="アラーム時を入力してください (0-23):"
-        ["alarm_minute"]="アラーム分"
-        ["enter_alarm_minute"]="アラーム分を入力してください (0-59):"
-        ["error_data"]="空のデータ"
+        ["alarm_year"]="アラームの年"
+        ["enter_alarm_year"]="アラームの年を入力してください（4桁）"
+        ["alarm_month"]="アラームの月"
+        ["enter_alarm_month"]="アラームの月を入力してください（01-12）"
+        ["alarm_day"]="アラームの日"
+        ["enter_alarm_day"]="アラームの日を入力してください（01-31）"
+        ["alarm_hour"]="アラームの時間"
+        ["enter_alarm_hour"]="アラームの時間を入力してください（00-23）"
+        ["alarm_minute"]="アラームの分"
+        ["enter_alarm_minute"]="アラームの分を入力してください（00-59）"
+        ["year_invalid"]="無効な年です！ 現在の年またはそれ以降を入力してください。"
+        ["month_invalid"]="無効な月です！ 01から12の値を使用してください。"
+        ["day_invalid"]="無効な日です！ 01から31の値を使用してください。"
+        ["hour_invalid"]="無効な時間です！ 00から23の値を使用してください。"
+        ["minute_invalid"]="無効な分です！ 00から59の値を使用してください。"
+        ["error_data"]="データエラー"
         ["year_empty"]="年のフィールドが空です。"
         ["month_empty"]="月のフィールドが空です。"
         ["day_empty"]="日のフィールドが空です。"
@@ -521,17 +571,22 @@ elif [[ "${LANG,,}" =~ ja_ ]]; then
     )
 elif [[ "${LANG,,}" =~ es_ ]]; then
     MESSAGES=(
-        ["alarm_year"]="Año de la alarma"
-        ["enter_alarm_year"]="Introduce el año de la alarma:"
-        ["alarm_month"]="Mes de la alarma"
-        ["enter_alarm_month"]="Introduce el mes de la alarma (1-12):"
-        ["alarm_day"]="Día de la alarma"
-        ["enter_alarm_day"]="Introduce el día de la alarma (1-31):"
-        ["alarm_hour"]="Hora de la alarma"
-        ["enter_alarm_hour"]="Introduce la hora de la alarma (0-23):"
-        ["alarm_minute"]="Minuto de la alarma"
-        ["enter_alarm_minute"]="Introduce el minuto de la alarma (0-59):"
-        ["error_data"]="Datos vacíos"
+        ["alarm_year"]="Año de Alarma"
+        ["enter_alarm_year"]="Ingrese el año de la alarma (4 dígitos)"
+        ["alarm_month"]="Mes de Alarma"
+        ["enter_alarm_month"]="Ingrese el mes de la alarma (01-12)"
+        ["alarm_day"]="Día de Alarma"
+        ["enter_alarm_day"]="Ingrese el día de la alarma (01-31)"
+        ["alarm_hour"]="Hora de Alarma"
+        ["enter_alarm_hour"]="Ingrese la hora de la alarma (00-23)"
+        ["alarm_minute"]="Minuto de Alarma"
+        ["enter_alarm_minute"]="Ingrese el minuto de la alarma (00-59)"
+        ["year_invalid"]="¡Año inválido! Ingrese el año actual o uno posterior."
+        ["month_invalid"]="¡Mes inválido! Use un valor entre 01 y 12."
+        ["day_invalid"]="¡Día inválido! Use un valor entre 01 y 31."
+        ["hour_invalid"]="¡Hora inválida! Use un valor entre 00 y 23."
+        ["minute_invalid"]="¡Minuto inválido! Use un valor entre 00 y 59."
+        ["error_data"]="Error de Datos"
         ["year_empty"]="El campo del año está vacío."
         ["month_empty"]="El campo del mes está vacío."
         ["day_empty"]="El campo del día está vacío."
@@ -567,16 +622,21 @@ elif [[ "${LANG,,}" =~ es_ ]]; then
 else
     MESSAGES=(
         ["alarm_year"]="Alarm Year"
-        ["enter_alarm_year"]="Enter the alarm year:"
+        ["enter_alarm_year"]="Enter the alarm year (4 digits)"
         ["alarm_month"]="Alarm Month"
-        ["enter_alarm_month"]="Enter the alarm month (1-12):"
+        ["enter_alarm_month"]="Enter the alarm month (01-12)"
         ["alarm_day"]="Alarm Day"
-        ["enter_alarm_day"]="Enter the alarm day (1-31):"
+        ["enter_alarm_day"]="Enter the alarm day (01-31)"
         ["alarm_hour"]="Alarm Hour"
-        ["enter_alarm_hour"]="Enter the alarm hour (0-23):"
+        ["enter_alarm_hour"]="Enter the alarm hour (00-23)"
         ["alarm_minute"]="Alarm Minute"
-        ["enter_alarm_minute"]="Enter the alarm minute (0-59):"
-        ["error_data"]="Empty data"
+        ["enter_alarm_minute"]="Enter the alarm minute (00-59)"
+        ["year_invalid"]="Invalid year! Enter the current year or later."
+        ["month_invalid"]="Invalid month! Use a value between 01 and 12."
+        ["day_invalid"]="Invalid day! Use a value between 01 and 31."
+        ["hour_invalid"]="Invalid hour! Use a value between 00 and 23."
+        ["minute_invalid"]="Invalid minute! Use a value between 00 and 59."
+        ["error_data"]="Data Error"
         ["year_empty"]="The year field is empty."
         ["month_empty"]="The month field is empty."
         ["day_empty"]="The day field is empty."
@@ -658,32 +718,71 @@ audio_alert() {
     done
 }
 
+validate_alarm_datetime() {
+    local current_year=$(date +'%Y')
+    export year month day hour minute
+    
+    while :; do
+        year=$(zenity --entry --title="${MESSAGES[alarm_year]}" --text="${MESSAGES[enter_alarm_year]}" 2>/dev/null)
+        if [[ -z "$year" ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[year_empty]}" 2>/dev/null
+        elif [[ ! "$year" =~ ^[0-9]{4}$ ]] || (( year < current_year )); then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[year_invalid]}" 2>/dev/null
+        else
+            break
+        fi
+    done
+    
+    while :; do
+        month=$(zenity --entry --title="${MESSAGES[alarm_month]}" --text="${MESSAGES[enter_alarm_month]}" 2>/dev/null)
+        if [[ -z "$month" ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[month_empty]}" 2>/dev/null
+        elif [[ ! "$month" =~ ^(0[1-9]|1[0-2])$ ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[month_invalid]}" 2>/dev/null
+        else
+            break
+        fi
+    done
+    
+    while :; do
+        day=$(zenity --entry --title="${MESSAGES[alarm_day]}" --text="${MESSAGES[enter_alarm_day]}" 2>/dev/null)
+        if [[ -z "$day" ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[day_empty]}" 2>/dev/null
+        elif [[ ! "$day" =~ ^(0[1-9]|[12][0-9]|3[01])$ ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[day_invalid]}" 2>/dev/null
+        else
+            break
+        fi
+    done
+    
+    while :; do
+        hour=$(zenity --entry --title="${MESSAGES[alarm_hour]}" --text="${MESSAGES[enter_alarm_hour]}" 2>/dev/null)
+        if [[ -z "$hour" ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[hour_empty]}" 2>/dev/null
+        elif [[ ! "$hour" =~ ^([01][0-9]|2[0-3])$ ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[hour_invalid]}" 2>/dev/null
+        else
+            break
+        fi
+    done
+    
+    while :; do
+        minute=$(zenity --entry --title="${MESSAGES[alarm_minute]}" --text="${MESSAGES[enter_alarm_minute]}" 2>/dev/null)
+        if [[ -z "$minute" ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[minute_empty]}" 2>/dev/null
+        elif [[ ! "$minute" =~ ^([0-5][0-9])$ ]]; then
+            zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[minute_invalid]}" 2>/dev/null
+        else
+            break
+        fi
+    done
+    
+    echo "$year-$month-$day $hour:$minute"
+}
+
 # Function to create an alarm
 create_alarm() {
-    # Ask for year, month, day, hour, and minute using Zenity
-    year=$(zenity --entry --title="${MESSAGES[alarm_year]}" --text="${MESSAGES[enter_alarm_year]}" 2>/dev/null)
-    month=$(zenity --entry --title="${MESSAGES[alarm_month]}" --text="${MESSAGES[enter_alarm_month]}" 2>/dev/null)
-    day=$(zenity --entry --title="${MESSAGES[alarm_day]}" --text="${MESSAGES[enter_alarm_day]}" 2>/dev/null)
-    hour=$(zenity --entry --title="${MESSAGES[alarm_hour]}" --text="${MESSAGES[enter_alarm_hour]}" 2>/dev/null)
-    minute=$(zenity --entry --title="${MESSAGES[alarm_minute]}" --text="${MESSAGES[enter_alarm_minute]}" 2>/dev/null)
-    
-    # Check if any variable is empty
-    if [[ -z "$year" ]]; then
-        zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[year_empty]}" 2>/dev/null
-        exit 1
-    elif [[ -z "$month" ]]; then
-        zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[month_empty]}" 2>/dev/null
-        exit 1
-    elif [[ -z "$day" ]]; then
-        zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[day_empty]}" 2>/dev/null
-        exit 1
-    elif [[ -z "$hour" ]]; then
-        zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[hour_empty]}" 2>/dev/null
-        exit 1
-    elif [[ -z "$minute" ]]; then
-        zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[minute_empty]}" 2>/dev/null
-        exit 1
-    fi
+    validate_alarm_datetime
 
     # Ask for the message to be displayed when the alarm goes off
     message=$(zenity --entry --title="${MESSAGES[alarm_message]}" --text="${MESSAGES[enter_alarm_message]}" 2>/dev/null)
