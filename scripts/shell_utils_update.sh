@@ -8,7 +8,7 @@ Enhanced with better error handling and efficient update checking
 DOCUMENTATION
 
 SHELL_UTILS_AUTO_UPDATE=${SHELL_UTILS_AUTO_UPDATE:=0}
-UPDATE_CHECK_INTERVAL=${UPDATE_CHECK_INTERVAL:=3600} # Interval in seconds (1 hour)
+UPDATE_CHECK_INTERVAL=${UPDATE_CHECK_INTERVAL:=21600} # Interval in seconds (6 hours)
 TMPDIR="${TMPDIR:-/tmp}"
 CONFIG_DIR="${HOME}/.shell_utils_configs"
 CONFIG_FILE="${CONFIG_DIR}/shell_utils_update.conf"
@@ -71,7 +71,7 @@ BLOQUEIO DE ATUALIZAÇÃO:
 REGISTRO DE ÚLTIMA VERIFICAÇÃO:
     O timestamp da última verificação bem-sucedida é armazenado em:
         /tmp/shell_utils_last_update
-    O script respeita um intervalo mínimo de 1 hora entre verificações, a menos que a atualização seja forçada com -c ou --check.
+    O script respeita um intervalo mínimo de 6 horas entre verificações, a menos que a atualização seja forçada com -c ou --check.
 
 EXEMPLOS:
     - Para executar uma atualização manual:
@@ -140,7 +140,7 @@ BLOQUEO DE ACTUALIZACIÓN:
 REGISTRO DE ÚLTIMA VERIFICACIÓN:
     La marca de tiempo de la última verificación exitosa se almacena en:
         /tmp/shell_utils_last_update
-    El script respeta un intervalo mínimo de 1 hora entre verificaciones, a menos que la actualización sea forzada con -c o --check.
+    El script respeta un intervalo mínimo de 6 horas entre verificaciones, a menos que la actualización sea forzada con -c o --check.
 
 EJEMPLOS:
     - Para realizar una actualización manual:
@@ -209,7 +209,7 @@ UPDATE LOCK:
 LAST CHECK LOG:
     The timestamp of the last successful check is stored in:
         /tmp/shell_utils_last_update
-    The script respects a minimum interval of 1 hour between checks, unless the update is forced with -c or --check.
+    The script respects a minimum interval of 6 hours between checks, unless the update is forced with -c or --check.
 
 EXAMPLES:
     - To perform a manual update:
@@ -301,8 +301,8 @@ fi
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     touch "$CONFIG_FILE"
-    echo 'SHELL_UTILS_AUTO_UPDATE=0' | tee "$CONFIG_FILE" 1>/dev/null
-    echo 'UPDATE_CHECK_INTERVAL=3600' | tee -a "$CONFIG_FILE" 1>/dev/null
+    echo 'SHELL_UTILS_AUTO_UPDATE=1' | tee "$CONFIG_FILE" 1>/dev/null
+    echo 'UPDATE_CHECK_INTERVAL=21600' | tee -a "$CONFIG_FILE" 1>/dev/null
 fi
 
 if [[ -f "$CONFIG_FILE" ]]; then
