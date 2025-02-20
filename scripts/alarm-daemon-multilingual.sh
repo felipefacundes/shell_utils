@@ -868,11 +868,27 @@ run_alarms() {
             days_of_week=$(grep "Days:" "$alarm_file" | cut -d ' ' -f 2-)
 
             # Check if the alarm is for the current moment
-            # Em '[ "$repeat_alarm" == "${MESSAGES[every_day]}" ]', a lógica '&& [ "$day" -ge "$current_day" ]' foi removida, pois, do contrário, o alarme duraria aproximadamente duas semanas naquele mês.
             # In '[ "$repeat_alarm" == "${MESSAGES[every_day]}" ]', the logic '&& [ "$day" -ge "$current_day" ]' was removed because, otherwise, the alarm would last approximately two weeks in that month.
             if { [ "$year" -eq "$current_year" ] && [ "$month" -eq "$current_month" ] && [ "$day" -eq "$current_day" ] && [ "$hour" -eq "$current_hour" ] && [ "$minute" -eq "$current_minute" ]; } ||
                 { [ "$repeat_alarm" == "${MESSAGES[every_day]}" ] && [ "$year" -ge "$current_year" ] && [ "$month" -ge "$current_month" ] && [ "$hour" -eq "$current_hour" ] && [ "$minute" -eq "$current_minute" ]; } ||
                 { [ "$repeat_alarm" == "${MESSAGES[specific_days]}" ] && [[ "$days_of_week" == *"$current_weekday"* ]] && [ "$hour" -eq "$current_hour" ] && [ "$minute" -eq "$current_minute" ]; }; then
+
+                # Prevents the alarm from triggering on previous days of the current month 
+                # when the alarm is set to repeat daily.
+                # This ensures that the alarm only rings on or after the current day.
+                if [ "$repeat_alarm" == "${MESSAGES[every_day]}" ] && [ "$month" -eq "$current_month" ] && [ "$day" -lt "$current_day" ]; then
+                    continue
+                fi
+
+                # Prevents daily alarms from triggering on past days, including those from previous months.  
+                # This ensures that the alarm only rings on or after the current day in the current month  
+                # and does not reactivate alarms from past months.
+                # if [ "$repeat_alarm" == "${MESSAGES[every_day]}" ] && \
+                # [ "$year" -eq "$current_year" ] && \
+                # { [ "$month" -lt "$current_month" ] || [ "$month" -eq "$current_month" ] && [ "$day" -lt "$current_day" ]; }; then
+                #     continue
+                # fi
+
                 # Run visual and audio alert in the background
                 visual_alert &
                 visual_pid=$!
