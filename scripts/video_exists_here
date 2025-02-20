@@ -9,6 +9,10 @@ A versatile Bash script for video file handling that:
 - Features built-in file counting and formatted output display, with proper error handling and help documentation
 DOCUMENTATION
 
+# Capture Ctrl+C and end children processes
+#trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT SIGTERM SIGHUP SIGQUIT EXIT
+trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT
+
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "Example: app=mpv ${0##*/}"
     exit 0 

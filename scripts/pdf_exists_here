@@ -13,6 +13,10 @@ a specified application. Its key strengths include:
 Capabilities: The script can identify PDF files, open them with a chosen app, or list them for further use.
 DOCUMENTATION
 
+# Capture Ctrl+C and end children processes
+#trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT SIGTERM SIGHUP SIGQUIT EXIT
+trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT
+
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "Example: app=feh ${0##*/}"
     exit 0 
