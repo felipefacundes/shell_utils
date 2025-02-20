@@ -163,10 +163,13 @@ EOF
 
 # Check for required dependencies
 check_dependencies() {
+    local os=$(uname -o)
     local missing_deps=()
     for cmd in source-highlight less; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_deps+=("$cmd")
+            [[ ${#missing_deps[@]} == "source-highlight" ]] && [[ -n "$TERMUX_VERSION" ]] && \
+            [[ "$os" =~ "Android" ]] && unset 'missing_deps[-1]' && export NO_HIGHLIGHT=1
         fi
     done
     
@@ -396,7 +399,7 @@ process_markdown() {
 # Main function
 main() {
     local MARKDOWN_FILE=""
-    export NO_HIGHLIGHT=""
+    export NO_HIGHLIGHT=${NO_HIGHLIGHT:-""}
     export NO_LESS=""
     
     # Parse command line options

@@ -726,6 +726,7 @@ validate_alarm_datetime() {
         year=$(zenity --entry --title="${MESSAGES[alarm_year]}" --text="${MESSAGES[enter_alarm_year]}" 2>/dev/null)
         if [[ -z "$year" ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[year_empty]}" 2>/dev/null
+            exit 1
         elif [[ ! "$year" =~ ^[0-9]{4}$ ]] || (( year < current_year )); then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[year_invalid]}" 2>/dev/null
         else
@@ -737,6 +738,7 @@ validate_alarm_datetime() {
         month=$(zenity --entry --title="${MESSAGES[alarm_month]}" --text="${MESSAGES[enter_alarm_month]}" 2>/dev/null)
         if [[ -z "$month" ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[month_empty]}" 2>/dev/null
+            exit 1
         elif [[ ! "$month" =~ ^(0[1-9]|1[0-2])$ ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[month_invalid]}" 2>/dev/null
         else
@@ -748,6 +750,7 @@ validate_alarm_datetime() {
         day=$(zenity --entry --title="${MESSAGES[alarm_day]}" --text="${MESSAGES[enter_alarm_day]}" 2>/dev/null)
         if [[ -z "$day" ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[day_empty]}" 2>/dev/null
+            exit 1
         elif [[ ! "$day" =~ ^(0[1-9]|[12][0-9]|3[01])$ ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[day_invalid]}" 2>/dev/null
         else
@@ -759,6 +762,7 @@ validate_alarm_datetime() {
         hour=$(zenity --entry --title="${MESSAGES[alarm_hour]}" --text="${MESSAGES[enter_alarm_hour]}" 2>/dev/null)
         if [[ -z "$hour" ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[hour_empty]}" 2>/dev/null
+            exit 1
         elif [[ ! "$hour" =~ ^([01][0-9]|2[0-3])$ ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[hour_invalid]}" 2>/dev/null
         else
@@ -770,6 +774,7 @@ validate_alarm_datetime() {
         minute=$(zenity --entry --title="${MESSAGES[alarm_minute]}" --text="${MESSAGES[enter_alarm_minute]}" 2>/dev/null)
         if [[ -z "$minute" ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[minute_empty]}" 2>/dev/null
+            exit 1
         elif [[ ! "$minute" =~ ^([0-5][0-9])$ ]]; then
             zenity --error --title="${MESSAGES[error_data]}" --text="${MESSAGES[minute_invalid]}" 2>/dev/null
         else
