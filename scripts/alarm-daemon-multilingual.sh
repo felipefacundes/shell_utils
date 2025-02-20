@@ -845,6 +845,9 @@ run_alarms() {
         current_hour=$(LC_ALL=c date +%H)
         current_minute=$(LC_ALL=c date +%M)
         current_weekday=$(LC_ALL=c date +%a) # e.g., Mon, Tue, Wed
+        
+        # Wait 10 seconds before checking alarms again
+        sleep 10
 
         for alarm_file in "$ALARM_DIR"/*.alarm; do
             # Check if the file exists
@@ -865,12 +868,10 @@ run_alarms() {
             days_of_week=$(grep "Days:" "$alarm_file" | cut -d ' ' -f 2-)
 
             # Check if the alarm is for the current moment
-            # if [[ $year -eq $current_year && $month -eq $current_month && $day -eq $current_day && $hour -eq $current_hour && $minute -eq $current_minute ]] || 
-            #    [[ $repeat_alarm == "${MESSAGES[every_day]}" ]] || 
-            #    ([[ $repeat_alarm == "${MESSAGES[specific_days]}" ]] && [[ $days_of_week == *"$current_weekday"* ]]); then
-
+            # Em '[ "$repeat_alarm" == "${MESSAGES[every_day]}" ]', a lógica '&& [ "$day" -ge "$current_day" ]' foi removida, pois, do contrário, o alarme duraria aproximadamente duas semanas naquele mês.
+            # In '[ "$repeat_alarm" == "${MESSAGES[every_day]}" ]', the logic '&& [ "$day" -ge "$current_day" ]' was removed because, otherwise, the alarm would last approximately two weeks in that month.
             if { [ "$year" -eq "$current_year" ] && [ "$month" -eq "$current_month" ] && [ "$day" -eq "$current_day" ] && [ "$hour" -eq "$current_hour" ] && [ "$minute" -eq "$current_minute" ]; } ||
-                { [ "$repeat_alarm" == "${MESSAGES[every_day]}" ] && [ "$hour" -eq "$current_hour" ] && [ "$minute" -eq "$current_minute" ]; } ||
+                { [ "$repeat_alarm" == "${MESSAGES[every_day]}" ] && [ "$year" -ge "$current_year" ] && [ "$month" -ge "$current_month" ] && [ "$hour" -eq "$current_hour" ] && [ "$minute" -eq "$current_minute" ]; } ||
                 { [ "$repeat_alarm" == "${MESSAGES[specific_days]}" ] && [[ "$days_of_week" == *"$current_weekday"* ]] && [ "$hour" -eq "$current_hour" ] && [ "$minute" -eq "$current_minute" ]; }; then
                 # Run visual and audio alert in the background
                 visual_alert &
@@ -900,7 +901,7 @@ run_alarms() {
                     new_minute=$(LC_ALL=c date -d "+10 minutes" +%M)
                     new_hour=$(LC_ALL=c date -d "+10 minutes" +%H)
                     new_alarm_file="$ALARM_DIR/alarm_$(LC_ALL=c date +'%Y-%m-%d_%H:%M:%S')_repeat.alarm"
-                    cp "$alarm_file" "$new_alarm_file"
+                    cp -f "$alarm_file" "$new_alarm_file"
                     sed -i "s/^Hour:.*/Hour: $new_hour/" "$new_alarm_file"
                     sed -i "s/^Minute:.*/Minute: $new_minute/" "$new_alarm_file"
                     sed -i "s/^Repetition:.*/Repetition: ${MESSAGES[only_this_day]}/" "$new_alarm_file"
@@ -908,13 +909,10 @@ run_alarms() {
 
                 # If the alarm is not set to repeat, delete the file after execution
                 if [[ $repeat_alarm == "${MESSAGES[only_this_day]}" ]]; then
-                    rm "$alarm_file"
+                    rm -f "$alarm_file"
                 fi
             fi
         done
-
-        # Wait 10 seconds before checking alarms again
-        sleep 10
     done
 }
 

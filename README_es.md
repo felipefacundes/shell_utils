@@ -19,6 +19,8 @@
 
 Shell Utils es un marco educativo diseñado para hacer que la programación en shell sea accesible y poderosa. Es el resultado de un trabajo exhaustivo durante muchos años, ahora disponible en GitHub. Con más de 280 scripts documentados, atiende tanto a principiantes como a usuarios avanzados. Su gran diferenciador es la capacidad de interactuar con los principales shells: **Bash, Zsh y Fish**.
 
+Este repositorio tiene como objetivo extender el shell y contener funciones útiles y legibles que ayuden a los desarrolladores a mantener sus scripts de manera más fácil y organizada.
+
 ✅ Incluye scripts de terceros, como los de [Fred's Imagemagick](http://www.fmwconcepts.com/imagemagick/index.php) *(créditos mantenidos en los scripts)*.
 
 ### ✨ Características Principales
@@ -46,6 +48,7 @@ Shell Utils es un marco educativo diseñado para hacer que la programación en s
 ## 🔧 Recursos y Herramientas
 
 - **Alarma**: Alarma multilingüe, con capacidad de ejecutar comandos externos, función de repetición y más.
+- **lector de Markdown**: Un lector de markdown mejorado que combina un formato limpio con resaltado de sintaxis opcional.
 - **Calendario**: Calendario completo con soporte para días festivos
 - **Herramientas de Video**: Grabador de pantalla y administradores de videos
 - **Herramientas de Audio**: Generar frecuencias de audio y administradores de sonido
