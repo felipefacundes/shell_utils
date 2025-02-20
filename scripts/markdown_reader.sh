@@ -168,10 +168,10 @@ check_dependencies() {
     local count=0
     for cmd in source-highlight less; do
         if ! command -v "$cmd" &> /dev/null; then
-            ((count++)) || true
             missing_deps+=("$cmd")
             [[ ${missing_deps[count]} == "source-highlight" ]] && [[ -n "$TERMUX_VERSION" ]] && \
             [[ "$os" =~ "Android" ]] && unset 'missing_deps[-1]' && export NO_HIGHLIGHT=1
+            ((count++)) || true
         fi
     done
     
