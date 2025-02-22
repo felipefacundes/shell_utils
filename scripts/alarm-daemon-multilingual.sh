@@ -844,7 +844,7 @@ run_alarms() {
         current_day=$(LC_ALL=c date +%d)
         current_hour=$(LC_ALL=c date +%H)
         current_minute=$(LC_ALL=c date +%M)
-        current_weekday=$(LC_ALL=c date +%a) # e.g., Mon, Tue, Wed
+        current_weekday=$(date +%a | tr '[A-Z]' '[a-z]') # e.g., Mon, Tue, Wed
         
         # Wait 10 seconds before checking alarms again
         sleep 10
@@ -865,13 +865,14 @@ run_alarms() {
             open_file=$(grep "Open file:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 3)
             file_to_open=$(grep "File to open:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 4-)
             repeat_alarm=$(grep "Repetition:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2-)
-            days_of_week=$(grep "Days:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2-)
+            days_of_week=$(grep "Days:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p' | tr '[A-Z]' '[a-z]') #| cut -d ' ' -f 2-)
 
             # Check if the alarm is for the current moment
             # In '[ "$repeat_alarm" == "${MESSAGES[every_day]}" ]', the logic '&& [ "$current_day" -ge "$day" ]' was removed because, otherwise, the alarm would last approximately two weeks in that month.
+            # [[ "$days_of_week" == *"$current_weekday"* ]]
             if { [ "$current_year" -eq "$year" ] && [ "$current_month" -eq "$month" ] && [ "$current_day" -eq "$day" ] && [ "$current_hour" -eq "$hour" ] && [ "$current_minute" -eq "$minute" ]; } ||
                 { [ "$repeat_alarm" == "${MESSAGES[every_day]}" ] && [ "$current_year" -ge "$year" ] && [ "$current_month" -ge "$month" ] && [ "$current_hour" -eq "$hour" ] && [ "$current_minute" -eq "$minute" ]; } ||
-                { [ "$repeat_alarm" == "${MESSAGES[specific_days]}" ] && [[ "$days_of_week" == *"$current_weekday"* ]] && [ "$current_hour" -eq "$hour" ] && [ "$current_minute" -eq "$minute" ]; }; then
+                { [ "$repeat_alarm" == "${MESSAGES[specific_days]}" ] && [[ "$days_of_week" =~ "$current_weekday" ]] && [ "$current_hour" -eq "$hour" ] && [ "$current_minute" -eq "$minute" ]; }; then
 
                 # Prevents the alarm from triggering on previous days of the current month 
                 # when the alarm is set to repeat daily.
