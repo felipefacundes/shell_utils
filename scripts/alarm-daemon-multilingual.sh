@@ -915,11 +915,11 @@ run_alarms() {
                     kill "$audio_pid"
                     pkill paplay
 
+                    [[ "$open_file" == "yes" ]] && pkill -9 -P "$open_pid"; kill -9 "$open_pid"
+                    [[ "$execute_script" == "yes" ]] && kill -9 "$script_pid"; pkill -9 -P "$script_pid"
+
                     # Restore default gamma after effect
                     xrandr --output "$screen" --gamma 1:1:1
-
-                    [[ "$open_file" == "yes" ]] && pkill -P "$open_pid"
-                    [[ "$execute_script" == "yes" ]] && pkill -P "$script_pid"
                 }
 
                 # Display message with Zenity
