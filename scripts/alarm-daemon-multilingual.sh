@@ -846,9 +846,6 @@ run_alarms() {
         current_minute=$(LC_ALL=c date +%M)
         current_weekday=$(date +%a | tr '[A-Z]' '[a-z]') # e.g., Mon, Tue, Wed
         
-        # Wait 10 seconds before checking alarms again
-        sleep 10
-
         for alarm_file in "$ALARM_DIR"/*.alarm; do
             # Check if the file exists
             [[ -f "$alarm_file" ]] || continue
@@ -946,6 +943,8 @@ run_alarms() {
                 fi
             fi
         done
+        # Wait 40 seconds before checking alarms again
+        sleep 40
     done
 }
 
