@@ -795,14 +795,14 @@ create_alarm() {
     # Ask if a script/command should be executed
     execute_script=$(zenity --question --title="${MESSAGES[execute_script]}" --text="${MESSAGES[execute_script_question]}" && echo "yes" || echo "no" 2>/dev/null)
     
-    if [[ $execute_script == "yes" ]]; then
+    if [[ "$execute_script" == "yes" ]]; then
         script_path=$(zenity --file-selection --title="${MESSAGES[select_the_script]}" 2>/dev/null)
     fi
 
     # Ask if a file should be opened with xdg-open
     open_file=$(zenity --question --title="${MESSAGES[open_file]}" --text="${MESSAGES[open_file_question]}" && echo "yes" || echo "no" 2>/dev/null)
     
-    if [[ $open_file == "yes" ]]; then
+    if [[ "$open_file" == "yes" ]]; then
         file_to_open=$(zenity --file-selection --title="${MESSAGES[open_file_select]}" 2>/dev/null)
     fi
 
@@ -812,7 +812,7 @@ create_alarm() {
         --column="${MESSAGES[select]}"  --column="${MESSAGES[option]}"  \
         TRUE "${MESSAGES[only_this_day]}" FALSE "${MESSAGES[every_day]}" FALSE "${MESSAGES[specific_days]}" 2>/dev/null)
     
-    if [[ $repeat_alarm == "${MESSAGES[specific_days]}" ]]; then
+    if [[ "$repeat_alarm" == "${MESSAGES[specific_days]}" ]]; then
         days_of_week=$(zenity --entry --title="${MESSAGES[days_of_week]}" --text="${MESSAGES[enter_days_of_week]}" 2>/dev/null)
     fi
 
@@ -827,11 +827,11 @@ create_alarm() {
     echo "Minute: $minute" >> "$alarm_file"
     echo "Message: $message" >> "$alarm_file"
     echo "Execute script: $execute_script" >> "$alarm_file"
-    [[ $execute_script == "yes" ]] && echo "Script path: $script_path" >> "$alarm_file"
+    [[ "$execute_script" == "yes" ]] && echo "Script path: $script_path" >> "$alarm_file"
     echo "Open file: $open_file" >> "$alarm_file"
-    [[ $open_file == "yes" ]] && echo "File to open: $file_to_open" >> "$alarm_file"
+    [[ "$open_file" == "yes" ]] && echo "File to open: $file_to_open" >> "$alarm_file"
     echo "Repetition: $repeat_alarm" >> "$alarm_file"
-    [[ $repeat_alarm == "${MESSAGES[specific_days]}" ]] && echo "Days: $days_of_week" >> "$alarm_file"
+    [[ "$repeat_alarm" == "${MESSAGES[specific_days]}" ]] && echo "Days: $days_of_week" >> "$alarm_file"
     
     zenity --info --text="${MESSAGES[alarm_created]}" 2>/dev/null
 }
@@ -854,18 +854,18 @@ run_alarms() {
             [[ -f "$alarm_file" ]] || continue
 
             # Read alarm variables
-            year=$(grep "Year:" "$alarm_file" | cut -d ' ' -f 2)
-            month=$(grep "Month:" "$alarm_file" | cut -d ' ' -f 2)
-            day=$(grep "Day:" "$alarm_file" | cut -d ' ' -f 2)
-            hour=$(grep "Hour:" "$alarm_file" | cut -d ' ' -f 2)
-            minute=$(grep "Minute:" "$alarm_file" | cut -d ' ' -f 2)
-            message=$(grep "Message:" "$alarm_file" | cut -d ' ' -f 2-)
-            execute_script=$(grep "Execute script:" "$alarm_file" | cut -d ' ' -f 3)
-            script_path=$(grep "Script path:" "$alarm_file" | cut -d ' ' -f 4-)
-            open_file=$(grep "Open file:" "$alarm_file" | cut -d ' ' -f 3)
-            file_to_open=$(grep "File to open:" "$alarm_file" | cut -d ' ' -f 4-)
-            repeat_alarm=$(grep "Repetition:" "$alarm_file" | cut -d ' ' -f 2-)
-            days_of_week=$(grep "Days:" "$alarm_file" | cut -d ' ' -f 2-)
+            year=$(grep "Year:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
+            month=$(grep "Month:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
+            day=$(grep "Day:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
+            hour=$(grep "Hour:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
+            minute=$(grep "Minute:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
+            message=$(grep "Message:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2-)
+            execute_script=$(grep "Execute script:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 3)
+            script_path=$(grep "Script path:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 4-)
+            open_file=$(grep "Open file:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 3)
+            file_to_open=$(grep "File to open:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 4-)
+            repeat_alarm=$(grep "Repetition:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2-)
+            days_of_week=$(grep "Days:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2-)
 
             # Check if the alarm is for the current moment
             # In '[ "$repeat_alarm" == "${MESSAGES[every_day]}" ]', the logic '&& [ "$current_day" -ge "$day" ]' was removed because, otherwise, the alarm would last approximately two weeks in that month.
@@ -889,6 +889,19 @@ run_alarms() {
                 #     continue
                 # fi
 
+                # Run xdg-open
+                if [[ "$open_file" == "yes" ]]; then
+                    xdg-open "$file_to_open" &
+                    open_pid=$!
+                fi
+
+                # Run script
+                if [[ "$execute_script" == "yes" ]]; then
+                    read -r -a script_path_array <<< "$script_path"
+                    "${script_path_array[@]}" &
+                    script_pid=$!
+                fi
+
                 # Run visual and audio alert in the background
                 visual_alert &
                 visual_pid=$!
@@ -904,6 +917,9 @@ run_alarms() {
 
                     # Restore default gamma after effect
                     xrandr --output "$screen" --gamma 1:1:1
+
+                    [[ "$open_file" == "yes" ]] && pkill -P "$open_pid"
+                    [[ "$execute_script" == "yes" ]] && pkill -P "$script_pid"
                 }
 
                 # Display message with Zenity
@@ -924,7 +940,7 @@ run_alarms() {
                 fi
 
                 # If the alarm is not set to repeat, delete the file after execution
-                if [[ $repeat_alarm == "${MESSAGES[only_this_day]}" ]]; then
+                if [[ "$repeat_alarm" == "${MESSAGES[only_this_day]}" ]]; then
                     rm -f "$alarm_file"
                 fi
             fi
