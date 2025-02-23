@@ -836,9 +836,16 @@ create_alarm() {
     zenity --info --text="${MESSAGES[alarm_created]}" 2>/dev/null
 }
 
+lock_generate() { 
+    touch "$1" && sleep 120 && rm "$1"
+}
+
 # Function to run and execute alarms as a daemon
 run_alarms() {
     while true; do
+        SCRIPT="${0##*/}"
+        TMPDIR="${TMPDIR:-/tmp}"
+        LOCKDIR="${TMPDIR}/${SCRIPT%.*}"
         current_year=$(LC_ALL=c date +%Y)
         current_month=$(LC_ALL=c date +%m)
         current_day=$(LC_ALL=c date +%d)
@@ -849,8 +856,11 @@ run_alarms() {
         for alarm_file in "$ALARM_DIR"/*.alarm; do
             # Check if the file exists
             [[ -f "$alarm_file" ]] || continue
+            [[ ! -d "$LOCKDIR" ]] && mkdir -p "$LOCKDIR"
 
             # Read alarm variables
+            base_lock="${alarm_file##*/}"
+            lock_file="${LOCKDIR}/${base_lock%.*}.lock"
             year=$(grep "Year:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
             month=$(grep "Month:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
             day=$(grep "Day:" "$alarm_file" | sed -n 's/.*:\s*\(.*\)/\1/p') #| cut -d ' ' -f 2)
@@ -886,6 +896,10 @@ run_alarms() {
                 # { [ "$current_month" -lt "$month" ] || [ "$current_month" -eq "$month" ] && [ "$current_day" -lt "$day" ]; }; then
                 #     continue
                 # fi
+
+                if [ "$current_minute" -eq "$minute" ] && [ -f "$lock_file" ]; then
+                    continue
+                fi
 
                 # Run xdg-open
                 if [[ "$open_file" == "yes" ]]; then
@@ -926,7 +940,7 @@ run_alarms() {
                 # Ask if the alarm should repeat in the next 10 minutes
                 repeat_10=$(zenity --question --title="${MESSAGES[repeat_alarm_title]}" --text="${MESSAGES[repeat_alarm_10_question]}" && echo "yes" || echo "no" 2>/dev/null)
 
-                if [[ $repeat_10 == "yes" ]]; then
+                if [[ "$repeat_10" == "yes" ]]; then
                     # Create a new alarm file for 10 minutes after the current alarm
                     new_minute=$(LC_ALL=c date -d "+10 minutes" +%M)
                     new_hour=$(LC_ALL=c date -d "+10 minutes" +%H)
@@ -941,10 +955,14 @@ run_alarms() {
                 if [[ "$repeat_alarm" == "${MESSAGES[only_this_day]}" ]]; then
                     rm -f "$alarm_file"
                 fi
+
+                if [ "$current_minute" -eq "$minute" ] && [ ! -f "$lock_file" ]; then
+                    lock_generate "$lock_file" &
+                fi
             fi
         done
-        # Wait 40 seconds before checking alarms again
-        sleep 40
+        # Wait 5 seconds before checking alarms again
+        sleep 5
     done
 }
 
