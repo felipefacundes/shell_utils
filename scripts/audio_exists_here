@@ -13,8 +13,7 @@ Capabilities: The script can identify audio files, play them with a chosen app, 
 DOCUMENTATION
 
 # Capture Ctrl+C and end children processes
-#trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT SIGTERM SIGHUP SIGQUIT EXIT
-trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT
+trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT SIGTERM SIGHUP SIGQUIT SIGABRT SIGALRM #SIGKILL #SIGCHLD
 
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     echo "Example: app=mpv ${0##*/}"

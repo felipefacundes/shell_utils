@@ -22,6 +22,9 @@ Capacities:
 - Generates a clean and colorful terminal output.
 DOCUMENTATION
 
+# Capture Ctrl+C and end children processes
+trap 'kill -- -$$; clear; exit 1' SIGINT SIGHUP SIGQUIT SIGABRT SIGALRM
+
 # Color definitions with fallback for TTY sessions
 if [[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]]; then
     readonly COLOR_TITLE1='\033[1;38;2;255;128;0;48;2;40;40;40m'        # Orange text on dark gray
@@ -61,6 +64,7 @@ fi
 
 readonly RED='\033[1;31m'                                               # Red color
 readonly YELLOW='\033[1;33m'                                            # Yellow color
+readonly UNDERLINE='\033[1;4;38;5;187m'                                 # Underline
 readonly COLOR_RESET='\033[0m'                                          # Reset color
 
 declare -A MESSAGES
@@ -244,6 +248,15 @@ show_help() {
     exit 0
 }
 
+# 🎯 When a command like 'less' is called directly in the script, it can become the foreground process, 
+# making it harder for the 'trap' to control it. However, when the command is inside a function, 
+# the script maintains the correct process hierarchy, allowing the 'trap' to control everything with 'pkill -P $$' or 'kill -- -$$'.
+pid_less() {
+    less -R -i &
+    LESS_PID=$!
+    wait $LESS_PID
+}
+
 # Process the markdown file
 process_markdown() {
     local input_file="$1"
@@ -251,7 +264,7 @@ process_markdown() {
     local code_block_content=""
     local code_block_lang=""
 
-    [[ -z $NO_LESS ]] && pipe='less -R -i'
+    [[ -z $NO_LESS ]] && pipe='pid_less'
     [[ -n $NO_LESS ]] && pipe='cat'
     read -r -a cmd <<< "$pipe"
     
@@ -264,11 +277,27 @@ process_markdown() {
     
     # Read and process the markdown file line by line
     while IFS= read -r line || [ -n "$line" ]; do
+
+        # Italic HTML tag
+        if [[ "$line" =~ \<i\>([^<]+)\<\/i\> ]]; then #[[ "$line" =~ \<i\>.*\<\/i\> ]] || 
+            detect_first_color
+            line=$(echo -e "$line" | awk -v highlight="${COLOR_BULLET}" -v reset="${first_color}" '{gsub(/<i>([^<]*)<\/i>/, "<i>" highlight "&" reset "</i>")}1')
+        elif [[ "$line" =~ \<em\>([^<]+)\<\/em\> ]]; then #[[ "$line" =~ \<em\>.*\<\/em\> ]] ||
+            detect_first_color
+            line=$(echo -e "$line" | awk -v highlight="${COLOR_BULLET}" -v reset="${first_color}" '{gsub(/<em>([^<]*)<\/em>/, "<em>" highlight "&" reset "</em>")}1')
+        fi
+
+        # Underline HTML tag
+        if [[ "$line" =~ \<u\>([^<]+)\<\/u\> ]]; then #[[ "$line" =~ \<u\>.*\<\/u\> ]] ||
+            detect_first_color
+            line=$(echo -e "$line" | awk -v highlight="${UNDERLINE}" -v reset="${first_color}" '{gsub(/<u>([^<]*)<\/u>/, "<u>" highlight "&" reset "</u>")}1')
+        fi
+
         # Remove HTML tags
         if [[ "$line" =~ \*\*\<[^*]+\>\*\* ]] || [[ "$line" =~ \"\<[^*]+\>\" ]] || [[ "$line" =~ \'\<[^*]+\>\' ]] || [[ "$line" =~ \`\<[^*]+\>\` ]]; then
             true
-        else
-            line=$(echo "$line" | sed 's/<[^>]*>//g')
+        elif [[ "$line" =~ (.*)\<[^*]+\>(.*) ]]; then
+            line=$(echo -e "$line" | sed 's/<[^>]*>//g')
             # line="${line//<br>/}"
             # line="${line//<\/br>/}"
         fi
@@ -338,7 +367,7 @@ process_markdown() {
         fi
 
         # Handle Inline Code
-        if [[ "$line" =~ \*([^*]+).\* ]] || [[ "$line" =~ \*.([^*]+).\* ]] || [[ "$line" =~ \*.([^*]+)\* ]]; then
+        if [[ "$line" =~ \*([^*]+)\.\* ]] || [[ "$line" =~ \*\.([^*]+)\.\* ]] || [[ "$line" =~ \*\.([^*]+)\* ]]; then
             true
         elif [[ "$line" =~ \*([^*]+)\* ]]; then
             detect_first_color

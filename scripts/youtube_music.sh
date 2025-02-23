@@ -57,18 +57,27 @@ c.content.blocking.adblock.lists = [
 EOF
 fi
 
+# 🎯 When a command like 'qutebrowser' is called directly in the script, it can become the foreground process, 
+# making it harder for the 'trap' to control it. However, when the command is inside a function, 
+# the script maintains the correct process hierarchy, allowing the 'trap' to control everything with 'pkill -P $$' or 'kill -- -$$'.
+_qutebrowser() {
+    qutebrowser "$@" &
+    QUTE_PID=$!
+    wait "$QUTE_PID"
+}
+
 # Function to capture the active URL
 capture_url() {
     while pgrep -x qutebrowser > /dev/null; do
-        URL=$(qutebrowser --target window ':edit-url' 2>/dev/null && cat "${TMPDIR}/qutebrowser_url" 2>/dev/null)
+        URL=$(_qutebrowser --target window ':edit-url' 2>/dev/null && cat "${TMPDIR}/qutebrowser_url" 2>/dev/null)
         if [[ -n "$URL" ]]; then
             echo "$URL" > "$LAST_URL_FILE"
         fi
         if [[ "$ONE_SHOT" != true ]]; then
             curl -o "${TMPDIR}/easylist.txt" https://easylist.to/easylist/easylist.txt 2>/dev/null
-            qutebrowser --target window ':set content.blocking.enabled true' 2>/dev/null
-            qutebrowser --target window ":set content.blocking.hosts.lists ${TMPDIR}/easylist.txt" 2>/dev/null
-            qutebrowser --target window ':adblock-update' 2>/dev/null
+            _qutebrowser --target window ':set content.blocking.enabled true' 2>/dev/null
+            _qutebrowser --target window ":set content.blocking.hosts.lists ${TMPDIR}/easylist.txt" 2>/dev/null
+            _qutebrowser --target window ':adblock-update' 2>/dev/null
             ONE_SHOT=true
         fi
 
@@ -83,13 +92,13 @@ capture_url() {
 
 # Check if qutebrowser is already running
 if pgrep -x qutebrowser > /dev/null; then
-    qutebrowser --target window 2>/dev/null
+    _qutebrowser --target window 2>/dev/null
 else
     if [[ -f "$LAST_URL_FILE" ]]; then
         LAST_URL=$(cat "$LAST_URL_FILE")
-        qutebrowser "$LAST_URL" 2>/dev/null &
+        _qutebrowser "$LAST_URL" 2>/dev/null &
     else
-        qutebrowser music.youtube.com 2>/dev/null &
+        _qutebrowser music.youtube.com 2>/dev/null &
     fi
 fi
 

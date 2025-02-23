@@ -7,7 +7,8 @@ This is a standard template for a bash script with multiple arguments.
 DOCUMENTATION
 
 # Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill $(jobs -p)' SIGTERM #SIGINT #SIGHUP #SIGQUIT #SIGABRT #SIGKILL #SIGALRM
+#trap 'echo "Terminating..."; pkill -TERM -P $$; kill $(jobs -p); kill -- -$$; exit 1' SIGINT SIGTERM SIGHUP SIGQUIT SIGABRT SIGALRM EXIT SIGKILL SIGCHLD
+trap 'kill $(jobs -p)' SIGINT #SIGTERM #SIGHUP #SIGQUIT #SIGABRT #SIGALRM #EXIT #SIGKILL #SIGCHLD 
 
 doc() {
     less -FX "$0" | head -n6 | tail -n1

@@ -69,17 +69,18 @@ has_the_kernel_been_updated() {
             if [[ "$kernel_booted" != "$kernel_updated" ]]; then
                 [[ ! -f "${lock_file}.notification" ]] && notify-send -i "$icon" -u critical "Updated kernel" "Reboot system"
                 if [[ ! -f "$lock_file" ]]; then 
-                    sleep 1m; ~/.shell_utils/scripts/systray_icon.py -i "$icon" -t "Reboot System" -m "Updated kernel" -n "Reboot system" &
-                    sleep 2m; beep_reboot & ask_reboot &
+                    sleep 15; ~/.shell_utils/scripts/systray_icon.py -i "$icon" -t "Reboot System" -m "Updated kernel" -n "Reboot system" &
+                    sleep 15; beep_reboot & ask_reboot &
                     touch "$lock_file"
                 fi
             fi
         fi
-        sleep 2m
+        sleep 15
     done
 }
 
-has_the_kernel_been_updated
+has_the_kernel_been_updated &
+pid=$!
 
 # Wait for all child processes to finish
-wait
+wait "$pid"
