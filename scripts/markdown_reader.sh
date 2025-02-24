@@ -17,7 +17,7 @@ Key strengths:
 6. Replaces horizontal rule indicators with a visual line.
 
 Capacities:
-- Removes <br>, <code> and <pre> tags.
+- Interpret and Remove HTML tags.
 - Handles different Markdown syntaxes efficiently.
 - Generates a clean and colorful terminal output.
 DOCUMENTATION
@@ -83,9 +83,10 @@ Leitor de Markdown - Um analisador e formatador de Markdown completo
 Uso: ${0##*/} [OPÇÕES] arquivo
 
 Opções:
--h, --help      Exibir esta mensagem de ajuda
--nl, --no-less  Desativar o modo de paginação com less
--nh, --no-hl    Desativar realce de sintaxe para blocos de código
+-h, --help             Exibir esta mensagem de ajuda
+-nl, --no-less         Desativar o modo de paginação com less
+-nh, --no-hl           Desativar realce de sintaxe para blocos de código
+-ic, --invert-color    Ativa a inversão de cores
 
 Exemplos:
 ${0##*/} documento.md
@@ -98,6 +99,7 @@ Recursos do Markdown suportados:
 • Listas não ordenadas
 • Regras horizontais
 • Quebras de linha em HTML
+• HTML underline e mais
 EOF
             )
         )
@@ -113,9 +115,10 @@ Lector de Markdown - Un analizador y formateador de Markdown completo
 Uso: ${0##*/} [OPCIONES] archivo
 
 Opciones:
--h, --help      Mostrar este mensaje de ayuda
--nl, --no-less  Desactivar el modo de paginación con less
--nh, --no-hl    Desactivar resaltado de sintaxis para bloques de código
+-h, --help             Mostrar este mensaje de ayuda
+-nl, --no-less         Desactivar el modo de paginación con less
+-nh, --no-hl           Desactivar resaltado de sintaxis para bloques de código
+-ic, --invert-color    Activa la inversión de colores
 
 Ejemplos:
 ${0##*/} documento.md
@@ -128,6 +131,7 @@ Características de Markdown compatibles:
 • Listas no ordenadas
 • Reglas horizontales
 • Saltos de línea en HTML
+• Subrayado en HTML y más
 EOF
             )
         )
@@ -143,9 +147,10 @@ Markdown Reader - A comprehensive markdown parser and formatter
 Usage: ${0##*/} [OPTIONS] file
 
 Options:
--h, --help      Show this help message
--nl, --no-less  Disable pager mode with less
--nh, --no-hl    Disable syntax highlighting for code blocks
+-h, --help             Show this help message
+-nl, --no-less         Disable pager mode with less
+-nh, --no-hl           Disable syntax highlighting for code blocks
+-ic, --invert-color    Enables color inversion
 
 Examples:
 ${0##*/} document.md
@@ -158,6 +163,7 @@ Supported Markdown Features:
 • Unordered lists
 • Horizontal rules
 • HTML line breaks
+• HTML underline and more
 EOF
             )
         )
@@ -252,7 +258,7 @@ show_help() {
 # making it harder for the 'trap' to control it. However, when the command is inside a function, 
 # the script maintains the correct process hierarchy, allowing the 'trap' to control everything with 'pkill -P $$' or 'kill -- -$$'.
 pid_less() {
-    less -R -i &
+    less "$@" &
     LESS_PID=$!
     wait $LESS_PID
 }
@@ -264,8 +270,8 @@ process_markdown() {
     local code_block_content=""
     local code_block_lang=""
 
-    [[ -z $NO_LESS ]] && pipe='pid_less'
-    [[ -n $NO_LESS ]] && pipe='cat'
+    [[ "$NO_LESS" != 1 ]] && pipe='pid_less -R -i'
+    [[ "$NO_LESS" == 1 ]] && pipe='cat'
     read -r -a cmd <<< "$pipe"
     
     # Check if file exists
@@ -431,7 +437,7 @@ process_markdown() {
 main() {
     local MARKDOWN_FILE=""
     export NO_HIGHLIGHT=${NO_HIGHLIGHT:-""}
-    export NO_LESS=""
+    export NO_LESS
     
     # Parse command line options
     while [[ $# -gt 0 ]]; do
@@ -440,7 +446,12 @@ main() {
                 show_help
                 ;;
             -nl|--no-less)
-                NO_LESS=1
+                NO_LESS=${NO_LESS:-1}
+                shift
+                ;;
+            -ic|--invert-color)
+                export LESS='-p .*'
+                NO_LESS=0
                 shift
                 ;;
             -nh|--no-hl)
