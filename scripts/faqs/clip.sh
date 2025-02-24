@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 cat <<'EOF' | echo -e "$(cat)"
 \033[0;32mxclip -selection clipboard -i < input_file\033[0m

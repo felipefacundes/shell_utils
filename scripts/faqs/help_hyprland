@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ######### Hyprland Shortcut Help #########
 
 if command -v ccat >/dev/null 2>&1 ; then

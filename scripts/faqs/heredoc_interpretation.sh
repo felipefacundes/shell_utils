@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
 
@@ -25,7 +25,7 @@ cat <<'EXAMPLE'
 
 This script is like this:
 
-#!/bin/bash
+#!/usr/bin/env bash
 cat <<'EOF' | echo -e "$(cat)"
 \033[0;31mThis is a red text.\033[0m
 \033[0;32mThis is a green text.\033[0m

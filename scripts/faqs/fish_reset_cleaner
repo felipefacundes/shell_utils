@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 cat <<'EOF'
 rm -rf ~/.config/fish
 rm -rf ~/.local/share/fish

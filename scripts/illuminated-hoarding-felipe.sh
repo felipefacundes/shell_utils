@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 From: http://wiki.bash-hackers.org/scripting/terminalcodes
 DATA[0]='$$$$$$$$\        $$\ $$\                           $$$$$$$$\                                           $$\                       '

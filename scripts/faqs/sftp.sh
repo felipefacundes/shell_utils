@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 tput setaf 11
 echo -e "sftp -P 2222 user@192.168.X.X\n\nDownload directories with: get -r\n\n"
 tput sgr0

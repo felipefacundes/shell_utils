@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 tput setaf 11
 echo -e "ftp 192.168.X.X 2121\n\n"
 tput sgr0

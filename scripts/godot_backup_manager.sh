@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
 # This is a simple script that automatically creates backups for your Godot projects and avoids accidents

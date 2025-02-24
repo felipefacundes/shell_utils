@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Credits: https://stackoverflow.com/questions/4032960/how-do-i-get-an-apk-file-from-an-android-device
 
 # Check the list of connected devices

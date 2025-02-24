@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ## See https://obrienlabs.net/setup-raspberry-pi-kiosk-chromium/ for more information
 ## Add this one liner to the end of ~/.config/lxsession/LXDE-pi/autostart after downloading this script to /home/pi/kiosk.sh and making it executable:
 ## @/home/pi/kiosk.sh

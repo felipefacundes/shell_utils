@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Credits: kristoferus75
 # https://github.com/swaywm/sway/issues/4121
 

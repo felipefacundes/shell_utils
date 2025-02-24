@@ -1,3 +1,3 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 pacman -S lib32-libcanberra lib32-gstreamer lib32-gst-plugins-good lib32-gst-plugins-base-libs lib32-gst-plugins-base aribb24 gpac gst-libav lame libdvbpsi libiec61883 libmad libmp4v2 libmpeg2 mjpegtools mpg123 twolame xvidcore sox libopusenc opus opus-tools opusfile schroedinger aom flac libde265 opencore-amr openjpeg2 speex libfishsound gst-plugins-base gst-plugins-base-libs gst-plugins-good gstreamer libcanberra fmt atomicparsley

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 mamba_setup() {
     # >>> mamba initialize >>>

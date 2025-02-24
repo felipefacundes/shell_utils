@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 cat <<'EOF'
 This command renames files in the current directory by appending their line number (from a sorted list) to each filename, 

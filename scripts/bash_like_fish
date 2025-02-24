@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 HISTORY=$HOME/.bash_history
 WORDLIST=$HOME/.wordlist

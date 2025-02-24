@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 cat <<'EOF'
 reflector -c Brazil --save /etc/pacman.d/mirrorlist

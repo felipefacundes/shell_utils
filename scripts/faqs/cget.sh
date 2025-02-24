@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 tput setaf 11
 echo -e "curl -O URL\nor: curl -o file URL\n\n"

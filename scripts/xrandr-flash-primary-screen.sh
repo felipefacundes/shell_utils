@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Credits: https://askubuntu.com/a/1092835/307523
 
 # NAME: flash-primary-screen.sh

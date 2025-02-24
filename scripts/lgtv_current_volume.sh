@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Credits: Felipe Facundes
 
 # Get the current volume of TV

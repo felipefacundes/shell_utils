@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
 
@@ -24,13 +24,16 @@ DOCUMENTATION
 
 clear
 
+SCRIPT="${0##*/}"
 TMPDIR="${TMPDIR:-/tmp}"
+TMPBOOKDIR="${TMPDIR}/${SCRIPT%.*}"
 XDG_DOCUMENTS_DIR=${XDG_DOCUMENTS_DIR:-$(xdg-user-dir DOCUMENTS 2>/dev/null || echo "$HOME/Documents")}
 
 # Setting the eBook folders
 books_folder="${HOME}/.shell_utils/books"
 xdg_books_folder="${XDG_DOCUMENTS_DIR}/Books"
 
+[[ ! -d "${TMPBOOKDIR}" ]] && mkdir -p "${TMPBOOKDIR}"
 [[ ! -d "${xdg_books_folder}" ]] && mkdir -p "${xdg_books_folder}"
 
 # Combining the two folders to get all ebooks
@@ -66,11 +69,10 @@ markdown_reader() {
 }
 
 cmd_check() {
-    cmd="$1"
-    if ! command -v "$cmd" 1>/dev/null; then
-        echo -e "${red}${cmd} not found! Please, install ${2}!${nc}"
-        return 1
-    fi
+    [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
+    {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
+    [[ "$1" == "-msg" ]] && echo "Install ${msg}" && exit 1
+    ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
 margin() {
@@ -83,11 +85,16 @@ margin() {
 
 libre_office_convert() {
     local file="$1"
-    local temp_dir="/tmp/temp_book"
+    local temp_dir="${TMPBOOKDIR}/temp_book"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
     cmd_check libreoffice
     libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1
     margin "${temp_dir}"/*.txt
+}
+
+nexttmp () {
+	declare new="${TMPBOOKDIR}/books.$RANDOM"
+	echo "$new"
 }
 
 nodash() {
@@ -116,7 +123,7 @@ ishtml() {
 	cmd_check lynx lynx && lynx -force_html -dump "$arg1" && return ||
 	# different versions of html2text existingi, force unicode
 	[[ "$1" == https://* ]] && return ||
-	cmd_check html2text python-html2text && nodash html2text "$htmlopt" "$1" | less -i
+	cmd_check html2text python-html2text && nodash html2text "$htmlopt" "$1" | less -i || cmd_check -msg
 }
 
 # Function to select and open a book
@@ -157,7 +164,7 @@ select_book() {
         cmd_check epr epr || exit 1
         epr "$book_path" 2>/dev/null
     elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
-        declare -l temp_file="${TMPDIR}/temp_book.txt"
+        declare -l temp_file="${TMPBOOKDIR}/temp_book.txt"
         [[ -f "${temp_file}" ]] && rm "${temp_file}"
         rm -f "${temp_file}"
         cmd_check pdftotext poppler || exit 1
@@ -182,7 +189,7 @@ down=$'\e[B'
 search_term=""
 filtered_books=()
 
-temp_search_results="${TMPDIR}/grep_search_results.txt"
+temp_search_results="${TMPBOOKDIR}/grep_search_results.txt"
 
 while true; do
     clear

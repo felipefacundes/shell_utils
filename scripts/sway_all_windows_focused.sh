@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Credits: Felipe Facundes
 # Initial Credits: shapeoflambda # https://github.com/swaywm/sway/issues/4121
 # Tweaked the above code to make it work with floating windows.

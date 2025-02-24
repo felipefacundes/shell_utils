@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Credits and source: https://www.baeldung.com/linux/base64-encode-image
 script="$(basename ${0})"
 usage() {

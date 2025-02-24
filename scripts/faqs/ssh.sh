@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 tput setaf 11
 echo -e "ssh -p 22 user@192.168.X.X\n\n"

@@ -1,6 +1,6 @@
 # Trap Signals - A Comprehensive Guide
 
-Este README explica os sinais (signals) mais comuns em scripts shell e seus comportamentos ao serem usados com `trap`. Esses sinais podem ser utilizados para gerenciar o fluxo de execução e lidar com interrupções, finalizações e outros eventos do sistema.
+Este tutorial explica os sinais (signals) mais comuns em scripts shell e seus comportamentos ao serem usados com `trap`. Esses sinais podem ser utilizados para gerenciar o fluxo de execução e lidar com interrupções, finalizações e outros eventos do sistema.
 
 ## Sinais
 

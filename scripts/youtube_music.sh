@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
 
@@ -36,7 +36,7 @@ fi
 
 if [[ ! -f "$EDITOR_FAKE" ]]; then
 cat <<EOF | tee "$EDITOR_FAKE" >/dev/null 2>&1
-#!/bin/bash
+#!/usr/bin/env bash
 cp -f ${TMPDIR}/qutebrowser-editor-* ${TMPDIR}/qutebrowser_url && rm -f ${TMPDIR}/qutebrowser-editor-*
 EOF
 chmod +x "$EDITOR_FAKE"

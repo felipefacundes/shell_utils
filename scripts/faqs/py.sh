@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 tput setaf 11
 echo -e "install python binaries isolated:\n"
 tput setaf 2

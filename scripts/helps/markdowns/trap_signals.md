@@ -1,6 +1,6 @@
 # Trap Signals - A Comprehensive Guide
 
-This README explains the most common signals in shell scripts and their behaviors when used with `trap`. These signals can be used to manage the execution flow and handle interruptions, terminations, and other system events.
+This tutorial explains the most common signals in shell scripts and their behaviors when used with `trap`. These signals can be used to manage the execution flow and handle interruptions, terminations, and other system events.
 
 ## Signals
 
