@@ -76,9 +76,9 @@ cmd_check() {
 }
 
 margin() {
-    cmd_check fold coreutils
-    cmd_check awk gawk
-    cmd_check less less
+    cmd_check fold coreutils || cmd_check -msg
+    cmd_check awk gawk || cmd_check -msg
+    cmd_check less less || cmd_check -msg
     #fold -w 150 "$1" | sed 's/^/          /' | less -i
     fold -w 150 "$1" | awk '{print "          " $0 "          "}' | less -i
 }
@@ -87,9 +87,8 @@ libre_office_convert() {
     local file="$1"
     local temp_dir="${TMPBOOKDIR}/temp_book"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
-    cmd_check libreoffice
-    libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1
-    margin "${temp_dir}"/*.txt
+    cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
+    && margin "${temp_dir}"/*.txt && return 0 || cmd_check -msg
 }
 
 nexttmp () {
