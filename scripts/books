@@ -95,10 +95,9 @@ libre_office_convert() {
     local file="$1"
     local temp_dir="${TMPBOOKDIR}/temp_book"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
-    cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
+    cmd_check libreoffice libreoffice || cmd_check -msg
+    libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
     && margin "${temp_dir}"/*.txt && return 0
-    # shellcheck disable=SC2181
-    [[ $? -ne 0 ]] && cmd_check -msg
 }
 
 nexttmp () {
@@ -179,15 +178,13 @@ select_book() {
     elif [[ "${ext_test}" =~ ^([Tt][Xx][Tt])$ ]]; then
         margin "$book_path"
     elif [[ "${ext_test}" =~ ^([Ee][Pp][Uu][Bb])$ ]]; then
-        cmd_check epr epr && epr "$book_path" 2>/dev/null && return 0
-        # shellcheck disable=SC2181
-        [[ $? -ne 0 ]] && cmd_check -msg
+        cmd_check epr epr || cmd_check -msg
+        epr "$book_path" 2>/dev/null && return 0
     elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
         declare -l temp_file="${TMPBOOKDIR}/temp_book.txt"
         [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
-        cmd_check pdftotext poppler && pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null
-        # shellcheck disable=SC2181
-        [[ $? -ne 0 ]] && cmd_check -msg
+        cmd_check pdftotext poppler || cmd_check -msg 
+        pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null
         margin "${temp_file}"
     else
         xdg-open "$book_path" || echo 'Unrecognized format' && exit 1
