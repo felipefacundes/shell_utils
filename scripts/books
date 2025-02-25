@@ -160,14 +160,12 @@ select_book() {
     elif [[ "${ext_test}" =~ ^([Tt][Xx][Tt])$ ]]; then
         margin "$book_path"
     elif [[ "${ext_test}" =~ ^([Ee][Pp][Uu][Bb])$ ]]; then
-        cmd_check epr epr || exit 1
-        epr "$book_path" 2>/dev/null
+        cmd_check epr epr && epr "$book_path" 2>/dev/null && return 0 || cmd_check -msg
     elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
         declare -l temp_file="${TMPBOOKDIR}/temp_book.txt"
         [[ -f "${temp_file}" ]] && rm "${temp_file}"
         rm -f "${temp_file}"
-        cmd_check pdftotext poppler || exit 1
-        pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null
+        cmd_check pdftotext poppler && pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null && return 0 || cmd_check -msg
         margin "${temp_file}"
     else
         echo 'Unrecognized format'
