@@ -33,6 +33,7 @@ XDG_DOCUMENTS_DIR=${XDG_DOCUMENTS_DIR:-$(xdg-user-dir DOCUMENTS 2>/dev/null || e
 books_folder="${HOME}/.shell_utils/books"
 xdg_books_folder="${XDG_DOCUMENTS_DIR}/Books"
 
+[[ -d "${TMPBOOKDIR}" ]] && rm -rf "${TMPBOOKDIR}"
 [[ ! -d "${TMPBOOKDIR}" ]] && mkdir -p "${TMPBOOKDIR}"
 [[ ! -d "${xdg_books_folder}" ]] && mkdir -p "${xdg_books_folder}"
 
@@ -163,12 +164,11 @@ select_book() {
         cmd_check epr epr && epr "$book_path" 2>/dev/null && return 0 || cmd_check -msg
     elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
         declare -l temp_file="${TMPBOOKDIR}/temp_book.txt"
-        [[ -f "${temp_file}" ]] && rm "${temp_file}"
-        rm -f "${temp_file}"
-        cmd_check pdftotext poppler && pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null && return 0 || cmd_check -msg
+        [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
+        cmd_check pdftotext poppler && pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null || cmd_check -msg
         margin "${temp_file}"
     else
-        echo 'Unrecognized format'
+        xdg-open "$book_path" || echo 'Unrecognized format' && exit 1
     fi
 }
 
