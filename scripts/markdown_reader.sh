@@ -23,7 +23,8 @@ Capacities:
 DOCUMENTATION
 
 # Capture Ctrl+C and end children processes
-trap '(kill -- -$$) &>/dev/null' INT TERM SIGHUP SIGQUIT SIGABRT SIGALRM
+#trap '(kill -TERM -- -$$) &>/dev/null' INT TERM SIGHUP SIGQUIT SIGABRT SIGALRM
+trap '(kill -TERM -- -$$) &>/dev/null' SIGINT SIGTERM SIGHUP SIGQUIT #EXIT
 
 # Color definitions with fallback for TTY sessions
 if [[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]]; then

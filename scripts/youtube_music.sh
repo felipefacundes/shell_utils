@@ -24,7 +24,8 @@ cleanup() {
     return 0
 }
 
-trap cleanup SIGINT SIGTERM SIGHUP SIGQUIT EXIT # CTRL+C CAPTURE AND SCRIPT OUTPUT
+# Capture Ctrl+C and end children processes
+trap cleanup SIGINT SIGTERM SIGHUP SIGQUIT EXIT
 
 if ! command -v qutebrowser 1>/dev/null; then
     echo 'Please! Install qutebrowser'

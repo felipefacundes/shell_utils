@@ -22,6 +22,10 @@ Capabilities:
 - Provides a clean exit option for users.
 DOCUMENTATION
 
+# Capture Ctrl+C and end children processes
+#trap '(kill -TERM -- -$$) &>/dev/null' INT TERM SIGHUP SIGQUIT SIGABRT SIGALRM
+trap '(kill -TERM -- -$$) &>/dev/null' SIGINT SIGTERM SIGHUP SIGQUIT #EXIT
+
 clear
 
 SCRIPT="${0##*/}"
@@ -80,8 +84,11 @@ margin() {
     cmd_check fold coreutils || cmd_check -msg
     cmd_check awk gawk || cmd_check -msg
     cmd_check less less || cmd_check -msg
-    #fold -w 150 "$1" | sed 's/^/          /' | less -i
-    fold -w 150 "$1" | awk '{print "          " $0 "          "}' | less -i
+    #fold -w 150 "$1" | sed 's/^/          /' | less -i &
+    fold -w 150 "$1" | awk '{print "          " $0 "          "}' | less -i &
+    less_pid=$!
+    wait "$less_pid" 
+    return 0
 }
 
 libre_office_convert() {
@@ -89,7 +96,9 @@ libre_office_convert() {
     local temp_dir="${TMPBOOKDIR}/temp_book"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
     cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
-    && margin "${temp_dir}"/*.txt && return 0 || cmd_check -msg
+    && margin "${temp_dir}"/*.txt && return 0
+    # shellcheck disable=SC2181
+    [[ $? -ne 0 ]] && cmd_check -msg
 }
 
 nexttmp () {
@@ -113,17 +122,26 @@ handle_w3m() {
 	nodash "w3m -dump -T text/html" "$1"
 }
 
+_html2text() {
+    nodash html2text "$1" "$2" | less -i &
+    less_pid=$!
+    wait "$less_pid" 
+    return 0
+}
+
 ishtml() {
 	[[ $1 == - ]] && arg1=-stdin || arg1="$1"
 	htmlopt=--unicode-snob
 	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
 	# 3 lines following can easily be reshuffled according to the preferred tool
-	cmd_check elinks elinks && nodash "elinks -dump -force-html" "$1" && return ||
-	cmd_check w3m w3m && handle_w3m "$1" && return ||
-	cmd_check lynx lynx && lynx -force_html -dump "$arg1" && return ||
+	cmd_check elinks elinks && nodash "elinks -dump -force-html" "$1" && return 0 ||
+	cmd_check w3m w3m && handle_w3m "$1" && return 0 ||
+	cmd_check lynx lynx && lynx -force_html -dump "$arg1" && return 0 ||
 	# different versions of html2text existingi, force unicode
-	[[ "$1" == https://* ]] && return ||
-	cmd_check html2text python-html2text && nodash html2text "$htmlopt" "$1" | less -i || cmd_check -msg
+	[[ "$1" == https://* ]] && return 0 ||
+	cmd_check html2text python-html2text && _html2text "$htmlopt" "$1" && return 0
+    # shellcheck disable=SC2181
+    [[ $? -ne 0 ]] && cmd_check -msg
 }
 
 # Function to select and open a book
@@ -161,11 +179,15 @@ select_book() {
     elif [[ "${ext_test}" =~ ^([Tt][Xx][Tt])$ ]]; then
         margin "$book_path"
     elif [[ "${ext_test}" =~ ^([Ee][Pp][Uu][Bb])$ ]]; then
-        cmd_check epr epr && epr "$book_path" 2>/dev/null && return 0 || cmd_check -msg
+        cmd_check epr epr && epr "$book_path" 2>/dev/null && return 0
+        # shellcheck disable=SC2181
+        [[ $? -ne 0 ]] && cmd_check -msg
     elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
         declare -l temp_file="${TMPBOOKDIR}/temp_book.txt"
         [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
-        cmd_check pdftotext poppler && pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null || cmd_check -msg
+        cmd_check pdftotext poppler && pdftotext -layout -nopgbrk "$book_path" "${temp_file}" 1>/dev/null
+        # shellcheck disable=SC2181
+        [[ $? -ne 0 ]] && cmd_check -msg
         margin "${temp_file}"
     else
         xdg-open "$book_path" || echo 'Unrecognized format' && exit 1
