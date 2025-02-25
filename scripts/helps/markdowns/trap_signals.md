@@ -4,15 +4,16 @@ This tutorial explains the most common signals in shell scripts and their behavi
 
 ## Signals
 
-### 1. `SIGINT` - Interrupt Signal
-**Description**: Sent when the user presses `Ctrl+C` in the terminal. It is usually used to interrupt a running process.
-
-- **Common Uses**: Interrupting scripts or processes.
-- **Pros**: Allows the script to stop execution when the user wants.
-- **Cons**: Can be caught or ignored if the process is configured not to respond to `SIGINT`.
-
+### 1. `SIGINT` or `INT` - Interrupt Signal (Signal 2)
+**Description**: Sent when the user presses `Ctrl+C` in the terminal. It is used to request the interruption of a running process.
+- **Common Uses**: Controlled interruption of scripts or processes.
+- **Pros**: Allows the user to interrupt the execution of a program when desired.
+- **Cons**: Can be caught and handled by a program, which may choose to continue execution or perform cleanup operations before terminating.
 ```bash
+# The two forms below are equivalent:
 trap 'echo "Interrupt received, terminating..."; exit' SIGINT
+# or
+trap 'echo "Interrupt received, terminating..."; exit' INT
 ```
 
 ### 2. `SIGTERM` - Termination Signal
@@ -123,6 +124,48 @@ As mentioned, `SIGCHLD` can be extremely sensitive, and if mismanaged, it can ca
 - **Common Uses**: Pause and resume processes during execution.
 - **Pros**: Useful for real-time process control.
 - **Cons**: Cannot be caught or ignored.
+
+---
+
+**### Explanation of Core Dump with `trap 'kill -- -$$' INT TERM` or `trap 'kill -- -$$' SIGINT TERM`**
+**Problem:** The commands `trap 'kill -- -$$' INT TERM` and `trap 'kill -- -$$' SIGINT TERM` can cause a core dump when executed.
+
+**Root Cause:**
+1. **What the command tries to do:**
+   - `kill -- -$$` attempts to send a signal (by default SIGTERM) to the entire process group of the current shell
+   - `$$` is the PID of the current process
+   - `-$$` refers to the process group with ID equal to the current PID
+
+2. **Why the core dump occurs:**
+   - When the trap is triggered (by Ctrl+C or SIGTERM), the shell tries to kill its own process group
+   - This includes the shell itself, creating a situation where the shell is trying to kill itself
+   - The shell receives the signal while in the middle of executing the trap handler, causing an inconsistent state
+
+3. **Specific problems:**
+   - Potential deadlock: the process tries to kill itself while processing a signal
+   - Race condition: the trap handler is running when the shell receives the second signal
+   - Recursive self-reference: the shell tries to kill the group that includes itself
+
+**Safe Solution:**
+```bash
+# Safer version using a subshell to avoid killing the main shell
+trap '(kill -- -$$) &>/dev/null' INT TERM
+
+# Or using a variable to store the PID before the trap execution
+pgid=$$
+trap 'kill -- -$pgid' INT TERM
+```
+
+**Recommended Alternative:**
+```bash
+# Explicitly specify the signal type
+trap 'kill -TERM -- -$$' INT TERM
+
+# Or use a technique that doesn't involve killing the shell's process group
+trap 'exit 1' INT TERM
+```
+
+It's always risky to use commands that affect the current shell's process group within a trap handler, as this can easily lead to race conditions or unexpected interruptions.
 
 ---
 

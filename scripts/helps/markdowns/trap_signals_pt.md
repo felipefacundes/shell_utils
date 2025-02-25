@@ -4,15 +4,16 @@ Este tutorial explica os sinais (signals) mais comuns em scripts shell e seus co
 
 ## Sinais
 
-### 1. `SIGINT` - Interrupt Signal
-**Descrição**: Enviado quando o usuário pressiona `Ctrl+C` no terminal. Geralmente é usado para interromper um processo em execução.
-
-- **Usos Comuns**: Interromper scripts ou processos.
-- **Prós**: Permite que o script interrompa a execução quando o usuário desejar.
-- **Contras**: Pode ser capturado ou ignorado se o processo estiver configurado para não responder a `SIGINT`.
-
+### 1. `SIGINT` ou `INT` - Interrupt Signal (Sinal 2)
+**Descrição**: Enviado quando o usuário pressiona `Ctrl+C` no terminal. É usado para solicitar a interrupção de um processo em execução.
+- **Usos Comuns**: Interromper scripts ou processos de forma controlada.
+- **Prós**: Permite que o usuário interrompa a execução de um programa quando desejar.
+- **Contras**: Pode ser capturado e tratado por um programa, que pode optar por continuar a execução ou realizar operações de limpeza antes de terminar.
 ```bash
-trap 'echo "Interrupt received, terminating..."; exit' SIGINT
+# As duas formas abaixo são equivalentes:
+trap 'echo "Interrupt recebido, terminando..."; exit' SIGINT
+# ou
+trap 'echo "Interrupt recebido, terminando..."; exit' INT
 ```
 
 ### 2. `SIGTERM` - Termination Signal
@@ -123,6 +124,49 @@ Como mencionado, `SIGCHLD` pode ser extremamente sensível e, se mal gerenciado,
 - **Usos Comuns**: Pausar e retomar processos durante a execução.
 - **Prós**: Útil para controle de processos em tempo real.
 - **Contras**: Não pode ser capturado ou ignorado.
+
+---
+
+**### Explicação do Core Dump com `trap 'kill -- -$$' INT TERM` ou `trap 'kill -- -$$' SIGINT TERM`**
+
+**Problema:** Os comandos `trap 'kill -- -$$' INT TERM` e `trap 'kill -- -$$' SIGINT TERM` podem causar um core dump quando executados.
+
+**Causa Raiz:**
+1. **O que o comando tenta fazer:**
+   - `kill -- -$$` tenta enviar um sinal (por padrão SIGTERM) para todo o grupo de processos do shell atual
+   - `$$` é o PID do processo atual
+   - `-$$` refere-se ao grupo de processos com ID igual ao PID atual
+
+2. **Por que ocorre o core dump:**
+   - Quando o trap é acionado (por Ctrl+C ou SIGTERM), o shell tenta matar seu próprio grupo de processos
+   - Isso inclui o próprio shell, criando uma situação onde o shell está tentando matar a si mesmo
+   - O shell recebe o sinal enquanto está no meio da execução do handler do trap, causando um estado inconsistente
+
+3. **Problemas específicos:**
+   - Deadlock potencial: o processo tenta se matar enquanto está processando um sinal
+   - Condição de corrida: o manipulador de trap está em execução quando o shell recebe o segundo sinal
+   - Auto-referência recursiva: o shell tenta matar o grupo que inclui a si mesmo
+
+**Solução Segura:**
+```bash
+# Versão mais segura usando um subshell para evitar matar o shell principal
+trap '(kill -- -$$) &>/dev/null' INT TERM
+
+# Ou usando uma variável para armazenar o PID antes da execução do trap
+pgid=$$
+trap 'kill -- -$pgid' INT TERM
+```
+
+**Alternativa Recomendada:**
+```bash
+# Especificar o tipo de sinal explicitamente
+trap 'kill -TERM -- -$$' INT TERM
+
+# Ou usar uma técnica que não envolva matar o grupo de processos do shell
+trap 'exit 1' INT TERM
+```
+
+É sempre arriscado usar comandos que afetam o grupo de processos do shell atual dentro de um manipulador de trap, pois isso pode facilmente levar a condições de corrida ou interrupções inesperadas.
 
 ---
 

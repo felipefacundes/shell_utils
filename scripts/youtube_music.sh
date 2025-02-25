@@ -24,8 +24,7 @@ cleanup() {
     return 0
 }
 
-#trap cleanup SIGINT EXIT  # CTRL+C CAPTURE AND SCRIPT OUTPUT
-trap cleanup SIGINT SIGTERM SIGHUP SIGQUIT EXIT
+trap cleanup SIGINT SIGTERM SIGHUP SIGQUIT EXIT # CTRL+C CAPTURE AND SCRIPT OUTPUT
 
 if ! command -v qutebrowser 1>/dev/null; then
     echo 'Please! Install qutebrowser'

@@ -67,14 +67,15 @@ display_img() {
     fi
 
     # Terminal configuration for quick input
-    stty -echo -icanon time 0 min 0
+    stty -echo -icanon time 0 min 0 >/dev/null 2>&1
 
-    while true; do
+    while ! read -rsn1 -t 0.01 </dev/tty; do
 
         for i in "${frames[@]}"; do
             clear
             imgview "$i"
-            if read -rsn1 -t 0.1 </dev/tty; then # Adjustment to control the speed of animation and closing
+
+            if read -rsn1 -t 0.09 </dev/tty; then # Adjustment to control the speed of animation and closing
                 cleanup
                 stty sane >/dev/null 2>&1
                 exit 0
@@ -83,6 +84,6 @@ display_img() {
     done
 }
 
-display_img &
+display_img "$1" &
 pid=$!
 wait "$pid"
