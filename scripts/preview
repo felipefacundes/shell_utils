@@ -6,7 +6,9 @@
 A simple file manager with file preview
 DOCUMENTATION
 
-trap '(pkill -9 -f "${0##*/}") &>/dev/null' SIGINT SIGTERM SIGHUP SIGQUIT
+#trap '(pkill -9 -f "${0##*/}") &>/dev/null' SIGINT SIGTERM SIGHUP SIGQUIT
+trap 'key="="; reset; clear' SIGHUP SIGQUIT EXIT
+trap 'key="="; reset; kill -TERM -- -$$' INT
 
 export LS_COLORS="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.7z=01;31:*.ace=01;31:*.alz=01;31:*.apk=01;31:*.arc=01;31:*.arj=01;31:*.bz=01;31:*.bz2=01;31:*.cab=01;31:*.cpio=01;31:*.crate=01;31:*.deb=01;31:*.drpm=01;31:*.dwm=01;31:*.dz=01;31:*.ear=01;31:*.egg=01;31:*.esd=01;31:*.gz=01;31:*.jar=01;31:*.lha=01;31:*.lrz=01;31:*.lz=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.lzo=01;31:*.pyz=01;31:*.rar=01;31:*.rpm=01;31:*.rz=01;31:*.sar=01;31:*.swm=01;31:*.t7z=01;31:*.tar=01;31:*.taz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tgz=01;31:*.tlz=01;31:*.txz=01;31:*.tz=01;31:*.tzo=01;31:*.tzst=01;31:*.udeb=01;31:*.war=01;31:*.whl=01;31:*.wim=01;31:*.xz=01;31:*.z=01;31:*.zip=01;31:*.zoo=01;31:*.zst=01;31:*.avif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:"
 
@@ -125,9 +127,291 @@ detect_first_color_convert_to_background() {
     fi
 }
 
+up() {
+    reset
+    ((selected_index--))
+    if (( "$selected_index" < 0 )); then
+        selected_index=$((${#filtered_files[@]} - 1))
+    fi
+    
+    # Ajusta a janela de visualização
+    if (( "$selected_index" < visible_start )); then
+        visible_start=$selected_index
+        visible_end=$((visible_start + "$_visible_end"))
+    fi
+    key=""
+    return 0
+}
+
+down() {
+    reset
+    if ((selected_index < ${#filtered_files[@]} - 1)); then
+        ((selected_index++))
+        if ((selected_index > visible_end)); then
+            ((visible_start++))
+            ((visible_end++))
+        fi
+    else
+        # Loop perfeito: voltar ao topo quando atinge o final
+        selected_index=0
+        visible_start=0
+        visible_end=$_visible_end
+    fi
+    key=""
+    return 0
+}
+
+right() {
+    reset
+    repeater -n 5 reset_view
+    if [[ -d "$DIR/${filtered_raw_files[$selected_index]}" ]] && [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
+        visible_end="$_visible_end"
+        pwd_left="$PWD"
+        index_left="$selected_index"
+        indicator=1
+        pwd="$DIR/${filtered_raw_files[$selected_index]}"
+        DIR="$pwd"
+        cd "$DIR" && DIR="$PWD"
+        selected_index=0
+    fi
+    key=""
+    return 0
+}
+
+left() {
+    reset
+    repeater -n 5 reset_view
+    if [[ -n "$pwd_left" ]]; then
+         visible_end="$_visible_end"
+         pwd="$pwd_left" && DIR="$pwd" && pwd_left="$(dirname "$pwd")"
+         cd "$DIR" && DIR="$PWD"
+         [[ "$indicator" == 0 ]] && selected_index=0 && return 0
+         [[ "$indicator" == 1 ]] && selected_index="$index_left" && indicator=0 && return 0
+    else
+        visible_end="$_visible_end"
+        cd .. && DIR="$PWD"
+        selected_index=0
+    fi
+    key=""
+    return 0
+}
+
+toggle_preview_files() {
+    [[ -z "$toggle_preview" ]] && toggle_preview=1 && return 0
+    [[ "$toggle_preview" == 1 ]] && toggle_preview="" && return 0
+}
+
+delete() {
+    rm -i "${DIR}/${filtered_raw_files[$selected_index]}" 
+    mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
+    mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
+    total_files="${#files[@]}"
+    if [[ "$selected_index" -ge "$total_files" ]]; then
+        selected_index="$((total_files - 1))"
+    fi
+    return 0
+}
+
+reset_view() {
+    reset
+    if [[ "$filtering" -eq 1 ]]; then
+        visible_end="$total_filtered"
+    else
+        visible_end="$_visible_end"
+    fi
+    return 0
+}
+
+clear_filter() {
+    last_selected_name="${filtered_raw_files[$selected_index]}"
+    repeater -n 5 reset_view
+    filter_mode=false
+    filtering=0
+    input_text=""
+    for i in "${!raw_files[@]}"; do
+        if [[ "${raw_files[$i]}" == "$last_selected_name" ]]; then
+            selected_index="$i"
+            break
+        fi
+    done
+    return 0
+}
+
+preview_files() {
+    if [[ "${#filtered_files[@]}" -gt 0 ]]; then
+
+        ext_test="${filtered_raw_files[$selected_index]##*.}"
+
+        if [[ -d "${filtered_raw_files[$selected_index]}" ]]; then
+
+            ls -lha --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n 2
+            echo "----------------------------------------------------"
+            # Count the number of items returned by LS
+            item_count=$(ls -p --group-directories-first "$DIR/${filtered_raw_files[$selected_index]}" | wc -l)
+            # Check that the number of items is greater than 30
+            if [ "$item_count" -le 30 ]; then
+                # If it is less than 30, displays all items with intact colors
+                ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}"
+            else
+                # If it is more than 30, it limits the display for the first 30 items
+                ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n "${SIZELINE}"
+            fi
+
+        elif [[ "${ext_test}" =~ ^([Mm][Dd])$ ]]; then
+            markdown_reader "$DIR/${filtered_raw_files[$selected_index]}"
+        elif [[ "${ext_test}" =~ ^([Oo][Dd][Tt])$ ]]; then
+            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+        elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc][Xx])$ ]]; then
+            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+        elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]]; then
+            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+        elif [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]]; then
+            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+        elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
+            pdfview "$DIR/${filtered_raw_files[$selected_index]}"
+        elif [[ "${ext_test}" =~ ^([GgPpJj][NnPpIi][FfGg])$ ]] || [[ "${ext_test}" =~ ^([Jj][Pp][Ee][Gg])$ ]]; then
+            imgview "$DIR/${filtered_raw_files[$selected_index]}"
+        else
+            echo -e "(It was not possible to display the file)\n"   
+            head -n "${SIZELINE}" <(strings -n 10 "$DIR/${filtered_raw_files[$selected_index]}") 2>/dev/null
+        fi
+
+    fi
+}
+
+shortcuts() {
+    esc=$'\e'; export esc
+    up=$'\e[A'; export up
+    up2=$'\x41'; export up2
+    down=$'\e[B'; export down
+    down2=$'\x42'; export down2
+    left=$'\e[D'; export left
+    right=$'\e[C'; export right
+    delete=$'\x7e'; export delete
+    ctrl_d=$'\x04'; export ctrl_d
+    ctrl_f=$'\x06'; export ctrl_f
+    ctrl_p=$'\x10'; export ctrl_p
+    backspace=$'\x7f'; export backspace
+}
+
+shell_interactive() {
+    stty_state=$(stty -g)
+    "$shell"
+    stty "$stty_state"
+}
+
+restore_shell() {
+    # Saves the current state of the cursor and screen
+    tput smcup
+    
+    # Performs shell on a subshell with its own environment
+    (
+        # Reset completo do terminal para o shell
+        reset
+        stty sane
+        
+        # Executa o shell
+        cd "$DIR" && shell_interactive
+    )
+    
+    # Restaura o estado da tela
+    tput rmcup
+    
+    # Reinicializa completamente o terminal para o modo de captura de teclas
+    reset
+    stty -echo -icanon min 1 time 0
+    
+    # Redefines all shortcuts explicitly
+    key=""
+    shortcuts
+}
+
+keys() {
+    shortcuts
+    stty -echo -icanon time 0 min 1
+    # Capture the user input
+    IFS= read -rsn1 key </dev/tty >/dev/null 2>&1 # Read first character
+
+    if [[ "$key" == "$esc" ]]; then
+        IFS= read -rsn2 rest </dev/tty >/dev/null 2>&1 # Read second character
+        key+="$rest"
+    fi
+
+    if [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
+
+        if [[ "$key" == "d" ]]; then
+            IFS= read -rsn2 d </dev/tty  >/dev/null 2>&1 # Read second character
+            key+="$d"
+        fi
+
+        if [[ "$key" == "de" ]]; then
+            IFS= read -rsn3 de </dev/tty >/dev/null 2>&1 # Read third character
+            key+="$de"
+        fi
+    fi
+
+    stty sane
+
+    case "$key" in
+        "$up"|"$up2")
+            up
+            ;;
+        "$down"|"$down2")
+            down
+            ;;
+        "$right")
+            right
+            ;;
+        "$left")
+            left
+            ;;
+        "")
+            [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]] && \
+            xdg_pid "$DIR/${filtered_raw_files[$selected_index]}"
+            [[ "$filter_mode" == true ]] && [[ "$filtering" -eq 1 ]] && \
+            xdg_pid "$DIR/${filtered_files[$selected_index]}" && repeater -n 5 clear_filter
+            ;;
+        "$backspace")
+            [[ "$filtering" -eq 1 ]] && input_text="${input_text%?}"
+            ;;
+        "!")
+            restore_shell
+            ;;
+        "'"|"\"")
+            repeater -n 5 clear_filter
+            ;;
+        "$ctrl_f"|"³"|"²"|"#"|"@"|"/")
+            filtering=1
+            input_text=""
+            filter_mode=true
+            ;;
+        "$ctrl_d"|"="|"+")
+            clear
+            exit 0
+            ;;
+        "$ctrl_p")
+            toggle_preview_files
+            ;;
+        "$delete")
+            delete
+            ;;
+        [a-zA-Z0-9._-]|*)
+            if [[ "$filter_mode" == false ]]; then
+                [[ "$key" == "del" ]] && delete
+                [[ "$key" == "w" || "$key" == "W" ]] && up
+                [[ "$key" == "s" || "$key" == "S" ]] && down
+            fi
+            if [[ "$filter_mode" == true ]]; then
+                [[ "$filtering" -eq 1 ]] && input_text+="$key"
+            fi
+            ;;
+    esac
+}
+
 select_file() {
     local previous_input=""
     local pwd="$DIR"
+    local black_on_yellow='\033[1;38;5;16;103m'     
     local alert='\033[1;44;40m'     
     local yellow='\e[1;33m'       
     local nc="\033[0m"           
@@ -141,17 +425,6 @@ select_file() {
     local visible_start=0
     local _visible_end=9
     local visible_end="$_visible_end"
-    local esc=$'\e'
-    local up=$'\e[A'
-    local up2=$'\x41'        
-    local down=$'\e[B'
-    local down2=$'\x42'      
-    local left=$'\e[D'
-    local right=$'\e[C'
-    local delete=$'\x7e'
-    local ctrl_d=$'\x04'
-    local ctrl_f=$'\x06'
-    local backspace=$'\x7f'
     local input_text=""
     local filtering=0
     local last_selected_name=""
@@ -160,17 +433,21 @@ select_file() {
         mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
         mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
 
-        local total_files=${#files[@]}
+        local total_files="${#files[@]}"
 
         # Captures the last folder with 'Basaname'
-        lastdir=$(basename "$DIR")
+        lastdir="$(basename "$DIR")"
 
         # Removes the last folder from the way
-        basedir=$(dirname "$DIR")
+        #basedir_dirname="$(dirname "$DIR")"
+        #basedir=${basedir_dirname##*/}
+        basedir="$(dirname "$DIR")"
 
         clear
 
         echo -e "${alert}[C-F]|[/]: Filter | [']|[\"]: Out of the filter | [W]|[↑]/[S]|[↓]: Navigate | [Enter]: Open file | [!]: Terminal | [C-D]|[=]: Exit${nc}"
+        #echo "$DIR/${filtered_raw_files[$selected_index]}" # DEBUG
+        #echo -e "$DIR/${filtered_files[$selected_index]}" # DEBUG
         echo "===================================================="
         echo "$basedir" | awk -v red="$redpf" -v green="$greenpf" -v yellow="$yellowpf" -v reset="$ncpf" -v lastdir="$lastdir" '
         {
@@ -219,11 +496,11 @@ select_file() {
             if [[ "$i" -eq "$selected_index" ]]; then
                 detect_first_color_convert_to_background
                 detect_first_color
-                if [[ -n "${first_color}" ]]; then
+                if [[ -n "${first_color}" ]] && [[ "${first_color}" != $'\E[0m' ]]; then
                     #DEBUG COLOR: printf '%q\n' "${first_color}"
                     echo -e "${first_color}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
                 else
-                    echo -e "${yellow}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
+                    echo -e "${yellow}->${nc} ${black_on_yellow}${filtered_raw_files[$i]}${nc}"
                 fi
             else
                 echo "   ${filtered_files[$i]}"
@@ -242,204 +519,18 @@ select_file() {
             echo -e "${alert}[']|[\"] For out of the filter${nc}"
             echo -e "${alert}Items found: ${total_filtered}${nc}"
         else
-            echo -e "${alert}Total files: ${total_files}${nc}"
+            echo -e "${alert}Total files: ($(("$selected_index" + 1))|${total_files}${nc})"
         fi
         echo "----------------------------------------------------"
 
-        if [[ "${#filtered_files[@]}" -gt 0 ]]; then
+        [[ -z "$toggle_preview" ]] && preview_files && _visible_end=9
+        [[ "$toggle_preview" == 1 ]] && _visible_end="$(( $(tput lines) - 20 ))"
 
-            ext_test="${filtered_raw_files[$selected_index]##*.}"
-
-            if [[ -d "${filtered_raw_files[$selected_index]}" ]]; then
-
-                ls -lha --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n 2
-                echo "----------------------------------------------------"
-                # Count the number of items returned by LS
-                item_count=$(ls -p --group-directories-first "$DIR/${filtered_raw_files[$selected_index]}" | wc -l)
-                # Check that the number of items is greater than 30
-                if [ "$item_count" -le 30 ]; then
-                    # If it is less than 30, displays all items with intact colors
-                    ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}"
-                else
-                    # If it is more than 30, it limits the display for the first 30 items
-                    ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n "${SIZELINE}"
-                fi
-
-            elif [[ "${ext_test}" =~ ^([Mm][Dd])$ ]]; then
-                markdown_reader "$DIR/${filtered_raw_files[$selected_index]}"
-            elif [[ "${ext_test}" =~ ^([Oo][Dd][Tt])$ ]]; then
-                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-            elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc][Xx])$ ]]; then
-                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-            elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]]; then
-                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-            elif [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]]; then
-                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-            elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
-                pdfview "$DIR/${filtered_raw_files[$selected_index]}"
-            elif [[ "${ext_test}" =~ ^([GgPpJj][NnPpIi][FfGg])$ ]] || [[ "${ext_test}" =~ ^([Jj][Pp][Ee][Gg])$ ]]; then
-                imgview "$DIR/${filtered_raw_files[$selected_index]}"
-            else
-                echo "(It was not possible to display the file)"
-                #head -n "${SIZELINE}" "$DIR/${filtered_raw_files[$selected_index]}" 2>/dev/null || echo "(It was not possible to display the file)"
-            fi
-
-        fi
-
-        echo "----------------------------------------------------"
+        [[ -z "$toggle_preview" ]] && echo "----------------------------------------------------"
         [[ "$key" == "del" ]] && echo -e "Pressed: $key\n----------------------------------------------------"
 
-        stty sane
+        keys
 
-        # Capture the user input
-        IFS= read -rsn1 key </dev/tty # Read first character
-
-
-        if [[ "$key" == "$esc" ]]; then
-            IFS= read -rsn2 rest </dev/tty
-            key+="$rest"
-        fi
-
-        if [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
-
-            if [[ "$key" == "d" ]]; then
-                IFS= read -rsn2 d </dev/tty # Read second character
-                key+="$d"
-            fi
-
-            if [[ "$key" == "de" ]]; then
-                IFS= read -rsn3 de </dev/tty
-                key+="$de"
-            fi
-        fi
-
-        up() {
-            ((selected_index--))
-            if (( "$selected_index" < 0 )); then
-                selected_index=$((${#filtered_files[@]} - 1))
-            fi
-            
-            # Ajusta a janela de visualização
-            if (( "$selected_index" < visible_start )); then
-                visible_start=$selected_index
-                visible_end=$((visible_start + "$_visible_end"))
-            fi
-        }
-
-        down() {
-            if ((selected_index < ${#filtered_files[@]} - 1)); then
-                ((selected_index++))
-                if ((selected_index > visible_end)); then
-                    ((visible_start++))
-                    ((visible_end++))
-                fi
-            else
-                # Loop perfeito: voltar ao topo quando atinge o final
-                selected_index=0
-                visible_start=0
-                visible_end=$_visible_end
-            fi
-        }
-
-        delete() {
-            rm -i "$DIR/${files[$selected_index]}"
-            mapfile -t files < <(ls -p "$DIR")
-            total_files="${#files[@]}"
-            if [[ "$selected_index" -ge "$total_files" ]]; then
-                selected_index="$((total_files - 1))"
-            fi
-        }
-
-        reset_view() {
-            if [[ "$filtering" -eq 1 ]]; then
-                visible_end="$total_filtered"
-            else
-                visible_end="$_visible_end"
-            fi
-        }
-
-        clear_filter() {
-            last_selected_name="${filtered_raw_files[$selected_index]}"
-            repeater -n 5 reset_view
-            filter_mode=false
-            filtering=0
-            input_text=""
-            for i in "${!raw_files[@]}"; do
-                if [[ "${raw_files[$i]}" == "$last_selected_name" ]]; then
-                    selected_index=$i
-                    break
-                fi
-            done
-        }
-
-        case "$key" in
-            "$up"|"$up2")
-                up
-                ;;
-            "$down"|"$down2")
-                down
-                ;;
-            "$right")
-                repeater -n 5 reset_view
-                if [[ -d "$DIR/${filtered_raw_files[$selected_index]}" ]] && [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
-                    visible_end="$_visible_end"
-                    pwd_left="$PWD"
-                    pwd="$DIR/${filtered_raw_files[$selected_index]}" 
-                    DIR="$pwd"
-                    selected_index=0
-                # elif [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
-                #     xdg_pid "$DIR/${filtered_raw_files[$selected_index]}"
-                fi
-                ;;
-            "$left")
-                repeater -n 5 reset_view
-                if [[ -n "$pwd_left" ]]; then
-                    visible_end="$_visible_end"
-                    pwd="$pwd_left" && DIR="$pwd" && pwd_left=$(dirname "$pwd")
-                    selected_index=0
-                else
-                    cd .. && DIR="$PWD"
-                    selected_index=0
-                fi
-                ;;
-            "")
-                [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]] && \
-                xdg_pid "$DIR/${filtered_raw_files[$selected_index]}"
-                [[ "$filter_mode" == true ]] && [[ "$filtering" -eq 1 ]] && \
-                xdg_pid "$DIR/${filtered_files[$selected_index]}"
-                ;;
-            "$backspace")
-                [[ "$filtering" -eq 1 ]] && input_text="${input_text%?}"
-                ;;
-            "!")
-                "$shell"
-                ;;
-            "'"|"\"")
-                clear_filter
-                ;;
-            "$ctrl_f"|"³"|"²"|"#"|"@"|"/")
-                filtering=1
-                input_text=""
-                filter_mode=true
-                ;;
-            "$ctrl_d"|"="|"+")
-                clear
-                exit 0
-                ;;
-            "$delete")
-                delete
-                ;;
-            [a-zA-Z0-9._-]|*)
-                if [[ "$filter_mode" == false ]]; then
-                    [[ "$key" == "del" ]] && delete
-                    [[ "$key" == "w" || "$key" == "W" ]] && up
-                    [[ "$key" == "s" || "$key" == "S" ]] && down
-                fi
-                if [[ "$filter_mode" == true ]]; then
-                    [[ "$filtering" -eq 1 ]] && input_text+="$key"
-                fi
-                ;;
-        esac
     done
     clear
     exit 0
