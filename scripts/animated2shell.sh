@@ -25,13 +25,15 @@ trap 'cleanup; pkill -TERM -P $$; exit 1' INT TERM EXIT
 cmd_check() {
     [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
     {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
-    [[ "$1" == "-msg" ]] && echo "Install ${msg}" && exit 1
+    [[ "$1" == "-msg" ]] && echo "Install ${msg}" && no_cmd=() && exit 1
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
 imgview() {
     cmd_check img2sixel libsixel && img2sixel "$1" && return 0 || cmd_check viu viu && viu "$1" && return 0 \
-    || cmd_check catimg catimg && catimg "$1" && return 0 || cmd_check chafa chafa && chafa "$1" && return 0 || cmd_check -msg
+    || cmd_check catimg catimg && catimg "$1" && return 0 || cmd_check chafa chafa && chafa "$1" && return 0
+    # shellcheck disable=SC2181
+    [[ $? -ne 0 ]] && cmd_check -msg
 }
 
 convert_msg() {

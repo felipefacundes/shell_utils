@@ -247,7 +247,6 @@ detect_first_color() {
     export first_color="${COLOR_RESET}${first_color}"
 }
 
-
 # Improved help function
 show_help() {
     update_variables

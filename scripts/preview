@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A simple file manager with file preview
+DOCUMENTATION
+
+trap '(pkill -9 -f "${0##*/}") &>/dev/null' SIGINT SIGTERM SIGHUP SIGQUIT
+
+export LS_COLORS="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.7z=01;31:*.ace=01;31:*.alz=01;31:*.apk=01;31:*.arc=01;31:*.arj=01;31:*.bz=01;31:*.bz2=01;31:*.cab=01;31:*.cpio=01;31:*.crate=01;31:*.deb=01;31:*.drpm=01;31:*.dwm=01;31:*.dz=01;31:*.ear=01;31:*.egg=01;31:*.esd=01;31:*.gz=01;31:*.jar=01;31:*.lha=01;31:*.lrz=01;31:*.lz=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.lzo=01;31:*.pyz=01;31:*.rar=01;31:*.rpm=01;31:*.rz=01;31:*.sar=01;31:*.swm=01;31:*.t7z=01;31:*.tar=01;31:*.taz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tgz=01;31:*.tlz=01;31:*.txz=01;31:*.tz=01;31:*.tzo=01;31:*.tzst=01;31:*.udeb=01;31:*.war=01;31:*.whl=01;31:*.wim=01;31:*.xz=01;31:*.z=01;31:*.zip=01;31:*.zoo=01;31:*.zst=01;31:*.avif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:"
+
+SIZELINE=20
+SCRIPT="${0##*/}"
+TMPDIR="${TMPDIR:-/tmp}"
+TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
+DIR="${1:-$PWD}"
+
+filter_mode=false
+# Detects the shell
+shell=$(ps -p $PPID -o comm=)
+
+[[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+[[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
+[[ -n "$DIR" ]] && [[ ! -d "$DIR" ]] && echo "${DIR} It is not a valid directory." && exit 1
+
+cmd_check() {
+    [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
+    {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
+    [[ "$1" == "-msg" ]] && echo -e "(It was not possible to display the file)\nInstall ${msg}" && no_cmd=() && return 0
+    ! command -v "$1" 1>/dev/null && no_cmd+=("""$2""") && return 1 || return 0
+}
+
+office_convert() {
+    local file="$1"
+    local temp_dir="${TMP_DIR}/temp_book"
+    local temp_file="${TMP_DIR}/temp_file.txt"
+    local ext_test="${filtered_raw_files[$selected_index]##*.}"
+    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
+    [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
+
+    [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${SIZELINE}") && return 0 ||
+    [[ "${ext_test}" =~ ^([Oo][Dd][Tt])$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${SIZELINE}") && return 0 ||
+    [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${SIZELINE}") && return 0 ||
+    cmd_check pandoc pandoc && (pandoc "$file" -t plain | head -n "${SIZELINE}") && return 0 ||
+    cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
+    && head -n "${SIZELINE}" "${temp_dir}"/*.txt && return 0 || cmd_check -msg && return 1
+    return 0
+}
+
+markdown_reader() {
+    ~/.shell_utils/scripts/markdown_reader.sh "$@" | head -n "${SIZELINE}"
+}
+
+imgview() {
+    cmd_check img2sixel libsixel && img2sixel -w 640 -h 480 "$1" && return 0 || cmd_check viu viu -w 100 -h 40 && viu "$1" && return 0 \
+    || cmd_check catimg catimg && catimg -w 80 "$1" && return 0 || cmd_check chafa chafa && chafa -s 40 "$1" && return 0 ||
+    cmd_check -msg && return 1
+}
+
+pdfview() {
+    local file="$1"
+    local temp_file="${TMP_DIR}/temp_file.txt"
+    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
+    cmd_check pdftotext poppler && pdftotext -l 10 -layout -nopgbrk -q "$file" "${temp_file}" 1>/dev/null && \
+    head -n "${SIZELINE}" "${temp_file}" 2>/dev/null
+    # shellcheck disable=SC2181
+    [[ $? -ne 0 ]] && cmd_check -msg && return 1
+}
+
+xdg_pid() {
+    xdg-open "$1" 2>/dev/null &
+    xdgpid1=$!
+    sleep .5
+    xdgpid2=$(pgrep -n -u "$USER")
+    trap 'kill "$xdgpid1" "$xdgpid2" 2>/dev/null' INT EXIT
+}
+
+repeater() {
+    if [[ "$1" == "-n" && "$2" =~ ^([0-9]+)$ ]]; then
+        num="${BASH_REMATCH[1]}"
+        shift 2 
+
+        for ((i = 1; i <= num; i++)); do
+            "$@"
+        done
+    fi
+}
+
+detect_first_color() {
+    # Using AWK to capture any sequence anxe that starts with \ 033
+    first_color=$(echo -e "${filtered_files[$i]}" | awk '{match($0, /\033\[[0-9;]*m/, arr); print arr[0]}')
+    export first_color="${first_color}"
+}
+
+detect_first_color_convert_to_background() {
+    # Captura a sequência ANSI de cor do foreground
+    first_color2bg=$(echo -e "${filtered_files[$i]}" | awk '{match($0, /\033\[([0-9;]*)m/, arr); print arr[1]}')
+
+    # Se encontrou uma sequência de cor válida
+    if [[ -n "$first_color2bg" ]]; then
+        # Divide os atributos (ex: "1;34" para negrito e azul)
+        IFS=';' read -ra color_parts <<< "$first_color2bg"
+        
+        bg_color_code=49  # Valor padrão para fundo (sem cor)
+        
+        for part in "${color_parts[@]}"; do
+            # Converte foreground normal (30-37) para background (40-47)
+            if ((part >= 30 && part <= 37)); then
+                bg_color_code=$((part + 10))
+            # Converte foreground brilhante (90-97) para background (100-107)
+            elif ((part >= 90 && part <= 97)); then
+                bg_color_code=$((part + 10))
+            fi
+        done
+
+        # Definindo as sequências separadamente
+        reset_code=$'\033[0m'
+        bg_code=$'\033['${bg_color_code}'m'
+        fg_code=$'\033[97m'
+        bold_code=$'\033[1m'
+        
+        # Combinando as sequências
+        export first_color2bg="${reset_code}${bg_code}${bold_code}${fg_code}"
+    fi
+}
+
+select_file() {
+    local previous_input=""
+    local pwd="$DIR"
+    local alert='\033[1;44;40m'     
+    local yellow='\e[1;33m'       
+    local nc="\033[0m"           
+
+    redpf=$(printf '\033[1;31m')      # Red with printf
+    greenpf=$(printf '\033[1;32m')    # Green with printf
+    yellowpf=$(printf '\033[1;33m')   # Yellow with printf
+    ncpf=$(printf '\033[0m')          # Reset with printf
+
+    local selected_index=0
+    local visible_start=0
+    local _visible_end=9
+    local visible_end="$_visible_end"
+    local esc=$'\e'
+    local up=$'\e[A'
+    local up2=$'\x41'        
+    local down=$'\e[B'
+    local down2=$'\x42'      
+    local left=$'\e[D'
+    local right=$'\e[C'
+    local delete=$'\x7e'
+    local ctrl_d=$'\x04'
+    local ctrl_f=$'\x06'
+    local backspace=$'\x7f'
+    local input_text=""
+    local filtering=0
+    local last_selected_name=""
+
+    while [[ "$key" != "=" ]]; do
+        mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
+        mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
+
+        local total_files=${#files[@]}
+
+        # Captures the last folder with 'Basaname'
+        lastdir=$(basename "$DIR")
+
+        # Removes the last folder from the way
+        basedir=$(dirname "$DIR")
+
+        clear
+
+        echo -e "${alert}[C-F]|[/]: Filter | [']|[\"]: Out of the filter | [W]|[↑]/[S]|[↓]: Navigate | [Enter]: Open file | [!]: Terminal | [C-D]|[=]: Exit${nc}"
+        echo "===================================================="
+        echo "$basedir" | awk -v red="$redpf" -v green="$greenpf" -v yellow="$yellowpf" -v reset="$ncpf" -v lastdir="$lastdir" '
+        {
+            gsub("/", green "/" red);  # Colors all bars "/" in green, keeping the rest red
+            print red $0 green "/" yellow lastdir reset;  # Red Way, Green Bars and Last Yellow Folder
+        }'
+        echo "===================================================="
+
+        local filtered_files=()
+        local filtered_raw_files=()
+
+        if [[ "$filtering" -eq 1 ]]; then
+            for i in "${!raw_files[@]}"; do
+                if [[ -z "$input_text" || "${raw_files[$i],,}" == *"${input_text,,}"* ]]; then
+                    filtered_files+=("${files[$i]}")
+                    filtered_raw_files+=("${raw_files[$i]}")
+                fi
+            done
+            total_filtered="${#filtered_files[@]}"
+        else
+            filtered_files=("${files[@]}")
+            filtered_raw_files=("${raw_files[@]}")
+        fi
+
+        # Reset the viewing indexes only when the filter content is changed
+        if [[ "$filtering" -eq 1 && "$previous_input" != "$input_text" ]]; then
+            # Restart the selection when applying a new filter
+            selected_index=0
+            visible_start=0
+            visible_end=$_visible_end
+            ((visible_end >= ${#filtered_files[@]})) && visible_end=$((${#filtered_files[@]} - 1))
+            previous_input="$input_text"
+        fi
+
+        if [[ "${#filtered_files[@]}" -eq 0 ]]; then
+            echo "No files correspond to the search..."
+        fi
+
+        ((selected_index < visible_start)) && visible_start=$selected_index
+        ((selected_index > visible_end)) && visible_end=$selected_index
+        ((visible_end - visible_start >= "$_visible_end")) && visible_start=$((visible_end - "$_visible_end"))
+        ((visible_start < 0)) && visible_start=0
+        ((visible_end >= ${#filtered_files[@]})) && visible_end=$((${#filtered_files[@]} - 1))
+
+        for ((i = visible_start; i <= visible_end; i++)); do
+            if [[ "$i" -eq "$selected_index" ]]; then
+                detect_first_color_convert_to_background
+                detect_first_color
+                echo -e "${first_color}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
+            else
+                echo "   ${filtered_files[$i]}"
+            fi
+        done
+
+        if [[ "$filtering" -eq 1 ]]; then
+            visible_end="$total_filtered"
+        else
+            visible_end=$((visible_start + _visible_end))
+        fi
+
+        echo "===================================================="
+        if [[ "$filtering" -eq 1 ]]; then
+            echo -e "${alert}Filter: \"${input_text}\"${nc}"
+            echo -e "${alert}[']|[\"] For out of the filter${nc}"
+            echo -e "${alert}Items found: ${total_filtered}${nc}"
+        else
+            echo -e "${alert}Total files: ${total_files}${nc}"
+        fi
+        echo "----------------------------------------------------"
+
+        if [[ "${#filtered_files[@]}" -gt 0 ]]; then
+
+            ext_test="${filtered_raw_files[$selected_index]##*.}"
+
+            if [[ -d "${filtered_raw_files[$selected_index]}" ]]; then
+
+                ls -lha --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n 2
+                echo "----------------------------------------------------"
+                # Count the number of items returned by LS
+                item_count=$(ls -p --group-directories-first "$DIR/${filtered_raw_files[$selected_index]}" | wc -l)
+                # Check that the number of items is greater than 30
+                if [ "$item_count" -le 30 ]; then
+                    # If it is less than 30, displays all items with intact colors
+                    ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}"
+                else
+                    # If it is more than 30, it limits the display for the first 30 items
+                    ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n "${SIZELINE}"
+                fi
+
+            elif [[ "${ext_test}" =~ ^([Mm][Dd])$ ]]; then
+                markdown_reader "$DIR/${filtered_raw_files[$selected_index]}"
+            elif [[ "${ext_test}" =~ ^([Oo][Dd][Tt])$ ]]; then
+                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+            elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc][Xx])$ ]]; then
+                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+            elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]]; then
+                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+            elif [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]]; then
+                office_convert "$DIR/${filtered_raw_files[$selected_index]}"
+            elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
+                pdfview "$DIR/${filtered_raw_files[$selected_index]}"
+            elif [[ "${ext_test}" =~ ^([GgPpJj][NnPpIi][FfGg])$ ]] || [[ "${ext_test}" =~ ^([Jj][Pp][Ee][Gg])$ ]]; then
+                imgview "$DIR/${filtered_raw_files[$selected_index]}"
+            else
+                echo "(It was not possible to display the file)"
+                #head -n "${SIZELINE}" "$DIR/${filtered_raw_files[$selected_index]}" 2>/dev/null || echo "(It was not possible to display the file)"
+            fi
+
+        fi
+
+        echo "----------------------------------------------------"
+        [[ "$key" == "del" ]] && echo -e "Pressed: $key\n----------------------------------------------------"
+
+        stty sane
+
+        # Capture the user input
+        IFS= read -rsn1 key </dev/tty # Read first character
+
+
+        if [[ "$key" == "$esc" ]]; then
+            IFS= read -rsn2 rest </dev/tty
+            key+="$rest"
+        fi
+
+        if [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
+
+            if [[ "$key" == "d" ]]; then
+                IFS= read -rsn2 d </dev/tty # Read second character
+                key+="$d"
+            fi
+
+            if [[ "$key" == "de" ]]; then
+                IFS= read -rsn3 de </dev/tty
+                key+="$de"
+            fi
+        fi
+
+        up() {
+            ((selected_index--))
+            if (( "$selected_index" < 0 )); then
+                selected_index=$((${#filtered_files[@]} - 1))
+            fi
+            
+            # Ajusta a janela de visualização
+            if (( "$selected_index" < visible_start )); then
+                visible_start=$selected_index
+                visible_end=$((visible_start + "$_visible_end"))
+            fi
+        }
+
+        down() {
+            if ((selected_index < ${#filtered_files[@]} - 1)); then
+                ((selected_index++))
+                if ((selected_index > visible_end)); then
+                    ((visible_start++))
+                    ((visible_end++))
+                fi
+            else
+                # Loop perfeito: voltar ao topo quando atinge o final
+                selected_index=0
+                visible_start=0
+                visible_end=$_visible_end
+            fi
+        }
+
+        delete() {
+            rm -i "$DIR/${files[$selected_index]}"
+            mapfile -t files < <(ls -p "$DIR")
+            total_files="${#files[@]}"
+            if [[ "$selected_index" -ge "$total_files" ]]; then
+                selected_index="$((total_files - 1))"
+            fi
+        }
+
+        reset_view() {
+            if [[ "$filtering" -eq 1 ]]; then
+                visible_end="$total_filtered"
+            else
+                visible_end="$_visible_end"
+            fi
+        }
+
+        clear_filter() {
+            last_selected_name="${filtered_raw_files[$selected_index]}"
+            repeater -n 5 reset_view
+            filter_mode=false
+            filtering=0
+            input_text=""
+            for i in "${!raw_files[@]}"; do
+                if [[ "${raw_files[$i]}" == "$last_selected_name" ]]; then
+                    selected_index=$i
+                    break
+                fi
+            done
+        }
+
+        case "$key" in
+            "$up"|"$up2")
+                up
+                ;;
+            "$down"|"$down2")
+                down
+                ;;
+            "$right")
+                repeater -n 5 reset_view
+                if [[ -d "$DIR/${filtered_raw_files[$selected_index]}" ]] && [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
+                    visible_end="$_visible_end"
+                    pwd_left="$PWD"
+                    pwd="$DIR/${filtered_raw_files[$selected_index]}" 
+                    DIR="$pwd"
+                    selected_index=0
+                # elif [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
+                #     xdg_pid "$DIR/${filtered_raw_files[$selected_index]}"
+                fi
+                ;;
+            "$left")
+                repeater -n 5 reset_view
+                if [[ -n "$pwd_left" ]]; then
+                    visible_end="$_visible_end"
+                    pwd="$pwd_left" && DIR="$pwd" && pwd_left=$(dirname "$pwd")
+                    selected_index=0
+                else
+                    cd .. && DIR="$PWD"
+                    selected_index=0
+                fi
+                ;;
+            "")
+                [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]] && \
+                xdg_pid "$DIR/${filtered_raw_files[$selected_index]}"
+                [[ "$filter_mode" == true ]] && [[ "$filtering" -eq 1 ]] && \
+                xdg_pid "$DIR/${filtered_files[$selected_index]}"
+                ;;
+            "$backspace")
+                [[ "$filtering" -eq 1 ]] && input_text="${input_text%?}"
+                ;;
+            "!")
+                "$shell"
+                ;;
+            "'"|"\"")
+                clear_filter
+                ;;
+            "$ctrl_f"|"³"|"²"|"#"|"@"|"/")
+                filtering=1
+                input_text=""
+                filter_mode=true
+                ;;
+            "$ctrl_d"|"="|"+")
+                clear
+                exit 0
+                ;;
+            "$delete")
+                delete
+                ;;
+            [a-zA-Z0-9._-]|*)
+                if [[ "$filter_mode" == false ]]; then
+                    [[ "$key" == "del" ]] && delete
+                    [[ "$key" == "w" || "$key" == "W" ]] && up
+                    [[ "$key" == "s" || "$key" == "S" ]] && down
+                fi
+                if [[ "$filter_mode" == true ]]; then
+                    [[ "$filtering" -eq 1 ]] && input_text+="$key"
+                fi
+                ;;
+        esac
+    done
+    clear
+    exit 0
+}
+
+select_file
