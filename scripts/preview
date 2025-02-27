@@ -219,7 +219,12 @@ select_file() {
             if [[ "$i" -eq "$selected_index" ]]; then
                 detect_first_color_convert_to_background
                 detect_first_color
-                echo -e "${first_color}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
+                if [[ -n "${first_color}" ]]; then
+                    #DEBUG COLOR: printf '%q\n' "${first_color}"
+                    echo -e "${first_color}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
+                else
+                    echo -e "${yellow}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
+                fi
             else
                 echo "   ${filtered_files[$i]}"
             fi
