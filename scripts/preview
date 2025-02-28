@@ -29,7 +29,7 @@ shell=$(ps -p $PPID -o comm=)
 cmd_check() {
     [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
     {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
-    [[ "$1" == "-msg" ]] && echo -e "(It was not possible to display the file)\nInstall ${msg}" && no_cmd=() && return 0
+    [[ "$1" == "-msg" ]] && printf "(It was not possible to display the file)\nInstall %s\n" "$msg" && no_cmd=() && return 0
     ! command -v "$1" 1>/dev/null && no_cmd+=("""$2""") && return 1 || return 0
 }
 
@@ -91,13 +91,13 @@ repeater() {
 
 detect_first_color() {
     # Using AWK to capture any sequence anxe that starts with \ 033
-    first_color=$(echo -e "${filtered_files[$i]}" | awk '{match($0, /\033\[[0-9;]*m/, arr); print arr[0]}')
+    first_color=$(printf "%b\n" "${filtered_files[$i]}" | awk '{match($0, /\033\[[0-9;]*m/, arr); print arr[0]}')
     export first_color="${first_color}"
 }
 
 detect_first_color_convert_to_background() {
     # Captura a sequência ANSI de cor do foreground
-    first_color2bg=$(echo -e "${filtered_files[$i]}" | awk '{match($0, /\033\[([0-9;]*)m/, arr); print arr[1]}')
+    first_color2bg=$(printf "%b\n" "${filtered_files[$i]}" | awk '{match($0, /\033\[([0-9;]*)m/, arr); print arr[1]}')
 
     # Se encontrou uma sequência de cor válida
     if [[ -n "$first_color2bg" ]]; then
@@ -127,8 +127,20 @@ detect_first_color_convert_to_background() {
     fi
 }
 
+move_cursor() {
+    local new_line=$1
+    if [[ "$new_line" -ne "$actual_line" ]]; then
+        # Mover o cursor para a nova linha, evitando movimentos desnecessários
+        tput cup $((new_line + 1)) 0
+        actual_line=$new_line
+    fi
+}
+
 up() {
-    reset
+    #reset
+    if [[ "$actual_line" -gt 0 ]]; then
+        move_cursor $((actual_line - 1))
+    fi
     ((selected_index--))
     if (( "$selected_index" < 0 )); then
         selected_index=$((${#filtered_files[@]} - 1))
@@ -144,7 +156,8 @@ up() {
 }
 
 down() {
-    reset
+    #reset
+    move_cursor $((actual_line + 1))
     if ((selected_index < ${#filtered_files[@]} - 1)); then
         ((selected_index++))
         if ((selected_index > visible_end)); then
@@ -201,10 +214,19 @@ toggle_preview_files() {
     [[ "$toggle_preview" == 1 ]] && toggle_preview="" && return 0
 }
 
+toggle_hiden_files() {
+    [[ -z "$toggle_hiden" ]] && toggle_hiden=1 && return 0
+    [[ "$toggle_hiden" == 1 ]] && toggle_hiden="" && return 0
+}
+
 delete() {
-    rm -i "${DIR}/${filtered_raw_files[$selected_index]}" 
-    mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
-    mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
+    rm -i "${DIR}/${filtered_raw_files[$selected_index]}"
+
+    [[ -z "$toggle_hiden" ]] && mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
+    [[ -z "$toggle_hiden" ]] && mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
+    [[ "$toggle_hiden" == 1 ]] && mapfile -t files < <(ls -pa --group-directories-first --color=always "$DIR")
+    [[ "$toggle_hiden" == 1 ]] && mapfile -t raw_files < <(ls -pa --group-directories-first "$DIR")
+
     total_files="${#files[@]}"
     if [[ "$selected_index" -ge "$total_files" ]]; then
         selected_index="$((total_files - 1))"
@@ -213,7 +235,6 @@ delete() {
 }
 
 reset_view() {
-    reset
     if [[ "$filtering" -eq 1 ]]; then
         visible_end="$total_filtered"
     else
@@ -223,6 +244,7 @@ reset_view() {
 }
 
 clear_filter() {
+    reset
     last_selected_name="${filtered_raw_files[$selected_index]}"
     repeater -n 5 reset_view
     filter_mode=false
@@ -290,6 +312,7 @@ shortcuts() {
     delete=$'\x7e'; export delete
     ctrl_d=$'\x04'; export ctrl_d
     ctrl_f=$'\x06'; export ctrl_f
+    ctrl_h=$'\x08'; export ctrl_h
     ctrl_p=$'\x10'; export ctrl_p
     backspace=$'\x7f'; export backspace
 }
@@ -328,7 +351,7 @@ restore_shell() {
 
 keys() {
     shortcuts
-    stty -echo -icanon time 0 min 1
+    #stty -echo -icanon time 0 min 1
     # Capture the user input
     IFS= read -rsn1 key </dev/tty >/dev/null 2>&1 # Read first character
 
@@ -350,7 +373,7 @@ keys() {
         fi
     fi
 
-    stty sane
+    #stty sane
 
     case "$key" in
         "$up"|"$up2")
@@ -392,6 +415,9 @@ keys() {
         "$ctrl_p")
             toggle_preview_files
             ;;
+        "$ctrl_h")
+            toggle_hiden_files
+            ;;
         "$delete")
             delete
             ;;
@@ -409,6 +435,11 @@ keys() {
 }
 
 select_file() {
+    tput civis
+    stty -echo
+    tput smcup
+
+    actual_line=0
     local previous_input=""
     local pwd="$DIR"
     local black_on_yellow='\033[1;38;5;16;103m'     
@@ -421,17 +452,21 @@ select_file() {
     yellowpf=$(printf '\033[1;33m')   # Yellow with printf
     ncpf=$(printf '\033[0m')          # Reset with printf
 
-    local selected_index=0
     local visible_start=0
-    local _visible_end=9
+    local selected_index=0
+    local default_lines=20
+    local default_visible_value=9
+    local _visible_end="$default_visible_value"
     local visible_end="$_visible_end"
     local input_text=""
     local filtering=0
     local last_selected_name=""
 
     while [[ "$key" != "=" ]]; do
-        mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
-        mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
+        [[ -z "$toggle_hiden" ]] && mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
+        [[ -z "$toggle_hiden" ]] && mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
+        [[ "$toggle_hiden" == 1 ]] && mapfile -t files < <(ls -pa --group-directories-first --color=always "$DIR")
+        [[ "$toggle_hiden" == 1 ]] && mapfile -t raw_files < <(ls -pa --group-directories-first "$DIR")
 
         local total_files="${#files[@]}"
 
@@ -445,16 +480,17 @@ select_file() {
 
         clear
 
-        echo -e "${alert}[C-F]|[/]: Filter | [']|[\"]: Out of the filter | [W]|[↑]/[S]|[↓]: Navigate | [Enter]: Open file | [!]: Terminal | [C-D]|[=]: Exit${nc}"
-        #echo "$DIR/${filtered_raw_files[$selected_index]}" # DEBUG
-        #echo -e "$DIR/${filtered_files[$selected_index]}" # DEBUG
-        echo "===================================================="
-        echo "$basedir" | awk -v red="$redpf" -v green="$greenpf" -v yellow="$yellowpf" -v reset="$ncpf" -v lastdir="$lastdir" '
+        #echo -e "${alert}[C-F]|[/]: Filter | [']|[\"]: Out of the filter | [W]|[↑]/[S]|[↓]: Navigate | [Enter]: Open file | [!]: Terminal | [C-D]|[=]: Exit${nc}"
+        printf "%b[C-F]|[/]: Filter | [']|[\"]: Out of the filter | [W]|[↑]/[S]|[↓]: Navigate | [Enter]: Open file | [!]: Terminal | [C-D]|[=]: Exit%b\n" "$alert" "$nc"
+        # echo "===================================================="
+        printf '%s\n' "===================================================="
+        printf '%b\n' "$basedir" | awk -v red="$redpf" -v green="$greenpf" -v yellow="$yellowpf" -v reset="$ncpf" -v lastdir="$lastdir" '
         {
             gsub("/", green "/" red);  # Colors all bars "/" in green, keeping the rest red
             print red $0 green "/" yellow lastdir reset;  # Red Way, Green Bars and Last Yellow Folder
         }'
-        echo "===================================================="
+        # echo "===================================================="
+        printf '%s\n' "===================================================="
 
         local filtered_files=()
         local filtered_raw_files=()
@@ -471,6 +507,9 @@ select_file() {
             filtered_files=("${files[@]}")
             filtered_raw_files=("${raw_files[@]}")
         fi
+        
+        [[ -z "$toggle_preview" ]] && _visible_end="$default_visible_value"
+        [[ "$toggle_preview" == 1 ]] && _visible_end="$(( $(tput lines) - "$default_lines" ))"
 
         # Reset the viewing indexes only when the filter content is changed
         if [[ "$filtering" -eq 1 && "$previous_input" != "$input_text" ]]; then
@@ -483,7 +522,7 @@ select_file() {
         fi
 
         if [[ "${#filtered_files[@]}" -eq 0 ]]; then
-            echo "No files correspond to the search..."
+            printf '%s\n' "No files correspond to the search..."
         fi
 
         ((selected_index < visible_start)) && visible_start=$selected_index
@@ -498,12 +537,15 @@ select_file() {
                 detect_first_color
                 if [[ -n "${first_color}" ]] && [[ "${first_color}" != $'\E[0m' ]]; then
                     #DEBUG COLOR: printf '%q\n' "${first_color}"
-                    echo -e "${first_color}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
+                    # echo -e "${first_color}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
+                    printf "%b->%b %b%b%b\n" "$first_color" "$nc" "$first_color2bg" "${filtered_raw_files[$i]}" "$nc"
                 else
-                    echo -e "${yellow}->${nc} ${black_on_yellow}${filtered_raw_files[$i]}${nc}"
+                    # echo -e "${yellow}->${nc} ${black_on_yellow}${filtered_raw_files[$i]}${nc}"
+                    printf "%b->%b %b%b%b\n" "$yellow" "$nc" "$black_on_yellow" "${filtered_raw_files[$i]}" "$nc"
                 fi
             else
-                echo "   ${filtered_files[$i]}"
+                # echo "   ${filtered_files[$i]}"
+                printf "%b\n" "   ${filtered_files[$i]}"
             fi
         done
 
@@ -513,21 +555,25 @@ select_file() {
             visible_end=$((visible_start + _visible_end))
         fi
 
-        echo "===================================================="
+        printf '%s\n' "===================================================="
         if [[ "$filtering" -eq 1 ]]; then
-            echo -e "${alert}Filter: \"${input_text}\"${nc}"
-            echo -e "${alert}[']|[\"] For out of the filter${nc}"
-            echo -e "${alert}Items found: ${total_filtered}${nc}"
+            # echo -e "${alert}Filter: \"${input_text}\"${nc}"
+            # echo -e "${alert}[']|[\"] For out of the filter${nc}"
+            # echo -e "${alert}Items found: ${total_filtered}${nc}"
+            printf "%bFilter: \"%s\"%b\n" "$alert" "$input_text" "$nc"
+            printf "%b[']|[\"] For out of the filter%b\n" "$alert" "$nc"
+            printf "%bItems found: %s%b\n" "$alert" "$total_filtered" "$nc"
         else
-            echo -e "${alert}Total files: ($(("$selected_index" + 1))|${total_files}${nc})"
+            # echo -e "${alert}Total files: ($(("$selected_index" + 1))|${total_files})${nc}"
+            printf "%bTotal files: (%s|%s)%b\n" "$alert" "$((selected_index + 1))" "$total_files" "$nc"
         fi
-        echo "----------------------------------------------------"
+        printf '%s\n' "----------------------------------------------------"
 
-        [[ -z "$toggle_preview" ]] && preview_files && _visible_end=9
-        [[ "$toggle_preview" == 1 ]] && _visible_end="$(( $(tput lines) - 20 ))"
+        [[ -z "$toggle_preview" ]] && preview_files && _visible_end="$default_visible_value"
+        [[ "$toggle_preview" == 1 ]] && _visible_end="$(( $(tput lines) - "$default_lines" ))"
 
-        [[ -z "$toggle_preview" ]] && echo "----------------------------------------------------"
-        [[ "$key" == "del" ]] && echo -e "Pressed: $key\n----------------------------------------------------"
+        [[ -z "$toggle_preview" ]] && printf '%s\n' "----------------------------------------------------"
+        [[ "$key" == "del" ]] && printf "Pressed: %s\n----------------------------------------------------\n" "$key"
 
         keys
 
