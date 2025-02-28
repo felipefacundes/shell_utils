@@ -3,55 +3,343 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-A simple file manager with file preview
+A simple file manager with file preview based on "fff" and "ranger". It uses "lf" as a base, 
+adding support for file preview with "ueberzug" and integration with custom commands for efficient navigation. 
+It includes configurable shortcuts to simplify file manipulation.
 DOCUMENTATION
 
-#trap '(pkill -9 -f "${0##*/}") &>/dev/null' SIGINT SIGTERM SIGHUP SIGQUIT
-trap 'reset; clear; exit 0' SIGHUP SIGQUIT EXIT
-trap 'reset; exit 1' INT
-
-export LS_COLORS="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.7z=01;31:*.ace=01;31:*.alz=01;31:*.apk=01;31:*.arc=01;31:*.arj=01;31:*.bz=01;31:*.bz2=01;31:*.cab=01;31:*.cpio=01;31:*.crate=01;31:*.deb=01;31:*.drpm=01;31:*.dwm=01;31:*.dz=01;31:*.ear=01;31:*.egg=01;31:*.esd=01;31:*.gz=01;31:*.jar=01;31:*.lha=01;31:*.lrz=01;31:*.lz=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.lzo=01;31:*.pyz=01;31:*.rar=01;31:*.rpm=01;31:*.rz=01;31:*.sar=01;31:*.swm=01;31:*.t7z=01;31:*.tar=01;31:*.taz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tgz=01;31:*.tlz=01;31:*.txz=01;31:*.tz=01;31:*.tzo=01;31:*.tzst=01;31:*.udeb=01;31:*.war=01;31:*.whl=01;31:*.wim=01;31:*.xz=01;31:*.z=01;31:*.zip=01;31:*.zoo=01;31:*.zst=01;31:*.avif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:"
-
-SIZELINE=20
 SCRIPT="${0##*/}"
 TMPDIR="${TMPDIR:-/tmp}"
 TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
-DIR="${1:-$PWD}"
+export LS_COLORS="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.7z=01;31:*.ace=01;31:*.alz=01;31:*.apk=01;31:*.arc=01;31:*.arj=01;31:*.bz=01;31:*.bz2=01;31:*.cab=01;31:*.cpio=01;31:*.crate=01;31:*.deb=01;31:*.drpm=01;31:*.dwm=01;31:*.dz=01;31:*.ear=01;31:*.egg=01;31:*.esd=01;31:*.gz=01;31:*.jar=01;31:*.lha=01;31:*.lrz=01;31:*.lz=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.lzo=01;31:*.pyz=01;31:*.rar=01;31:*.rpm=01;31:*.rz=01;31:*.sar=01;31:*.swm=01;31:*.t7z=01;31:*.tar=01;31:*.taz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tgz=01;31:*.tlz=01;31:*.txz=01;31:*.tz=01;31:*.tzo=01;31:*.tzst=01;31:*.udeb=01;31:*.war=01;31:*.whl=01;31:*.wim=01;31:*.xz=01;31:*.z=01;31:*.zip=01;31:*.zoo=01;31:*.zst=01;31:*.avif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:"
 
-filter_mode=false
-# Detects the shell
-shell=$(ps -p $PPID -o comm=)
+get_os() {
+    case $OSTYPE in
+        darwin*)
+            opener=open
+            file_flags=bIL
+        ;;
+        haiku)
+            opener=open
+        ;;
+    esac
+}
 
-[[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
-[[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
-[[ -n "$DIR" ]] && [[ ! -d "$DIR" ]] && echo "${DIR} It is not a valid directory." && exit 1
+setup_terminal() {
+    printf '\e[?1049h\e[?7l\e[?25l\e[2J\e[1;%sr' "$max_items"
+    stty -echo
+}
+
+reset_terminal() {
+    printf '\e[?7h\e[?25h\e[2J\e[;r\e[?1049l'
+    stty echo
+}
+
+clear_screen() {
+    printf '\e[%sH\e[9999C\e[1J%b\e[1;%sr' \
+           "$((LINES-2))" "${TMUX:+\e[2J}" "$max_items"
+}
+
+setup_options() {
+    [[ $PREVIEW_FILE_FORMAT == *%f* ]] && {
+        file_pre=${PREVIEW_FILE_FORMAT/'%f'*}
+        file_post=${PREVIEW_FILE_FORMAT/*'%f'}
+    }
+
+    file -I &>/dev/null || : "${file_flags:=biL}"
+}
+
+get_term_size() {
+    read -r LINES COLUMNS < <(stty size)
+    
+    if ((preview_mode == 1)); then
+        ((max_items=9))
+        ((preview_area=LINES-max_items-3)) # -3 For the delimiter and status line
+    else
+        ((max_items=LINES-3))
+    fi
+}
+
+get_ls_colors() {
+    [[ -z $LS_COLORS ]] && {
+        PREVIEW_LS_COLORS=0
+        return
+    }
+
+    IFS=: read -ra ls_cols <<< "$LS_COLORS"
+
+    for ((i=0;i<${#ls_cols[@]};i++)); {
+        [[ ${ls_cols[i]} =~ ^\*[^\.] ]] &&
+            ls_patterns+="${ls_cols[i]/=*}|"
+
+        [[ ${ls_cols[i]} =~ ^(\*|\.) ]] && {
+            ls_cols[i]=${ls_cols[i]#\*}
+            ls_cols[i]=ls_${ls_cols[i]#.}
+        }
+    }
+
+    ls_cols=("${ls_cols[@]//[^a-zA-Z0-9=\\;]/_}")
+
+    ls_patterns=${ls_patterns//\*}
+    ls_patterns=${ls_patterns%?}
+
+    export "${ls_cols[@]}" &>/dev/null
+}
+
+get_mime_type() {
+    mime_type=$(file "-${file_flags:-biL}" "$1" 2>/dev/null)
+}
+
+status_line() {
+    #PWD_escaped=${PWD//[^[:print:]]/^[}
+
+    cyanf=$(printf '\033[1;96m')      # Red with printf
+    greenpf=$(printf '\033[1;32m')    # Green with printf
+    yellowpf=$(printf '\033[1;33m')   # Yellow with printf
+    ncpf=$(printf '\033[0m')          # Reset with printf
+    basedir="$(dirname "$PWD")"
+    lastdir="$(basename "$PWD")"
+
+    PWD_color=$(printf '%b\n' "$basedir" | awk -v red="$cyanf" -v green="$greenpf" -v yellow="$yellowpf" -v reset="$ncpf" -v lastdir="$lastdir" '
+    {
+        gsub("/", green "/" red);  # Colors all bars "/" in green, keeping the rest red
+        print red $0 green "/" yellow lastdir reset;  # Red Way, Green Bars and Last Yellow Folder
+    }')
+    
+    local mode_info=""
+    if ((preview_mode == 1)); then
+        mode_info="[Preview] "
+    else
+        mode_info="[Normal] "
+    fi
+
+    printf '\e7\e[%sH\e[3%s;4%sm%*s\r%s%s %s\e[m\e[%sH\e[K\e8' \
+           "$((LINES-1))" \
+           "${PREVIEW_COL5:-0}" \
+           "${PREVIEW_COL2:-1}" \
+           "$COLUMNS" "" \
+           "$mode_info" \
+           "($((scroll+1))/$((list_total+1)))" \
+           "${PWD_color}" \
+           "$LINES"
+}
+
+read_dir() {
+    local dirs
+    local files
+    local item_index
+
+    printf '\e]2;preview: %s\e'\\ "$PWD"
+
+    [[ $PWD == / ]] && PWD=
+
+    for item in "$PWD"/*; do
+        if [[ -d $item ]]; then
+            dirs+=("$item")
+            ((item_index++))
+
+            [[ $item == "$OLDPWD" ]] &&
+                ((previous_index=item_index))
+        else
+            files+=("$item")
+        fi
+    done
+
+    list=("${dirs[@]}" "${files[@]}")
+
+    [[ -z ${list[0]} ]] &&
+        list[0]=empty
+
+    ((list_total=${#list[@]}-1))
+
+    cur_list=("${list[@]}")
+}
+
+get_background_from_foreground() {
+    local foreground_code="$1"
+    local bg_color_code=49  # Default background (no color)
+    
+    # Extract color codes
+    local IFS=';'
+    read -ra color_parts <<< "$foreground_code"
+    
+    for part in "${color_parts[@]}"; do
+        # Convert normal foreground (30-37) to background (40-47)
+        if ((part >= 30 && part <= 37)); then
+            bg_color_code=$((part + 10))
+        # Convert bright foreground (90-97) to background (100-107)
+        elif ((part >= 90 && part <= 97)); then
+            bg_color_code=$((part + 10))
+        fi
+    done
+    
+    # Return the background color code
+    echo "$bg_color_code"
+}
+
+print_line() {
+    local file_name=${list[$1]##*/}
+    local file_ext=${file_name##*.}
+    local format
+    local suffix
+
+    if [[ -z ${list[$1]} ]]; then
+        return
+
+    elif [[ -d ${list[$1]} ]]; then
+        format+=\\e[${di:-1;3${PREVIEW_COL1:-2}}m
+        suffix+=/
+
+    elif [[ -b ${list[$1]} ]]; then
+        format+=\\e[${bd:-40;33;01}m
+
+    elif [[ -c ${list[$1]} ]]; then
+        format+=\\e[${cd:-40;33;01}m
+
+    elif [[ -x ${list[$1]} ]]; then
+        format+=\\e[${ex:-01;32}m
+
+    elif [[ -h ${list[$1]} && ! -e ${list[$1]} ]]; then
+        format+=\\e[${mi:-01;31;7}m
+
+    elif [[ -h ${list[$1]} ]]; then
+        format+=\\e[${ln:-01;36}m
+
+    elif [[ -p ${list[$1]} ]]; then
+        format+=\\e[${pi:-40;33}m
+
+    elif [[ -S ${list[$1]} ]]; then
+        format+=\\e[${so:-01;35}m
+
+    elif [[ $PREVIEW_LS_COLORS == 1 &&
+            $ls_patterns &&
+            $file_name =~ ($ls_patterns)$ ]]; then
+        match=${BASH_REMATCH[0]}
+        file_ext=ls_${match//[^a-zA-Z0-9=\\;]/_}
+        format+=\\e[${!file_ext:-${fi:-37}}m
+
+    elif [[ $PREVIEW_LS_COLORS == 1 &&
+            $file_ext != "$file_name" &&
+            $file_ext =~ ^[a-zA-Z0-9_]*$ ]]; then
+        file_ext=ls_${file_ext}
+        format+=\\e[${!file_ext:-${fi:-37}}m
+
+    else
+        format+=\\e[${fi:-37}m
+    fi
+
+    # Only highlights the selected line in normal mode
+    # if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
+    #     format+="\\e[1;3${PREVIEW_COL4:-6};7m"
+    # fi
+
+    # Only highlights the selected line in normal mode
+    if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
+        # Extract the anxe codes from string format (removing the escapes)
+        local current_format="${format//\\e/\e}"
+        # Extract the color codes after the first [
+        local color_codes="${current_format#*[}"
+        color_codes="${color_codes%m*}"
+        
+        # Obtain the corresponding background code
+        local bg_code=$(get_background_from_foreground "$color_codes")
+        
+        # Add the background code with white and bold text
+        format+="\\e[1;${bg_code};93m"
+    fi
+
+    file_name=${file_name//[^[:print:]]/^[}
+
+    printf '\r%b%s\e[m\r' \
+        "${file_pre}${format}" \
+        "${file_name}${suffix}${file_post}"
+}
+
+draw_dir() {
+    local scroll_start=$scroll
+    local scroll_new_pos
+    local scroll_end
+
+    ((find_previous == 1)) && {
+        ((scroll_start=previous_index-1))
+        ((scroll=scroll_start))
+
+        find_previous=
+    }
+
+    if ((list_total < max_items || scroll < max_items/2)); then
+        ((scroll_start=0))
+        ((scroll_end=max_items))
+        ((scroll_new_pos=scroll+1))
+
+    elif ((list_total - scroll < max_items/2)); then
+        ((scroll_start=list_total-max_items+1))
+        ((scroll_new_pos=max_items-(list_total-scroll)))
+        ((scroll_end=list_total+1))
+
+    else
+        ((scroll_start=scroll-max_items/2))
+        ((scroll_end=scroll_start+max_items))
+        ((scroll_new_pos=max_items/2+1))
+    fi
+
+    printf '\e[H'
+
+    if ((preview_mode == 1)); then
+        # In Preview mode, we need to track which file is visually selected
+        displayed_selection=scroll
+    fi
+    
+    for ((i=scroll_start;i<scroll_end;i++)); {
+        ((i > scroll_start)) &&
+            printf '\n'
+        print_line "$i"
+    }
+
+    if ((preview_mode == 0)); then
+        # In normal mode, we move the cursor to the position of the selected file
+        printf '\e[%sH' "$scroll_new_pos"
+        ((y=scroll_new_pos))
+    else 
+        # In Preview mode, we do not move the cursor to the selected line
+        printf '\e[H'
+        ((y=1))
+        
+        draw_delimiter
+        draw_file_preview
+    fi
+}
+
+draw_delimiter() {
+    printf '\e[%sH' "$((max_items+1))"
+    printf '\e[33m%*s\e[m\n' "$COLUMNS" "" | tr ' ' '='
+}
 
 cmd_check() {
     [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
     {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
     [[ "$1" == "-msg" ]] && printf "(It was not possible to display the file)\nInstall %s\n" "$msg" && no_cmd=() && return 0
-    ! command -v "$1" 1>/dev/null && no_cmd+=("""$2""") && return 1 || return 0
+    ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
 office_convert() {
     local file="$1"
     local temp_dir="${TMP_DIR}/temp_book"
     local temp_file="${TMP_DIR}/temp_file.txt"
-    local ext_test="${filtered_raw_files[$selected_index]##*.}"
     [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
 
-    [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${SIZELINE}") && return 0 ||
-    [[ "${ext_test}" =~ ^([Oo][Dd][Tt])$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${SIZELINE}") && return 0 ||
-    [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${SIZELINE}") && return 0 ||
-    cmd_check pandoc pandoc && (pandoc "$file" -t plain | head -n "${SIZELINE}") && return 0 ||
+    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0 ||
+    [[ "${file_ext}" =~ ^([Oo][Dd][Tt])$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0 ||
+    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0 ||
+    cmd_check pandoc pandoc && (pandoc "$file" -t plain | head -n "${sizeline}") && return 0 ||
     cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
-    && head -n "${SIZELINE}" "${temp_dir}"/*.txt && return 0 || cmd_check -msg && return 1
+    && head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 || cmd_check -msg && return 1
     return 0
 }
 
 markdown_reader() {
-    ~/.shell_utils/scripts/markdown_reader.sh "$@" | head -n "${SIZELINE}"
+    ~/.shell_utils/scripts/markdown_reader.sh "$@" | head -n "${sizeline}"
 }
 
 imgview() {
@@ -65,549 +353,473 @@ pdfview() {
     local temp_file="${TMP_DIR}/temp_file.txt"
     [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
     cmd_check pdftotext poppler && pdftotext -l 10 -layout -nopgbrk -q "$file" "${temp_file}" 1>/dev/null && \
-    head -n "${SIZELINE}" "${temp_file}" 2>/dev/null
+    echo -e "${sizeline}\n\n" && head -n "${sizeline}" "${temp_file}" 2>/dev/null
     # shellcheck disable=SC2181
     [[ $? -ne 0 ]] && cmd_check -msg && return 1
 }
 
-xdg_pid() {
-    xdg-open "$1" 2>/dev/null &
-    xdgpid1=$!
-    sleep .5
-    xdgpid2=$(pgrep -n -u "$USER")
-    trap 'kill "$xdgpid1" "$xdgpid2" 2>/dev/null' INT EXIT
-}
-
-repeater() {
-    if [[ "$1" == "-n" && "$2" =~ ^([0-9]+)$ ]]; then
-        num="${BASH_REMATCH[1]}"
-        shift 2 
-
-        for ((i = 1; i <= num; i++)); do
-            "$@"
-        done
-    fi
-}
-
-detect_first_color() {
-    # Using AWK to capture any sequence anxe that starts with \ 033
-    first_color=$(printf "%b\n" "${filtered_files[$i]}" | awk '{match($0, /\033\[[0-9;]*m/, arr); print arr[0]}')
-    export first_color="${first_color}"
-}
-
-detect_first_color_convert_to_background() {
-    # Captura a sequência ANSI de cor do foreground
-    first_color2bg=$(printf "%b\n" "${filtered_files[$i]}" | awk '{match($0, /\033\[([0-9;]*)m/, arr); print arr[1]}')
-
-    # Se encontrou uma sequência de cor válida
-    if [[ -n "$first_color2bg" ]]; then
-        # Divide os atributos (ex: "1;34" para negrito e azul)
-        IFS=';' read -ra color_parts <<< "$first_color2bg"
-        
-        bg_color_code=49  # Valor padrão para fundo (sem cor)
-        
-        for part in "${color_parts[@]}"; do
-            # Converte foreground normal (30-37) para background (40-47)
-            if ((part >= 30 && part <= 37)); then
-                bg_color_code=$((part + 10))
-            # Converte foreground brilhante (90-97) para background (100-107)
-            elif ((part >= 90 && part <= 97)); then
-                bg_color_code=$((part + 10))
-            fi
-        done
-
-        # Definindo as sequências separadamente
-        reset_code=$'\033[0m'
-        bg_code=$'\033['${bg_color_code}'m'
-        fg_code=$'\033[97m'
-        bold_code=$'\033[1m'
-        
-        # Combinando as sequências
-        export first_color2bg="${reset_code}${bg_code}${bold_code}${fg_code}"
-    fi
-}
-
-move_cursor() {
-    local new_line=$1
-    if [[ "$new_line" -ne "$actual_line" ]]; then
-        # Mover o cursor para a nova linha, evitando movimentos desnecessários
-        tput cup $((new_line + 1)) 0
-        actual_line=$new_line
-    fi
-}
-
-up() {
-    # '\e[?25l': Hide the cursor.
-    printf '\e[?25l'
-    #reset
-    if [[ "$actual_line" -gt 0 ]]; then
-        move_cursor $((actual_line - 1))
-    fi
-    printf '\e7\e[%sH\e[?25h' "$LINES"
-    ((selected_index--))
-    if (( "$selected_index" < 0 )); then
-        selected_index=$((${#filtered_files[@]} - 1))
-    fi
+draw_file_preview() {
+    local selected_file="${list[scroll]}"
+    local sizeline=15
     
-    # Ajusta a janela de visualização
-    if (( "$selected_index" < visible_start )); then
-        visible_start=$selected_index
-        visible_end=$((visible_start + "$_visible_end"))
-    fi
-    key=""
-    return 0
-}
-
-down() {
-    #reset
-    # '\e[?25l': Hide the cursor.
-    printf '\e[?25l'
-    move_cursor $((actual_line + 1))
-    printf '\e7\e[%sH\e[?25h' "$LINES"
-    if ((selected_index < ${#filtered_files[@]} - 1)); then
-        ((selected_index++))
-        if ((selected_index > visible_end)); then
-            ((visible_start++))
-            ((visible_end++))
-        fi
-    else
-        # Loop perfeito: voltar ao topo quando atinge o final
-        selected_index=0
-        visible_start=0
-        visible_end=$_visible_end
-    fi
-    key=""
-    return 0
-}
-
-right() {
-    reset
-    repeater -n 5 reset_view
-    if [[ -d "$DIR/${filtered_raw_files[$selected_index]}" ]] && [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
-        visible_end="$_visible_end"
-        pwd_left="$PWD"
-        index_left="$selected_index"
-        indicator=1
-        pwd="$DIR/${filtered_raw_files[$selected_index]}"
-        DIR="$pwd"
-        cd "$DIR" && DIR="$PWD"
-        selected_index=0
-    fi
-    key=""
-    return 0
-}
-
-left() {
-    reset
-    repeater -n 5 reset_view
-    if [[ -n "$pwd_left" ]]; then
-         visible_end="$_visible_end"
-         pwd="$pwd_left" && DIR="$pwd" && pwd_left="$(dirname "$pwd")"
-         cd "$DIR" && DIR="$PWD"
-         [[ "$indicator" == 0 ]] && selected_index=0 && return 0
-         [[ "$indicator" == 1 ]] && selected_index="$index_left" && indicator=0 && return 0
-    else
-        visible_end="$_visible_end"
-        cd .. && DIR="$PWD"
-        selected_index=0
-    fi
-    key=""
-    return 0
-}
-
-toggle_preview_files() {
-    [[ -z "$toggle_preview" ]] && toggle_preview=1 && return 0
-    [[ "$toggle_preview" == 1 ]] && toggle_preview="" && return 0
-}
-
-toggle_hiden_files() {
-    [[ -z "$toggle_hiden" ]] && toggle_hiden=1 && return 0
-    [[ "$toggle_hiden" == 1 ]] && toggle_hiden="" && return 0
-}
-
-delete() {
-    rm -i "${DIR}/${filtered_raw_files[$selected_index]}"
-
-    [[ -z "$toggle_hiden" ]] && mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
-    [[ -z "$toggle_hiden" ]] && mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
-    [[ "$toggle_hiden" == 1 ]] && mapfile -t files < <(ls -pa --group-directories-first --color=always "$DIR")
-    [[ "$toggle_hiden" == 1 ]] && mapfile -t raw_files < <(ls -pa --group-directories-first "$DIR")
-
-    total_files="${#files[@]}"
-    if [[ "$selected_index" -ge "$total_files" ]]; then
-        selected_index="$((total_files - 1))"
-    fi
-    return 0
-}
-
-reset_view() {
-    if [[ "$filtering" -eq 1 ]]; then
-        visible_end="$total_filtered"
-    else
-        visible_end="$_visible_end"
-    fi
-    return 0
-}
-
-clear_filter() {
-    reset
-    last_selected_name="${filtered_raw_files[$selected_index]}"
-    repeater -n 5 reset_view
-    filter_mode=false
-    filtering=0
-    input_text=""
-    for i in "${!raw_files[@]}"; do
-        if [[ "${raw_files[$i]}" == "$last_selected_name" ]]; then
-            selected_index="$i"
-            break
-        fi
+    # Cleans the preview area
+    for ((i=max_items+2; i<LINES-1; i++)); do
+        printf '\e[%sH\e[K' "$i"
     done
-    return 0
-}
+    
+    printf '\e[%sH' "$((max_items+2))"
+    
+    if [[ -f "$selected_file" ]]; then
+        local file_ext="${selected_file##*.}"
+        file_ext="${file_ext,,}" # lowercase
+        
+        # Displays the current file name in the preview area
+        printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
+        
+        case "$file_ext" in
+            md)
+                markdown_reader "$selected_file"
+                ;;
+            pdf)
+                if ! pdfview "$selected_file"; then
+                    printf '\n\e[33mPDF file: %s\e[m\n' "${selected_file##*/}"
+                fi
+                ;;
+            png|jpg|jpeg|avif)
+                if ! imgview "$selected_file"; then
+                    printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
+                fi
+                ;;
+            rtf|odt|doc|docx)
+                if ! office_convert "$selected_file"; then
+                    printf '\n\e[33mOffice file: %s\e[m\n' "${selected_file##*/}"
+                fi
+                ;;
+            *)
+                get_mime_type "$selected_file"
+                if [[ "$mime_type" == *"text"* || "$mime_type" == *"empty"* ]]; then
+                    head -n "${sizeline}" "$selected_file" 2>/dev/null
+                else
+                    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null
+                fi
+                ;;
+        esac
 
-preview_files() {
-    if [[ "${#filtered_files[@]}" -gt 0 ]]; then
-
-        ext_test="${filtered_raw_files[$selected_index]##*.}"
-
-        if [[ -d "${filtered_raw_files[$selected_index]}" ]]; then
-
-            ls -lha --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n 2
-            echo "----------------------------------------------------"
-            # Count the number of items returned by LS
-            item_count=$(ls -p --group-directories-first "$DIR/${filtered_raw_files[$selected_index]}" | wc -l)
-            # Check that the number of items is greater than 30
-            if [ "$item_count" -le 30 ]; then
-                # If it is less than 30, displays all items with intact colors
-                ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}"
-            else
-                # If it is more than 30, it limits the display for the first 30 items
-                ls -p --group-directories-first --color=always "$DIR/${filtered_raw_files[$selected_index]}" | head -n "${SIZELINE}"
-            fi
-
-        elif [[ "${ext_test}" =~ ^([Mm][Dd])$ ]]; then
-            markdown_reader "$DIR/${filtered_raw_files[$selected_index]}"
-        elif [[ "${ext_test}" =~ ^([Oo][Dd][Tt])$ ]]; then
-            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-        elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc][Xx])$ ]]; then
-            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-        elif [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]]; then
-            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-        elif [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]]; then
-            office_convert "$DIR/${filtered_raw_files[$selected_index]}"
-        elif [[ "${ext_test}" =~ ^([Pp][Dd][Ff])$ ]]; then
-            pdfview "$DIR/${filtered_raw_files[$selected_index]}"
-        elif [[ "${ext_test}" =~ ^([GgPpJj][NnPpIi][FfGg])$ ]] || [[ "${ext_test}" =~ ^([Jj][Pp][Ee][Gg])$ ]]; then
-            imgview "$DIR/${filtered_raw_files[$selected_index]}"
+    elif [[ -d "$selected_file" ]]; then
+        printf '\e[36mDirectory: %s\e[m\n\n' "${selected_file##*/}"
+        ls -lha --group-directories-first --color=always "$selected_file" | head -n 2
+        printf '%s\n' "----------------------------------------------------"
+        # Count the number of items returned by LS
+        item_count=$(ls -pa --group-directories-first "$selected_file" | wc -l)
+        # Check that the number of items is greater than 30
+        if [ "$item_count" -le 30 ]; then
+            # If it is less than 30, displays all items with intact colors
+            ls -pa --group-directories-first --color=always "$selected_file"
         else
-            echo -e "(It was not possible to display the file)\n"   
-            head -n "${SIZELINE}" <(strings -n 10 "$DIR/${filtered_raw_files[$selected_index]}") 2>/dev/null
+            # If it is more than 30, it limits the display for the first 30 items
+            ls -pa --group-directories-first --color=always "$selected_file" | head -n "${sizeline}"
         fi
-
+    else
+        printf '\e[33mNo selected files\e[m\n'
     fi
 }
 
-shortcuts() {
-    esc=$'\e'; export esc
-    up=$'\e[A'; export up
-    up2=$'\x41'; export up2
-    down=$'\e[B'; export down
-    down2=$'\x42'; export down2
-    left=$'\e[D'; export left
-    right=$'\e[C'; export right
-    delete=$'\x7e'; export delete
-    ctrl_d=$'\x04'; export ctrl_d
-    ctrl_f=$'\x06'; export ctrl_f
-    ctrl_h=$'\x08'; export ctrl_h
-    ctrl_p=$'\x10'; export ctrl_p
-    backspace=$'\x7f'; export backspace
+redraw() {
+    [[ $1 == full ]] && {
+        read_dir
+        scroll=0
+    }
+
+    clear_screen
+    draw_dir
+    status_line
 }
 
-shell_interactive() {
-    stty_state=$(stty -g)
-    "$shell"
-    stty "$stty_state"
+toggle_preview_mode() {
+    preview_mode=$((preview_mode == 0 ? 1 : 0))
+    get_term_size
+    redraw
 }
 
-restore_shell() {
-    # Saves the current state of the cursor and screen
-    tput smcup
-    
-    # Performs shell on a subshell with its own environment
-    (
-        # Reset completo do terminal para o shell
-        reset
-        stty sane
-        
-        # Executa o shell
-        cd "$DIR" && shell_interactive
-    )
-    
-    # Restaura o estado da tela
-    tput rmcup
-    
-    # Reinicializa completamente o terminal para o modo de captura de teclas
-    reset
-    stty -echo -icanon min 1 time 0
-    
-    # Redefines all shortcuts explicitly
-    key=""
-    shortcuts
+open() {
+    if [[ -d $1/ ]]; then
+        search=
+        search_end_early=
+        cd "${1:-/}" ||:
+        redraw full
+
+    elif [[ -f $1 ]]; then
+        get_mime_type "$1"
+
+        case "$mime_type" in
+            text/*|*x-empty*|*json*)
+                ((file_picker == 1)) && {
+                    printf '%s\n' "$1" > \
+                        "${XDG_CACHE_HOME:=${HOME}/.cache}/preview/opened_file"
+                    exit
+                }
+
+                clear_screen
+                reset_terminal
+                "${VISUAL:-${EDITOR:-vi}}" "$1"
+                setup_terminal
+                redraw
+            ;;
+
+            *)
+                nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$1" &>/dev/null &
+                disown
+            ;;
+        esac
+    fi
+}
+
+cmd_line() {
+    cmd_reply=
+    printf '\e7\e[%sH\e[?25h' "$LINES"
+
+    while IFS= read -rsn 1 -p $'\r\e[K'"${1}${cmd_reply}" read_reply; do
+        case $read_reply in
+            $'\177'|$'\b')
+                cmd_reply=${cmd_reply%?}
+                unset comp c
+            ;;
+            $'\t')
+                comp_glob="$cmd_reply*"
+
+                [[ $2 == dirs ]] &&
+                    comp_glob="$cmd_reply*/"
+
+                [[ -z ${comp[0]} ]] &&
+                    IFS=$'\n' read -d "" -ra comp < <(compgen -G "$comp_glob")
+
+                [[ -n ${comp[c]} ]] && {
+                    cmd_reply=${comp[c]}
+                    ((c=c >= ${#comp[@]}-1 ? 0 : ++c))
+                }
+            ;;
+            $'\e'|${3:-null})
+                read "${read_flags[@]}" -rsn 2
+                cmd_reply=
+                break
+            ;;
+            "")
+                [[ $2 == search && -d ${list[0]} ]] && ((list_total == 0)) && {
+                    printf '\e[?25l'
+
+                    open "${list[0]}"
+                    search_end_early=1
+                    unset comp c
+                    return
+                }
+
+                break
+            ;;
+            ${2:-null})
+                cmd_reply=$read_reply
+                break
+            ;;
+            "~")
+                cmd_reply+=$HOME
+            ;;
+            *)
+                cmd_reply+=$read_reply
+                unset comp c
+            ;;
+        esac
+
+        [[ $2 == search ]] && {
+            printf '\e[?25l'
+
+            list=("$PWD"/*"$cmd_reply"*)
+            ((list_total=${#list[@]}-1))
+
+            scroll=0
+            redraw
+            printf '\e[%sH\e[?25h' "$LINES"
+        }
+    done
+    unset comp c
+    printf '\e[2K\e[?25l\e8'
 }
 
 keys() {
-    shortcuts
-    #stty -echo -icanon time 0 min 1
-    # Capture the user input
-    IFS= read -rsn1 key </dev/tty >/dev/null 2>&1 # Read first character
+    [[ $1 == $'\e' ]] && {
+        read "${read_flags[@]}" -rsn 2
 
-    if [[ "$key" == "$esc" ]]; then
-        IFS= read -rsn2 rest </dev/tty >/dev/null 2>&1 # Read second character
-        key+="$rest"
-    fi
+        [[ ${1}${REPLY} == $'\e\e['* ]] &&
+            read "${read_flags[@]}" -rsn 1 _
 
-    if [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]]; then
+        local special_key=${1}${REPLY}
+    }
 
-        if [[ "$key" == "d" ]]; then
-            IFS= read -rsn2 d </dev/tty  >/dev/null 2>&1 # Read second character
-            key+="$d"
-        fi
+    case ${special_key:-$1} in
+        ${PREVIEW_KEY_DELETE:=D}|\
+        ${PREVIEW_KEY_DELETE:=$'\x7e'})
+            [[ ! -e ${list[scroll]} ]] &&
+                return
+                
+            cmd_line "delete ${list[scroll]##*/}? (y/N): "
+            
+            [[ $cmd_reply =~ ^[Yy]$ ]] &&
+                if [[ -w ${list[scroll]} ]]; then
+                    if [[ -d ${list[scroll]} ]]; then
+                        rm -rf "${list[scroll]}"
+                    else
+                        rm -f "${list[scroll]}"
+                    fi
+                    redraw full
+                else
+                    cmd_line "warn: no write access to file/directory."
+                fi
+        ;;
+        $'\x10') # Ctrl+P
+            toggle_preview_mode
+        ;;
+        ${PREVIEW_KEY_CHILD1:=l}|\
+        ${PREVIEW_KEY_CHILD2:=$'\e[C'}|\
+        ${PREVIEW_KEY_CHILD3:=""}|\
+        ${PREVIEW_KEY_CHILD4:=$'\eOC'})
+            open "${list[scroll]}"
+        ;;
+        ${PREVIEW_KEY_PARENT1:=h}|\
+        ${PREVIEW_KEY_PARENT2:=$'\e[D'}|\
+        ${PREVIEW_KEY_PARENT3:=$'\177'}|\
+        ${PREVIEW_KEY_PARENT4:=$'\b'}|\
+        ${PREVIEW_KEY_PARENT5:=$'\eOD'})
+            if ((search == 1 && search_end_early != 1)); then
+                open "$PWD"
 
-        if [[ "$key" == "de" ]]; then
-            IFS= read -rsn3 de </dev/tty >/dev/null 2>&1 # Read third character
-            key+="$de"
-        fi
-    fi
-
-    #stty sane
-
-    case "$key" in
-        "$up"|"$up2")
-            up
-            ;;
-        "$down"|"$down2")
-            down
-            ;;
-        "$right")
-            right
-            ;;
-        "$left")
-            left
-            ;;
-        "")
-            [[ "$filter_mode" == false ]] && [[ "$filtering" -eq 0 ]] && \
-            xdg_pid "$DIR/${filtered_raw_files[$selected_index]}"
-            [[ "$filter_mode" == true ]] && [[ "$filtering" -eq 1 ]] && \
-            xdg_pid "$DIR/${filtered_files[$selected_index]}" && repeater -n 5 clear_filter
-            ;;
-        "$backspace")
-            [[ "$filtering" -eq 1 ]] && input_text="${input_text%?}"
-            ;;
-        "!")
-            restore_shell
-            ;;
-        "'"|"\"")
-            repeater -n 5 clear_filter
-            ;;
-        "$ctrl_f"|"³"|"²"|"#"|"@"|"/")
-            filtering=1
-            input_text=""
-            filter_mode=true
-            ;;
-        "$ctrl_d"|"="|"+")
-            clear
-            exit 0
-            ;;
-        "$ctrl_p")
-            toggle_preview_files
-            ;;
-        "$ctrl_h")
-            toggle_hiden_files
-            ;;
-        "$delete")
-            delete
-            ;;
-        [a-zA-Z0-9._-]|*)
-            if [[ "$filter_mode" == false ]]; then
-                [[ "$key" == "del" ]] && delete
-                [[ "$key" == "w" || "$key" == "W" ]] && up
-                [[ "$key" == "s" || "$key" == "S" ]] && down
+            elif [[ $PWD && $PWD != / ]]; then
+                find_previous=1
+                open "${PWD%/*}"
             fi
-            if [[ "$filter_mode" == true ]]; then
-                [[ "$filtering" -eq 1 ]] && input_text+="$key"
+        ;;
+        ${PREVIEW_KEY_SCROLL_DOWN1:=j}|\
+        ${PREVIEW_KEY_SCROLL_DOWN2:=$'\e[B'}|\
+        ${PREVIEW_KEY_SCROLL_DOWN3:=$'\eOB'})
+            if ((scroll < list_total)); then
+                ((scroll++))
+            else
+                # Se estiver no último item, volta para o primeiro
+                ((scroll=0))
+                redraw
+                return
             fi
-            ;;
+            
+            if ((preview_mode == 0)); then
+                ((y < max_items)) && ((y++))
+                print_line "$((scroll-1))"
+                printf '\n'
+                print_line "$scroll"
+            else
+                # No modo preview, apenas atualizamos a área de preview
+                draw_file_preview
+                # Redraw para atualizar o status line
+                redraw
+                return
+            fi
+            
+            status_line
+        ;;
+        ${PREVIEW_KEY_SCROLL_UP1:=k}|\
+        ${PREVIEW_KEY_SCROLL_UP2:=$'\e[A'}|\
+        ${PREVIEW_KEY_SCROLL_UP3:=$'\eOA'})
+            if ((scroll > 0)); then
+                ((scroll--))
+            else
+                # Se estiver no primeiro item, vai para o último
+                ((scroll=list_total))
+                redraw
+                return
+            fi
+
+            if ((preview_mode == 0)); then
+                print_line "$((scroll+1))"
+
+                if ((y < 2)); then
+                    printf '\e[L'
+                else
+                    printf '\e[A'
+                    ((y--))
+                fi
+
+                print_line "$scroll"
+            else
+                # No modo preview, apenas atualizamos a área de preview
+                draw_file_preview
+                # Redraw para atualizar o status line
+                redraw
+                return
+            fi
+            
+            status_line
+        ;;
+        ${PREVIEW_KEY_TO_TOP:=g})
+            ((scroll != 0)) && {
+                scroll=0
+                redraw
+            }
+        ;;
+        ${PREVIEW_KEY_TO_BOTTOM:=G})
+            ((scroll != list_total)) && {
+                ((scroll=list_total))
+                redraw
+            }
+        ;;
+        ${PREVIEW_KEY_HIDDEN:=.})
+            shopt_flags=(u s)
+            shopt -"${shopt_flags[((a=${a:=$PREVIEW_HIDDEN}>0?0:++a))]}" dotglob
+            redraw full
+        ;;
+        ${PREVIEW_KEY_SEARCH:=/})
+            cmd_line "/" "search"
+            if [[ -z ${list[*]} ]]; then
+                list=("${cur_list[@]}")
+                ((list_total=${#list[@]}-1))
+                redraw
+                search=
+            else
+                search=1
+            fi
+        ;;
+        ${PREVIEW_KEY_SHELL:=!})
+            reset_terminal
+            export PREVIEW_LEVEL
+            ((PREVIEW_LEVEL++))
+
+            cd "$PWD" && "$SHELL"
+            setup_terminal
+            redraw full
+        ;;
+        ${PREVIEW_KEY_RENAME:=r})
+            [[ ! -e ${list[scroll]} ]] &&
+                return
+
+            cmd_line "rename ${list[scroll]##*/}: "
+
+            [[ $cmd_reply ]] &&
+                if [[ -e $cmd_reply ]]; then
+                    cmd_line "warn: '$cmd_reply' already exists."
+
+                elif [[ -w ${list[scroll]} ]]; then
+                    mv "${list[scroll]}" "${PWD}/${cmd_reply}"
+                    redraw full
+
+                else
+                    cmd_line "warn: no write access to file."
+                fi
+        ;;
+        ${PREVIEW_KEY_MKDIR:=n})
+            cmd_line "mkdir: " "dirs"
+
+            [[ $cmd_reply ]] &&
+                if [[ -e $cmd_reply ]]; then
+                    cmd_line "warn: '$cmd_reply' already exists."
+
+                elif [[ -w $PWD ]]; then
+                    mkdir -p "${PWD}/${cmd_reply}"
+                    redraw full
+
+                else
+                    cmd_line "warn: no write access to dir."
+                fi
+        ;;
+        ${PREVIEW_KEY_MKFILE:=f})
+            cmd_line "mkfile: "
+
+            [[ $cmd_reply ]] &&
+                if [[ -e $cmd_reply ]]; then
+                    cmd_line "warn: '$cmd_reply' already exists."
+
+                elif [[ -w $PWD ]]; then
+                    : > "$cmd_reply"
+                    redraw full
+
+                else
+                    cmd_line "warn: no write access to dir."
+                fi
+        ;;
+        ${PREVIEW_KEY_GO_DIR:=:})
+            cmd_line "go to dir: " "dirs"
+
+            cd "$PWD" &>/dev/null ||:
+
+            [[ $cmd_reply ]] &&
+                cd "${cmd_reply/\~/$HOME}" &>/dev/null &&
+                    open "$PWD"
+        ;;
+        ${PREVIEW_KEY_GO_HOME:='~'})
+            open ~
+        ;;
+        ${PREVIEW_KEY_PREVIOUS:=-})
+            open "$OLDPWD"
+        ;;
+        ${PREVIEW_KEY_REFRESH:=e})
+            open "$PWD"
+        ;;
+        q)
+            : "${PREVIEW_CD_FILE:=${XDG_CACHE_HOME:=${HOME}/.cache}/preview/.preview_d}"
+
+            [[ -w $PREVIEW_CD_FILE ]] &&
+                rm "$PREVIEW_CD_FILE"
+
+            [[ ${PREVIEW_CD_ON_EXIT:=1} == 1 ]] &&
+                printf '%s\n' "$PWD" > "$PREVIEW_CD_FILE"
+
+            exit
+        ;;
     esac
 }
 
-get_term_size() {
-    # Get terminal size ('stty' is POSIX and always available).
-    # This can't be done reliably across all bash versions in pure bash.
-    read -r LINES COLUMNS < <(stty size)
+main() {
+    cd "${2:-$1}" &>/dev/null ||:
 
-    # Max list items that fit in the scroll area.
-    ((max_items=LINES-3))
-}
+    [[ $1 == -v ]] && {
+        printf '%s\n' "preview 2.2"
+        exit
+    }
 
-clear_screen() {
-    printf '\e[%sH\e[9999C\e[1J%b\e[1;%sr' \
-           "$((LINES-2))" "${TMUX:+\e[2J}" "$max_items"
-}
+    [[ $1 == -h ]] && {
+        man preview
+        exit
+    }
 
-get_term_size
-clear_screen
+    [[ $1 == -p ]] &&
+        file_picker=1
 
-select_file() {
-    tput civis
-    stty -echo
-    tput smcup
+    ((BASH_VERSINFO[0] > 3)) &&
+        read_flags=(-t 0.05)
 
-    actual_line=0
-    local previous_input=""
-    local pwd="$DIR"
-    local black_on_yellow='\033[1;38;5;16;103m'     
-    local alert='\033[1;44;40m'     
-    local yellow='\e[1;33m'       
-    local nc="\033[0m"           
+    ((${PREVIEW_LS_COLORS:=1} == 1)) &&
+        get_ls_colors
 
-    redpf=$(printf '\033[1;31m')      # Red with printf
-    greenpf=$(printf '\033[1;32m')    # Green with printf
-    yellowpf=$(printf '\033[1;33m')   # Yellow with printf
-    ncpf=$(printf '\033[0m')          # Reset with printf
+    ((${PREVIEW_HIDDEN:=0} == 1)) &&
+        shopt -s dotglob
 
-    local visible_start=0
-    local selected_index=0
-    local default_lines=20
-    local default_visible_value=9
-    local _visible_end="$default_visible_value"
-    local visible_end="$_visible_end"
-    local input_text=""
-    local filtering=0
-    local last_selected_name=""
+    mkdir -p "${XDG_CACHE_HOME:=${HOME}/.cache}/preview"
 
-    while [[ "$key" != "=" ]]; do
-        # '\e[?25l': Hide the cursor.
-        printf '\e[?25l'
-        printf '\e7\e[%sH\e[?25h' "$LINES"
-        unset comp c
-        [[ -z "$toggle_hiden" ]] && mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
-        [[ -z "$toggle_hiden" ]] && mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
-        [[ "$toggle_hiden" == 1 ]] && mapfile -t files < <(ls -pa --group-directories-first --color=always "$DIR")
-        [[ "$toggle_hiden" == 1 ]] && mapfile -t raw_files < <(ls -pa --group-directories-first "$DIR")
+    shopt -s nocaseglob nullglob
 
-        local total_files="${#files[@]}"
+    trap 'reset_terminal' EXIT
 
-        # Captures the last folder with 'Basaname'
-        lastdir="$(basename "$DIR")"
+    trap 'get_term_size; redraw' WINCH
+    
+    # Preview mode boot (now as standard)
+    preview_mode=1
+    displayed_selection=0
 
-        # Removes the last folder from the way
-        #basedir_dirname="$(dirname "$DIR")"
-        #basedir=${basedir_dirname##*/}
-        basedir="$(dirname "$DIR")"
+    get_os
+    get_term_size
+    setup_options
+    setup_terminal
+    redraw full
 
-        clear
+    for ((;;)); {
+        read "${read_flags[@]}" -srn 1 && keys "$REPLY"
 
-        #echo -e "${alert}[C-F]|[/]: Filter | [']|[\"]: Out of the filter | [W]|[↑]/[S]|[↓]: Navigate | [Enter]: Open file | [!]: Terminal | [C-D]|[=]: Exit${nc}"
-        printf "%b[C-F]|[/]: Filter | [']|[\"]: Out of the filter | [W]|[↑]/[S]|[↓]: Navigate | [Enter]: Open file | [!]: Terminal | [C-D]|[=]: Exit%b\n" "$alert" "$nc"
-        # echo "===================================================="
-        printf '%s\n' "===================================================="
-        printf '%b\n' "$basedir" | awk -v red="$redpf" -v green="$greenpf" -v yellow="$yellowpf" -v reset="$ncpf" -v lastdir="$lastdir" '
-        {
-            gsub("/", green "/" red);  # Colors all bars "/" in green, keeping the rest red
-            print red $0 green "/" yellow lastdir reset;  # Red Way, Green Bars and Last Yellow Folder
-        }'
-        # echo "===================================================="
-        printf '%s\n' "===================================================="
-
-        local filtered_files=()
-        local filtered_raw_files=()
-
-        if [[ "$filtering" -eq 1 ]]; then
-            for i in "${!raw_files[@]}"; do
-                if [[ -z "$input_text" || "${raw_files[$i],,}" == *"${input_text,,}"* ]]; then
-                    filtered_files+=("${files[$i]}")
-                    filtered_raw_files+=("${raw_files[$i]}")
-                fi
-            done
-            total_filtered="${#filtered_files[@]}"
-        else
-            filtered_files=("${files[@]}")
-            filtered_raw_files=("${raw_files[@]}")
-        fi
-        
-        [[ -z "$toggle_preview" ]] && _visible_end="$default_visible_value"
-        [[ "$toggle_preview" == 1 ]] && _visible_end="$(( $(tput lines) - "$default_lines" ))"
-
-        # Reset the viewing indexes only when the filter content is changed
-        if [[ "$filtering" -eq 1 && "$previous_input" != "$input_text" ]]; then
-            # Restart the selection when applying a new filter
-            selected_index=0
-            visible_start=0
-            visible_end=$_visible_end
-            ((visible_end >= ${#filtered_files[@]})) && visible_end=$((${#filtered_files[@]} - 1))
-            previous_input="$input_text"
-        fi
-
-        if [[ "${#filtered_files[@]}" -eq 0 ]]; then
-            printf '%s\n' "No files correspond to the search..."
-        fi
-
-        ((selected_index < visible_start)) && visible_start=$selected_index
-        ((selected_index > visible_end)) && visible_end=$selected_index
-        ((visible_end - visible_start >= "$_visible_end")) && visible_start=$((visible_end - "$_visible_end"))
-        ((visible_start < 0)) && visible_start=0
-        ((visible_end >= ${#filtered_files[@]})) && visible_end=$((${#filtered_files[@]} - 1))
-
-        for ((i = visible_start; i <= visible_end; i++)); do
-            if [[ "$i" -eq "$selected_index" ]]; then
-                detect_first_color_convert_to_background
-                detect_first_color
-                if [[ -n "${first_color}" ]] && [[ "${first_color}" != $'\E[0m' ]]; then
-                    #DEBUG COLOR: printf '%q\n' "${first_color}"
-                    # echo -e "${first_color}->${nc} ${first_color2bg}${filtered_raw_files[$i]}${nc}"
-                    printf "%b->%b %b%b%b\n" "$first_color" "$nc" "$first_color2bg" "${filtered_raw_files[$i]}" "$nc"
-                else
-                    # echo -e "${yellow}->${nc} ${black_on_yellow}${filtered_raw_files[$i]}${nc}"
-                    printf "%b->%b %b%b%b\n" "$yellow" "$nc" "$black_on_yellow" "${filtered_raw_files[$i]}" "$nc"
-                fi
-            else
-                # echo "   ${filtered_files[$i]}"
-                printf "%b\n" "   ${filtered_files[$i]}"
-            fi
-        done
-
-        if [[ "$filtering" -eq 1 ]]; then
-            visible_end="$total_filtered"
-        else
-            visible_end=$((visible_start + _visible_end))
-        fi
-
-        printf '%s\n' "===================================================="
-        if [[ "$filtering" -eq 1 ]]; then
-            # echo -e "${alert}Filter: \"${input_text}\"${nc}"
-            # echo -e "${alert}[']|[\"] For out of the filter${nc}"
-            # echo -e "${alert}Items found: ${total_filtered}${nc}"
-            printf "%bFilter: \"%s\"%b\n" "$alert" "$input_text" "$nc"
-            printf "%b[']|[\"] For out of the filter%b\n" "$alert" "$nc"
-            printf "%bItems found: %s%b\n" "$alert" "$total_filtered" "$nc"
-        else
-            # echo -e "${alert}Total files: ($(("$selected_index" + 1))|${total_files})${nc}"
-            printf "%bTotal files: (%s|%s)%b\n" "$alert" "$((selected_index + 1))" "$total_files" "$nc"
-        fi
-        printf '%s\n' "----------------------------------------------------"
-
-        [[ -z "$toggle_preview" ]] && preview_files && _visible_end="$default_visible_value"
-        [[ "$toggle_preview" == 1 ]] && _visible_end="$(( $(tput lines) - "$default_lines" ))"
-
-        [[ -z "$toggle_preview" ]] && printf '%s\n' "----------------------------------------------------"
-        [[ "$key" == "del" ]] && printf "Pressed: %s\n----------------------------------------------------\n" "$key"
-
-        keys
         [[ -t 1 ]] || exit 1
-
-    done
-    clear
-    exit 0
+    }
 }
 
-select_file
+main "$@"
