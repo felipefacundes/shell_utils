@@ -331,9 +331,9 @@ office_convert() {
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
 
     [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Oo][Dd][Tt])$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
-    cmd_check pandoc pandoc && (pandoc "$file" -t plain | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
+    cmd_check pandoc pandoc && (pandoc -s -t plain -- "$file" | head -n "${sizeline}") && return 0
     cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
     && head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
     cmd_check -msg && return 1
@@ -345,6 +345,8 @@ markdown_reader() {
 
 archive() {
     local file="$1"
+    [[ "${file_ext}" =~ ^iso ]] && cmd_check 7z 7zip &&
+    7z l -p -- "${file}" | head -n "${sizeline}" && return 0
     [[ "${file_ext}" =~ ^7z ]] && cmd_check 7z 7zip &&
     7z l -p -- "${file}" | head -n "${sizeline}" && return 0
     [[ "${file_ext}" =~ ^rar ]] && cmd_check unrar unrar &&
@@ -409,7 +411,7 @@ draw_file_preview() {
         
         case "$file_ext" in
             a|ace|alz|arc|arj|bz|bz2|cab|cpio|deb|gz|jar|lha|lz|lzh|lzma|lzo|rar|7z|\
-            rpm|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd)
+            rpm|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd|iso)
                 [[ "$file_ext" == "tar" ]] && head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d'
                 archive "$selected_file" 
                 ;;
@@ -426,7 +428,7 @@ draw_file_preview() {
                     printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
                 fi
                 ;;
-            rtf|odt|doc|docx)
+            rtf|odt|ods|odp|sxw|doc|docx)
                 if ! office_convert "$selected_file"; then
                     printf '\n\e[33mOffice file: %s\e[m\n' "${selected_file##*/}"
                 fi
@@ -442,7 +444,8 @@ draw_file_preview() {
         esac
 
     elif [[ -d "$selected_file" ]]; then
-        printf '\e[36mDirectory: %s\e[m\n\n' "${selected_file##*/}"
+        printf '\e[36mDirectory: %s\e[m\n' "${selected_file##*/}"
+        printf '\e[36mTotal Files: %s\e[m\n\n' "$(ls -1A "$selected_file" | wc -l)"
         ls -lha --group-directories-first --color=always "$selected_file" | head -n 2
         printf '%s\n' "----------------------------------------------------"
         # Count the number of items returned by LS
