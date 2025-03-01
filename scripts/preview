@@ -136,6 +136,9 @@ PREVIEW_KEY_PREVIOUS=""
 # Key binding to refresh the current directory (default: e)
 PREVIEW_KEY_REFRESH=""
 
+# Key binding to copy a file (default: C)
+PREVIEW_KEY_COPY=""
+
 # Key binding to toggle preview mode (default: Ctrl+P)
 # Ctrl+P is represented as '\x10'
 PREVIEW_KEY_TOGGLE_PREVIEW=""
@@ -814,7 +817,7 @@ open() {
     fi
 }
 
-cmd_line() {
+cmd_linebkp() {
     cmd_reply=
     printf '\e7\e[%sH\e[?25h' "$LINES"
 
@@ -856,6 +859,75 @@ cmd_line() {
                 break
             ;;
             "${2:-null}")
+                cmd_reply=$read_reply
+                break
+            ;;
+            "~")
+                cmd_reply+=$HOME
+            ;;
+            *)
+                cmd_reply+=$read_reply
+                unset comp c
+            ;;
+        esac
+
+        [[ $2 == search ]] && {
+            printf '\e[?25l'
+
+            list=("$PWD"/*"$cmd_reply"*)
+            ((list_total=${#list[@]}-1))
+
+            scroll=0
+            redraw
+            printf '\e[%sH\e[?25h' "$LINES"
+        }
+    done
+    unset comp c
+    printf '\e[2K\e[?25l\e8'
+}
+
+cmd_line() {
+    cmd_reply=${4:-}  # Set initial value if provided as 4th parameter
+    printf '\e7\e[%sH\e[?25h' "$LINES"
+
+    while IFS= read -rsn 1 -p $'\r\e[K'"${1}${cmd_reply}" read_reply; do
+        case $read_reply in
+            $'\177'|$'\b')
+                cmd_reply=${cmd_reply%?}
+                unset comp c
+            ;;
+            $'\t')
+                comp_glob="$cmd_reply*"
+
+                [[ $2 == dirs ]] &&
+                    comp_glob="$cmd_reply*/"
+
+                [[ -z ${comp[0]} ]] &&
+                    IFS=$'\n' read -d "" -ra comp < <(compgen -G "$comp_glob")
+
+                [[ -n ${comp[c]} ]] && {
+                    cmd_reply=${comp[c]}
+                    ((c=c >= ${#comp[@]}-1 ? 0 : ++c))
+                }
+            ;;
+            $'\e'|${3:-null})
+                read "${read_flags[@]}" -rsn 2
+                cmd_reply=
+                break
+            ;;
+            "")
+                [[ $2 == search && -d ${list[0]} ]] && ((list_total == 0)) && {
+                    printf '\e[?25l'
+
+                    open "${list[0]}"
+                    search_end_early=1
+                    unset comp c
+                    return
+                }
+
+                break
+            ;;
+            ${2:-null})
                 cmd_reply=$read_reply
                 break
             ;;
@@ -1085,6 +1157,47 @@ keys() {
             setup_terminal
             redraw full
         ;;
+
+        "${PREVIEW_KEY_COPY:=C}")
+            [[ ! -e "${list[scroll]}" ]] &&
+                return
+            
+            # Generate suggested name with _copy suffix
+            local filename="${list[scroll]##*/}"
+            local basename="${filename%.*}"
+            local extension="${filename##*.}"
+            
+            # Handle files without extension
+            if [[ "$basename" == "$extension" ]]; then
+                suggested_name="${basename}_copy"
+            else
+                suggested_name="${basename}_copy.${extension}"
+            fi
+            
+            cmd_line "copy ${filename} to: " "" "" "$suggested_name"
+            
+            [[ "$cmd_reply" ]] &&
+                if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                    cmd_line "warn: '${cmd_reply}' already exists. Overwrite? (y/N): "
+                    
+                    if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                        if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                            redraw full
+                        else
+                            cmd_line "warn: copy failed."
+                        fi
+                    fi
+                elif [[ -r "${list[scroll]}" ]]; then
+                    if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        redraw full
+                    else
+                        cmd_line "warn: copy failed."
+                    fi
+                else
+                    cmd_line "warn: no read access to file/directory."
+                fi
+        ;;
+
         "${PREVIEW_KEY_RENAME:=R}")
             [[ ! -e ${list[scroll]} ]] && [[ ! -w ${list[scroll]} ]] &&
                 return
