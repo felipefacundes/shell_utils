@@ -49,9 +49,9 @@ show_help() {
 Usage: ${0##*/} [OPTIONS] <color>
 
 Options:
-  -t, --text       Set text color
-  -b, --background Set background color
-  -h, --help       Show this help message
+  -f, -t, --text    Set text color
+  -b, --background  Set background color
+  -h, --help        Show this help message
 
 Color formats:
   Hexadecimal: 5B7E7E or '#5B7E7E'
@@ -70,7 +70,7 @@ background_color=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -t|--text)
+        -t|--text| -f|--foreground)
             shift
             text_color=$(convert_color "$1")
             ;;

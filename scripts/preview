@@ -114,15 +114,23 @@ status_line() {
         mode_info="[Normal] "
     fi
 
-    printf '\e7\e[%sH\e[3%s;4%sm%*s\r%s%s %s\e[m\e[%sH\e[K\e8' \
+    # printf '\e7\e[%sH\e[3%s;4%sm%*s\r%s%s %s\e[m\e[%sH\e[K\e8' \
+    #        "$((LINES-1))" \
+    #        "${PREVIEW_COL5:-0}" \
+    #        "${PREVIEW_COL2:-1}" \
+    #        "$COLUMNS" "" \
+    #        "$mode_info" \
+    #        "($((scroll+1))/$((list_total+1)))" \
+    #        "${PWD_color}" \
+    #        "$LINES"
+    printf '\e7\e[%sH\e[41;38;5;16m%*s\r%s%s %s\e[m\e[%sH\e[K\e8' \
            "$((LINES-1))" \
-           "${PREVIEW_COL5:-0}" \
-           "${PREVIEW_COL2:-1}" \
            "$COLUMNS" "" \
            "$mode_info" \
            "($((scroll+1))/$((list_total+1)))" \
            "${PWD_color}" \
            "$LINES"
+
 }
 
 read_dir() {
@@ -246,7 +254,7 @@ print_line() {
         local bg_code=$(get_background_from_foreground "$color_codes")
         
         # Add the background code with white and bold text
-        format+="\\e[1;${bg_code};93m"
+        format+="\\e[1;${bg_code};38;5;16m"
     fi
 
     file_name=${file_name//[^[:print:]]/^[}
