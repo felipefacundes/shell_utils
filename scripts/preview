@@ -330,38 +330,68 @@ office_convert() {
     [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
 
-    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0 ||
-    [[ "${file_ext}" =~ ^([Oo][Dd][Tt])$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0 ||
-    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0 ||
-    cmd_check pandoc pandoc && (pandoc "$file" -t plain | head -n "${sizeline}") && return 0 ||
+    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Oo][Dd][Tt])$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
+    cmd_check pandoc pandoc && (pandoc "$file" -t plain | head -n "${sizeline}") && return 0
     cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
-    && head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 || cmd_check -msg && return 1
-    return 0
+    && head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
+    cmd_check -msg && return 1
 }
 
 markdown_reader() {
     ~/.shell_utils/scripts/markdown_reader.sh "$@" | head -n "${sizeline}"
 }
 
+archive() {
+    local file="$1"
+    [[ "${file_ext}" =~ ^7z ]] && cmd_check 7z 7zip &&
+    7z l -p -- "${file}" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^rar ]] && cmd_check unrar unrar &&
+    unrar lt -p- -- "${file}" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^rar ]] && cmd_check 7z 7zip &&
+    7z l -p -- "${file}" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^(zst|zstd)$ ]] && cmd_check zstdcat zstd &&
+    zstd -lv "${file}" | head -n "${sizeline}" && return 0
+    cmd_check atool atool && atool --list -- "${file}" | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0
+    cmd_check bsdtar libarchive && bsdtar --list --file "${file}" | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0
+    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 0
+    cmd_check -msg && return 1
+}
+
 imgview() {
-    cmd_check img2sixel libsixel && img2sixel -w 640 -h 480 "$1" && return 0 || cmd_check viu viu -w 100 -h 40 && viu "$1" && return 0 \
-    || cmd_check catimg catimg && catimg -w 80 "$1" && return 0 || cmd_check chafa chafa && chafa -s 40 "$1" && return 0 ||
+    local file="$1"
+    cmd_check img2sixel libsixel && img2sixel -w 640 -h 480 "${file}" && return 0
+    cmd_check viu viu -w 100 -h 40 && viu "${file}" && return 0
+    cmd_check catimg catimg && catimg -w 80 "${file}" && return 0 
+    cmd_check chafa chafa && chafa -s 40 "${file}" && return 0
+    cmd_check exiftool perl-image-exiftool && exiftool "${file}" | \
+    head -n "${sizeline}" && return 0
     cmd_check -msg && return 1
 }
 
 pdfview() {
     local file="$1"
-    local temp_file="${TMP_DIR}/temp_file.txt"
+    local width="$2"
+
+    cmd_check pdftotext poppler && pdftotext -l 10 -nopgbrk -q -- "${file}" - | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0
+    cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" 1-10 | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0 
+    cmd_check exiftool perl-image-exiftool && exiftool "${file}" | \
+    head -n "${sizeline}" && return 0
+    local temp_file="${TMP_DIR}/temp_file.png"
     [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
-    cmd_check pdftotext poppler && pdftotext -l 10 -layout -nopgbrk -q "$file" "${temp_file}" 1>/dev/null && \
-    echo -e "${sizeline}\n\n" && head -n "${sizeline}" "${temp_file}" 2>/dev/null
-    # shellcheck disable=SC2181
-    [[ $? -ne 0 ]] && cmd_check -msg && return 1
+    cmd_check magick imagemagick && magick -- "${file}" -auto-orient "${temp_file}"
+    [[ -f "${temp_file}" ]] && imgview "${temp_file}" 2>/dev/null || cmd_check -msg && return 1
 }
 
 draw_file_preview() {
     local selected_file="${list[scroll]}"
     local sizeline=15
+    local width=70
     
     # Cleans the preview area
     for ((i=max_items+2; i<LINES-1; i++)); do
@@ -378,11 +408,16 @@ draw_file_preview() {
         printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
         
         case "$file_ext" in
+            a|ace|alz|arc|arj|bz|bz2|cab|cpio|deb|gz|jar|lha|lz|lzh|lzma|lzo|rar|7z|\
+            rpm|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd)
+                [[ "$file_ext" == "tar" ]] && head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d'
+                archive "$selected_file" 
+                ;;
             md)
                 markdown_reader "$selected_file"
                 ;;
             pdf)
-                if ! pdfview "$selected_file"; then
+                if ! pdfview "$selected_file" "$width"; then
                     printf '\n\e[33mPDF file: %s\e[m\n' "${selected_file##*/}"
                 fi
                 ;;
@@ -401,7 +436,7 @@ draw_file_preview() {
                 if [[ "$mime_type" == *"text"* || "$mime_type" == *"empty"* ]]; then
                     head -n "${sizeline}" "$selected_file" 2>/dev/null
                 else
-                    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null
+                    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d'
                 fi
                 ;;
         esac
