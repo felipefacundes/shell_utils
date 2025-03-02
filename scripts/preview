@@ -230,15 +230,12 @@ get_mime_type() {
 
 status_line() {
     #PWD_escaped=${PWD//[^[:print:]]/^[}
-    PREVIOUS_DIRECTORY="${PREVIOUS_DIRECTORY:-1;38;5;16}"               # Black ansi 256
-    LAST_DIR="${LAST_DIR:-1;33}"                                        # Yellow
-    BAR="${BAR:-1;96}"                                                  # Cyan
     
     # Define color codes
-    previous_directory=$(printf '%b\n' "\033[${PREVIOUS_DIRECTORY}m")   # Black ansi 256   
-    last_dir=$(printf '%b\n' "\033[${LAST_DIR}m")                       # Yellow
-    bar=$(printf '%b\n' "\033[${BAR}m")                                 # Cyan
-    ncpf=$(printf '\033[0m')                                            # No color (reset)
+    previous_directory=$(printf '%b\n' "\033[${PWD_PREVIOUS_DIRECTORY:-1;38;5;16}m")    # Black ansi 256   
+    last_dir=$(printf '%b\n' "\033[${PWD_LAST_DIR:-1;33}m")                             # Yellow
+    bar=$(printf '%b\n' "\033[${PWD_BAR:-1;96}m")                                       # Cyan
+    ncpf=$(printf '\033[0m')                                                            # No color (reset)
     
     # Get base directory and current directory
     basedir="$(dirname "$PWD")"
@@ -997,8 +994,7 @@ keys() {
     }
 
     case ${special_key:-$1} in
-        "${PREVIEW_KEY_DELETE1:=D}"|\
-        "${PREVIEW_KEY_DELETE2:=$'\x7e'}") # Delete
+        "${PREVIEW_KEY_DELETE:=D}")
             [[ ! -e "${list[scroll]}" ]] &&
                 return
                 cmd_line "delete ${list[scroll]##*/}? (y/N): "
