@@ -8,29 +8,16 @@ adding support for file preview with "ueberzug" and integration with custom comm
 It includes configurable shortcuts to simplify file manipulation.
 DOCUMENTATION
 
-SCRIPT="${0##*/}"
-TMPDIR="${TMPDIR:-/tmp}"
-LOOP_SCROLL="${LOOP_SCROLL:-1}"
-TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
-RESOLUTION="${RESOLUTION:-854x480}"
-LS_C="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.7z=01;31:*.ace=01;31:*.alz=01;31:*.apk=01;31:*.arc=01;31:*.arj=01;31:*.bz=01;31:*.bz2=01;31:*.cab=01;31:*.cpio=01;31:*.crate=01;31:*.deb=01;31:*.drpm=01;31:*.dwm=01;31:*.dz=01;31:*.ear=01;31:*.egg=01;31:*.esd=01;31:*.gz=01;31:*.jar=01;31:*.lha=01;31:*.lrz=01;31:*.lz=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.lzo=01;31:*.pyz=01;31:*.rar=01;31:*.rpm=01;31:*.rz=01;31:*.sar=01;31:*.swm=01;31:*.t7z=01;31:*.tar=01;31:*.taz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tgz=01;31:*.tlz=01;31:*.txz=01;31:*.tz=01;31:*.tzo=01;31:*.tzst=01;31:*.udeb=01;31:*.war=01;31:*.whl=01;31:*.wim=01;31:*.xz=01;31:*.z=01;31:*.zip=01;31:*.zoo=01;31:*.zst=01;31:*.avif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:"
-LS_COLORS="${LS_COLORS:-$LS_C}"
-
-[[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
-[[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
+clear
 
 setup_config() {
-    local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/preview"
-    local config_file="$config_dir/preview.conf"
+    local config_file="$CONFIG_PATH/preview.conf"
     
     # If config file already exists, source it
     if [[ -f "$config_file" ]]; then
         source "$config_file"
         return
     fi
-    
-    # Create config directory if it doesn't exist
-    mkdir -p "$config_dir"
     
     # Create the configuration file with default values and explanations
     cat > "$config_file" << 'EOF'
@@ -68,7 +55,7 @@ PREVIEW_STATUS_BACKGROUND=""
 PREVIEW_COL3=""
 
 # Color for selected item highlight (default: cyan)
-PREVIEW_COL4=""
+PREVIEW_SETECTED_HIGHLIGHT=""
 
 # Color for status line text (default: black)
 PREVIEW_STATUS_FOREGROUND=""
@@ -192,7 +179,7 @@ get_term_size() {
     read -r LINES COLUMNS < <(stty size)
     
     if ((preview_mode == 1)); then
-        ((max_items=9))
+        ((max_items=${PREVIEW_MAX_ITEMS:-9}))
         ((preview_area=LINES-max_items-3)) # -3 For the delimiter and status line
     else
         ((max_items=LINES-3))
@@ -227,6 +214,7 @@ get_ls_colors() {
 
 get_mime_type() {
     mime_type=$(file "-${file_flags:-biL}" "$1" 2>/dev/null)
+    mime_type="${mime_type,,}"
 }
 
 status_line() {
@@ -243,8 +231,8 @@ status_line() {
     lastdir="$(basename "$PWD")"
     
     # Default colors if not specified in config
-    background="48;5;128"   # Purple background
-    foreground="1;38;5;16"  # Black foreground
+    status_background="48;5;128"   # Purple background
+    status_foreground="1;38;5;16"  # Black foreground
     
     # Format the PWD with colors
     PWD_color=$(printf '%b\n' "$basedir" | awk -v previous_directory="$previous_directory" -v bar="$bar" -v last_dir="$last_dir" -v reset="$ncpf" -v lastdir="$lastdir" '
@@ -269,18 +257,18 @@ status_line() {
     local color_seq="\e["
     
     # Add foreground if specified
-    if [[ -n "${PREVIEW_STATUS_FOREGROUND:-$foreground}" ]]; then
-        color_seq+="${PREVIEW_STATUS_FOREGROUND:-$foreground}"
+    if [[ -n "${PREVIEW_STATUS_FOREGROUND:-$status_foreground}" ]]; then
+        color_seq+="${PREVIEW_STATUS_FOREGROUND:-$status_foreground}"
     fi
     
     # Add semicolon between foreground and background if both are present
-    if [[ -n "${PREVIEW_STATUS_FOREGROUND:-$foreground}" ]] && [[ -n "${PREVIEW_STATUS_BACKGROUND:-$background}" ]]; then
+    if [[ -n "${PREVIEW_STATUS_FOREGROUND:-$status_foreground}" ]] && [[ -n "${PREVIEW_STATUS_BACKGROUND:-$status_background}" ]]; then
         color_seq+=";"
     fi
     
     # Add background if specified
-    if [[ -n "${PREVIEW_STATUS_BACKGROUND:-$background}" ]]; then
-        color_seq+="${PREVIEW_STATUS_BACKGROUND:-$background}"
+    if [[ -n "${PREVIEW_STATUS_BACKGROUND:-$status_background}" ]]; then
+        color_seq+="${PREVIEW_STATUS_BACKGROUND:-$status_background}"
     fi
     
     # Close the sequence
@@ -401,24 +389,27 @@ print_line() {
         format+=\\e[${fi:-37}m
     fi
 
-    # Only highlights the selected line in normal mode
-    # if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
-    #     format+="\\e[1;3${PREVIEW_COL4:-6};7m"
-    # fi
+    if [[ -n "$PREVIEW_SETECTED_HIGHLIGHT" ]]; then
+        # Only highlights the selected line in normal mode
+        if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
+            format+="\\e[1;3${PREVIEW_SETECTED_HIGHLIGHT:-6};7m"
+        fi
 
-    # Only highlights the selected line in normal mode
-    if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
-        # Extract the anxe codes from string format (removing the escapes)
-        local current_format="${format//\\e/\e}"
-        # Extract the color codes after the first [
-        local color_codes="${current_format#*[}"
-        color_codes="${color_codes%m*}"
-        
-        # Obtain the corresponding background code
-        bg_code=$(get_background_from_foreground "$color_codes")
-        
-        # Add the background code with white and bold text
-        format+="\\e[1;${bg_code};38;5;16m"
+    else
+        # Only highlights the selected line in normal mode
+        if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
+            # Extract the anxe codes from string format (removing the escapes)
+            local current_format="${format//\\e/\e}"
+            # Extract the color codes after the first [
+            local color_codes="${current_format#*[}"
+            color_codes="${color_codes%m*}"
+            
+            # Obtain the corresponding background code
+            bg_code=$(get_background_from_foreground "$color_codes")
+            
+            # Add the background code with white and bold text
+            format+="\\e[1;${bg_code};38;5;16m"
+        fi
     fi
 
     file_name=${file_name//[^[:print:]]/^[}
@@ -509,7 +500,7 @@ office_convert() {
     cmd_check pandoc pandoc && (pandoc -s -t plain -- "$file" | head -n "${sizeline}") && return 0
     cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 \
     && head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
-    file "$file" && echo && cmd_check -msg && return 1
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
 markdown_reader() {
@@ -535,7 +526,7 @@ archive() {
     cmd_check bsdtar libarchive && bsdtar --list --file "${file}" | \
     fmt -w "${width}" | head -n "${sizeline}" && return 0
     head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 0
-    file "$file" && echo && cmd_check -msg && return 1
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
 imgview() {
@@ -544,11 +535,30 @@ imgview() {
     cmd_check viu viu -w 100 -h 40 && viu "${file}" 2>/dev/null && return 0
     cmd_check catimg catimg && catimg -w 80 "${file}" 2>/dev/null && return 0 
     cmd_check chafa chafa && chafa -s 40 "${file}" 2>/dev/null && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" && echo &&
+    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    cmd_check identify imagemagick && file "$file" && echo &&
+    cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 identify -verbose "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    file "$file" && echo && cmd_check -msg && return 1
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
+}
+
+fontview() {
+    local file="$1"
+    temp_file="${TMP_DIR}/temp_file.png"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+    cmd_check fontimage fontforge && fontimage -o "${temp_file}" \
+                    --pixelsize "120" \
+                    --fontname \
+                    --pixelsize "80" \
+                    --text "  ABCDEFGHIJKLMNOPQRSTUVWXYZ  " \
+                    --text "  abcdefghijklmnopqrstuvwxyz  " \
+                    --text "  0123456789.:,;(*!?') ff fl fi ffi ffl  " \
+                    --text "  A white sheep peacefully grazes on the green pasture.  " \
+                    "${file}" </dev/null 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && 
+    [[ "${file_ext}" =~ ^(ttf|ttc|otf|pfa|pfb|ps|bdf|gbdf|pcf|snf|nfnt|fon|fnt|woff|woff2|svg|sfnt|sfd)$ ]] && 
+    echo && cmd_check -msg && return 1
 }
 
 img2info() {
@@ -556,14 +566,14 @@ img2info() {
     temp_file="${TMP_DIR}/temp_file.jpg"
     [[ -f "$temp_file" ]] && rm -f "$temp_file"
 
-    cmd_check magick imagemagick && 
+    cmd_check magick imagemagick && ls "${TMP_DIR}" && 
     magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
     [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" && echo &&
+    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    cmd_check identify imagemagick && file "$file" && echo &&
+    cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 identify -verbose "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    file "$file" && echo && cmd_check -msg && return 1
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
 pdfview() {
@@ -581,17 +591,17 @@ pdfview() {
     cmd_check magick imagemagick && 
     magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
     [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" && echo &&
+    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    cmd_check identify imagemagick && file "$file" && echo &&
+    cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 identify -verbose "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    file "$file" && echo && cmd_check -msg && return 1
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
 torrentview() {
     local file="$1"
     cmd_check transmission-show transmission-cli && transmission-show -- "$file" && return 0
-    file "$file" && echo && cmd_check -msg && echo &&
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && echo &&
     head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
 }
 
@@ -599,14 +609,14 @@ jsonview() {
     local file="$1"
     cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0
     cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0
-    file "$file" && echo && cmd_check -msg && echo &&
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && echo &&
     head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
 }
 
 media_info() {
     local file="$1"
     cmd_check mediainfo mediainfo && mediainfo "${file}" | head -n "${sizeline}" && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" && echo &&
+    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
     cmd_check -msg && echo &&
     head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
@@ -641,17 +651,17 @@ _html2text() {
 }
 
 ishtml() {
-	[[ $1 == - ]] && arg1=-stdin || arg1="$1"
+	[[ "$1" == - ]] && arg1=-stdin || arg1="$1"
 	htmlopt=--unicode-snob
 	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
 	# 3 lines following can easily be reshuffled according to the preferred tool
-	cmd_check elinks elinks && nodash "elinks -dump -force-html" "$1" && return 0
-	cmd_check w3m w3m && handle_w3m "$1" && return 0
-	cmd_check lynx lynx && lynx -force_html -dump "$arg1" && return 0
+	cmd_check elinks elinks && nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null && return 0
+	cmd_check w3m w3m && handle_w3m "$1" </dev/null 2>/dev/null && return 0
+	cmd_check lynx lynx && lynx -force_html -dump "$arg1" </dev/null 2>/dev/null && return 0
 	# different versions of html2text existingi, force unicode
 	[[ "$1" == https://* ]] && return 0
-	cmd_check html2text python-html2text && _html2text "$htmlopt" "$1" && return 0
-    file "$file" && echo && cmd_check -msg && return 1
+	cmd_check html2text python-html2text && _html2text "$htmlopt" "$1" </dev/null 2>/dev/null && return 0
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
 draw_file_preview() {
@@ -672,11 +682,15 @@ draw_file_preview() {
         
         # Displays the current file name in the preview area
         printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
+
+        [[ "${selected_file##*/}" =~ (^|.)img($|.) ]] && 
+        head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 1
         
         case "$file_ext" in
             a|apk|ace|alz|arc|arj|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lzh|lzma|lzo|rar|7z|\
             rpm|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd|iso)
-                [[ "$file_ext" == "tar" ]] && head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d'
+                [[ "$file_ext" == "tar" ]] && 
+                head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
                 if ! archive "$selected_file"; then
                     return 1
                 else
@@ -706,7 +720,7 @@ draw_file_preview() {
                     return 0
                 fi
                 ;;
-            png|jpg|jpeg|avif)
+            png|jpg|jpeg)
                 if ! imgview "$selected_file"; then
                     printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
                     return 1
@@ -749,7 +763,14 @@ draw_file_preview() {
                 ;;
             *)
                 get_mime_type "$selected_file"
-                if [[ "$mime_type" == *"image"* ]]; then
+                if [[ "$mime_type" == *"font"* ]]; then
+                    if ! fontview "$selected_file"; then
+                        printf '\n\e[33mFont file: %s\e[m\n' "${selected_file##*/}"
+                        return 1
+                    else
+                        return 0
+                    fi
+                elif [[ "$mime_type" == *"image"* ]]; then
                     if ! img2info "$selected_file"; then
                         printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
                         return 1
@@ -790,7 +811,7 @@ draw_file_preview() {
 }
 
 redraw() {
-    [[ $1 == full ]] && {
+    [[ "$1" == full ]] && {
         read_dir
         scroll=0
     }
@@ -812,13 +833,13 @@ xdg_open() {
 }
 
 open() {
-    if [[ -d $1/ ]]; then
+    if [[ -d "$1"/ ]]; then
         search=
         search_end_early=
         cd "${1:-/}" ||:
         redraw full
 
-    elif [[ -f $1 ]]; then
+    elif [[ -f "$1" ]]; then
         get_mime_type "$1"
 
         case "$mime_type" in
@@ -842,75 +863,6 @@ open() {
             ;;
         esac
     fi
-}
-
-cmd_linebkp() {
-    cmd_reply=
-    printf '\e7\e[%sH\e[?25h' "$LINES"
-
-    while IFS= read -rsn 1 -p $'\r\e[K'"${1}${cmd_reply}" read_reply; do
-        case $read_reply in
-            $'\177'|$'\b')
-                cmd_reply=${cmd_reply%?}
-                unset comp c
-            ;;
-            $'\t')
-                comp_glob="$cmd_reply*"
-
-                [[ $2 == dirs ]] &&
-                    comp_glob="$cmd_reply*/"
-
-                [[ -z ${comp[0]} ]] &&
-                    IFS=$'\n' read -d "" -ra comp < <(compgen -G "$comp_glob")
-
-                [[ -n ${comp[c]} ]] && {
-                    cmd_reply=${comp[c]}
-                    ((c=c >= ${#comp[@]}-1 ? 0 : ++c))
-                }
-            ;;
-            $'\e'|${3:-null})
-                read "${read_flags[@]}" -rsn 2
-                cmd_reply=
-                break
-            ;;
-            "")
-                [[ $2 == search && -d ${list[0]} ]] && ((list_total == 0)) && {
-                    printf '\e[?25l'
-
-                    open "${list[0]}"
-                    search_end_early=1
-                    unset comp c
-                    return
-                }
-
-                break
-            ;;
-            "${2:-null}")
-                cmd_reply=$read_reply
-                break
-            ;;
-            "~")
-                cmd_reply+=$HOME
-            ;;
-            *)
-                cmd_reply+=$read_reply
-                unset comp c
-            ;;
-        esac
-
-        [[ $2 == search ]] && {
-            printf '\e[?25l'
-
-            list=("$PWD"/*"$cmd_reply"*)
-            ((list_total=${#list[@]}-1))
-
-            scroll=0
-            redraw
-            printf '\e[%sH\e[?25h' "$LINES"
-        }
-    done
-    unset comp c
-    printf '\e[2K\e[?25l\e8'
 }
 
 cmd_line() {
@@ -983,19 +935,20 @@ cmd_line() {
 }
 
 keys() {
+    local key="$1"
     os=$(uname -o) && [[ "${os,,}" =~ "android" ]] && LOOP_SCROLL=0
 
-    [[ $1 == $'\e' ]] && {
+    [[ "$key" == $'\e' ]] && {
         read "${read_flags[@]}" -rsn 2
 
-        [[ ${1}${REPLY} == $'\e\e['* ]] &&
+        [[ "${1}${REPLY}" == $'\e\e['* ]] &&
             read "${read_flags[@]}" -rsn 1 _
 
-        local special_key=${1}${REPLY}
+        local special_key="${1}${REPLY}"
     }
 
-    case ${special_key:-$1} in
-        "${PREVIEW_KEY_DELETE:=D}")
+    case "${special_key:-$key}" in
+        ${PREVIEW_KEY_DELETE:=D})
             [[ ! -e "${list[scroll]}" ]] &&
                 return
                 cmd_line "delete ${list[scroll]##*/}? (y/N): "
@@ -1011,23 +964,23 @@ keys() {
                     cmd_line "warn: no write access to file/directory."
                 fi
         ;;
-        "${PREVIEW_KEY_PREVIEW1:=P}"|\
-        "${PREVIEW_KEY_PREVIEW2:=$'\x10'}") # Ctrl+P
+        ${PREVIEW_KEY_PREVIEW1:=P}|\
+        ${PREVIEW_KEY_PREVIEW2:=$'\x10'}) # Ctrl+P
             toggle_preview_mode
         ;;
-        "${PREVIEW_KEY_XDG_OPEN:=""}")
+        ${PREVIEW_KEY_XDG_OPEN:=""})
             xdg_open "${list[scroll]}"
         ;;
-        "${PREVIEW_KEY_CHILD1:=l}"|\
-        "${PREVIEW_KEY_CHILD2:=$'\e[C'}"|\
-        "${PREVIEW_KEY_CHILD3:=$'\eOC'}")
+        ${PREVIEW_KEY_CHILD1:=l}|\
+        ${PREVIEW_KEY_CHILD2:=$'\e[C'}|\
+        ${PREVIEW_KEY_CHILD3:=$'\eOC'})
             open "${list[scroll]}"
         ;;
-        "${PREVIEW_KEY_PARENT1:=h}"|\
-        "${PREVIEW_KEY_PARENT2:=$'\e[D'}"|\
-        "${PREVIEW_KEY_PARENT3:=$'\177'}"|\
-        "${PREVIEW_KEY_PARENT4:=$'\b'}"|\
-        "${PREVIEW_KEY_PARENT5:=$'\eOD'}")
+        ${PREVIEW_KEY_PARENT1:=h}|\
+        ${PREVIEW_KEY_PARENT2:=$'\e[D'}|\
+        ${PREVIEW_KEY_PARENT3:=$'\177'}|\
+        ${PREVIEW_KEY_PARENT4:=$'\b'}|\
+        ${PREVIEW_KEY_PARENT5:=$'\eOD'})
             if ((search == 1 && search_end_early != 1)); then
                 open "$PWD"
 
@@ -1036,11 +989,10 @@ keys() {
                 open "${PWD%/*}"
             fi
         ;;
-        "${PREVIEW_KEY_SCROLL_DOWN1:=j}"|\
-        "${PREVIEW_KEY_SCROLL_DOWN2:=$'\e[B'}"|\
-        "${PREVIEW_KEY_SCROLL_DOWN3:=$'\eOB'}"|\
-        "${PREVIEW_KEY_SCROLL_DOWN4:=$'\x42'}")
-            if [[ "$LOOP_SCROLL" == 0 ]]; then
+        ${PREVIEW_KEY_SCROLL_DOWN1:=j}|\
+        ${PREVIEW_KEY_SCROLL_DOWN2:=$'\e[B'}|\
+        ${PREVIEW_KEY_SCROLL_DOWN3:=$'\eOB'})
+            if [[ "${LOOP_SCROLL:-1}" == 0 ]]; then
                 ((scroll < list_total)) && {
                     ((scroll++))
                     
@@ -1085,11 +1037,10 @@ keys() {
                 status_line
             fi
         ;;
-        "${PREVIEW_KEY_SCROLL_UP1:=k}"|\
-        "${PREVIEW_KEY_SCROLL_UP2:=$'\e[A'}"|\
-        "${PREVIEW_KEY_SCROLL_UP3:=$'\eOA'}"|\
-        "${PREVIEW_KEY_SCROLL_UP4:=$'\x41'}")
-            if [[ "$LOOP_SCROLL" == 0 ]]; then
+        ${PREVIEW_KEY_SCROLL_UP1:=k}|\
+        ${PREVIEW_KEY_SCROLL_UP2:=$'\e[A'}|\
+        ${PREVIEW_KEY_SCROLL_UP3:=$'\eOA'})
+            if [[ "${LOOP_SCROLL:-1}" == 0 ]]; then
                 ((scroll > 0)) && {
                     ((scroll--))
 
@@ -1146,24 +1097,24 @@ keys() {
                 status_line
             fi
         ;;
-        "${PREVIEW_KEY_TO_TOP:=g}")
+        ${PREVIEW_KEY_TO_TOP:=g})
             ((scroll != 0)) && {
                 scroll=0
                 redraw
             }
         ;;
-        "${PREVIEW_KEY_TO_BOTTOM:=G}")
+        ${PREVIEW_KEY_TO_BOTTOM:=G})
             ((scroll != list_total)) && {
                 ((scroll=list_total))
                 redraw
             }
         ;;
-        "${PREVIEW_KEY_HIDDEN:=.}")
+        ${PREVIEW_KEY_HIDDEN:=.})
             shopt_flags=(u s)
             shopt -"${shopt_flags[((a=${a:=$PREVIEW_HIDDEN}>0?0:++a))]}" dotglob
             redraw full
         ;;
-        "${PREVIEW_KEY_SEARCH:=/}")
+        ${PREVIEW_KEY_SEARCH:=/})
             cmd_line "/" "search"
             if [[ -z ${list[*]} ]]; then
                 list=("${cur_list[@]}")
@@ -1174,7 +1125,7 @@ keys() {
                 search=1
             fi
         ;;
-        "${PREVIEW_KEY_SHELL:=!}")
+        ${PREVIEW_KEY_SHELL:=!})
             reset_terminal
             export PREVIEW_LEVEL
             ((PREVIEW_LEVEL++))
@@ -1184,7 +1135,7 @@ keys() {
             redraw full
         ;;
 
-        "${PREVIEW_KEY_COPY:=C}")
+        ${PREVIEW_KEY_COPY:=C})
             [[ ! -e "${list[scroll]}" ]] &&
                 return
             
@@ -1224,7 +1175,7 @@ keys() {
                 fi
         ;;
 
-        "${PREVIEW_KEY_RENAME:=R}")
+        ${PREVIEW_KEY_RENAME:=R})
             [[ ! -e ${list[scroll]} ]] && [[ ! -w ${list[scroll]} ]] &&
                 return
 
@@ -1242,7 +1193,7 @@ keys() {
                     cmd_line "warn: no write access to file."
                 fi
         ;;
-        "${PREVIEW_KEY_MKDIR:=M}")
+        ${PREVIEW_KEY_MKDIR:=M})
             cmd_line "mkdir: " "dirs"
 
             [[ "$cmd_reply" ]] &&
@@ -1257,7 +1208,7 @@ keys() {
                     cmd_line "warn: no write access to dir."
                 fi
         ;;
-        "${PREVIEW_KEY_MKFILE:=F}")
+        ${PREVIEW_KEY_MKFILE:=F})
             cmd_line "mkfile: "
 
             [[ "$cmd_reply" ]] &&
@@ -1272,7 +1223,7 @@ keys() {
                     cmd_line "warn: no write access to dir."
                 fi
         ;;
-        "${PREVIEW_KEY_GO_DIR:=$'\x07'}") # Control+G
+        ${PREVIEW_KEY_GO_DIR:=$'\x07'}) # Control+G
             cmd_line "go to dir: " "dirs"
 
             cd "$PWD" &>/dev/null ||:
@@ -1281,19 +1232,21 @@ keys() {
                 cd "${cmd_reply/\~/$HOME}" &>/dev/null &&
                     open "$PWD"
         ;;
-        "${PREVIEW_KEY_GO_HOME:='~'}")
+        ${PREVIEW_KEY_GO_HOME1:='~'}|\
+        ${PREVIEW_KEY_GO_HOME2:=H})
             open ~
         ;;
-        "${PREVIEW_KEY_PREVIOUS:=-}")
+        ${PREVIEW_KEY_PREVIOUS:=-})
             open "$OLDPWD"
         ;;
-        "${PREVIEW_KEY_REFRESH:=E}")
+        ${PREVIEW_KEY_REFRESH:=E})
             open "$PWD"
         ;;
         # Control+D
-        "${PREVIEW_KEY_QUIT1:=$'\x04'}"|\
-        "${PREVIEW_KEY_QUIT2:='='}"|\
-        "${PREVIEW_KEY_QUIT3:=q}")
+        ${PREVIEW_KEY_QUIT1:=$'\x04'}|\
+        ${PREVIEW_KEY_QUIT2:='='}|\
+        ${PREVIEW_KEY_QUIT3:=Q}|\
+        ${PREVIEW_KEY_QUIT4:=q})
             : "${PREVIEW_CD_FILE:=${XDG_CACHE_HOME:=${HOME}/.cache}/preview/.preview_d}"
 
             [[ -w "$PREVIEW_CD_FILE" ]] &&
@@ -1308,8 +1261,8 @@ keys() {
     esac
     if ((search == 1)); then
         case ${special_key:-$1} in
-            "${PREVIEW_KEY_EXIT_CLEAR_SEARCH1:="'"}"|\
-            "${PREVIEW_KEY_EXIT_CLEAR_SEARCH2:=\"}")
+            ${PREVIEW_KEY_EXIT_CLEAR_SEARCH1:="'"}|\
+            ${PREVIEW_KEY_EXIT_CLEAR_SEARCH2:=\"})
 
             # Maintains the current selected file
             local current_selection=${list[scroll]}
@@ -1338,6 +1291,21 @@ keys() {
 }
 
 main() {
+    SCRIPT="${0##*/}"
+    TMPDIR="${TMPDIR:-/tmp}"
+    TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
+    RESOLUTION="${RESOLUTION:-854x480}"
+    CACHE_PATH="${XDG_CACHE_HOME:=${HOME}/.cache}/preview"
+    CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/preview"
+    LS_C="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.7z=01;31:*.ace=01;31:*.alz=01;31:*.apk=01;31:*.arc=01;31:*.arj=01;31:*.bz=01;31:*.bz2=01;31:*.cab=01;31:*.cpio=01;31:*.crate=01;31:*.deb=01;31:*.drpm=01;31:*.dwm=01;31:*.dz=01;31:*.ear=01;31:*.egg=01;31:*.esd=01;31:*.gz=01;31:*.jar=01;31:*.lha=01;31:*.lrz=01;31:*.lz=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.lzo=01;31:*.pyz=01;31:*.rar=01;31:*.rpm=01;31:*.rz=01;31:*.sar=01;31:*.swm=01;31:*.t7z=01;31:*.tar=01;31:*.taz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tgz=01;31:*.tlz=01;31:*.txz=01;31:*.tz=01;31:*.tzo=01;31:*.tzst=01;31:*.udeb=01;31:*.war=01;31:*.whl=01;31:*.wim=01;31:*.xz=01;31:*.z=01;31:*.zip=01;31:*.zoo=01;31:*.zst=01;31:*.avif=01;35:*.pdf=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:"
+    [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+    [[ -z "$LS_COLORS" ]] && export LS_COLORS="${LS_COLORS:-$LS_C}"
+    [[ ! -d "$CONFIG_PATH" ]] && mkdir -p "$CONFIG_PATH"
+    [[ ! -d "$CACHE_PATH" ]] && mkdir -p "$CACHE_PATH"
+    [[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
+
+    setup_config
+
     cd "${2:-$1}" &>/dev/null ||:
 
     [[ "$1" == -v ]] && {
@@ -1362,19 +1330,15 @@ main() {
     ((${PREVIEW_HIDDEN:=0} == 1)) &&
         shopt -s dotglob
 
-    mkdir -p "${XDG_CACHE_HOME:=${HOME}/.cache}/preview"
-
     shopt -s nocaseglob nullglob
 
     trap 'reset_terminal' EXIT
-
     trap 'get_term_size; redraw' WINCH
     
     # Preview mode boot (now as standard)
     preview_mode=1
     displayed_selection=0
 
-    setup_config
     get_os
     get_term_size
     setup_options

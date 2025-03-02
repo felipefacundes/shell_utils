@@ -226,7 +226,18 @@ toggle_hiden_files() {
 }
 
 delete() {
-    rm -i "${DIR}/${filtered_raw_files[$selected_index]}"
+    local file_or_dir="${DIR}/${filtered_raw_files[$selected_index]}"
+
+    [[ ! -w "$file_or_dir" ]] && read -n 1 -srp "Warn: no write access to file/directory." && return 1
+    if [[ -d "$file_or_dir" ]]; then
+        echo "Remove the directory: $(basename "${file_or_dir}")? y/n"
+        read -rsn1 option && [[ "$option" == [yY] ]] && rm -rf "$file_or_dir"
+        return 0
+    elif [[ -f "$file_or_dir" ]]; then
+        echo "Remove the file: $(basename "${file_or_dir}")? y/n"
+        read -rsn1 option && [[ "$option" == [yY] ]] && rm -f "$file_or_dir"
+        return 0
+    fi
 
     [[ -z "$toggle_hiden" ]] && mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
     [[ -z "$toggle_hiden" ]] && mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
@@ -379,8 +390,6 @@ keys() {
         fi
     fi
 
-    #stty sane
-
     case "$key" in
         "$up"|"$up2")
             up
@@ -424,7 +433,7 @@ keys() {
         "$ctrl_h")
             toggle_hiden_files
             ;;
-        "$delete")
+        "del"|"$delete")
             delete
             ;;
         [a-zA-Z0-9._-]|*)
@@ -470,7 +479,7 @@ select_file() {
     local last_selected_name=""
 
     while [[ "$key" != "=" ]]; do
-    
+        
         [[ -z "$toggle_hiden" ]] && mapfile -t files < <(ls -p --group-directories-first --color=always "$DIR")
         [[ -z "$toggle_hiden" ]] && mapfile -t raw_files < <(ls -p --group-directories-first "$DIR")
         [[ "$toggle_hiden" == 1 ]] && mapfile -t files < <(ls -pa --group-directories-first --color=always "$DIR")
@@ -581,7 +590,6 @@ select_file() {
         [[ "$toggle_preview" == 1 ]] && _visible_end="$(( $(tput lines) - "$default_lines" ))"
 
         [[ -z "$toggle_preview" ]] && printf '%s\n' "----------------------------------------------------"
-        [[ "$key" == "del" ]] && printf "Pressed: %s\n----------------------------------------------------\n" "$key"
 
         keys
         [[ -t 1 ]] || exit 1
