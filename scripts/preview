@@ -599,6 +599,16 @@ video2static() {
     info="${TMP_DIR}/info.txt"
     temp_file="${TMP_DIR}/temp_file.jpg"
     resolution=$(echo "$RESOLUTION" | sed 's/x/:/')
+
+    function if_ff_extract {
+        [[ -f "$temp_file" ]] && {
+            echo "$(imgview "$temp_file" 2)" > "${info}"
+            echo "$(media_info "$file" | fold -w "${FOLD:-100}")" >> "${info}"
+            column -t -s $'\n' "${info}"
+            rm -f "${info}"
+        } && return 0
+    }
+
     [[ -f "$info" ]] && rm -f "$info"
     [[ -f "$temp_file" ]] && rm -f "$temp_file"
     cmd_check ffmpeg ffmpeg && 
@@ -606,14 +616,9 @@ video2static() {
     # awk -F'start:' '/black_start/ {print $2}' | awk '{print $1}' | head -n 1) &&
     # [[ -n "$black_start" ]] && ffmpeg -i "${file}" -ss "$black_start" -frames:v 1 "$temp_file" </dev/null 2>/dev/null &&
     ffmpeg -i "${file}" -vf "select=eq(n\,30),scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
-
-    [[ -f "$temp_file" ]] && {
-        echo "$(imgview "$temp_file" 2)" > "${info}"
-        echo "$(media_info "$file" | fold -w "${FOLD:-100}")" >> "${info}"
-        column -t -s $'\n' "${info}"
-        rm -f "${info}"
-    } && return 0
-
+    if_ff_extract && return 0
+    ffmpeg -i "${file}" -vf "scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
+    if_ff_extract && return 0
     media_info "${file}" && return 0
     return 1
 }
@@ -768,12 +773,11 @@ draw_file_preview() {
         # Displays the current file name in the preview area
         printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
 
-        [[ "${selected_file##*/}" =~ (^|.)img($|.) ]] && 
-        head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 1
-        
         case "$file_ext" in
             a|apk|apk+|xapk|ace|alz|arc|arj|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lzh|lzma|lzo|rar|\
             7z|rpm|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd|iso|vsix|exe)
+                [[ "${selected_file##*/}" =~ (^|.)img($|.) ]] && 
+                head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
                 [[ "$file_ext" == "tar" ]] && 
                 head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
                 if ! archive "$selected_file"; then
@@ -781,6 +785,9 @@ draw_file_preview() {
                 else
                     return 0
                 fi
+                ;;
+            img)
+                head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
                 ;;
             txt)
                 margin "$selected_file" && return 0
@@ -884,7 +891,7 @@ draw_file_preview() {
                         return 0
                     fi
                 else
-                    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+                    file "$selected_file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
                     head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d'
                     return 1
                 fi
