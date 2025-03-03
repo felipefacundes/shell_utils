@@ -702,6 +702,14 @@ highlight_code() {
     done < "$file"
 }
 
+margin() {
+    cmd_check fold coreutils || cmd_check -msg
+    cmd_check awk gawk || cmd_check -msg
+    #fold -w 150 "$1" | sed 's/^/          /' | less -i &
+    fold -w 150 "$1" | awk '{print "          " $0 "          "}' | \
+    head -n "${sizeline}" && return 0
+}
+
 draw_file_preview() {
     local selected_file="${list[scroll]}"
     local sizeline=15
@@ -734,6 +742,9 @@ draw_file_preview() {
                 else
                     return 0
                 fi
+                ;;
+            txt)
+                margin "$selected_file" && return 0
                 ;;
             md)
                 if ! markdown_reader -nl "$selected_file"; then
