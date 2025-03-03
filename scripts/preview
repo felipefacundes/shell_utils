@@ -539,10 +539,20 @@ archive() {
 
 imgview() {
     local file="$1"
-    cmd_check img2sixel libsixel && img2sixel -w 640 -h 480 "${file}" 2>/dev/null && return 0
-    cmd_check viu viu -w 100 -h 40 && viu "${file}" 2>/dev/null && return 0
-    cmd_check catimg catimg && catimg -w 80 "${file}" 2>/dev/null && return 0 
-    cmd_check chafa chafa && chafa -s 40 "${file}" 2>/dev/null && return 0
+    local factor="$2"
+    
+    [[ "$factor" =~ ^-?[0-9]+$ ]] && {
+        cmd_check img2sixel libsixel && img2sixel -w 300 -h 200 "${file}" 2>/dev/null && return 0
+        cmd_check viu viu -w 50 -h 16 && viu "${file}" 2>/dev/null && return 0
+        cmd_check catimg catimg && catimg -w 60 "${file}" 2>/dev/null && return 0 
+        cmd_check chafa chafa && chafa -s 25 "${file}" 2>/dev/null && return 0
+    }
+    [[ -z "$factor" ]] && {
+        cmd_check img2sixel libsixel && img2sixel -w 540 -h 420 "${file}" 2>/dev/null && return 0
+        cmd_check viu viu -w 90 -h 35 && viu "${file}" 2>/dev/null && return 0
+        cmd_check catimg catimg && catimg -w 100 "${file}" 2>/dev/null && return 0 
+        cmd_check chafa chafa && chafa -s 50 "${file}" 2>/dev/null && return 0
+    }
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
     cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
@@ -584,6 +594,40 @@ img2info() {
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
+video2static() {
+    local file="$1"
+    info="${TMP_DIR}/info.txt"
+    temp_file="${TMP_DIR}/temp_file.jpg"
+    resolution=$(echo "$RESOLUTION" | sed 's/x/:/')
+    [[ -f "$info" ]] && rm -f "$info"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+    cmd_check ffmpeg ffmpeg && 
+    # black_start=$(ffmpeg -i "${file}" -vf "blackdetect=d=0.1:pic_th=0.98" -f null - 2>&1 | \
+    # awk -F'start:' '/black_start/ {print $2}' | awk '{print $1}' | head -n 1) &&
+    # [[ -n "$black_start" ]] && ffmpeg -i "${file}" -ss "$black_start" -frames:v 1 "$temp_file" </dev/null 2>/dev/null &&
+    ffmpeg -i "${file}" -vf "select=eq(n\,30),scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
+
+    [[ -f "$temp_file" ]] && {
+        echo "$(imgview "$temp_file" 2)" > "${info}"
+        echo "$(media_info "$file" | fold -w "${FOLD:-100}")" >> "${info}"
+        column -t -s $'\n' "${info}"
+        rm -f "${info}"
+    } && return 0
+
+    media_info "${file}" && return 0
+    return 1
+}
+
+media_info() {
+    local file="$1"
+    cmd_check mediainfo mediainfo && mediainfo "${file}" | sed 's/                   //' | head -n "${sizeline}" && return 0
+    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
+    cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0
+    cmd_check -msg && echo &&
+    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
+}
+
 pdfview() {
     local file="$1"
     temp_file="${TMP_DIR}/temp_file.jpg"
@@ -618,15 +662,6 @@ jsonview() {
     cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0
     cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && echo &&
-    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
-}
-
-media_info() {
-    local file="$1"
-    cmd_check mediainfo mediainfo && mediainfo "${file}" | sed 's/                   //' | head -n "${sizeline}" && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    cmd_check -msg && echo &&
     head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
 }
 
@@ -708,12 +743,13 @@ margin() {
     cmd_check fold coreutils || cmd_check -msg
     cmd_check awk gawk || cmd_check -msg
     #fold -w 150 "$1" | sed 's/^/          /' | less -i &
+    [[ "${OS,,}" =~ "android" ]] && fold -w "${FOLD:-50}" "$1" | awk '{print "   " $0 "   "}' | \
+    head -n "${sizeline}" && return 0
     fold -w "${FOLD:-150}" "$1" | awk '{print "          " $0 "          "}' | \
     head -n "${sizeline}" && return 0
 }
 
 draw_file_preview() {
-    os=$(uname -o) && [[ "${os,,}" =~ "android" ]] && FOLD=15
     local selected_file="${list[scroll]}"
     local sizeline=15
     local width=70
@@ -772,6 +808,22 @@ draw_file_preview() {
                     return 0
                 fi
                 ;;
+            mp4|m4v|mov|avi|wmv|flv|webm|mkv|mpg|mpeg|3gp|3g2|ogv|asf|rm|rmvb|vob|ts|m2ts|mts|f4v|divx)
+                if ! video2static "$selected_file"; then
+                    printf '\n\e[33mVideo file: %s\e[m\n' "${selected_file##*/}"
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            mp3|wav|aac|m4a|flac|ogg|oga|opus|wma|alac|aiff|aif|au|snd|amr|ac3|dts|caf|mka|dff|dsf|wv|wvc)
+                if ! media_info "$selected_file"; then
+                    printf '\n\e[33mAudio file: %s\e[m\n' "${selected_file##*/}"
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
             png|jpg|jpeg)
                 if ! imgview "$selected_file"; then
                     printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
@@ -805,14 +857,6 @@ draw_file_preview() {
                     return 0
                 fi
                 ;;
-            dff|dsf|wv|wvc)
-                if ! media_info "$selected_file"; then
-                    printf '\n\e[33mMedia file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
             *)
                 get_mime_type "$selected_file"
                 if [[ "$mime_type" == *"font"* ]]; then
@@ -822,7 +866,7 @@ draw_file_preview() {
                     else
                         return 0
                     fi
-                elif [[ "$mime_type" == *"image"* ]]; then
+                elif [[ "$mime_type" == *"image"* || "$mime_type" =~ "image" ]]; then
                     if ! img2info "$selected_file"; then
                         printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
                         return 1
@@ -998,7 +1042,7 @@ cmd_line() {
 
 keys() {
     local key="$1"
-    os=$(uname -o) && [[ "${os,,}" =~ "android" ]] && LOOP_SCROLL=0
+    [[ "${OS,,}" =~ "android" ]] && LOOP_SCROLL=0
 
     [[ "$key" == $'\e' ]] && {
         read "${read_flags[@]}" -rsn 2
@@ -1353,6 +1397,7 @@ keys() {
 }
 
 main() {
+    OS=$(uname -o)
     SCRIPT="${0##*/}"
     TMPDIR="${TMPDIR:-/tmp}"
     TMP_DIR="${TMPDIR}/${SCRIPT%.*}"

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Verifica se foi passado um arquivo como argumento
+if [ $# -lt 1 ]; then
+    echo "Uso: $0 arquivo_de_midia"
+    exit 1
+fi
+
+file="$1"
+# Arquivos temporários
+img_file=$(mktemp)
+
+# Verifica se o arquivo existe
+if [ ! -f "$file" ]; then
+    echo "Erro: Arquivo '$file' não encontrado!"
+    rm -f "$img_file"
+    exit 1
+fi
+
+# Função para limpar arquivos temporários
+cleanup() {
+    rm -f "$img_file" 
+}
+
+# Trap para garantir limpeza em caso de interrupção
+trap cleanup EXIT
+
+# Obtém dimensões do terminal
+TERM_WIDTH=$(tput cols)
+TERM_HEIGHT=$(tput lines)
+
+# Define dimensões para imagem e texto - ajustando para ter imagem maior
+IMG_WIDTH=300  # Tamanho fixo mais adequado
+IMG_HEIGHT=200  # Tamanho fixo mais adequado
+TEXT_INDENT=32  # Espaço entre a imagem e o texto (ajuste conforme necessário)
+
+# Limpa a tela
+clear
+
+# Posiciona o cursor no início
+tput cup 0 0
+
+# Gera a imagem
+img2sixel -w $IMG_WIDTH -h $IMG_HEIGHT "$file" > "$img_file"
+cat "$img_file"
+
+# Posiciona o cursor para o texto (no lado direito com espaço ajustado)
+tput cup 0 "$TEXT_INDENT"
+
+# Processa e exibe o mediainfo linha por linha
+mediainfo "$file" | sed 's/                   //' | fold -w $((TERM_WIDTH - TEXT_INDENT - 5)) | while IFS= read -r line; do
+    echo "$line"
+    tput cuf "$TEXT_INDENT"
+done
+
+# Posiciona o cursor no final da saída
+tput cup "$TERM_HEIGHT" 0
+echo ""
+
+# Limpeza será feita pelo trap EXIT
+exit 0

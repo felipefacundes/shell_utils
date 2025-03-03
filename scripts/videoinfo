@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Verifica se foi passado um arquivo como argumento
+if [ $# -lt 1 ]; then
+    echo "Uso: $0 arquivo_de_midia"
+    exit 1
+fi
+
+file="$1"
+
+# Verifica se o arquivo existe
+if [ ! -f "$file" ]; then
+    echo "Erro: Arquivo '$file' não encontrado!"
+    exit 1
+fi
+
+# Limpa a tela e move para o canto superior esquerdo
+clear
+printf "\033[1;1H"
+
+# Obtém dimensões do terminal
+COLS=$(tput cols)
+LINES=$(tput lines)
+
+# Define o tamanho da imagem e espaçamento
+IMG_WIDTH=350
+IMG_HEIGHT=250
+SPACING=5
+TEXT_WIDTH=$((COLS - IMG_WIDTH/7 - SPACING*2))
+
+# Cria arquivo temporário para a imagem
+temp_img=$(mktemp)
+img2sixel -w $IMG_WIDTH -h $IMG_HEIGHT "$file" > "$temp_img"
+
+# Exibe a imagem
+cat "$temp_img"
+
+# Posiciona o cursor para texto e exibe mediainfo
+printf "\033[1;%dH" $((IMG_WIDTH/7 + SPACING))
+
+line_num=0
+mediainfo "$file" | fold -w $TEXT_WIDTH | while IFS= read -r line; do
+    # Move o cursor para a posição correta
+    printf "\033[%d;%dH" $((line_num + 1)) $((IMG_WIDTH/7 + SPACING))
+    # Exibe a linha
+    echo "$line"
+    # Incrementa o contador de linhas
+    ((line_num++))
+done
+
+# Move o cursor para o final da saída
+printf "\033[%d;1H\n" $((LINES))
+
+# Remove o arquivo temporário
+rm -f "$temp_img"
