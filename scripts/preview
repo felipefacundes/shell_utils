@@ -670,8 +670,10 @@ ishtml() {
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
-code_highlight() {
+highlight_code() {
     local file="$1"
+    COLOR_RESET='\033[0m' 
+    COLOR_CODE='\033[38;5;155;48;5;241m'
     HIGHLIGHT_OPTIONS="--replace-tabs=${HIGHLIGHT_TABWIDTH:-8} --style=${HIGHLIGHT_STYLE:-pablo} ${HIGHLIGHT_OPTIONS:-}"
 
     ## Syntax highlight
@@ -682,6 +684,9 @@ code_highlight() {
         local pygmentize_format='terminal'
         local highlight_format='ansi'
     fi
+    if [ -z "$lang" ]; then
+        lang="$file_ext"  # Default language
+    fi
     cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
         --out-format="${highlight_format}" \
         --force -- "${file}" && return 0
@@ -689,7 +694,12 @@ code_highlight() {
         -- "${file}" && return 0
     cmd_check pygmentize python-pygments && pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}"\
         -- "${file}" && return 0
-    cmd_check source-highlight source-highlight && return 0
+    cmd_check source-highlight source-highlight &&
+    # Attempt syntax highlighting with specified language
+    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0
+    while IFS= read -r line; do
+        printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$line"
+    done < "$file"
 }
 
 draw_file_preview() {
@@ -806,7 +816,7 @@ draw_file_preview() {
                         return 0
                     fi
                 elif [[ "$mime_type" == *"text"* || "$mime_type" == *"xml"* || "$mime_type" == *"empty"* || "$mime_type2" =~ ^text/.+|.+xml$ ]]; then
-                    code_highlight "$selected_file" | head -n "${sizeline}" 2>/dev/null
+                    highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null
                     return 0
                 else
                     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
@@ -977,7 +987,7 @@ keys() {
     }
 
     case "${special_key:-$key}" in
-        ${PREVIEW_KEY_DELETE:=D})
+        ${PREVIEW_KEY_ERASE:=E})
             [[ ! -e "${list[scroll]}" ]] &&
                 return
                 cmd_line "delete ${list[scroll]##*/}? (y/N): "
@@ -1268,7 +1278,7 @@ keys() {
         ${PREVIEW_KEY_PREVIOUS:=-})
             open "$OLDPWD"
         ;;
-        ${PREVIEW_KEY_REFRESH:=E})
+        ${PREVIEW_KEY_REFRESH:=A})
             open "$PWD"
         ;;
         # Control+D

@@ -195,27 +195,44 @@ check_dependencies() {
 
 # Function for syntax highlighting using source-highlight
 highlight_code() {
+    HIGHLIGHT_OPTIONS="--replace-tabs=${HIGHLIGHT_TABWIDTH:-8} --style=${HIGHLIGHT_STYLE:-pablo} ${HIGHLIGHT_OPTIONS:-}"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+    temp_file=$(mktemp)
     local content="$1"
     local lang="$2"
+
     
     if [ -n "$NO_HIGHLIGHT" ]; then
         printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$content"
         return
     fi
     
+    ## Syntax highlight
+    if [[ "$( tput colors )" -ge 256 ]]; then
+        local pygmentize_format='terminal256'
+        local highlight_format='xterm256'
+    else
+        local pygmentize_format='terminal'
+        local highlight_format='ansi'
+    fi
     if [ -z "$lang" ]; then
         lang="bash"  # Default language
     fi
     
     # Create temporary file for source-highlight
-    local temp_file=$(mktemp)
     echo "$content" > "$temp_file"
     
+    env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
+        --out-format="${highlight_format}" \
+        --force -- "${temp_file}" && rm -f "$temp_file" && return 0
+    env COLORTERM=8bit bat --color=always --style="plain" \
+        -- "${temp_file}" && rm -f "$temp_file" && return 0
+    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}"\
+        -- "${temp_file}" && rm -f "$temp_file" && return 0
+
     # Attempt syntax highlighting with specified language
-    source-highlight -f esc -s "$lang" -i "$temp_file" 2>/dev/null || \
-        printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$content"
-    
-    rm -f "$temp_file"
+    source-highlight -f esc -s "$lang" -i "$temp_file" 2>/dev/null && rm -f "$temp_file" && return 0
+        printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$content" && return 1
 }
 
 # Function to generate line separator
