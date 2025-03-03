@@ -18,7 +18,7 @@ parent_shell=$(ps -p $PPID -o comm=)
 
 if [[ -n "$TERMUX_VERSION" ]] && [[ "$os" =~ "Android" ]]; then
     termux-setup-storage
-    apt update && apt upgrade && apt install git ncurses-utils
+    apt update && apt upgrade -y && apt install git ncurses-utils file -y
 fi
 
 if ! test -d "${shell_utils_dir}"; then
