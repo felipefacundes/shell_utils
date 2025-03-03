@@ -215,7 +215,7 @@ get_ls_colors() {
 get_mime_type() {
     mime_type=$(file "-${file_flags:-biL}" "$1" 2>/dev/null | awk '{print $1}')
     mime_type2=$(file --dereference --brief --mime-type -- "$1" 2>/dev/null)
-    mime_type_full=$(file "$1")
+    mime_type_full=$(file "$1" | sed -n 's/.*:\s*\(.*\)/\1/p')
     mime_type="${mime_type,,}"
     mime_type2="${mime_type,,}"
     mime_type_full="${mime_type_full,,}"
