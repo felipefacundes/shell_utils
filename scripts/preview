@@ -706,11 +706,12 @@ margin() {
     cmd_check fold coreutils || cmd_check -msg
     cmd_check awk gawk || cmd_check -msg
     #fold -w 150 "$1" | sed 's/^/          /' | less -i &
-    fold -w 150 "$1" | awk '{print "          " $0 "          "}' | \
+    fold -w "${FOLD:-150}" "$1" | awk '{print "          " $0 "          "}' | \
     head -n "${sizeline}" && return 0
 }
 
 draw_file_preview() {
+    os=$(uname -o) && [[ "${os,,}" =~ "android" ]] && FOLD=15
     local selected_file="${list[scroll]}"
     local sizeline=15
     local width=70
