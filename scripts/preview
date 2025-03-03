@@ -637,7 +637,7 @@ video2static() {
 media_info() {
     local file="$1"
     [[ "${OS,,}" =~ "android" ]] && cmd_check mediainfo mediainfo && 
-    mediainfo "${file}" | sed 's/                   //' | sed 's|.*/||' | head -n "${sizeline}" && return 0
+    mediainfo "${file}" | sed 's/                   //' | sed 's|.*/||; s|^[^.]*||' | head -n "${sizeline}" && return 0
     cmd_check mediainfo mediainfo && mediainfo "${file}" | sed 's/                   //' | head -n "${sizeline}" && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
