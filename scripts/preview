@@ -515,6 +515,18 @@ markdown_reader() {
     ~/.shell_utils/scripts/markdown_reader.sh "$arg" "$file" | fmt -w "${width}" | head -n "${sizeline}" && return 0 
 }
 
+install_dep_and_any_file() {
+    local file="$1"
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && echo &&
+    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 0
+}
+
+any_file() {
+    file="$1"
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    head -n "${sizeline}" <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+}
+
 archive() {
     local file="$1"
     [[ "${file_ext}" =~ ^iso ]] && cmd_check 7z 7zip &&
@@ -533,8 +545,7 @@ archive() {
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && return 1
     cmd_check bsdtar libarchive && bsdtar --list --file "${file}" | \
     fmt -w "${width}" | head -n "${sizeline}" && return 0
-    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 0
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
+    install_dep_and_any_file "$file" && return 1
 }
 
 imgview() {
@@ -629,8 +640,7 @@ media_info() {
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
     cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0
-    cmd_check -msg && echo &&
-    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
+    install_dep_and_any_file "$file" && return 1
 }
 
 pdfview() {
@@ -658,16 +668,14 @@ pdfview() {
 torrentview() {
     local file="$1"
     cmd_check transmission-show transmission-cli && transmission-show -- "$file" && return 0
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && echo &&
-    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
+    install_dep_and_any_file "$file" && return 1
 }
 
 jsonview() {
     local file="$1"
     cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0
     cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && echo &&
-    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 1
+    install_dep_and_any_file "$file" && return 1
 }
 
 nexttmp () {
@@ -776,10 +784,8 @@ draw_file_preview() {
         case "$file_ext" in
             a|apk|apk+|xapk|ace|alz|arc|arj|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lzh|lzma|lzo|rar|\
             7z|rpm|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd|iso|vsix|exe)
-                [[ "${selected_file##*/}" =~ (^|.)img($|.) ]] && 
-                head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
-                [[ "$file_ext" == "tar" ]] && 
-                head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+                [[ "${file}" =~ \.img(\.[^.]+)?$ ]] && any_file "$selected_file" && return 0
+                [[ "$file_ext" == "tar" ]] && any_file "$selected_file" && return 0
                 if ! archive "$selected_file"; then
                     return 1
                 else
@@ -787,7 +793,7 @@ draw_file_preview() {
                 fi
                 ;;
             img)
-                head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+                any_file "$selected_file" && return 0
                 ;;
             txt)
                 margin "$selected_file" && return 0
@@ -891,8 +897,7 @@ draw_file_preview() {
                         return 0
                     fi
                 else
-                    file "$selected_file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-                    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null | sed '/^[0-9]\{11\}/d'
+                    any_file "$selected_file" && return 0
                     return 1
                 fi
                 ;;
