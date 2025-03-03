@@ -838,8 +838,10 @@ draw_file_preview() {
         esac
 
     elif [[ -d "$selected_file" ]]; then
+        local leng="$(ls -1A "$selected_file" | wc -l)"
         printf '\e[36mDirectory: %s\e[m\n' "${selected_file##*/}"
-        printf '\e[36mTotal Files: %s\e[m\n\n' "$(ls -1A "$selected_file" | wc -l)"
+        [[ "$leng" == 0 ]] && printf '\e[36mEmpty folder\e[m\n\n'
+        [[ "$leng" -gt 0 ]] && printf '\e[36mTotal Files: %s\e[m\n\n' "$leng"
         ls -lha --group-directories-first --color=always "$selected_file" | head -n 2
         printf '%s\n' "----------------------------------------------------"
         # Count the number of items returned by LS
