@@ -8,7 +8,9 @@ set -gx GIT_PAGER "less"
 set -gx PAGER "less"
 set -gx LESS "-R"
 set -gx LESSCHARSET "utf-8"
-set -gx LESSOPEN "| /usr/bin/src-hilite-lesspipe.sh %s"
+if test -f /usr/bin/src-hilite-lesspipe.sh
+    set -gx LESSOPEN "| /usr/bin/src-hilite-lesspipe.sh %s"
+end
 set -gx LESS_TERMCAP_md (tput bold; tput setaf 4)
 set -gx LESS_TERMCAP_me (tput sgr0)
 set -gx LSCOLORS (echo $LSCOLORS | string replace -r '^$' 'Gxfxcxdxbxegedabagacad')
