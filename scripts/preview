@@ -877,9 +877,9 @@ margin() {
 
 draw_file_preview() {
     local selected_file="${list[scroll]}"
-    local sizeline="${sizeline:-30}"
+    [[ "${OS,,}" != "android" ]] && local sizeline="${sizeline:-30}"
     [[ "${OS,,}" =~ "android" ]] && local sizeline="${sizeline:-15}"
-    local width="${width:-200}"
+    [[ "${OS,,}" != "android" ]] && local width="${width:-200}"
     [[ "${OS,,}" =~ "android" ]] && local width="${width:-50}"
     
     # Cleans the preview area
