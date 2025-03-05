@@ -493,7 +493,8 @@ cmd_check() {
 draw_img() {
     # Checks if the selected file is an image
     get_mime_type "${list[scroll]}"
-    [[ $mime_type =~ image || $mime_type =~ video ]] || {
+    [[ "$mime_type_full" =~ (audio|sound|video|media|stream) ||\
+    "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]] || {
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Selected file is not an image or video."
         return 1
     }
@@ -1225,7 +1226,7 @@ draw_file_preview() {
                 elif [[ "$mime_type" == *"text"* || "$mime_type" == *"xml"* || "$mime_type" == *"empty"* || "$mime_type2" =~ ^text/.+|application/xml$ ]]; then
                     highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null
                     return 0
-                elif [[ "$mime_type_full" =~ (audio|sound|video|media) || "$mime_type" =~ (audio|video) || "$mime_type2" =~ ^(video|audio)/.+$ ]]; then
+                elif [[ "$mime_type_full" =~ (audio|sound|video|media|stream) || "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]]; then
                     if ! media_info "$selected_file"; then
                         printf '\n\e[33mMedia file: %s\e[m\n' "${selected_file##*/}"
                         return 1
