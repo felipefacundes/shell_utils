@@ -574,7 +574,7 @@ office_convert() {
     [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check unrtf unrtf && (unrtf --text "$file" | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Dd][Oo][Cc][Xx])$ ]] && cmd_check docx2txt docx2txt && (docx2txt "$file" - | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Dd][Oo][Cc][Xx])$ ]] && cmd_check docx2txt docx2txt && (docx2txt "$file" - 2>/dev/null | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^([Ss][Xx][Ww])$ ]] && cmd_check sxw2txt sxw2txt && (sxw2txt "$file" | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0
@@ -878,7 +878,7 @@ margin() {
 draw_file_preview() {
     local selected_file="${list[scroll]}"
     [[ "${OS,,}" != "android" ]] && local sizeline="${sizeline:-30}"
-    [[ "${OS,,}" =~ "android" ]] && local sizeline="${sizeline:-15}"
+    [[ "${OS,,}" =~ "android" ]] && local sizeline="${sizeline:-20}"
     [[ "${OS,,}" != "android" ]] && local width="${width:-200}"
     [[ "${OS,,}" =~ "android" ]] && local width="${width:-50}"
     
