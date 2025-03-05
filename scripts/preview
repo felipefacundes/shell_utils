@@ -493,8 +493,8 @@ cmd_check() {
 draw_img() {
     # Checks if the selected file is an image
     get_mime_type "${list[scroll]}"
-    [[ "$mime_type_full" =~ (audio|sound|video|media|stream) ||\
-    "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]] || {
+    [[ "$mime_type_full" =~ (video|media|stream) ||\
+    "$mime_type" =~ (video|media|stream) || "$mime_type2" =~ ^video/.+$ ]] || {
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Selected file is not an image or video."
         return 1
     }
@@ -515,7 +515,8 @@ draw_img() {
             _picinfo "${list[scroll]}"
             showing_image=1
         #####
-        elif [[ $showing_image -eq 0 ]] && [[ $mime_type == video/* ]]; then
+        elif [[ $showing_image -eq 0 ]] && [[ "$mime_type_full" =~ (video|media|stream) ||\
+            "$mime_type" =~ (video|media|stream) || "$mime_type2" =~ ^video/.+$ ]]; then
             # Limpa a tela e exibe a imagem em tela cheia com imgview
             preserve_status="$preview_mode"
             [[ "$preserve_status" == 1 ]] && toggle_preview_mode
