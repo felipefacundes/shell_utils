@@ -490,6 +490,115 @@ cmd_check() {
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
+extract_to_folder() {
+    local file="${1}"
+    
+    # Check if the file exists
+    if [ ! -f "$file" ]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: File '$file' not found"
+        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        return 1
+    fi
+    
+    # Convert to lowercase for better matching
+    local file_lower="${file,,}"
+    local folder_name="${file%.*}"  # Remove the file extension
+    
+    # Create the destination directory
+    if [[ -d "$folder_name" ]]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: The '${folder_name##*/}' directory exists"
+        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        return 1
+    elif ! mkdir -p "$folder_name"; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Could not create directory '$folder_name'"
+        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        return 1
+    fi
+    
+    # Function to check if a command is available
+    check_command() {
+        if ! command -v "$1" >/dev/null 2>&1; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: '$1' is not installed. Please install it to extract this format."
+            read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+            return 1
+        fi
+        return 0
+    }
+        
+    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extracting '$file' to '$folder_name'..."
+    sleep .5
+    
+    case "$file_lower" in
+        *.tar.bz2|*.tbz2)
+            check_command tar && tar -xjf "$file" -C "$folder_name" ;;
+        *.tar.gz|*.tgz)
+            check_command tar && tar -xzf "$file" -C "$folder_name" ;;
+        *.tar.xz)
+            check_command tar && tar -xJf "$file" -C "$folder_name" ;;
+        *.tar.zst)
+            check_command tar && tar --zstd -xvf "$file" -C "$folder_name" ;;
+        *.tar.lzma)
+            check_command tar && tar --lzma -xvf "$file" -C "$folder_name" ;;
+        *.tar)
+            check_command tar && tar -xvf "$file" -C "$folder_name" ;;
+        *.bz2)
+            check_command bunzip2 && bunzip2 -c "$file" > "$folder_name/${file%.bz2}" ;;
+        *.gz)
+            check_command gunzip && gunzip -c "$file" > "$folder_name/${file%.gz}" ;;
+        *.xz)
+            check_command unxz && unxz -c "$file" > "$folder_name/${file%.xz}" ;;
+        *.zst)
+            check_command unzstd && unzstd "$file" -o "$folder_name/${file%.zst}" ;;
+        *.zip|*.zipx)
+            check_command unzip && unzip -q "$file" -d "$folder_name" ;;
+        *.rar)
+            check_command unrar && unrar x -inul "$file" "$folder_name/" || 
+            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+        *.7z|*.7za)
+            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+        *.iso)
+            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+        *.cab)
+            check_command cabextract && cabextract "$file" -d "$folder_name" ||
+            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+        *.arj)
+            check_command unarj && unarj x "$file" "$folder_name/" ;;
+        *.lzh|*.lha)
+            check_command lhasa && lhasa x "$file" -w "$folder_name" ;;
+        *.rpm)
+            check_command rpm2cpio && rpm2cpio "$file" | cpio -idmv -D "$folder_name" ;;
+        *.deb)
+            check_command dpkg && dpkg-deb -x "$file" "$folder_name" ;;
+        *.dmg)
+            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+        *.z)
+            check_command uncompress && uncompress -c "$file" > "$folder_name/${file%.z}" ;;
+        *.ace)
+            check_command unace && unace x "$file" "$folder_name/" ;;
+        *.exe)
+            # Might be a self-extracting archive
+            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+        *)
+            printf '\e[%sH\e[K\e8' "$LINES"
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Unsupported format: $file"
+            rmdir "$folder_name" 2>/dev/null  # Remove directory if empty
+            read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+            return 1 ;;
+    esac
+    
+    # Check if extraction was successful
+    if [ $? -eq 0 ]; then
+        redraw full
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extraction completed successfully!"
+        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+    else
+        redraw full
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error during extraction of '$file'"
+        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        return 1
+    fi
+}
+
 any_file() {
     file="$1"
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
@@ -667,10 +776,6 @@ video2static() {
 
     function if_ff_extract {
         [[ -f "$temp_file" ]] && {
-            # echo "$(imgview "$temp_file" 2)" > "${info}"
-            # echo "$(media_info "$file" | fold -w "${FOLD:-100}")" >> "${info}"
-            # column -t -s $'\n' "${info}"
-            # rm -f "${info}"
             imgview "$temp_file" 2
             media_info "$file"
         } && return 0
@@ -1260,7 +1365,7 @@ keys() {
         ${PREVIEW_KEY_ERASE:=E})
             [[ ! -e "${list[scroll]}" ]] &&
                 return
-                cmd_line "delete ${list[scroll]##*/}? (y/N): "
+                cmd_line "Delete ${list[scroll]##*/}? (y/N): "
             [[ "$cmd_reply" =~ ^[Yy]$ ]] &&
                 if [[ -w "${list[scroll]}" ]]; then
                     if [[ -d "${list[scroll]}" ]]; then
@@ -1270,7 +1375,19 @@ keys() {
                     fi
                     redraw full
                 else
-                    cmd_line "warn: no write access to file/directory."
+                    cmd_line "Warn: no write access to file/directory."
+                fi
+        ;;
+        ${PREVIEW_KEY_EXTRACT:=e})
+            [[ ! -f "${list[scroll]}" ]] &&
+                return
+                cmd_line "Extract ${list[scroll]##*/}? (y/N): "
+            [[ "$cmd_reply" =~ ^[Yy]$ ]] &&
+                if [[ -w "${list[scroll]}" ]]; then
+                    extract_to_folder "${list[scroll]}"
+                    redraw full
+                else
+                    cmd_line "Warn: no write access to file/directory."
                 fi
         ;;
         ${PREVIEW_KEY_PREVIEW1:=P}|\

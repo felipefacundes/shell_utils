@@ -70,6 +70,7 @@ extract_file() {
     local file="${1}"
     if [ -z "${file}" ] || [ ! -f "${file}" ]; then
         echo -e "Usage:\n\n${0##*/} -f <compressed file>"
+        return 1
     
     elif [ -f "${file}" ]; then
         case "${file}" in
