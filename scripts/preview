@@ -3,8 +3,8 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-A simple file manager with file preview based on "fff" and "ranger". It uses "lf" as a base, 
-adding support for file preview with "ueberzug" and integration with custom commands for efficient navigation. 
+A simple file manager with file preview based on "fff", "lesspipe" and "ranger". It uses "lf" as a base, 
+adding support for file preview with custom commands for efficient navigation. 
 It includes configurable shortcuts to simplify file manipulation.
 DOCUMENTATION
 
@@ -490,6 +490,58 @@ cmd_check() {
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
+draw_img() {
+    # Checks if the selected file is an image
+    get_mime_type "${list[scroll]}"
+    [[ $mime_type =~ image || $mime_type =~ video ]] || {
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Selected file is not an image or video."
+        return 1
+    }
+
+    # Estado inicial: assume que estamos mostrando os arquivos
+    local showing_image=0
+
+    while true; do
+        if [[ $showing_image -eq 0 ]] && [[ $mime_type == image/* ]]; then
+            # Limpa a tela e exibe a imagem em tela cheia com imgview
+            preserve_status="$preview_mode"
+            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
+            clear_screen
+            status_line "${list[scroll]}"
+            if type -p img2sixel >/dev/null || type -p viu >/dev/null || type -p catimg >/dev/null || type -p chafa >/dev/null; then
+                img2info "${list[scroll]}"
+            fi
+            _picinfo "${list[scroll]}"
+            showing_image=1
+        #####
+        elif [[ $showing_image -eq 0 ]] && [[ $mime_type == video/* ]]; then
+            # Limpa a tela e exibe a imagem em tela cheia com imgview
+            preserve_status="$preview_mode"
+            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
+            clear_screen
+            status_line "${list[scroll]}"
+            if type -p img2sixel >/dev/null || type -p viu >/dev/null || type -p catimg >/dev/null || type -p chafa >/dev/null; then
+                video2static "${list[scroll]}"
+            fi
+            showing_image=1
+        else
+            # Volta a exibir os arquivos
+            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
+            redraw
+            showing_image=0
+            break  # Sai do loop após voltar aos arquivos
+        fi
+
+        # Aguarda a próxima entrada do usuário
+        read -srn 1 key
+        [[ "$key" != "i" ]] && {
+            # Se a tecla não for 'i', redesenha e sai do loop
+            redraw
+            break
+        }
+    done
+}
+
 extract_to_folder() {
     local file="${1}"
     
@@ -506,12 +558,10 @@ extract_to_folder() {
     
     # Create the destination directory
     if [[ -d "$folder_name" ]]; then
-        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: The '${folder_name##*/}' directory exists"
-        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        cmd_line "Error: The '${folder_name##*/}' directory exists"
         return 1
     elif ! mkdir -p "$folder_name"; then
-        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Could not create directory '$folder_name'"
-        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        cmd_line "Error: Could not create directory '$folder_name'"
         return 1
     fi
     
@@ -579,7 +629,7 @@ extract_to_folder() {
             # Might be a self-extracting archive
             check_command 7z && 7z x "$file" -o"$folder_name" ;;
         *)
-            printf '\e[%sH\e[K\e8' "$LINES"
+            printf '\e[%sH\e[K\e8' "$LINES" # Clear lines
             printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Unsupported format: $file"
             rmdir "$folder_name" 2>/dev/null  # Remove directory if empty
             read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
@@ -589,8 +639,7 @@ extract_to_folder() {
     # Check if extraction was successful
     if [ $? -eq 0 ]; then
         redraw full
-        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extraction completed successfully!"
-        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        cmd_line "Extraction completed successfully!"
     else
         redraw full
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error during extraction of '$file'"
@@ -709,26 +758,41 @@ markdown_reader() {
     cmd_check mdcat mdcat && mdcat -- "$file" | head -n "${sizeline}" && return 0
 }
 
-imgview() {
+_picinfo() {
     local file="$1"
-    local factor="$2"
-    
-    [[ "$factor" =~ ^-?[0-9]+$ ]] && {
-        cmd_check img2sixel libsixel && img2sixel -w 300 -h 200 "${file}" 2>/dev/null && return 0
-        cmd_check viu viu -w 50 -h 16 && viu "${file}" 2>/dev/null && return 0
-        cmd_check catimg catimg && catimg -w 60 "${file}" 2>/dev/null && return 0 
-        cmd_check chafa chafa && chafa -s 25 "${file}" 2>/dev/null && return 0
-    }
-    [[ -z "$factor" ]] && {
-        cmd_check img2sixel libsixel && img2sixel -w 540 -h 420 "${file}" 2>/dev/null && return 0
-        cmd_check viu viu -w 90 -h 35 && viu "${file}" 2>/dev/null && return 0
-        cmd_check catimg catimg && catimg -w 100 "${file}" 2>/dev/null && return 0 
-        cmd_check chafa chafa && chafa -s 50 "${file}" 2>/dev/null && return 0
-    }
+    cmd_check mediainfo mediainfo && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
+    echo && mediainfo "$file" | sed 's/               //; s|\(.*:\)\s*.*/|\1 |' && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     (_identify "${file}" | head -n "${sizeline}") && return 0
+}
+
+imgview() {
+    local file="$1"
+    local thumbnail="$2"
+    
+    [[ "$thumbnail" =~ ^-?[0-9]+$ ]] && {
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
+        img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0
+         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        viu -w "${PREVIEW_THUMB_VIU_W:-50}" -h "${PREVIEW_THUMB_VIU_H:-16}" "${file}" 2>/dev/null && return 0
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_THUMB_CATIMG_W:-60}" "${file}" 2>/dev/null && return 0 
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0
+    }
+    [[ -z "$thumbnail" ]] && {
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+        img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && 
+        cmd_check viu viu && viu -w "${PREVIEW_VIU_H:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0 
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_CHAFA_S:-50}" "${file}" 2>/dev/null && return 0
+    }
+    _picinfo "$file" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
@@ -759,10 +823,7 @@ img2info() {
     cmd_check magick imagemagick && ls "${TMP_DIR}" && 
     magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
     [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_exiftool "${file}" | head -n "${sizeline}") && return 0
-    cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_identify "${file}" | head -n "${sizeline}") && return 0
+    _picinfo "$file" && return 0
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
@@ -776,7 +837,7 @@ video2static() {
 
     function if_ff_extract {
         [[ -f "$temp_file" ]] && {
-            imgview "$temp_file" 2
+            imgview "$temp_file" 1
             media_info "$file"
         } && return 0
     }
@@ -977,7 +1038,7 @@ margin() {
     #fold -w 150 "$1" | sed 's/^/          /' | less -i &
     # [[ "${OS,,}" =~ "android" ]] && fold -w "${FOLD:-50}" "$file" | awk '{print "   " $0 "   "}' | \
     # head -n "${sizeline}" && return 0
-    fmt -w "${width}" -u "$file" | awk '{printf "%-20s\n", $0}' | head -n "${sizeline}" && return 0
+    head -n "${sizeline}" "$file" | awk '{printf "%-30s\n", $0}' && return 0
 }
 
 draw_file_preview() {
@@ -1329,7 +1390,7 @@ cmd_line() {
 
 keys() {
     local key="$1"
-    [[ "${OS,,}" =~ "android" ]] && LOOP_SCROLL=0
+    [[ "${OS,,}" =~ "android" ]] && PREVIEW_LOOP_SCROLL=0
 
     [[ "$key" == $'\e' ]] && {
         read "${read_flags[@]}" -rsn 2
@@ -1347,8 +1408,6 @@ keys() {
             if [[ -z "${!fav_var}" ]]; then
                 # No favorite directory set for this number
                 printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Favorite directory not set for key $key. Use export PREVIEW_FAV_$key='/path/to/directory' to set."
-                # read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
-                # printf '\e[%sH\e[K\e8' "$LINES"  # Clear line
             else
                 # Attempt to change to the favorite directory
                 if [[ -d "${!fav_var}" ]]; then
@@ -1357,10 +1416,13 @@ keys() {
                 else
                     # Directory does not exist
                     printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Favorite directory ${!fav_var} does not exist."
-                    # read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
                     # printf '\e[%sH\e[K\e8' "$LINES"  # Clear line
                 fi
             fi
+        ;;
+        # Show image in terminal.
+        ${PREVIEW_KEY_IMAGE:=i})
+            draw_img
         ;;
         ${PREVIEW_KEY_ERASE:=E})
             [[ ! -e "${list[scroll]}" ]] &&
@@ -1385,10 +1447,32 @@ keys() {
             [[ "$cmd_reply" =~ ^[Yy]$ ]] &&
                 if [[ -w "${list[scroll]}" ]]; then
                     extract_to_folder "${list[scroll]}"
-                    redraw full
+                    #redraw full
                 else
-                    cmd_line "Warn: no write access to file/directory."
+                    cmd_line "Warn: no write access to file."
                 fi
+        ;;
+        # Show file attributes.
+        ${PREVIEW_KEY_ATTRIBUTES:=x})
+            [[ -e "${list[scroll]}" ]] && {
+                clear_screen
+                status_line "${list[scroll]}"
+                "${PREVIEW_STAT_CMD:-stat}" "${list[scroll]}"
+                read -ern 1
+                redraw
+            }
+        ;;
+        # Toggle executable flag.
+        ${PREVIEW_KEY_EXECUTABLE:=X})
+            [[ -f ${list[scroll]} && -w ${list[scroll]} ]] && {
+                if [[ -x ${list[scroll]} ]]; then
+                    chmod -x "${list[scroll]}"
+                    status_line "Unset executable."
+                else
+                    chmod +x "${list[scroll]}"
+                    status_line "Set executable."
+                fi
+            }
         ;;
         ${PREVIEW_KEY_PREVIEW1:=P}|\
         ${PREVIEW_KEY_PREVIEW2:=$'\x10'}) # Ctrl+P
@@ -1418,7 +1502,7 @@ keys() {
         ${PREVIEW_KEY_SCROLL_DOWN1:=j}|\
         ${PREVIEW_KEY_SCROLL_DOWN2:=$'\e[B'}|\
         ${PREVIEW_KEY_SCROLL_DOWN3:=$'\eOB'})
-            if [[ "${LOOP_SCROLL:-1}" == 0 ]]; then
+            if [[ "${PREVIEW_LOOP_SCROLL:-1}" == 0 ]]; then
                 ((scroll < list_total)) && {
                     ((scroll++))
                     
@@ -1466,7 +1550,7 @@ keys() {
         ${PREVIEW_KEY_SCROLL_UP1:=k}|\
         ${PREVIEW_KEY_SCROLL_UP2:=$'\e[A'}|\
         ${PREVIEW_KEY_SCROLL_UP3:=$'\eOA'})
-            if [[ "${LOOP_SCROLL:-1}" == 0 ]]; then
+            if [[ "${PREVIEW_LOOP_SCROLL:-1}" == 0 ]]; then
                 ((scroll > 0)) && {
                     ((scroll--))
 
@@ -1665,8 +1749,9 @@ keys() {
         ${PREVIEW_KEY_PREVIOUS:=-})
             open "$OLDPWD"
         ;;
-        ${PREVIEW_KEY_REFRESH:=A})
+        ${PREVIEW_KEY_REFRESH:=r})
             open "$PWD"
+            redraw full
         ;;
         # Control+D
         ${PREVIEW_KEY_QUIT1:=$'\x04'}|\
@@ -1765,8 +1850,8 @@ main() {
     trap 'reset_terminal' EXIT
     trap 'get_term_size; redraw' WINCH
     
-    # Preview mode boot (now as standard)
-    preview_mode=1
+    # Preview mode boot
+    preview_mode="${PREVIEW_MODE:-1}"
     displayed_selection=0
 
     get_os
