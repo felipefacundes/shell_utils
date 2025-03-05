@@ -29,20 +29,20 @@ fi
 
 # Defining the favorite editor
 if command -v nvim &>/dev/null; then
-    export EDITOR=nvim
-    export VISUAL=nvim
-
-elif command -v emacs &>/dev/null; then
-    export EDITOR=emacs
-    export VISUAL=emacs
+    export EDITOR="${EDITOR:-nvim}"
+    export VISUAL="${VISUAL:-nvim}"
 
 elif command -v vim &>/dev/null; then
-    export EDITOR=vim
-    export VISUAL=vim
+    export EDITOR="${EDITOR:-vim}"
+    export VISUAL="${VISUAL:-vim}"
+
+elif command -v emacs &>/dev/null; then
+    export EDITOR="${EDITOR:-emacs}"
+    export VISUAL="${VISUAL:-emacs}"
 
 else
-    export EDITOR=nano
-    export VISUAL=nano
+    export EDITOR="${EDITOR:-nano}"
+    export VISUAL="${VISUAL:-nano}"
 fi
 
 # User configuration

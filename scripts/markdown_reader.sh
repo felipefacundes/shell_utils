@@ -459,6 +459,11 @@ main() {
     # Parse command line options
     while [[ $# -gt 0 ]]; do
         case $1 in
+            --)
+                shift
+                MARKDOWN_FILE="$1"
+                break
+                ;;
             -h|--help)
                 show_help
                 ;;

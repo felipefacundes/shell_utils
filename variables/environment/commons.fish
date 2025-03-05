@@ -33,18 +33,21 @@ if command -v pyenv > /dev/null
 end
 
 # Defining the favorite editor
-if command -v nvim > /dev/null
-    set -gx EDITOR nvim
-    set -gx VISUAL nvim
-else if command -v emacs > /dev/null
-    set -gx EDITOR emacs
-    set -gx VISUAL emacs
-else if command -v vim > /dev/null
-    set -gx EDITOR vim
-    set -gx VISUAL vim
+if command -v nvim &>/dev/null
+    set -gx EDITOR (echo "$EDITOR" | string length -q; or echo nvim)
+    set -gx VISUAL (echo "$VISUAL" | string length -q; or echo nvim)
+
+else if command -v vim &>/dev/null
+    set -gx EDITOR (echo "$EDITOR" | string length -q; or echo vim)
+    set -gx VISUAL (echo "$VISUAL" | string length -q; or echo vim)
+
+else if command -v emacs &>/dev/null
+    set -gx EDITOR (echo "$EDITOR" | string length -q; or echo emacs)
+    set -gx VISUAL (echo "$VISUAL" | string length -q; or echo emacs)
+
 else
-    set -gx EDITOR nano
-    set -gx VISUAL nano
+    set -gx EDITOR (echo "$EDITOR" | string length -q; or echo nano)
+    set -gx VISUAL (echo "$VISUAL" | string length -q; or echo nano)
 end
 
 # User configuration

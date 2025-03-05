@@ -490,53 +490,60 @@ cmd_check() {
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
-office_convert() {
-    local file="$1"
-    local temp_dir="${TMP_DIR}/temp_book"
-    local temp_file="${TMP_DIR}/temp_file.txt"
-    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
-    [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
-
-    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Ee][Pp][Uu][Bb])$ ]] && cmd_check epr epr && (epr -d "$file" 2>/dev/null |\
-    sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' | fmt -w "${width}" | head -n "${sizeline}") && return 0
-    cmd_check pandoc pandoc && (timeout -k 1 1 pandoc -s -t plain -- "$file" 2>/dev/null | head -n "${sizeline}") && return 0
-    cmd_check libreoffice libreoffice && timeout -k 1 1 libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 && 
-    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
-}
-
-markdown_reader() {
-    local arg="$1"
-    local file="$2"
-    ~/.shell_utils/scripts/markdown_reader.sh "$arg" "$file" | fmt -w "${width}" | head -n "${sizeline}" && return 0 
-}
-
-install_dep_and_any_file() {
-    local file="$1"
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && echo &&
-    head -n "${sizeline}" <(strings -n 10 "$selected_file") 2>/dev/null && return 0
-}
-
 any_file() {
     file="$1"
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
     head -n "${sizeline}" <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
 }
 
+_exiftool() {
+    local file="$1"
+    timeout -k 1 1 exiftool "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_identify() {
+    local file="$1"
+    timeout -k 1 1 identify -verbose "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_pandoc() {
+    local file="$1"
+    timeout -k 1 1 pandoc -s -t plain -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_libreoffice() {
+    local file="$1"
+    local dir="$2"
+    timeout -k 1 1 libreoffice --headless --convert-to txt --outdir "$dir" "$file" >/dev/null 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_glow() {
+    local file="$1"
+    timeout -k 1 .6 env COLORTERM=8bit glow -s dark -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
 archive() {
     local file="$1"
-    [[ "${file_ext}" =~ ^iso ]] && cmd_check 7z 7zip &&
-    7z l -p -- "${file}" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^iso ]] && cmd_check isoinfo cdrtools &&
+    isoinfo -i "${file}" -l | head -n "${sizeline}" && return 0
     [[ "${file_ext}" =~ ^7z ]] && cmd_check 7z 7zip &&
     7z l -p -- "${file}" | head -n "${sizeline}" && return 0
     [[ "${file_ext}" =~ ^rar ]] && cmd_check unrar unrar &&
     unrar lt -p- -- "${file}" | head -n "${sizeline}" && return 0
     [[ "${file_ext}" =~ ^rar ]] && cmd_check 7z 7zip &&
     7z l -p -- "${file}" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^(zlib|zz)$ ]] && cmd_check zlib-flate qpdf &&
+    zlib-flate -uncompress < "${file}" | head -n "${sizeline}" && return 0
     [[ "${file_ext}" =~ ^(zst|zstd)$ ]] && cmd_check zstdcat zstd &&
     zstd -lv "${file}" | head -n "${sizeline}" && return 0
     cmd_check atool atool && atool --list -- "${file}" | \
@@ -545,7 +552,52 @@ archive() {
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && return 1
     cmd_check bsdtar libarchive && bsdtar --list --file "${file}" | \
     fmt -w "${width}" | head -n "${sizeline}" && return 0
-    install_dep_and_any_file "$file" && return 1
+    [[ "${file_ext}" =~ ^exe ]] && cmd_check 7z 7zip &&
+    file "${file}" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
+    7z l -p -- "${file}" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^iso ]] && cmd_check 7z 7zip &&
+    7z l -p -- "${file}" | head -n "${sizeline}" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+office_convert() {
+    local file="$1"
+    local temp_dir="${TMP_DIR}/temp_book"
+    local temp_file="${TMP_DIR}/temp_file.md"
+    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
+    [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
+
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvtable csvtable && (csvtable "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvlook csvlook && (csvlook -S "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && column -t -s, "$file" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check unrtf unrtf && (unrtf --text "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Dd][Oo][Cc][Xx])$ ]] && cmd_check docx2txt docx2txt && (docx2txt "$file" - | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Ss][Xx][Ww])$ ]] && cmd_check sxw2txt sxw2txt && (sxw2txt "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Pp][Pp][Tt][Xx])$ ]] && cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
+    markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Ee][Pp][Uu][Bb])$ ]] && cmd_check epr epr && (epr -d "$file" 2>/dev/null |\
+    sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' | fmt -w "${width}" | head -n "${sizeline}") && return 0
+    cmd_check pandoc pandoc && (_pandoc "$file" | head -n "${sizeline}") && return 0
+    cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 && 
+    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+markdown_reader() {
+    local file="$1"
+    local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
+    [[ -f "$mr" ]] && "$mr" -nl -- "$file" | head -n "${sizeline}" && return 0
+    command -v markdown_reader.sh &>/dev/null && markdown_reader.sh -nl -- "$file" | head -n "${sizeline}" && return 0
+    cmd_check glow glow && env COLORTERM=8bit glow -- "$file" | head -n "${sizeline}" && return 0
+    cmd_check bat bat && env COLORTERM=8bit bat --paging=never --style=plain -- "$file" | head -n "${sizeline}" && return 0
+    cmd_check mdless mdless && mdless -P -- "$file" | head -n "${sizeline}" && return 0
+    cmd_check mdcat mdcat && mdcat -- "$file" | head -n "${sizeline}" && return 0
 }
 
 imgview() {
@@ -565,10 +617,10 @@ imgview() {
         cmd_check chafa chafa && chafa -s 50 "${file}" 2>/dev/null && return 0
     }
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 identify -verbose "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    install_dep_and_any_file "$file" && return 1
+    (_identify "${file}" | head -n "${sizeline}") && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 fontview() {
@@ -599,9 +651,9 @@ img2info() {
     magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
     [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 identify -verbose "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
+    (_identify "${file}" | head -n "${sizeline}") && return 0
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
@@ -647,9 +699,9 @@ media_info() {
     sed '/General/d; /Complete name/d; /^Video/d; /^Audio/d; /^$/d; s/                   //; s|\(.*:\)\s*.*/|\1 |' |\
     head -n "${sizeline}" && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0
-    install_dep_and_any_file "$file" && return 1
+    cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 pdfview() {
@@ -667,24 +719,73 @@ pdfview() {
     cmd_check magick imagemagick && 
     magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
     [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
+    cmd_check pdfinfo poppler && pdfinfo "$file" && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 exiftool "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (timeout -k 1 1 identify -verbose "${file}" 2>/dev/null | head -n "${sizeline}") && return 0
-    install_dep_and_any_file "$file" && return 1
+    (_identify "${file}" | head -n "${sizeline}") && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 torrentview() {
     local file="$1"
     cmd_check transmission-show transmission-cli && transmission-show -- "$file" && return 0
-    install_dep_and_any_file "$file" && return 1
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+djvuview() {
+    local file="$1"
+    cmd_check djvutxt djvutxt && djvutxt "$file" | head -n "${sizeline}" && return 0
+    cmd_check exiftool exiftool &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+podview() {
+    local file="$1"
+    cmd_check pod2text pod2text && pod2text "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check perldoc perldoc && perldoc -T "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+psview() {
+    local file="$1"
+    cmd_check ps2ascii ghostscript && nodash ps2ascii "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+classview() {
+    local file="$1"
+    cmd_check procyon-decompiler procyon-decompiler && procyon-decompiler "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check procyon procyon && procyon "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+dviview() {
+    local file="$1"
+    cmd_check dvi2tty dvi2tty && dvi2tty -q "$file" | head -n "${sizeline}" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+pgpview() {
+    local file="$1"
+    cmd_check gpg gnupg && gpg --decrypt --quiet --no-tty --batch --yes "$file" | head -n "${sizeline}" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+opensslview() {
+    local file="$1"
+    [[ "${file_ext}" =~ ^([Cc][Ss][Rr])$ ]] && 
+    cmd_check openssl openssl && openssl req -text -noout -in "$file" | head -n "${sizeline}" && return 0
+    cmd_check openssl openssl && openssl storeutl -text -noout "$file" | head -n "${sizeline}" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 jsonview() {
     local file="$1"
     cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0
     cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0
-    install_dep_and_any_file "$file" && return 1
+    cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 nexttmp () {
@@ -746,35 +847,40 @@ highlight_code() {
     if [ -z "$lang" ]; then
         lang="$file_ext"  # Default language
     fi
+
+    # Attempt syntax highlighting with specified language
+    cmd_check bat bat && env COLORTERM=8bit bat --color=always --style="plain" -- "${file}" && return 0
+    cmd_check source-highlight source-highlight &&
+    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0
+    cmd_check pygmentize python-pygments && 
+    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}" -- "${file}" && return 0
     cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
         --out-format="${highlight_format}" \
-        --force -- "${file}" && return 0
-    cmd_check bat bat && env COLORTERM=8bit bat --color=always --style="plain" \
-        -- "${file}" && return 0
-    cmd_check pygmentize python-pygments && pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}"\
-        -- "${file}" && return 0
-    cmd_check source-highlight source-highlight &&
-    # Attempt syntax highlighting with specified language
-    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0
+        --force -- "${file}" 2>/dev/null && return 0
+    cmd_check glow glow && _glow "${file}" && return 0
+    cmd_check mdless mdless && mdless -P -- "${file}" && return 0
+    cmd_check mdcat mdcat && mdcat -- "${file}" && return 0
     while IFS= read -r line; do
         printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$line"
     done < "$file"
 }
 
 margin() {
+    local file="$1"
     cmd_check fold coreutils || cmd_check -msg
     cmd_check awk gawk || cmd_check -msg
     #fold -w 150 "$1" | sed 's/^/          /' | less -i &
-    [[ "${OS,,}" =~ "android" ]] && fold -w "${FOLD:-50}" "$1" | awk '{print "   " $0 "   "}' | \
-    head -n "${sizeline}" && return 0
-    fold -w "${FOLD:-150}" "$1" | awk '{print "          " $0 "          "}' | \
-    head -n "${sizeline}" && return 0
+    # [[ "${OS,,}" =~ "android" ]] && fold -w "${FOLD:-50}" "$file" | awk '{print "   " $0 "   "}' | \
+    # head -n "${sizeline}" && return 0
+    fmt -w "${width}" -u "$file" | awk '{printf "%-20s\n", $0}' | head -n "${sizeline}" && return 0
 }
 
 draw_file_preview() {
     local selected_file="${list[scroll]}"
-    local sizeline="${sizeline:-15}"
-    local width="${width:-70}"
+    local sizeline="${sizeline:-30}"
+    [[ "${OS,,}" =~ "android" ]] && local sizeline="${sizeline:-15}"
+    local width="${width:-200}"
+    [[ "${OS,,}" =~ "android" ]] && local width="${width:-50}"
     
     # Cleans the preview area
     for ((i=max_items+2; i<LINES-1; i++)); do
@@ -791,8 +897,8 @@ draw_file_preview() {
         printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
 
         case "$file_ext" in
-            a|apk|apk+|xapk|ace|alz|arc|arj|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lzh|lzma|lzo|rar|\
-            7z|rpm|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd|iso|vsix|exe)
+            a|apk|apk+|xapk|ace|alz|arc|arj|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lzh|lzma|lzo|rar|exe|rpm|\
+            7z|7zz|7za|7zr|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tZ|tzo|war|xpi|xz|Z|zip|zst|zstd|iso|vsix|zlib|zz)
                 [[ "${file}" =~ \.img(\.[^.]+)?$ ]] && any_file "$selected_file" && return 0
                 [[ "$file_ext" == "tar" ]] && any_file "$selected_file" && return 0
                 if ! archive "$selected_file"; then
@@ -807,8 +913,23 @@ draw_file_preview() {
             txt)
                 margin "$selected_file" && return 0
                 ;;
-            md)
-                if ! markdown_reader -nl "$selected_file"; then
+            md|markdown)
+                if ! markdown_reader "$selected_file"; then
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            class)
+                if ! classview "$selected_file"; then
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            pod)
+                if ! podview "$selected_file"; then
+                    printf '\n\e[33mPOD file: %s\e[m\n' "${selected_file##*/}"
                     return 1
                 else
                     return 0
@@ -854,9 +975,49 @@ draw_file_preview() {
                     return 0
                 fi
                 ;;
-            rtf|odt|ods|odp|sxw|doc|docx|xlsx|epub)
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
                 if ! office_convert "$selected_file"; then
                     printf '\n\e[33mOffice file: %s\e[m\n' "${selected_file##*/}"
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            djvu)
+                if ! djvuview "$selected_file"; then
+                    printf '\n\e[33mDjvu file: %s\e[m\n' "${selected_file##*/}"
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            postscript|ps)
+                if ! psview "$selected_file"; then
+                    printf '\n\e[33mPS file: %s\e[m\n' "${selected_file##*/}"
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            x509|crl|csr)
+                if ! opensslview "$selected_file"; then
+                    printf '\n\e[33mx509/CRL/CSR/CA file: %s\e[m\n' "${selected_file##*/}"
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            pgp)
+                if ! pgpview "$selected_file"; then
+                    printf '\n\e[33mPGP file: %s\e[m\n' "${selected_file##*/}"
+                    return 1
+                else
+                    return 0
+                fi
+                ;;
+            dvi)
+                if ! dviview "$selected_file"; then
+                    printf '\n\e[33mDVI file: %s\e[m\n' "${selected_file##*/}"
                     return 1
                 else
                     return 0
@@ -1075,6 +1236,27 @@ keys() {
     }
 
     case "${special_key:-$key}" in
+        [0-9])
+            fav_var="PREVIEW_FAV_$key"
+            # Check if the favorite directory is set
+            if [[ -z "${!fav_var}" ]]; then
+                # No favorite directory set for this number
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Favorite directory not set for key $key. Use export PREVIEW_FAV_$key='/path/to/directory' to set."
+                # read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+                # printf '\e[%sH\e[K\e8' "$LINES"  # Clear line
+            else
+                # Attempt to change to the favorite directory
+                if [[ -d "${!fav_var}" ]]; then
+                    cd "${!fav_var}" &>/dev/null ||:
+                    open "$PWD"
+                else
+                    # Directory does not exist
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Favorite directory ${!fav_var} does not exist."
+                    # read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+                    # printf '\e[%sH\e[K\e8' "$LINES"  # Clear line
+                fi
+            fi
+        ;;
         ${PREVIEW_KEY_ERASE:=E})
             [[ ! -e "${list[scroll]}" ]] &&
                 return
