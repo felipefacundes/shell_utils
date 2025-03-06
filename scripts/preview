@@ -26,416 +26,416 @@ setup_config() {
 # Enable/disable hidden files view by default
 # Default: 0 (disabled)
 # Set to 1 to show hidden files when preview starts
-PREVIEW_HIDDEN=""
+#PREVIEW_HIDDEN=""
 
 # Enable/disable using LS_COLORS for file coloring
 # Default: 1 (enabled)
 # Set to 1 to use colors defined in LS_COLORS environment variable
-PREVIEW_LS_COLORS=""
+#PREVIEW_LS_COLORS=""
 
 # File format string for displaying files
 # Default: "%f"
 # %f is replaced with the filename
-PREVIEW_FILE_FORMAT=""
+#PREVIEW_FILE_FORMAT=""
 
 # Default program to open files with
 # Default: "xdg-open"
 # Specify the command to open files
-PREVIEW_OPENER=""
+#PREVIEW_OPENER=""
 
 # Change directory on exit
 # Default: 1 (enabled)
 # Set to 1 to change to the last directory viewed when preview exits
-PREVIEW_CD_ON_EXIT=""
+#PREVIEW_CD_ON_EXIT=""
 
 # Path to file that stores the last directory
 # Default: "${XDG_CACHE_HOME:-$HOME/.cache}/preview/.preview_d"
 # Specify where to store the last visited directory
-PREVIEW_CD_FILE=""
+#PREVIEW_CD_FILE=""
 
 # Color for directories
 # Default: "2" (blue)
 # ANSI color code for directory display
-PREVIEW_COL_DIRECTORY=""
+#PREVIEW_COL_DIRECTORY=""
 
 # Color for status line background
 # Default: "48;5;128" (purple)
 # ANSI color code for status line background
-PREVIEW_STATUS_BACKGROUND=""
+#PREVIEW_STATUS_BACKGROUND=""
 
 # Color for selected item highlight
 # Default: "6" (cyan)
 # ANSI color code for highlighting selected items
-PREVIEW_SETECTED_HIGHLIGHT=""
+#PREVIEW_SETECTED_HIGHLIGHT=""
 
 # Color for status line text
 # Default: "1;38;5;16" (black)
 # ANSI color code for status line text
-PREVIEW_STATUS_FOREGROUND=""
+#PREVIEW_STATUS_FOREGROUND=""
 
 # Default preview mode
 # Default: 1 (preview mode)
 # 0 for normal mode, 1 for preview mode
-PREVIEW_MODE=""
+#PREVIEW_MODE=""
 
 # Maximum items to show in preview mode
 # Default: 9
 # Number of items displayed in the file list when in preview mode
-PREVIEW_MAX_ITEMS=""
+#PREVIEW_MAX_ITEMS=""
 
 # Key bindings for navigation and actions
 
 # Navigate into directory or open file (first binding)
 # Default: "l"
 # Key to enter directories or open files
-PREVIEW_KEY_CHILD1=""
+#PREVIEW_KEY_CHILD1=""
 
 # Navigate into directory or open file (second binding)
 # Default: "\e[C" (right arrow)
 # Alternative key to enter directories or open files
-PREVIEW_KEY_CHILD2=""
+#PREVIEW_KEY_CHILD2=""
 
 # Navigate into directory or open file (third binding)
 # Default: "\eOC" (right arrow in some terminals)
 # Alternative key to enter directories or open files
-PREVIEW_KEY_CHILD3=""
+#PREVIEW_KEY_CHILD3=""
 
 # Navigate into directory or open file (fourth binding)
 # Default: "" (none)
 # Additional key to enter directories or open files
-PREVIEW_KEY_CHILD4=""
+#PREVIEW_KEY_CHILD4=""
 
 # Navigate to parent directory (first binding)
 # Default: "h"
 # Key to go to parent directory
-PREVIEW_KEY_PARENT1=""
+#PREVIEW_KEY_PARENT1=""
 
 # Navigate to parent directory (second binding)
 # Default: "\e[D" (left arrow)
 # Alternative key to go to parent directory
-PREVIEW_KEY_PARENT2=""
+#PREVIEW_KEY_PARENT2=""
 
 # Navigate to parent directory (third binding)
 # Default: "\177" (backspace)
 # Alternative key to go to parent directory
-PREVIEW_KEY_PARENT3=""
+#PREVIEW_KEY_PARENT3=""
 
 # Navigate to parent directory (fourth binding)
 # Default: "\b" (backspace)
 # Alternative key to go to parent directory
-PREVIEW_KEY_PARENT4=""
+#PREVIEW_KEY_PARENT4=""
 
 # Navigate to parent directory (fifth binding)
 # Default: "\eOD" (left arrow in some terminals)
 # Additional key to go to parent directory
-PREVIEW_KEY_PARENT5=""
+#PREVIEW_KEY_PARENT5=""
 
 # Scroll down (first binding)
 # Default: "j"
 # Key to scroll down the file list
-PREVIEW_KEY_SCROLL_DOWN1=""
+#PREVIEW_KEY_SCROLL_DOWN1=""
 
 # Scroll down (second binding)
 # Default: "\e[B" (down arrow)
 # Alternative key to scroll down the file list
-PREVIEW_KEY_SCROLL_DOWN2=""
+#PREVIEW_KEY_SCROLL_DOWN2=""
 
 # Scroll down (third binding)
 # Default: "\eOB" (down arrow in some terminals)
 # Additional key to scroll down the file list
-PREVIEW_KEY_SCROLL_DOWN3=""
+#PREVIEW_KEY_SCROLL_DOWN3=""
 
 # Scroll up (first binding)
 # Default: "k"
 # Key to scroll up the file list
-PREVIEW_KEY_SCROLL_UP1=""
+#PREVIEW_KEY_SCROLL_UP1=""
 
 # Scroll up (second binding)
 # Default: "\e[A" (up arrow)
 # Alternative key to scroll up the file list
-PREVIEW_KEY_SCROLL_UP2=""
+#PREVIEW_KEY_SCROLL_UP2=""
 
 # Scroll up (third binding)
 # Default: "\eOA" (up arrow in some terminals)
 # Additional key to scroll up the file list
-PREVIEW_KEY_SCROLL_UP3=""
+#PREVIEW_KEY_SCROLL_UP3=""
 
 # Go to top of file list
 # Default: "g"
 # Key to jump to the top of the file list
-PREVIEW_KEY_TO_TOP=""
+#PREVIEW_KEY_TO_TOP=""
 
 # Go to bottom of file list
 # Default: "G"
 # Key to jump to the bottom of the file list
-PREVIEW_KEY_TO_BOTTOM=""
+#PREVIEW_KEY_TO_BOTTOM=""
 
 # Toggle hidden files
 # Default: "."
 # Key to toggle visibility of hidden files
-PREVIEW_KEY_HIDDEN=""
+#PREVIEW_KEY_HIDDEN=""
 
 # Search for files
 # Default: "/"
 # Key to start file search
-PREVIEW_KEY_SEARCH=""
+#PREVIEW_KEY_SEARCH=""
 
 # Exit search mode (first binding)
 # Default: "'"
 # Key to exit search mode while keeping selection
-PREVIEW_KEY_EXIT_CLEAR_SEARCH1=""
+#PREVIEW_KEY_EXIT_CLEAR_SEARCH1=""
 
 # Exit search mode (second binding)
 # Default: "\""
 # Alternative key to exit search mode while keeping selection
-PREVIEW_KEY_EXIT_CLEAR_SEARCH2=""
+#PREVIEW_KEY_EXIT_CLEAR_SEARCH2=""
 
 # Open shell in current directory
 # Default: "!"
 # Key to open a shell in the current directory
-PREVIEW_KEY_SHELL=""
+#PREVIEW_KEY_SHELL=""
 
 # Rename file
 # Default: "R"
 # Key to rename a file or directory
-PREVIEW_KEY_RENAME=""
+#PREVIEW_KEY_RENAME=""
 
 # Create directory
 # Default: "M"
 # Key to create a new directory
-PREVIEW_KEY_MKDIR=""
+#PREVIEW_KEY_MKDIR=""
 
 # Create file
 # Default: "F"
 # Key to create a new file
-PREVIEW_KEY_MKFILE=""
+#PREVIEW_KEY_MKFILE=""
 
 # Go to specific directory
 # Default: "\x07" (Ctrl+G)
 # Key to navigate to a specific directory
-PREVIEW_KEY_GO_DIR=""
+#PREVIEW_KEY_GO_DIR=""
 
 # Go to home directory (first binding)
 # Default: "~"
 # Key to go to the home directory
-PREVIEW_KEY_GO_HOME1=""
+#PREVIEW_KEY_GO_HOME1=""
 
 # Go to home directory (second binding)
 # Default: "H"
 # Alternative key to go to the home directory
-PREVIEW_KEY_GO_HOME2=""
+#PREVIEW_KEY_GO_HOME2=""
 
 # Go to previous directory
 # Default: "-"
 # Key to go to the previous directory
-PREVIEW_KEY_PREVIOUS=""
+#PREVIEW_KEY_PREVIOUS=""
 
 # Refresh current directory
 # Default: "r"
 # Key to refresh the file list
-PREVIEW_KEY_REFRESH=""
+#PREVIEW_KEY_REFRESH=""
 
 # Copy file
 # Default: "C"
 # Key to copy a file or directory
-PREVIEW_KEY_COPY=""
+#PREVIEW_KEY_COPY=""
 
 # Toggle preview mode (first binding)
 # Default: "P"
 # Key to toggle between normal and preview modes
-PREVIEW_KEY_PREVIEW1=""
+#PREVIEW_KEY_PREVIEW1=""
 
 # Toggle preview mode (second binding)
 # Default: "\x10" (Ctrl+P)
 # Alternative key to toggle between normal and preview modes
-PREVIEW_KEY_PREVIEW2=""
+#PREVIEW_KEY_PREVIEW2=""
 
 # Quit program (first binding)
 # Default: "\x04" (Ctrl+D)
 # Key to exit the program
-PREVIEW_KEY_QUIT1=""
+#PREVIEW_KEY_QUIT1=""
 
 # Quit program (second binding)
 # Default: "="
 # Alternative key to exit the program
-PREVIEW_KEY_QUIT2=""
+#PREVIEW_KEY_QUIT2=""
 
 # Quit program (third binding)
 # Default: "Q"
 # Alternative key to exit the program
-PREVIEW_KEY_QUIT3=""
+#PREVIEW_KEY_QUIT3=""
 
 # Quit program (fourth binding)
 # Default: "q"
 # Alternative key to exit the program
-PREVIEW_KEY_QUIT4=""
+#PREVIEW_KEY_QUIT4=""
 
 # Show file attributes
 # Default: "x"
 # Key to display file attributes
-PREVIEW_KEY_ATTRIBUTES=""
+#PREVIEW_KEY_ATTRIBUTES=""
 
 # Toggle executable flag
 # Default: "X"
 # Key to toggle the executable permission of a file
-PREVIEW_KEY_EXECUTABLE=""
+#PREVIEW_KEY_EXECUTABLE=""
 
 # Extract archive
 # Default: "e"
 # Key to extract an archive file to folder
-PREVIEW_KEY_EXTRACT=""
+#PREVIEW_KEY_EXTRACT=""
 
 # Delete file/directory
 # Default: "E"
 # Key to delete a file or directory
-PREVIEW_KEY_ERASE=""
+#PREVIEW_KEY_ERASE=""
 
 # Show image and info in terminal
 # Default: "i"
 # Key to display an image and info in the terminal
-PREVIEW_KEY_INFO=""
+#PREVIEW_KEY_INFO=""
 
 # Markdown preview settings
 # Preferred markdown preview tool
 # Default: "5" (markdown_reader.sh)
 # 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown_reader.sh
-PREVIEW_MARK=""
+#PREVIEW_MARK=""
 
 # Image preview settings
 # Preferred image preview tool
 # Default: "1" (img2sixel)
 # 1: img2sixel, 2: viu, 3: catimg, 4: chafa
-PREVIEW_IMG=""
+#PREVIEW_IMG=""
 
 # Width for img2sixel full-size preview
 # Default: "540"
 # Width in pixels for full-size image preview with img2sixel
-PREVIEW_SIXEL_W=""
+#PREVIEW_SIXEL_W=""
 
 # Height for img2sixel full-size preview
 # Default: "420"
 # Height in pixels for full-size image preview with img2sixel
-PREVIEW_SIXEL_H=""
+#PREVIEW_SIXEL_H=""
 
 # Width for viu full-size preview
 # Default: "90"
 # Width in characters for full-size image preview with viu
-PREVIEW_VIU_W=""
+#PREVIEW_VIU_W=""
 
 # Height for viu full-size preview
 # Default: "35"
 # Height in characters for full-size image preview with viu
-PREVIEW_VIU_H=""
+#PREVIEW_VIU_H=""
 
 # Width for catimg full-size preview
 # Default: "100"
 # Width in characters for full-size image preview with catimg
-PREVIEW_CATIMG_W=""
+#PREVIEW_CATIMG_W=""
 
 # Size for chafa full-size preview
 # Default: "50"
 # Size specification for full-size image preview with chafa
-PREVIEW_CHAFA_S=""
+#PREVIEW_CHAFA_S=""
 
 # Width for img2sixel thumbnail preview
 # Default: "300"
 # Width in pixels for thumbnail preview with img2sixel
-PREVIEW_THUMB_SIXEL_W=""
+#PREVIEW_THUMB_SIXEL_W=""
 
 # Height for img2sixel thumbnail preview
 # Default: "200"
 # Height in pixels for thumbnail preview with img2sixel
-PREVIEW_THUMB_SIXEL_H=""
+#PREVIEW_THUMB_SIXEL_H=""
 
 # Width for viu thumbnail preview
 # Default: "50"
 # Width in characters for thumbnail preview with viu
-PREVIEW_THUMB_VIU_W=""
+#PREVIEW_THUMB_VIU_W=""
 
 # Height for viu thumbnail preview
 # Default: "16"
 # Height in characters for thumbnail preview with viu
-PREVIEW_THUMB_VIU_H=""
+#PREVIEW_THUMB_VIU_H=""
 
 # Width for catimg thumbnail preview
 # Default: "60"
 # Width in characters for thumbnail preview with catimg
-PREVIEW_THUMB_CATIMG_W=""
+#PREVIEW_THUMB_CATIMG_W=""
 
 # Size for chafa thumbnail preview
 # Default: "25"
 # Size specification for thumbnail preview with chafa
-PREVIEW_THUMB_CHAFA_S=""
+#PREVIEW_THUMB_CHAFA_S=""
 
 # Scroll behavior
 # Default: "1" (loop)
 # 0: no loop (stops at ends), 1: loop (wraps around)
-PREVIEW_LOOP_SCROLL=""
+#PREVIEW_LOOP_SCROLL=""
 
 # Favorite directory for key 0-9
 # Example: PREVIEW_FAV_0=~/Documents PREVIEW_FAV_1=~/Pictures
 # Default: "" (none)
 # Path to a favorite directory accessed with key 0-9
-PREVIEW_FAV_0=""
-PREVIEW_FAV_1=""
-PREVIEW_FAV_2=""
-PREVIEW_FAV_3=""
-PREVIEW_FAV_4=""
-PREVIEW_FAV_5=""
-PREVIEW_FAV_6=""
-PREVIEW_FAV_7=""
-PREVIEW_FAV_8=""
-PREVIEW_FAV_9=""
+#PREVIEW_FAV_0=""
+#PREVIEW_FAV_1=""
+#PREVIEW_FAV_2=""
+#PREVIEW_FAV_3=""
+#PREVIEW_FAV_4=""
+#PREVIEW_FAV_5=""
+#PREVIEW_FAV_6=""
+#PREVIEW_FAV_7=""
+#PREVIEW_FAV_8=""
+#PREVIEW_FAV_9=""
 
 # Command to show file attributes
 # Default: "stat"
 # Command used to display file attributes
-PREVIEW_STAT_CMD=""
+#PREVIEW_STAT_CMD=""
 
 # Shell nesting level
 # Default: "" (starts unset, incremented when opening shells)
 # Tracks the nesting level of shell instances
-PREVIEW_LEVEL=""
+#PREVIEW_LEVEL=""
 
 # Resolution for image and video previews
 # Default: "854x480"
 # Resolution used for resizing images and videos (format: WIDTHxHEIGHT)
-RESOLUTION=""
+#RESOLUTION=""
 
 # Width for text folding in preview
 # Default: "50"
 # Maximum line width for text wrapping with fold command
-FOLD=""
+#FOLD=""
 
 # Maximum lines for file preview
 # Default: "30" (non-Android) or "20" (Android)
 # Number of lines to display in file previews
-sizeline=""
+#sizeline=""
 
 # Maximum width for text preview
 # Default: "200" (non-Android) or "50" (Android)
 # Width in characters for text formatting in previews
-width=""
+#width=""
 
 # Tab width for code highlighting
 # Default: "8"
 # Number of spaces to replace tabs with when highlighting code
-HIGHLIGHT_TABWIDTH=""
+#HIGHLIGHT_TABWIDTH=""
 
 # Style for code highlighting
 # Default: "pablo"
 # Highlight style to use with the highlight command
-HIGHLIGHT_STYLE=""
+#HIGHLIGHT_STYLE=""
 
 # Additional options for code highlighting
 # Default: ""
 # Extra options to pass to the highlight command
-HIGHLIGHT_OPTIONS=""
+#HIGHLIGHT_OPTIONS=""
 
 # Style for pygmentize code highlighting
 # Default: "autumn"
 # Pygmentize style to use for syntax highlighting
-PYGMENTIZE_STYLE=""
+#PYGMENTIZE_STYLE=""
 EOF
 
     # Make the config file user-executable
@@ -476,6 +476,12 @@ setup_options() {
     [[ $PREVIEW_FILE_FORMAT == *%f* ]] && {
         file_pre=${PREVIEW_FILE_FORMAT/'%f'*}
         file_post=${PREVIEW_FILE_FORMAT/*'%f'}
+    }
+
+        # Format for marked files.
+    [[ $PREVIEW_MARK_FORMAT == *%f* ]] && {
+        mark_pre=${PREVIEW_MARK_FORMAT/'%f'*}
+        mark_post=${PREVIEW_MARK_FORMAT/*'%f'}
     }
 
     file -I &>/dev/null || : "${file_flags:=biL}"
@@ -528,6 +534,7 @@ get_mime_type() {
 }
 
 status_line() {
+    local mark_ui="[${#marked_files[@]}] selected ->"
     #PWD_escaped=${PWD//[^[:print:]]/^[}
     
     # Define color codes
@@ -585,12 +592,13 @@ status_line() {
     color_seq+="m"
     
     # Print the status line with correct color formatting
-    printf '\e7\e[%sH%b%*s\r%s%s %s\e[m\e[%sH\e[K\e8' \
+    printf '\e7\e[%sH%b%*s\r%s%s %s%s\e[m\e[%sH\e[K\e8' \
         "$((LINES-1))" \
         "$color_seq" \
         "$COLUMNS" "" \
         "$mode_info" \
         "($((scroll+1))/$((list_total+1)))" \
+        "${marked_files[*]:+${mark_ui}}" \
         "${PWD_color}" \
         "$LINES"
 }
@@ -722,6 +730,11 @@ print_line() {
         fi
     fi
 
+    [[ ${marked_files[$1]} == "${list[$1]:-null}" ]] && {
+        format+=\\e[3${PREVIEW_COL_MARKED:-1}m${mark_pre:= }
+        suffix+=${mark_post:=<-}
+    }
+
     file_name=${file_name//[^[:print:]]/^[}
 
     printf '\r%b%s\e[m\r' \
@@ -844,10 +857,10 @@ extract_to_folder() {
     
     # Create the destination directory
     if [[ -d "$folder_name" ]]; then
-        cmd_line "Error: The '${folder_name##*/}' directory exists"
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: The '${folder_name##*/}' directory exists"
         return 1
     elif ! mkdir -p "$folder_name"; then
-        cmd_line "Error: Could not create directory '$folder_name'"
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Could not create directory '$folder_name'"
         return 1
     fi
     
@@ -1620,7 +1633,7 @@ cmd_line() {
     cmd_reply=${4:-}  # Set initial value if provided as 4th parameter
     printf '\e7\e[%sH\e[?25h' "$LINES"
 
-    while IFS= read -rsn 1 -p $'\r\e[K'"${1}${cmd_reply}" read_reply; do
+    while IFS= read -rsn 1 -p $'\r\e[K'"${1}${cmd_reply}" read_reply </dev/tty; do
         case $read_reply in
             $'\177'|$'\b')
                 cmd_reply=${cmd_reply%?}
@@ -1685,6 +1698,275 @@ cmd_line() {
     printf '\e[2K\e[?25l\e8'
 }
 
+copy_file() {
+    [[ ! -e "${list[scroll]}" ]] &&
+        return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Generate suggested name with _copy suffix
+        local filename="${list[scroll]##*/}"
+        local basename="${filename%.*}"
+        local extension="${filename##*.}"
+        
+        # Handle files without extension
+        if [[ "$basename" == "$extension" ]]; then
+            suggested_name="${basename}_copy"
+        else
+            suggested_name="${basename}_copy.${extension}"
+        fi
+        
+        cmd_line "copy ${filename} to: " "" "" "$suggested_name"
+        
+        [[ "$cmd_reply" ]] &&
+            if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                cmd_line "warn: '${cmd_reply}' already exists. Overwrite? (y/N): "
+                
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                    else
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to copy the file."
+                    fi
+                fi
+            elif [[ -r "${list[scroll]}" ]]; then
+                if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to copy the file."
+                fi
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Cannot read the file/directory."
+            fi
+    # Copy files marked to the current directory
+    else
+        # Checks writing permission in the current directory
+        if [[ ! -w "$PWD" ]]; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write permission in the current directory ($PWD)."
+        else
+            # Check if any files already exist at destination
+            local existing_files=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                if [[ -e "$PWD/$basename" ]]; then
+                    existing_files="$existing_files $basename"
+                fi
+            done
+
+            if [[ -n "$existing_files" ]]; then
+                cmd_line "Some files ($existing_files) already exist in $PWD. Overwrite? (y/N): "
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    # Copy with Sobrescript
+                    if cp -rf "${marked_files[@]}" "$PWD" >&2; then
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                    else
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to copy files."
+                    fi
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy operation canceled."
+                fi
+            else
+                # Copy Without Sobrescript Necessary
+                if cp -r "${marked_files[@]}" "$PWD" >&2; then
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                else
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to copy files."
+                fi
+            fi
+        fi
+    fi
+}
+
+move_file() {
+    [[ ! -e "${list[scroll]}" ]] &&
+        return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Generate suggested name for the move (with _move suffix)
+        local filename="${list[scroll]##*/}"
+        local basename="${filename%.*}"
+        local extension="${filename##*.}"
+        
+        # Handle files without extension
+        if [[ "$basename" == "$extension" ]]; then
+            suggested_name="${basename}_move"
+        else
+            suggested_name="${basename}_move.${extension}"
+        fi
+        
+        cmd_line "move ${filename} to: " "" "" "$suggested_name"
+        
+        [[ "$cmd_reply" ]] &&
+            if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                cmd_line "warn: '${cmd_reply}' already exists. Overwrite? (y/N): "
+                
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    if mv -f "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                    else
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to move the file."
+                    fi
+                fi
+            elif [[ -r "${list[scroll]}" ]]; then
+                if mv "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to move the file."
+                fi
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Cannot read the file/directory."
+            fi
+    # Move files marked to the current directory
+    else
+        # Checks writing permission in the current directory
+        if [[ ! -w "$PWD" ]]; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write permission in the current directory ($PWD)."
+        else
+            # Check if any files already exist at destination
+            local existing_files=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                if [[ -e "$PWD/$basename" ]]; then
+                    existing_files="$existing_files $basename"
+                fi
+            done
+
+            if [[ -n "$existing_files" ]]; then
+                cmd_line "Some files ($existing_files) already exist in $PWD. Overwrite? (y/N): "
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    # Move with overwrite
+                    if mv -f "${marked_files[@]}" "$PWD" >&2; then
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                    else
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to move files."
+                    fi
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move operation canceled."
+                fi
+            else
+                # Move without overwrite necessary
+                if mv "${marked_files[@]}" "$PWD" >&2; then
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                else
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to move files."
+                fi
+            fi
+        fi
+    fi
+}
+
+delete_file() {
+    [[ ! -e "${list[scroll]}" ]] &&
+        return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Deletar um único arquivo selecionado
+        local filename="${list[scroll]##*/}"
+        cmd_line "Delete '${filename}'? (y/N): "
+
+        if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+            if [[ -w "${list[scroll]}" ]]; then
+                if rm -rf "${list[scroll]}" 2>/dev/null; then
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File deleted successfully!"
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: deletion failed."
+                fi
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: no write access to file/directory."
+            fi
+        else
+           printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Deletion canceled."
+        fi
+    # Deletar arquivos marcados
+    else
+        # Verifica permissão de escrita no diretório atual
+        if [[ ! -w "$PWD" ]]; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write permission in the current directory ($PWD)."
+        else
+            # Lista os arquivos marcados para confirmação
+            local file_list=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                file_list="$file_list $basename"
+            done
+
+            cmd_line "Delete the following files?$file_list (y/N): "
+            if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                # Verifica permissões e deleta
+                local failed=false
+                for file in "${marked_files[@]}"; do
+                    if [[ -w "$file" ]]; then
+                        if ! rm -rf "$file" 2>/dev/null; then
+                            failed=true
+                        fi
+                    else
+                        failed=true
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: no write access to '$file'."
+                    fi
+                done
+
+                if [[ "$failed" == false ]]; then
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Files deleted successfully!"
+                else
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: some deletions failed."
+                fi
+            else
+                marked_files=()
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Deletion canceled."
+            fi
+        fi
+    fi
+}
+
+mark() {
+    # Clean marking moves directory
+    [[ $PWD != "${mark_dir}" ]] && {
+        marked_files=()
+    }
+
+    # Does not allow to mark empty directory item
+    [[ "${list[0]}" == empty && -z "${list[1]}" ]] && return
+
+    # Uses scroll directly instead of $1
+    local idx="$1"  # Past index should be $scroll
+    if [[ "${marked_files[$idx]}" == "${list[scroll]}" ]]; then
+        # Unmarks the file
+        unset "marked_files[$idx]"
+    else
+        # Mark the file
+        marked_files[$idx]="${list[scroll]}"
+        mark_dir="$PWD"
+    fi
+
+    # Cleans the current line and redesign only the selected item line
+    printf '\e[%sH\e[K' "$((scroll + 1))"  # Adjusts to the correct position
+    print_line "$scroll"
+
+    # Updates the status line
+    status_line
+}
+
 keys() {
     local key="$1"
     [[ "${OS,,}" =~ "android" ]] && PREVIEW_LOOP_SCROLL=0
@@ -1717,26 +1999,44 @@ keys() {
                 fi
             fi
         ;;
+
         # Show image in terminal.
         ${PREVIEW_KEY_INFO:=i})
             draw_info
         ;;
+
+        ${PREVIEW_KEY_MARK:=Y})
+            mark "$scroll"
+        ;;
+
+        ${PREVIEW_KEY_COPY:=C})
+            copy_file
+        ;;
+
         ${PREVIEW_KEY_ERASE:=E})
-            [[ ! -e "${list[scroll]}" ]] &&
-                return
-                cmd_line "Delete ${list[scroll]##*/}? (y/N): "
-            [[ "$cmd_reply" =~ ^[Yy]$ ]] &&
-                if [[ -w "${list[scroll]}" ]]; then
-                    if [[ -d "${list[scroll]}" ]]; then
-                        rm -rf "${list[scroll]}"
-                    else
-                        rm -f "${list[scroll]}"
-                    fi
+            delete_file
+        ;;
+
+        ${PREVIEW_KEY_MOVE:=M})
+            move_file
+        ;;
+
+        ${PREVIEW_KEY_MKDIR:=m})
+            cmd_line "mkdir: " "dirs"
+
+            [[ "$cmd_reply" ]] &&
+                if [[ -e "$cmd_reply" ]]; then
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: '$cmd_reply' already exists."
+
+                elif [[ -w "$PWD" ]]; then
+                    mkdir -p "${PWD}/${cmd_reply}"
                     redraw full
+
                 else
-                    cmd_line "Warn: no write access to file/directory."
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: no write access to dir."
                 fi
         ;;
+
         ${PREVIEW_KEY_EXTRACT:=e})
             [[ ! -f "${list[scroll]}" ]] &&
                 return
@@ -1744,11 +2044,11 @@ keys() {
             [[ "$cmd_reply" =~ ^[Yy]$ ]] &&
                 if [[ -w "${list[scroll]}" ]]; then
                     extract_to_folder "${list[scroll]}"
-                    #redraw full
                 else
-                    cmd_line "Warn: no write access to file."
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Warn: no write access to file."
                 fi
         ;;
+
         # Show file attributes.
         ${PREVIEW_KEY_ATTRIBUTES:=x})
             [[ -e "${list[scroll]}" ]] && {
@@ -1759,6 +2059,7 @@ keys() {
                 redraw
             }
         ;;
+
         # Toggle executable flag.
         ${PREVIEW_KEY_EXECUTABLE:=X})
             [[ -f ${list[scroll]} && -w ${list[scroll]} ]] && {
@@ -1771,18 +2072,24 @@ keys() {
                 fi
             }
         ;;
+
         ${PREVIEW_KEY_PREVIEW1:=P}|\
         ${PREVIEW_KEY_PREVIEW2:=$'\x10'}) # Ctrl+P
             toggle_preview_mode
         ;;
+
         ${PREVIEW_KEY_XDG_OPEN:=""})
             xdg_open "${list[scroll]}"
         ;;
+
         ${PREVIEW_KEY_CHILD1:=l}|\
         ${PREVIEW_KEY_CHILD2:=$'\e[C'}|\
         ${PREVIEW_KEY_CHILD3:=$'\eOC'})
             open "${list[scroll]}"
         ;;
+
+        #     open "$OLDPWD"
+        ${PREVIEW_KEY_PREVIOUS:=-}|\
         ${PREVIEW_KEY_PARENT1:=h}|\
         ${PREVIEW_KEY_PARENT2:=$'\e[D'}|\
         ${PREVIEW_KEY_PARENT3:=$'\177'}|\
@@ -1796,6 +2103,7 @@ keys() {
                 open "${PWD%/*}"
             fi
         ;;
+
         ${PREVIEW_KEY_SCROLL_DOWN1:=j}|\
         ${PREVIEW_KEY_SCROLL_DOWN2:=$'\e[B'}|\
         ${PREVIEW_KEY_SCROLL_DOWN3:=$'\eOB'})
@@ -1844,6 +2152,7 @@ keys() {
                 status_line
             fi
         ;;
+
         ${PREVIEW_KEY_SCROLL_UP1:=k}|\
         ${PREVIEW_KEY_SCROLL_UP2:=$'\e[A'}|\
         ${PREVIEW_KEY_SCROLL_UP3:=$'\eOA'})
@@ -1904,23 +2213,27 @@ keys() {
                 status_line
             fi
         ;;
+
         ${PREVIEW_KEY_TO_TOP:=g})
             ((scroll != 0)) && {
                 scroll=0
                 redraw
             }
         ;;
+
         ${PREVIEW_KEY_TO_BOTTOM:=G})
             ((scroll != list_total)) && {
                 ((scroll=list_total))
                 redraw
             }
         ;;
+
         ${PREVIEW_KEY_HIDDEN:=.})
             shopt_flags=(u s)
             shopt -"${shopt_flags[((a=${a:=$PREVIEW_HIDDEN}>0?0:++a))]}" dotglob
             redraw full
         ;;
+
         ${PREVIEW_KEY_SEARCH:=/})
             cmd_line "/" "search"
             if [[ -z ${list[*]} ]]; then
@@ -1932,6 +2245,7 @@ keys() {
                 search=1
             fi
         ;;
+
         ${PREVIEW_KEY_SHELL:=!})
             reset_terminal
             export PREVIEW_LEVEL
@@ -1940,46 +2254,6 @@ keys() {
             cd "$PWD" && "$SHELL"
             setup_terminal
             redraw full
-        ;;
-
-        ${PREVIEW_KEY_COPY:=C})
-            [[ ! -e "${list[scroll]}" ]] &&
-                return
-            
-            # Generate suggested name with _copy suffix
-            local filename="${list[scroll]##*/}"
-            local basename="${filename%.*}"
-            local extension="${filename##*.}"
-            
-            # Handle files without extension
-            if [[ "$basename" == "$extension" ]]; then
-                suggested_name="${basename}_copy"
-            else
-                suggested_name="${basename}_copy.${extension}"
-            fi
-            
-            cmd_line "copy ${filename} to: " "" "" "$suggested_name"
-            
-            [[ "$cmd_reply" ]] &&
-                if [[ -e "${PWD}/${cmd_reply}" ]]; then
-                    cmd_line "warn: '${cmd_reply}' already exists. Overwrite? (y/N): "
-                    
-                    if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
-                        if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
-                            redraw full
-                        else
-                            cmd_line "warn: copy failed."
-                        fi
-                    fi
-                elif [[ -r "${list[scroll]}" ]]; then
-                    if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
-                        redraw full
-                    else
-                        cmd_line "warn: copy failed."
-                    fi
-                else
-                    cmd_line "warn: no read access to file/directory."
-                fi
         ;;
 
         ${PREVIEW_KEY_RENAME:=R})
@@ -2000,21 +2274,7 @@ keys() {
                     cmd_line "warn: no write access to file."
                 fi
         ;;
-        ${PREVIEW_KEY_MKDIR:=M})
-            cmd_line "mkdir: " "dirs"
 
-            [[ "$cmd_reply" ]] &&
-                if [[ -e "$cmd_reply" ]]; then
-                    cmd_line "warn: '$cmd_reply' already exists."
-
-                elif [[ -w "$PWD" ]]; then
-                    mkdir -p "${PWD}/${cmd_reply}"
-                    redraw full
-
-                else
-                    cmd_line "warn: no write access to dir."
-                fi
-        ;;
         ${PREVIEW_KEY_MKFILE:=F})
             cmd_line "mkfile: "
 
@@ -2030,6 +2290,7 @@ keys() {
                     cmd_line "warn: no write access to dir."
                 fi
         ;;
+
         ${PREVIEW_KEY_GO_DIR:=$'\x07'}) # Control+G
             cmd_line "go to dir: " "dirs"
 
@@ -2039,17 +2300,17 @@ keys() {
                 cd "${cmd_reply/\~/$HOME}" &>/dev/null &&
                     open "$PWD"
         ;;
+
         ${PREVIEW_KEY_GO_HOME1:='~'}|\
         ${PREVIEW_KEY_GO_HOME2:=H})
             open ~
         ;;
-        ${PREVIEW_KEY_PREVIOUS:=-})
-            open "$OLDPWD"
-        ;;
+
         ${PREVIEW_KEY_REFRESH:=r})
             open "$PWD"
             redraw full
         ;;
+
         # Control+D
         ${PREVIEW_KEY_QUIT1:=$'\x04'}|\
         ${PREVIEW_KEY_QUIT2:='='}|\
@@ -2067,6 +2328,7 @@ keys() {
             exit 0
         ;;
     esac
+    
     if ((search == 1)); then
         case ${special_key:-$1} in
             ${PREVIEW_KEY_EXIT_CLEAR_SEARCH1:="'"}|\
