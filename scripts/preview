@@ -796,53 +796,32 @@ cmd_check() {
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
-draw_img() {
-    # Checks if the selected file is an image
-    get_mime_type "${list[scroll]}"
-    [[ "$mime_type_full" =~ (image|audio|sound|video|media|stream) ||\
-    "$mime_type" =~ (image|audio|sound|video|media|stream) || "$mime_type2" =~ ^video/.+$ || "$mime_type2" =~ ^image/.+$ ]] || {
-        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Selected file is not an image, audio or video."
-        return 1
-    }
-
+draw_info() {
     # Initial State: assumes that we are showing the files
-    local showing_image=0
+    showing_info=0
 
     while true; do
-        if [[ $showing_image -eq 0 ]] && [[ $mime_type == image/* ]]; then
+        if [[ "$showing_info" -eq 0 ]]; then # && [[ $mime_type == image/* ]]; then
             # Cleans the screen and displays the full screen image with imgview
             preserve_status="$preview_mode"
             [[ "$preserve_status" == 1 ]] && toggle_preview_mode
             clear_screen
             status_line "${list[scroll]}"
-            if type -p img2sixel >/dev/null || type -p viu >/dev/null || type -p catimg >/dev/null || type -p chafa >/dev/null; then
-                img2info "${list[scroll]}"
-            fi
-            _picinfo "${list[scroll]}"
-            showing_image=1
-        elif [[ $showing_image -eq 0 ]] && [[ "$mime_type_full" =~ (video|audio|sound|media|stream) ||\
-            "$mime_type" =~ (video|audio|sound|media|stream) || "$mime_type2" =~ ^video/.+$ ]]; then
-            # Cleans the screen and displays the full screen image with imgview
-            preserve_status="$preview_mode"
-            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
-            clear_screen
-            status_line "${list[scroll]}"
-            if type -p img2sixel >/dev/null || type -p viu >/dev/null || type -p catimg >/dev/null || type -p chafa >/dev/null; then
-                video2static "${list[scroll]}"
-            fi
-            showing_image=1
+            _draw_file_preview "${list[scroll]}"
+            showing_info=1
         else
             # Returns to display the files
             [[ "$preserve_status" == 1 ]] && toggle_preview_mode
             redraw
-            showing_image=0
+            showing_info=0
             break
         fi
 
        # Wait for the next user input
         read -srn 1 key
+        # If the key is not 'i', redesign and leaves the loop
         [[ "$key" != "i" ]] && {
-            # If the key is not 'i', redesign and leaves the loop
+            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
             redraw
             break
         }
@@ -1354,20 +1333,14 @@ margin() {
     head -n "${sizeline}" "$file" | awk '{printf "%-30s\n", $0}' && return 0
 }
 
-draw_file_preview() {
-    local selected_file="${list[scroll]}"
+_draw_file_preview() {
+    [[ -z "$1" ]] && local selected_file="${list[scroll]}"
+    [[ -n "$1" ]] && local selected_file="$1"
     [[ "${OS,,}" != "android" ]] && local sizeline="${sizeline:-30}"
     [[ "${OS,,}" =~ "android" ]] && local sizeline="${sizeline:-20}"
     [[ "${OS,,}" != "android" ]] && local width="${width:-200}"
     [[ "${OS,,}" =~ "android" ]] && local width="${width:-50}"
-    
-    # Cleans the preview area
-    for ((i=max_items+2; i<LINES-1; i++)); do
-        printf '\e[%sH\e[K' "$i"
-    done
-    
-    printf '\e[%sH' "$((max_items+2))"
-    
+        
     if [[ -f "$selected_file" ]]; then
         local file_ext="${selected_file##*.}"
         file_ext="${file_ext,,}" # lowercase
@@ -1577,6 +1550,17 @@ draw_file_preview() {
     fi
 }
 
+draw_file_preview() {
+    # Cleans the preview area
+    for ((i=max_items+2; i<LINES-1; i++)); do
+        printf '\e[%sH\e[K' "$i"
+    done
+    
+    printf '\e[%sH' "$((max_items+2))"
+
+    _draw_file_preview
+}
+
 redraw() {
     [[ "$1" == full ]] && {
         read_dir
@@ -1735,7 +1719,7 @@ keys() {
         ;;
         # Show image in terminal.
         ${PREVIEW_KEY_INFO:=i})
-            draw_img
+            draw_info
         ;;
         ${PREVIEW_KEY_ERASE:=E})
             [[ ! -e "${list[scroll]}" ]] &&
