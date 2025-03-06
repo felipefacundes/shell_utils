@@ -16,120 +16,426 @@ setup_config() {
     # If config file already exists, source it
     if [[ -f "$config_file" ]]; then
         source "$config_file"
-        return
+        return 0
     fi
     
     # Create the configuration file with default values and explanations
     cat > "$config_file" << 'EOF'
 # Preview configuration file
 
-# Enable/disable hidden files view by default (0: disabled, 1: enabled)
+# Enable/disable hidden files view by default
+# Default: 0 (disabled)
 # Set to 1 to show hidden files when preview starts
 PREVIEW_HIDDEN=""
 
-# Enable/disable using LS_COLORS for file coloring (0: disabled, 1: enabled)
+# Enable/disable using LS_COLORS for file coloring
+# Default: 1 (enabled)
 # Set to 1 to use colors defined in LS_COLORS environment variable
 PREVIEW_LS_COLORS=""
 
 # File format string for displaying files
+# Default: "%f"
 # %f is replaced with the filename
 PREVIEW_FILE_FORMAT=""
 
-# Default program to open files with (default: xdg-open)
+# Default program to open files with
+# Default: "xdg-open"
+# Specify the command to open files
 PREVIEW_OPENER=""
 
-# Change directory on exit (0: disabled, 1: enabled)
+# Change directory on exit
+# Default: 1 (enabled)
 # Set to 1 to change to the last directory viewed when preview exits
 PREVIEW_CD_ON_EXIT=""
 
 # Path to file that stores the last directory
+# Default: "${XDG_CACHE_HOME:-$HOME/.cache}/preview/.preview_d"
+# Specify where to store the last visited directory
 PREVIEW_CD_FILE=""
 
-# Color for directories (default: blue)
-PREVIEW_COL1=""
+# Color for directories
+# Default: "2" (blue)
+# ANSI color code for directory display
+PREVIEW_COL_DIRECTORY=""
 
-# Color for status line background (default: blue)
+# Color for status line background
+# Default: "48;5;128" (purple)
+# ANSI color code for status line background
 PREVIEW_STATUS_BACKGROUND=""
 
-# Color for selected item (not used directly in this version)
-PREVIEW_COL3=""
-
-# Color for selected item highlight (default: cyan)
+# Color for selected item highlight
+# Default: "6" (cyan)
+# ANSI color code for highlighting selected items
 PREVIEW_SETECTED_HIGHLIGHT=""
 
-# Color for status line text (default: black)
+# Color for status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
 PREVIEW_STATUS_FOREGROUND=""
 
-# Key binding to navigate into directory or open file (default: l or right arrow)
+# Default preview mode
+# Default: 1 (preview mode)
+# 0 for normal mode, 1 for preview mode
+PREVIEW_MODE=""
+
+# Maximum items to show in preview mode
+# Default: 9
+# Number of items displayed in the file list when in preview mode
+PREVIEW_MAX_ITEMS=""
+
+# Key bindings for navigation and actions
+
+# Navigate into directory or open file (first binding)
+# Default: "l"
+# Key to enter directories or open files
 PREVIEW_KEY_CHILD1=""
+
+# Navigate into directory or open file (second binding)
+# Default: "\e[C" (right arrow)
+# Alternative key to enter directories or open files
 PREVIEW_KEY_CHILD2=""
+
+# Navigate into directory or open file (third binding)
+# Default: "\eOC" (right arrow in some terminals)
+# Alternative key to enter directories or open files
 PREVIEW_KEY_CHILD3=""
+
+# Navigate into directory or open file (fourth binding)
+# Default: "" (none)
+# Additional key to enter directories or open files
 PREVIEW_KEY_CHILD4=""
 
-# Key binding to navigate to parent directory (default: h or left arrow or backspace)
+# Navigate to parent directory (first binding)
+# Default: "h"
+# Key to go to parent directory
 PREVIEW_KEY_PARENT1=""
+
+# Navigate to parent directory (second binding)
+# Default: "\e[D" (left arrow)
+# Alternative key to go to parent directory
 PREVIEW_KEY_PARENT2=""
+
+# Navigate to parent directory (third binding)
+# Default: "\177" (backspace)
+# Alternative key to go to parent directory
 PREVIEW_KEY_PARENT3=""
+
+# Navigate to parent directory (fourth binding)
+# Default: "\b" (backspace)
+# Alternative key to go to parent directory
 PREVIEW_KEY_PARENT4=""
+
+# Navigate to parent directory (fifth binding)
+# Default: "\eOD" (left arrow in some terminals)
+# Additional key to go to parent directory
 PREVIEW_KEY_PARENT5=""
 
-# Key binding to scroll down (default: j or down arrow)
+# Scroll down (first binding)
+# Default: "j"
+# Key to scroll down the file list
 PREVIEW_KEY_SCROLL_DOWN1=""
+
+# Scroll down (second binding)
+# Default: "\e[B" (down arrow)
+# Alternative key to scroll down the file list
 PREVIEW_KEY_SCROLL_DOWN2=""
+
+# Scroll down (third binding)
+# Default: "\eOB" (down arrow in some terminals)
+# Additional key to scroll down the file list
 PREVIEW_KEY_SCROLL_DOWN3=""
 
-# Key binding to scroll up (default: k or up arrow)
+# Scroll up (first binding)
+# Default: "k"
+# Key to scroll up the file list
 PREVIEW_KEY_SCROLL_UP1=""
+
+# Scroll up (second binding)
+# Default: "\e[A" (up arrow)
+# Alternative key to scroll up the file list
 PREVIEW_KEY_SCROLL_UP2=""
+
+# Scroll up (third binding)
+# Default: "\eOA" (up arrow in some terminals)
+# Additional key to scroll up the file list
 PREVIEW_KEY_SCROLL_UP3=""
 
-# Key binding to go to the top of the file list (default: g)
+# Go to top of file list
+# Default: "g"
+# Key to jump to the top of the file list
 PREVIEW_KEY_TO_TOP=""
 
-# Key binding to go to the bottom of the file list (default: G)
+# Go to bottom of file list
+# Default: "G"
+# Key to jump to the bottom of the file list
 PREVIEW_KEY_TO_BOTTOM=""
 
-# Key binding to toggle showing hidden files (default: .)
+# Toggle hidden files
+# Default: "."
+# Key to toggle visibility of hidden files
 PREVIEW_KEY_HIDDEN=""
 
-# Key binding to search for files (default: /)
+# Search for files
+# Default: "/"
+# Key to start file search
 PREVIEW_KEY_SEARCH=""
 
-# Key binding to exit search mode and return to normal view while keeping selection
-# Add your preferred key here (example: ")
-PREVIEW_KEY_EXIT_SEARCH=""
-PREVIEW_KEY_EXIT_SEARCH2=""
+# Exit search mode (first binding)
+# Default: "'"
+# Key to exit search mode while keeping selection
+PREVIEW_KEY_EXIT_CLEAR_SEARCH1=""
 
-# Key binding to open a shell in the current directory (default: !)
+# Exit search mode (second binding)
+# Default: "\""
+# Alternative key to exit search mode while keeping selection
+PREVIEW_KEY_EXIT_CLEAR_SEARCH2=""
+
+# Open shell in current directory
+# Default: "!"
+# Key to open a shell in the current directory
 PREVIEW_KEY_SHELL=""
 
-# Key binding to rename a file (default: r)
+# Rename file
+# Default: "R"
+# Key to rename a file or directory
 PREVIEW_KEY_RENAME=""
 
-# Key binding to create a directory (default: n)
+# Create directory
+# Default: "M"
+# Key to create a new directory
 PREVIEW_KEY_MKDIR=""
 
-# Key binding to create a file (default: f)
+# Create file
+# Default: "F"
+# Key to create a new file
 PREVIEW_KEY_MKFILE=""
 
-# Key binding to go to a specific directory (default: :)
+# Go to specific directory
+# Default: "\x07" (Ctrl+G)
+# Key to navigate to a specific directory
 PREVIEW_KEY_GO_DIR=""
 
-# Key binding to go to home directory (default: ~)
-PREVIEW_KEY_GO_HOME=""
+# Go to home directory (first binding)
+# Default: "~"
+# Key to go to the home directory
+PREVIEW_KEY_GO_HOME1=""
 
-# Key binding to go to previous directory (default: -)
+# Go to home directory (second binding)
+# Default: "H"
+# Alternative key to go to the home directory
+PREVIEW_KEY_GO_HOME2=""
+
+# Go to previous directory
+# Default: "-"
+# Key to go to the previous directory
 PREVIEW_KEY_PREVIOUS=""
 
-# Key binding to refresh the current directory (default: e)
+# Refresh current directory
+# Default: "r"
+# Key to refresh the file list
 PREVIEW_KEY_REFRESH=""
 
-# Key binding to copy a file (default: C)
+# Copy file
+# Default: "C"
+# Key to copy a file or directory
 PREVIEW_KEY_COPY=""
 
-# Key binding to toggle preview mode (default: Ctrl+P)
-# Ctrl+P is represented as '\x10'
-PREVIEW_KEY_TOGGLE_PREVIEW=""
+# Toggle preview mode (first binding)
+# Default: "P"
+# Key to toggle between normal and preview modes
+PREVIEW_KEY_PREVIEW1=""
+
+# Toggle preview mode (second binding)
+# Default: "\x10" (Ctrl+P)
+# Alternative key to toggle between normal and preview modes
+PREVIEW_KEY_PREVIEW2=""
+
+# Quit program (first binding)
+# Default: "\x04" (Ctrl+D)
+# Key to exit the program
+PREVIEW_KEY_QUIT1=""
+
+# Quit program (second binding)
+# Default: "="
+# Alternative key to exit the program
+PREVIEW_KEY_QUIT2=""
+
+# Quit program (third binding)
+# Default: "Q"
+# Alternative key to exit the program
+PREVIEW_KEY_QUIT3=""
+
+# Quit program (fourth binding)
+# Default: "q"
+# Alternative key to exit the program
+PREVIEW_KEY_QUIT4=""
+
+# Show file attributes
+# Default: "x"
+# Key to display file attributes
+PREVIEW_KEY_ATTRIBUTES=""
+
+# Toggle executable flag
+# Default: "X"
+# Key to toggle the executable permission of a file
+PREVIEW_KEY_EXECUTABLE=""
+
+# Extract archive
+# Default: "e"
+# Key to extract an archive file to folder
+PREVIEW_KEY_EXTRACT=""
+
+# Delete file/directory
+# Default: "E"
+# Key to delete a file or directory
+PREVIEW_KEY_ERASE=""
+
+# Show image and info in terminal
+# Default: "i"
+# Key to display an image and info in the terminal
+PREVIEW_KEY_INFO=""
+
+# Markdown preview settings
+# Preferred markdown preview tool
+# Default: "5" (markdown_reader.sh)
+# 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown_reader.sh
+PREVIEW_MARK=""
+
+# Image preview settings
+# Preferred image preview tool
+# Default: "1" (img2sixel)
+# 1: img2sixel, 2: viu, 3: catimg, 4: chafa
+PREVIEW_IMG=""
+
+# Width for img2sixel full-size preview
+# Default: "540"
+# Width in pixels for full-size image preview with img2sixel
+PREVIEW_SIXEL_W=""
+
+# Height for img2sixel full-size preview
+# Default: "420"
+# Height in pixels for full-size image preview with img2sixel
+PREVIEW_SIXEL_H=""
+
+# Width for viu full-size preview
+# Default: "90"
+# Width in characters for full-size image preview with viu
+PREVIEW_VIU_W=""
+
+# Height for viu full-size preview
+# Default: "35"
+# Height in characters for full-size image preview with viu
+PREVIEW_VIU_H=""
+
+# Width for catimg full-size preview
+# Default: "100"
+# Width in characters for full-size image preview with catimg
+PREVIEW_CATIMG_W=""
+
+# Size for chafa full-size preview
+# Default: "50"
+# Size specification for full-size image preview with chafa
+PREVIEW_CHAFA_S=""
+
+# Width for img2sixel thumbnail preview
+# Default: "300"
+# Width in pixels for thumbnail preview with img2sixel
+PREVIEW_THUMB_SIXEL_W=""
+
+# Height for img2sixel thumbnail preview
+# Default: "200"
+# Height in pixels for thumbnail preview with img2sixel
+PREVIEW_THUMB_SIXEL_H=""
+
+# Width for viu thumbnail preview
+# Default: "50"
+# Width in characters for thumbnail preview with viu
+PREVIEW_THUMB_VIU_W=""
+
+# Height for viu thumbnail preview
+# Default: "16"
+# Height in characters for thumbnail preview with viu
+PREVIEW_THUMB_VIU_H=""
+
+# Width for catimg thumbnail preview
+# Default: "60"
+# Width in characters for thumbnail preview with catimg
+PREVIEW_THUMB_CATIMG_W=""
+
+# Size for chafa thumbnail preview
+# Default: "25"
+# Size specification for thumbnail preview with chafa
+PREVIEW_THUMB_CHAFA_S=""
+
+# Scroll behavior
+# Default: "1" (loop)
+# 0: no loop (stops at ends), 1: loop (wraps around)
+PREVIEW_LOOP_SCROLL=""
+
+# Favorite directory for key 0-9
+# Example: PREVIEW_FAV_0=~/Documents PREVIEW_FAV_1=~/Pictures
+# Default: "" (none)
+# Path to a favorite directory accessed with key 0-9
+PREVIEW_FAV_0=""
+PREVIEW_FAV_1=""
+PREVIEW_FAV_2=""
+PREVIEW_FAV_3=""
+PREVIEW_FAV_4=""
+PREVIEW_FAV_5=""
+PREVIEW_FAV_6=""
+PREVIEW_FAV_7=""
+PREVIEW_FAV_8=""
+PREVIEW_FAV_9=""
+
+# Command to show file attributes
+# Default: "stat"
+# Command used to display file attributes
+PREVIEW_STAT_CMD=""
+
+# Shell nesting level
+# Default: "" (starts unset, incremented when opening shells)
+# Tracks the nesting level of shell instances
+PREVIEW_LEVEL=""
+
+# Resolution for image and video previews
+# Default: "854x480"
+# Resolution used for resizing images and videos (format: WIDTHxHEIGHT)
+RESOLUTION=""
+
+# Width for text folding in preview
+# Default: "50"
+# Maximum line width for text wrapping with fold command
+FOLD=""
+
+# Maximum lines for file preview
+# Default: "30" (non-Android) or "20" (Android)
+# Number of lines to display in file previews
+sizeline=""
+
+# Maximum width for text preview
+# Default: "200" (non-Android) or "50" (Android)
+# Width in characters for text formatting in previews
+width=""
+
+# Tab width for code highlighting
+# Default: "8"
+# Number of spaces to replace tabs with when highlighting code
+HIGHLIGHT_TABWIDTH=""
+
+# Style for code highlighting
+# Default: "pablo"
+# Highlight style to use with the highlight command
+HIGHLIGHT_STYLE=""
+
+# Additional options for code highlighting
+# Default: ""
+# Extra options to pass to the highlight command
+HIGHLIGHT_OPTIONS=""
+
+# Style for pygmentize code highlighting
+# Default: "autumn"
+# Pygmentize style to use for syntax highlighting
+PYGMENTIZE_STYLE=""
 EOF
 
     # Make the config file user-executable
@@ -352,7 +658,7 @@ print_line() {
         return
 
     elif [[ -d ${list[$1]} ]]; then
-        format+=\\e[${di:-1;3${PREVIEW_COL1:-2}}m
+        format+=\\e[${di:-1;3${PREVIEW_COL_DIRECTORY:-2}}m
         suffix+=/
 
     elif [[ -b ${list[$1]} ]]; then
@@ -493,18 +799,18 @@ cmd_check() {
 draw_img() {
     # Checks if the selected file is an image
     get_mime_type "${list[scroll]}"
-    [[ "$mime_type_full" =~ (video|media|stream) ||\
-    "$mime_type" =~ (video|media|stream) || "$mime_type2" =~ ^video/.+$ ]] || {
-        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Selected file is not an image or video."
+    [[ "$mime_type_full" =~ (image|audio|sound|video|media|stream) ||\
+    "$mime_type" =~ (image|audio|sound|video|media|stream) || "$mime_type2" =~ ^video/.+$ || "$mime_type2" =~ ^image/.+$ ]] || {
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: Selected file is not an image, audio or video."
         return 1
     }
 
-    # Estado inicial: assume que estamos mostrando os arquivos
+    # Initial State: assumes that we are showing the files
     local showing_image=0
 
     while true; do
         if [[ $showing_image -eq 0 ]] && [[ $mime_type == image/* ]]; then
-            # Limpa a tela e exibe a imagem em tela cheia com imgview
+            # Cleans the screen and displays the full screen image with imgview
             preserve_status="$preview_mode"
             [[ "$preserve_status" == 1 ]] && toggle_preview_mode
             clear_screen
@@ -514,10 +820,9 @@ draw_img() {
             fi
             _picinfo "${list[scroll]}"
             showing_image=1
-        #####
-        elif [[ $showing_image -eq 0 ]] && [[ "$mime_type_full" =~ (video|media|stream) ||\
-            "$mime_type" =~ (video|media|stream) || "$mime_type2" =~ ^video/.+$ ]]; then
-            # Limpa a tela e exibe a imagem em tela cheia com imgview
+        elif [[ $showing_image -eq 0 ]] && [[ "$mime_type_full" =~ (video|audio|sound|media|stream) ||\
+            "$mime_type" =~ (video|audio|sound|media|stream) || "$mime_type2" =~ ^video/.+$ ]]; then
+            # Cleans the screen and displays the full screen image with imgview
             preserve_status="$preview_mode"
             [[ "$preserve_status" == 1 ]] && toggle_preview_mode
             clear_screen
@@ -527,17 +832,17 @@ draw_img() {
             fi
             showing_image=1
         else
-            # Volta a exibir os arquivos
+            # Returns to display the files
             [[ "$preserve_status" == 1 ]] && toggle_preview_mode
             redraw
             showing_image=0
-            break  # Sai do loop após voltar aos arquivos
+            break
         fi
 
-        # Aguarda a próxima entrada do usuário
+       # Wait for the next user input
         read -srn 1 key
         [[ "$key" != "i" ]] && {
-            # Se a tecla não for 'i', redesenha e sai do loop
+            # If the key is not 'i', redesign and leaves the loop
             redraw
             break
         }
@@ -752,12 +1057,18 @@ office_convert() {
 markdown_reader() {
     local file="$1"
     local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
-    [[ -f "$mr" ]] && "$mr" -nl -- "$file" | head -n "${sizeline}" && return 0
-    command -v markdown_reader.sh &>/dev/null && markdown_reader.sh -nl -- "$file" | head -n "${sizeline}" && return 0
-    cmd_check glow glow && env COLORTERM=8bit glow -- "$file" | head -n "${sizeline}" && return 0
-    cmd_check bat bat && env COLORTERM=8bit bat --paging=never --style=plain -- "$file" | head -n "${sizeline}" && return 0
-    cmd_check mdless mdless && mdless -P -- "$file" | head -n "${sizeline}" && return 0
-    cmd_check mdcat mdcat && mdcat -- "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 5 ]] && [[ -f "$mr" ]] &&
+    "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
+    markdown_reader.sh -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 1 ]] && cmd_check glow glow &&
+    env COLORTERM=8bit glow -- "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 2 ]] && cmd_check bat bat &&
+    env COLORTERM=8bit bat --paging=never --style=plain -- "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 3 ]] && cmd_check mdless mdless &&
+    mdless -P -- "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 4 ]] && cmd_check mdcat mdcat &&
+    mdcat -- "$file" | head -n "${sizeline}" && return 0
 }
 
 _picinfo() {
@@ -1423,7 +1734,7 @@ keys() {
             fi
         ;;
         # Show image in terminal.
-        ${PREVIEW_KEY_IMAGE:=i})
+        ${PREVIEW_KEY_INFO:=i})
             draw_img
         ;;
         ${PREVIEW_KEY_ERASE:=E})
@@ -1811,6 +2122,11 @@ main() {
     CACHE_PATH="${XDG_CACHE_HOME:=${HOME}/.cache}/preview"
     CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/preview"
     
+    [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+    [[ ! -d "$CONFIG_PATH" ]] && mkdir -p "$CONFIG_PATH"
+    [[ ! -d "$CACHE_PATH" ]] && mkdir -p "$CACHE_PATH"
+    [[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
+
     # Read the user settings, if any, first of all
     setup_config
 
@@ -1818,10 +2134,6 @@ main() {
     RESOLUTION="${RESOLUTION/X/x}"
     LS_C="rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:*.exe=00;33:ex=01;32:*.7z=01;31:*.ace=01;31:*.alz=01;31:*.apk=01;31:*.xapk=01;31:*.apk+=01;31:*.arc=01;31:*.arj=01;31:*.bz=01;31:*.bz2=01;31:*.cab=01;31:*.cpio=01;31:*.crate=01;31:*.deb=01;31:*.drpm=01;31:*.dwm=01;31:*.dz=01;31:*.ear=01;31:*.egg=01;31:*.esd=01;31:*.gz=01;31:*.jar=01;31:*.lha=01;31:*.lrz=01;31:*.lz=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.lzo=01;31:*.pyz=01;31:*.rar=01;31:*.rpm=01;31:*.rz=01;31:*.sar=01;31:*.swm=01;31:*.t7z=01;31:*.tar=01;31:*.taz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tgz=01;31:*.tlz=01;31:*.txz=01;31:*.tz=01;31:*.tzo=01;31:*.tzst=01;31:*.udeb=01;31:*.war=01;31:*.whl=01;31:*.wim=01;31:*.xz=01;31:*.z=01;31:*.zip=01;31:*.zoo=01;31:*.zst=01;31:*.avif=01;35:*.pdf=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.crdownload=00;90:*.dpkg-dist=00;90:*.dpkg-new=00;90:*.dpkg-old=00;90:*.dpkg-tmp=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:*.swp=00;90:*.tmp=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:"
     export LS_COLORS="${LS_COLORS:-$LS_C}"
-    [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
-    [[ ! -d "$CONFIG_PATH" ]] && mkdir -p "$CONFIG_PATH"
-    [[ ! -d "$CACHE_PATH" ]] && mkdir -p "$CACHE_PATH"
-    [[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
 
     cd "${2:-$1}" &>/dev/null ||:
 
