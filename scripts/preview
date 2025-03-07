@@ -3,9 +3,9 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-A simple file manager with file preview based on "fff", "lesspipe" and "ranger". It uses "lf" as a base, 
-adding support for file preview with custom commands for efficient navigation. 
-It includes configurable shortcuts to simplify file manipulation.
+A simple file manager with file preview capabilities, inspired by "fff", "lesspipe", and "ranger". 
+It uses "lf" as its foundation, enhancing file previews with custom commands for efficient navigation. 
+It offers configurable shortcuts to streamline file management.
 DOCUMENTATION
 
 clear
@@ -22,6 +22,16 @@ setup_config() {
     # Create the configuration file with default values and explanations
     cat > "$config_file" << 'EOF'
 # Preview configuration file
+
+# Default preview mode
+# Default: 1 (preview mode)
+# 0 for normal mode, 1 for preview mode
+#PREVIEW_MODE=""
+
+# Maximum items to show in preview mode
+# Default: 9
+# Number of items displayed in the file list when in preview mode
+#PREVIEW_MAX_ITEMS=""
 
 # Enable/disable hidden files view by default
 # Default: 0 (disabled)
@@ -45,7 +55,7 @@ setup_config() {
 
 # Change directory on exit
 # Default: 1 (enabled)
-# Set to 1 to change to the last directory viewed when preview exits
+# Set to 1 to change to the last directory viewed when the preview application exits
 #PREVIEW_CD_ON_EXIT=""
 
 # Path to file that stores the last directory
@@ -66,26 +76,31 @@ setup_config() {
 # Color for selected item highlight
 # Default: "6" (cyan)
 # ANSI color code for highlighting selected items
-#PREVIEW_SETECTED_HIGHLIGHT=""
+#PREVIEW_SELECTED_HIGHLIGHT=""
 
 # Color for status line text
 # Default: "1;38;5;16" (black)
 # ANSI color code for status line text
 #PREVIEW_STATUS_FOREGROUND=""
 
-# Default preview mode
-# Default: 1 (preview mode)
-# 0 for normal mode, 1 for preview mode
-#PREVIEW_MODE=""
+# Color for PWD PREVIOUS DIRECTORY in status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
+#PWD_PREVIOUS_DIRECTORY=""
 
-# Maximum items to show in preview mode
-# Default: 9
-# Number of items displayed in the file list when in preview mode
-#PREVIEW_MAX_ITEMS=""
+# Color for PWD LAST DIR in status line text
+# Default: "1;33" (yellow)
+# ANSI color code for status line text
+#PWD_LAST_DIR=""
+
+# Color for PWD BAR in status line text
+# Default: "1;96" (cyan)
+# ANSI color code for status line text
+#PWD_BAR=""
 
 # Key bindings for navigation and actions
 
-# Navigate into directory or open file (first binding)
+# Enter a directory or open a file (primary key binding)
 # Default: "l"
 # Key to enter directories or open files
 #PREVIEW_KEY_CHILD1=""
@@ -130,9 +145,9 @@ setup_config() {
 # Additional key to go to parent directory
 #PREVIEW_KEY_PARENT5=""
 
-# Scroll down (first binding)
+# Scroll down (primary key binding)
 # Default: "j"
-# Key to scroll down the file list
+# Key to scroll down file list
 #PREVIEW_KEY_SCROLL_DOWN1=""
 
 # Scroll down (second binding)
@@ -170,7 +185,7 @@ setup_config() {
 # Key to jump to the bottom of the file list
 #PREVIEW_KEY_TO_BOTTOM=""
 
-# Toggle hidden files
+# Toggle visibility of hidden files
 # Default: "."
 # Key to toggle visibility of hidden files
 #PREVIEW_KEY_HIDDEN=""
@@ -180,9 +195,9 @@ setup_config() {
 # Key to start file search
 #PREVIEW_KEY_SEARCH=""
 
-# Exit search mode (first binding)
+# Exit search mode (primary key binding)
 # Default: "'"
-# Key to exit search mode while keeping selection
+# Key to exit search mode while preserving the current selection
 #PREVIEW_KEY_EXIT_CLEAR_SEARCH1=""
 
 # Exit search mode (second binding)
@@ -201,7 +216,7 @@ setup_config() {
 #PREVIEW_KEY_RENAME=""
 
 # Create directory
-# Default: "M"
+# Default: "m"
 # Key to create a new directory
 #PREVIEW_KEY_MKDIR=""
 
@@ -290,6 +305,26 @@ setup_config() {
 # Key to delete a file or directory
 #PREVIEW_KEY_ERASE=""
 
+# Move file/directory
+# Default: "M"
+# Key to move a file or directory
+#PREVIEW_KEY_MOVE=""
+
+# Mark file/directory
+# Default: "Y"
+# Key to mark a file or directory
+#PREVIEW_KEY_MARK=""
+
+# Format for marked files
+# Default: "" (none)
+# %f is replaced with the filename
+#PREVIEW_MARK_FORMAT=""
+
+# Color for marked files
+# Default: "1" (red)
+# ANSI color code for marked file display
+#PREVIEW_COL_MARKED=""
+
 # Show image and info in terminal
 # Default: "i"
 # Key to display an image and info in the terminal
@@ -299,7 +334,12 @@ setup_config() {
 # Preferred markdown preview tool
 # Default: "5" (markdown_reader.sh)
 # 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown_reader.sh
-#PREVIEW_MARK=""
+#PREVIEW_MARKDOWN=""
+
+# Key binding to open file with xdg-open
+# Default: "" (none)
+# Key to open files using xdg-open or specified opener
+#PREVIEW_KEY_XDG_OPEN=""
 
 # Image preview settings
 # Preferred image preview tool
@@ -307,7 +347,7 @@ setup_config() {
 # 1: img2sixel, 2: viu, 3: catimg, 4: chafa
 #PREVIEW_IMG=""
 
-# Width for img2sixel full-size preview
+# Width of full-size img2sixel preview
 # Default: "540"
 # Width in pixels for full-size image preview with img2sixel
 #PREVIEW_SIXEL_W=""
@@ -407,9 +447,9 @@ setup_config() {
 # Maximum line width for text wrapping with fold command
 #FOLD=""
 
-# Maximum lines for file preview
+# Maximum lines for file content preview
 # Default: "30" (non-Android) or "20" (Android)
-# Number of lines to display in file previews
+# Number of lines to display in file content previews
 #sizeline=""
 
 # Maximum width for text preview
@@ -534,7 +574,7 @@ get_mime_type() {
 }
 
 status_line() {
-    local mark_ui="[${#marked_files[@]}] selected ->"
+    local mark_ui="[${#marked_files[@]}][selected] "
     #PWD_escaped=${PWD//[^[:print:]]/^[}
     
     # Define color codes
@@ -707,10 +747,10 @@ print_line() {
         format+=\\e[${fi:-37}m
     fi
 
-    if [[ -n "$PREVIEW_SETECTED_HIGHLIGHT" ]]; then
+    if [[ -n "$PREVIEW_SELECTED_HIGHLIGHT" ]]; then
         # Only highlights the selected line in normal mode
         if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
-            format+="\\e[1;3${PREVIEW_SETECTED_HIGHLIGHT:-6};7m"
+            format+="\\e[1;3${PREVIEW_SELECTED_HIGHLIGHT:-6};7m"
         fi
 
     else
@@ -805,7 +845,8 @@ draw_delimiter() {
 cmd_check() {
     [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
     {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
-    [[ "$1" == "-msg" ]] && printf "(It was not possible to display the file)\nInstall %s\n" "$msg" && no_cmd=() && return 0
+    [[ "$1" == "-msg" ]] && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "(It was not possible to display the file). Install $msg" &&
+    no_cmd=() && return 0
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
@@ -853,7 +894,8 @@ extract_to_folder() {
     
     # Convert to lowercase for better matching
     local file_lower="${file,,}"
-    local folder_name="${file%.*}"  # Remove the file extension
+    local file_extension="${file%.*}"          # Remove the file extension
+    local folder_name="${file_extension%.*}"   # Remove the file extension
     
     # Create the destination directory
     if [[ -d "$folder_name" ]]; then
@@ -867,82 +909,89 @@ extract_to_folder() {
     # Function to check if a command is available
     check_command() {
         if ! command -v "$1" >/dev/null 2>&1; then
-            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: '$1' is not installed. Please install it to extract this format."
-            read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error: '$2' is not installed. Please install it to extract this format."
+            read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null
             return 1
         fi
         return 0
     }
-        
+
     printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extracting '$file' to '$folder_name'..."
     sleep .5
     
     case "$file_lower" in
         *.tar.bz2|*.tbz2)
-            check_command tar && tar -xjf "$file" -C "$folder_name" ;;
+            check_command tar tar && tar -xjf "$file" -C "$folder_name" ;;
         *.tar.gz|*.tgz)
-            check_command tar && tar -xzf "$file" -C "$folder_name" ;;
+            check_command tar tar && tar -xzf "$file" -C "$folder_name" ;;
         *.tar.xz)
-            check_command tar && tar -xJf "$file" -C "$folder_name" ;;
+            check_command tar tar && tar -xJf "$file" -C "$folder_name" ;;
         *.tar.zst)
-            check_command tar && tar --zstd -xvf "$file" -C "$folder_name" ;;
+            check_command tar tar && tar --zstd -xvf "$file" -C "$folder_name" ;;
         *.tar.lzma)
-            check_command tar && tar --lzma -xvf "$file" -C "$folder_name" ;;
+            check_command tar tar && tar --lzma -xvf "$file" -C "$folder_name" ;;
         *.tar)
-            check_command tar && tar -xvf "$file" -C "$folder_name" ;;
+            check_command tar tar && tar -xvf "$file" -C "$folder_name" ;;
         *.bz2)
-            check_command bunzip2 && bunzip2 -c "$file" > "$folder_name/${file%.bz2}" ;;
+            check_command bunzip2 bzip2 && bunzip2 -c "$file" > "$folder_name/${file%.bz2}" ;;
         *.gz)
-            check_command gunzip && gunzip -c "$file" > "$folder_name/${file%.gz}" ;;
+            check_command gunzip gzip && gunzip -c "$file" > "$folder_name/${file%.gz}" ;;
         *.xz)
-            check_command unxz && unxz -c "$file" > "$folder_name/${file%.xz}" ;;
+            check_command unxz xz && unxz -c "$file" > "$folder_name/${file%.xz}" ;;
         *.zst)
-            check_command unzstd && unzstd "$file" -o "$folder_name/${file%.zst}" ;;
-        *.zip|*.zipx)
-            check_command unzip && unzip -q "$file" -d "$folder_name" ;;
+            check_command unzstd zstd && unzstd "$file" -o "$folder_name/${file%.zst}" ;;
+        *.zip|*.zipx|*.apk|*.xapk|*.apk+)
+            { check_command unzip unzip && unzip -q "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.rar)
-            check_command unrar && unrar x -inul "$file" "$folder_name/" || 
-            check_command 7z && 7z x "$file" -o"$folder_name" ;;
-        *.7z|*.7za)
-            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+            { check_command unrar unrar && unrar x -inul "$file" "$folder_name/"; } || 
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg)
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
         *.iso)
-            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
         *.cab)
-            check_command cabextract && cabextract "$file" -d "$folder_name" ||
-            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+            { check_command cabextract cabextract && cabextract "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.arj)
-            check_command unarj && unarj x "$file" "$folder_name/" ;;
+            { check_command unarj unarj && unarj x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.lzh|*.lha)
-            check_command lhasa && lhasa x "$file" -w "$folder_name" ;;
+            { check_command lha lhasa && lha -x "$file" -w "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.rpm)
-            check_command rpm2cpio && rpm2cpio "$file" | cpio -idmv -D "$folder_name" ;;
+            { check_command rpm2cpio rpm-tools && rpm2cpio "$file" | cpio -idmv -D "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.deb)
-            check_command dpkg && dpkg-deb -x "$file" "$folder_name" ;;
-        *.dmg)
-            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+            { check_command dpkg-deb dpkg && dpkg-deb -x "$file" "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.z)
-            check_command uncompress && uncompress -c "$file" > "$folder_name/${file%.z}" ;;
+            { check_command uncompress gzip && uncompress -c "$file" > "$folder_name/${file%.z}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.ace)
-            check_command unace && unace x "$file" "$folder_name/" ;;
+            { check_command unace unace && unace x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
         *.exe)
             # Might be a self-extracting archive
-            check_command 7z && 7z x "$file" -o"$folder_name" ;;
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
         *)
             printf '\e[%sH\e[K\e8' "$LINES" # Clear lines
             printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Unsupported format: $file"
             rmdir "$folder_name" 2>/dev/null  # Remove directory if empty
-            read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+            read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null
             return 1 ;;
     esac
     
     # Check if extraction was successful
     if [ $? -eq 0 ]; then
         redraw full
-        cmd_line "Extraction completed successfully!"
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extraction completed successfully!"
+        return 0
     else
+        rmdir "$folder_name"
         redraw full
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Error during extraction of '$file'"
-        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null
         return 1
     fi
 }
@@ -985,6 +1034,13 @@ _libreoffice() {
 _glow() {
     local file="$1"
     timeout -k 1 .6 env COLORTERM=8bit glow -s dark -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_glow_no_kill() {
+    local file="$1"
+    env COLORTERM=8bit glow -s dark -- "$file" 2>/dev/null
     status=$? && [[ "$status" == 0 ]] && return 0
     [[ "$status" -gt 0 ]] && return 1
 }
@@ -1049,17 +1105,17 @@ office_convert() {
 markdown_reader() {
     local file="$1"
     local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
-    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 5 ]] && [[ -f "$mr" ]] &&
+    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
     "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
+    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
     markdown_reader.sh -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 1 ]] && cmd_check glow glow &&
-    env COLORTERM=8bit glow -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 2 ]] && cmd_check bat bat &&
-    env COLORTERM=8bit bat --paging=never --style=plain -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 3 ]] && cmd_check mdless mdless &&
+    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 1 ]] && cmd_check glow glow &&
+    _glow_no_kill "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 2 ]] && cmd_check bat bat &&
+    env COLORTERM=8bit bat --color=always --style="plain" -- "$file" | head -n "${sizeline}" && return 0
+    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
     mdless -P -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARK" || "$PREVIEW_MARK" == 4 ]] && cmd_check mdcat mdcat &&
+    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
     mdcat -- "$file" | head -n "${sizeline}" && return 0
 }
 

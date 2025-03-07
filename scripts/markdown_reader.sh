@@ -468,7 +468,7 @@ process_markdown() {
             line_shell  # Call line generation function
         # Handle Blockquotes
         elif [[ "$line" =~ ^\> ]]; then
-            echo -e "${COLOR_TITLE3}${line/\>/ \|}${COLOR_RESET}"
+            echo -e "${COLOR_TITLE3}${line/\>/ \│}${COLOR_RESET}"
         # Block code
         elif [[ "$line" =~ ^\ {3} ]]; then
             echo -e "${COLOR_CODE}${line//\   /}${COLOR_RESET}"
