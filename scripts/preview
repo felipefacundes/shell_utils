@@ -1077,11 +1077,12 @@ archive() {
     local file_lower="${1,,}"
 
     case "$file_lower" in
-        *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.tar.zst|*.tar.lzma|*.tar.lz|*.tar.lz4|*.tar.br|*.tar.z)
+        *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.tar.lzma|*.tar.lz|*.tar.lz4|*.tar.br|*.tar.z|*.tar)
             { _bsdtar "$file" && return 0; } ||
             { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
-        *.tar)
-            _bsdtar "$file" && return 0 ;;
+        *.tar.zst)
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ||
+            { _bsdtar "$file" && return 0; } ;;
         *.bz2)
             { cmd_check bzcat bzip2 && bzcat "$file" | head -n "${sizeline}" && return 0; } ||
             { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
