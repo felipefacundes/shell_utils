@@ -69,8 +69,28 @@ display_books() {
     done
 }
 
+_glow_no_kill() {
+    local file="$1"
+    env COLORTERM=8bit glow -p -s dark -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
 markdown_reader() {
-    ~/.shell_utils/scripts/markdown_reader.sh "$@"
+    local file="$1"
+    local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
+    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
+    "$mr" -nc -nf -- "$file" && return 0
+    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
+    markdown_reader.sh -nc -nf -- "$file" && return 0
+    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 1 ]] && cmd_check glow glow &&
+    _glow_no_kill "$file" && return 0
+    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 2 ]] && cmd_check bat bat &&
+    env COLORTERM=8bit bat --color=always --style="plain" -- "$file" && return 0
+    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
+    mdless -P -- "$file" && return 0
+    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
+    mdcat -- "$file" && return 0
 }
 
 cmd_check() {
@@ -95,7 +115,7 @@ margin() {
     fold -w 150 "$1" | awk '{print "          " $0 "          "}' | less_pid
 }
 
-office_convert() {
+office_convert_bkp() {
     local file="$1"
     local temp_dir="${TMPBOOKDIR}/temp_book"
     local temp_file="${TMPBOOKDIR}/temp_book.txt"
@@ -106,6 +126,48 @@ office_convert() {
     && margin "${temp_dir}"/*.txt && return 0
     # shellcheck disable=SC2181
     [[ $? -ne 0 ]] && cmd_check -msg
+}
+
+any_file() {
+    file="$1"
+    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    strings -n 10 "$file" 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+}
+
+office_convert() {
+    local file="$1"
+    local temp_dir="${TMPBOOKDIR}/temp_book"
+    local temp_file="${TMPBOOKDIR}/temp_file.md"
+    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
+    [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
+
+    [[ "${ext_test}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvtable csvtable && csvtable "$file" | less_pid && return 0
+    [[ "${ext_test}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvlook csvlook && csvlook -S "$file" | less_pid && return 0
+    [[ "${ext_test}" =~ ^([Cc][Ss][Vv])$ ]] && awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | less_pid && return 0
+    [[ "${ext_test}" =~ ^([Cc][Ss][Vv])$ ]] && column -t -s, "$file" | less_pid && return 0
+    [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && catdoc -- "$file" |\
+    tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
+    [[ "${ext_test}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check unrtf unrtf && unrtf --text "$file" |\
+    tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
+    [[ "${ext_test}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && antiword "$file" |\
+    tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
+    [[ "${ext_test}" =~ ^([Dd][Oo][Cc][Xx])$ ]] && cmd_check docx2txt docx2txt && docx2txt "$file" - 2>/dev/null |\
+    tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
+    [[ "${ext_test}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && odt2txt "$file" |\
+    tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
+    [[ "${ext_test}" =~ ^([Ss][Xx][Ww])$ ]] && cmd_check sxw2txt sxw2txt && sxw2txt "$file" |\
+    tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
+    [[ "${ext_test}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlsx2csv xlsx2csv && xlsx2csv -- "$file" | less_pid && return 0
+    [[ "${ext_test}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlscat xlscat && xlscat -L -R all "$file" | less_pid && return 0
+    [[ "${ext_test}" =~ ^([Pp][Pp][Tt][Xx])$ ]] && cmd_check pptx2md pptx2md && pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
+    markdown_reader "$temp_file" && return 0
+    [[ "${ext_test}" =~ ^([Ee][Pp][Uu][Bb])$ ]] && cmd_check epr epr && epr -d "$file" 2>/dev/null |\
+    sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' && return 0
+    cmd_check pandoc pandoc && pandoc -s -t plain -- "$file" | tee "${temp_file}" >/dev/null 2>&1 &&
+    margin "${temp_file}" && return 0
+    cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 &&
+    margin "${temp_dir}"/*.txt && return 0 
+    cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 nexttmp () {
@@ -151,6 +213,38 @@ ishtml() {
     [[ $? -ne 0 ]] && cmd_check -msg
 }
 
+imgview() {
+    local file="$1"
+    
+    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+    img2sixel -w "${BOOKS_SIXEL_W:-540}" -h "${BOOKS_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0
+    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && 
+    cmd_check viu viu && viu -w "${BOOKS_VIU_H:-90}" -h "${BOOKS_VIU_H:-35}" "${file}" 2>/dev/null && return 0
+    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && cmd_check catimg catimg &&
+    catimg -w "${BOOKS_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0 
+    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && cmd_check chafa chafa &&
+    chafa -s "${BOOKS_CHAFA_S:-50}" "${file}" 2>/dev/null && return 0
+
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
+pdfview() {
+    local file="$1"
+    temp_file="${TMPBOOKDIR}/temp_file.jpg"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+
+    cmd_check pdftotext poppler && 
+    pdf_lines=$(pdftotext -l 1 -nopgbrk -q -- "$file" - | wc -l) &&
+    [[ "$pdf_lines" -gt 0 ]] &&
+    pdftotext -layout -nopgbrk "$file" "${temp_file}" 1>/dev/null &&
+    margin "${temp_file}" && return 0
+    cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" | less_pid && return 0 
+    cmd_check magick imagemagick && 
+    magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
+    cmd_check -msg && echo && any_file "$file" && return 1
+}
+
 # Function to select and open a book
 select_book() {
     local book_path="$1"
@@ -166,6 +260,87 @@ select_book() {
     fi
     
     ext_test="${book_path##*.}"
+    ext_test="${ext_test,,}" # lowercase
+
+    case "$ext_test" in
+        txt)
+            margin "$book_path" && return 0
+            ;;
+        md|markdown)
+            if ! markdown_reader "$book_path"; then
+                printf '\n\e[33mMarkdown file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        pod)
+            if ! podview "$book_path"; then
+                printf '\n\e[33mPOD file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        pdf)
+            if ! pdfview "$book_path"; then
+                printf '\n\e[33mPDF file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        png|jpg|jpeg)
+            if ! imgview "$book_path"; then
+                printf '\n\e[33mImage file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+            if ! office_convert "$book_path"; then
+                printf '\n\e[33mOffice file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        djvu)
+            if ! djvuview "$book_path"; then
+                printf '\n\e[33mDjvu file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        postscript|ps)
+            if ! psview "$book_path"; then
+                printf '\n\e[33mPS file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        dvi)
+            if ! dviview "$book_path"; then
+                printf '\n\e[33mDVI file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        htm|html|xhtml)
+            if ! ishtml "$book_path" |\
+            fmt -w "${width}" | head -n "${sizeline}"; then
+                printf '\n\e[33mWeb file: %s\e[m\n' "${book_path##*/}" 
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        esac
+
 
     if [[ "${ext_test}" =~ ^([Mm][Dd])$ ]]; then
         markdown_reader "$book_path"
