@@ -1013,7 +1013,7 @@ extract_to_folder() {
 any_file() {
     file="$1"
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    _head <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+    head -n "${sizeline}" <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
 }
 
 _exiftool() {
@@ -1065,15 +1065,11 @@ _bsdtar() {
         if ! bsdtar --list --file "$file" &>/dev/null; then
             return 1
         else
-            bsdtar --list --file "$file" | _head
+            bsdtar --list --file "$file" | head -n "${sizeline}"
             return 0
         fi
     }
     return 1
-}
-
-_head() {
-    head -n "${sizeline}"
 }
 
 archive() {
@@ -1083,62 +1079,62 @@ archive() {
     case "$file_lower" in
         *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.tar.zst|*.tar.lzma|*.tar.lz|*.tar.lz4|*.tar.br|*.tar.z)
             { _bsdtar "$file" && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.tar)
             _bsdtar "$file" && return 0 ;;
         *.bz2)
-            { cmd_check bzcat bzip2 && bzcat "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check bzcat bzip2 && bzcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.gz|*.z)
-            { cmd_check zcat gzip && zcat "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check zcat gzip && zcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.xz)
-            { cmd_check xzcat xz && xzcat "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check xzcat xz && xzcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.zst|*.zstd)
-            { cmd_check zstdcat zstd && zstd -lv "${file}" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check zstdcat zstd && zstd -lv "${file}" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.zip|*.zipx|*.apk|*.xapk|*.apk+|*.jar|*.oxt|*.xpi|*.vsix)
             { _bsdtar "$file" && return 0; } ||
-            { cmd_check unzip unzip && unzip -l "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check unzip unzip && unzip -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.rar)
-            { cmd_check unrar unrar && unrar lt -p- -- "${file}" | _head && return 0; } || 
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check unrar unrar && unrar lt -p- -- "${file}" | head -n "${sizeline}" && return 0; } || 
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.7z|*.7za|*.7zz|*.7zr|*.dmg)
-            cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0 ;;
+            cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0 ;;
         *.iso)
             { _bsdtar "$file" && return 0; } ||
-            { cmd_check isoinfo cdrtools && isoinfo -i "${file}" -l | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check isoinfo cdrtools && isoinfo -i "${file}" -l | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.cab)
-            { cmd_check cabextract cabextract && cabextract -l "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check cabextract cabextract && cabextract -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.arj)
-            { cmd_check arj arj && arj l "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check arj arj && arj l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.lzh|*.lha)
-            { cmd_check lha lhasa && lha -l "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check lha lhasa && lha -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.rpm)
-            { cmd_check rpm rpm-tools && rpm -qpl "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check rpm rpm-tools && rpm -qpl "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.deb)
-            { cmd_check dpkg dpkg && dpkg -c "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;            
+            { cmd_check dpkg dpkg && dpkg -c "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;            
         *.ace)
-            { cmd_check unace unace && unace l "$file" | _head && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | _head && return 0; } ;;
+            { cmd_check unace unace && unace l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.zlib|*.zz)
             cmd_check zlib-flate qpdf && 
-            zlib-flate -uncompress < "${file}" | _head && return 0 ;;
+            zlib-flate -uncompress < "${file}" | head -n "${sizeline}" && return 0 ;;
         *.exe)
             # Might be a self-extracting archive
             cmd_check 7z 7zip && file "${file}" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
-            7z l -p -- "$file" | _head && return 0 ;;
+            7z l -p -- "$file" | head -n "${sizeline}" && return 0 ;;
         esac
 
-    cmd_check atool atool && atool --list -- "${file}" | _head && return 0
+    cmd_check atool atool && atool --list -- "${file}" | head -n "${sizeline}" && return 0
     _bsdtar "${file}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
@@ -1150,25 +1146,25 @@ office_convert() {
     [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
 
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvtable csvtable && (csvtable "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvlook csvlook && (csvlook -S "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | _head && return 0
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && column -t -s, "$file" | _head && return 0
-    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check unrtf unrtf && (unrtf --text "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Dd][Oo][Cc][Xx])$ ]] && cmd_check docx2txt docx2txt && (docx2txt "$file" - 2>/dev/null | _head) && return 0
-    [[ "${file_ext}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Ss][Xx][Ww])$ ]] && cmd_check sxw2txt sxw2txt && (sxw2txt "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | _head) && return 0
-    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlscat xlscat && (xlscat -L -R all "$file" | _head) && return 0
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvtable csvtable && (csvtable "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvlook csvlook && (csvlook -S "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && column -t -s, "$file" | head -n "${sizeline}" && return 0
+    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check unrtf unrtf && (unrtf --text "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Dd][Oo][Cc][Xx])$ ]] && cmd_check docx2txt docx2txt && (docx2txt "$file" - 2>/dev/null | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Ss][Xx][Ww])$ ]] && cmd_check sxw2txt sxw2txt && (sxw2txt "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0
+    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^([Pp][Pp][Tt][Xx])$ ]] && cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
-    markdown_reader "$temp_file" | _head) && return 0
+    markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
     [[ "${file_ext}" =~ ^([Ee][Pp][Uu][Bb])$ ]] && cmd_check epr epr && (epr -d "$file" 2>/dev/null |\
-    sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' | fmt -w "${width}" | _head) && return 0
-    cmd_check pandoc pandoc && (_pandoc "$file" | _head) && return 0
+    sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' | fmt -w "${width}" | head -n "${sizeline}") && return 0
+    cmd_check pandoc pandoc && (_pandoc "$file" | head -n "${sizeline}") && return 0
     cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 && 
-    _head "${temp_dir}"/*.txt && return 0 
+    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
@@ -1176,17 +1172,17 @@ markdown_reader() {
     local file="$1"
     local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
     [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
-    "$mr" -nl -nc -nf -- "$file" | _head && return 0
+    "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
     [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
-    markdown_reader.sh -nl -nc -nf -- "$file" | _head && return 0
+    markdown_reader.sh -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
     [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 1 ]] && cmd_check glow glow &&
-    _glow_no_kill "$file" | _head && return 0
+    _glow_no_kill "$file" | head -n "${sizeline}" && return 0
     [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 2 ]] && cmd_check bat bat &&
-    env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "$file" | _head && return 0
+    env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "$file" | head -n "${sizeline}" && return 0
     [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
-    mdless -P -- "$file" | _head && return 0
+    mdless -P -- "$file" | head -n "${sizeline}" && return 0
     [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
-    mdcat -- "$file" | _head && return 0
+    mdcat -- "$file" | head -n "${sizeline}" && return 0
 }
 
 _picinfo() {
@@ -1194,9 +1190,9 @@ _picinfo() {
     cmd_check mediainfo mediainfo && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
     echo && mediainfo "$file" | sed 's/               //; s|\(.*:\)\s*.*/|\1 |' && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_exiftool "${file}" | _head) && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_identify "${file}" | _head) && return 0
+    (_identify "${file}" | head -n "${sizeline}") && return 0
 }
 
 imgview() {
@@ -1291,12 +1287,12 @@ media_info() {
     local file="$1"
     [[ "$sizeline" != 11 ]] && sizeline=27
     # [[ "${OS,,}" =~ "android" ]] && cmd_check mediainfo mediainfo && 
-    # mediainfo "${file}" | sed '/General/d; /Complete name/d; s/                   //; s|\(.*:\)\s*.*/\([^/]*\)\(\.[^.]*\)$|\1\3|' | _head && return 0
+    # mediainfo "${file}" | sed '/General/d; /Complete name/d; s/                   //; s|\(.*:\)\s*.*/\([^/]*\)\(\.[^.]*\)$|\1\3|' | head -n "${sizeline}" && return 0
     cmd_check mediainfo mediainfo && mediainfo "${file}" |\
     sed '/General/d; /Complete name/d; /^Video/d; /^Audio/d; /^$/d; s/                   //; s|\(.*:\)\s*.*/|\1 |' |\
-    _head && return 0
+    head -n "${sizeline}" && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_exiftool "${file}" | _head) && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
@@ -1310,17 +1306,17 @@ pdfview() {
     pdf_lines=$(pdftotext -l 1 -nopgbrk -q -- "${file}" - | wc -l) &&
     [[ "$pdf_lines" -gt 0 ]] &&
     pdftotext -l 1 -nopgbrk -q -- "${file}" - | \
-    fmt -w "${width}" | _head && return 0
+    fmt -w "${width}" | head -n "${sizeline}" && return 0
     cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" 1-10 | \
-    fmt -w "${width}" | _head && return 0 
+    fmt -w "${width}" | head -n "${sizeline}" && return 0 
     cmd_check magick imagemagick && 
     magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
     [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
     cmd_check pdfinfo poppler && pdfinfo "$file" && return 0
     cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_exiftool "${file}" | _head) && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_identify "${file}" | _head) && return 0
+    (_identify "${file}" | head -n "${sizeline}") && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
@@ -1332,56 +1328,56 @@ torrentview() {
 
 djvuview() {
     local file="$1"
-    cmd_check djvutxt djvutxt && djvutxt "$file" | _head && return 0
+    cmd_check djvutxt djvutxt && djvutxt "$file" | head -n "${sizeline}" && return 0
     cmd_check exiftool exiftool &&
-    (_exiftool "${file}" | _head) && return 0
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 podview() {
     local file="$1"
-    cmd_check pod2text pod2text && pod2text "$file" 2>/dev/null | _head && return 0
-    cmd_check perldoc perldoc && perldoc -T "$file" 2>/dev/null | _head && return 0
+    cmd_check pod2text pod2text && pod2text "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check perldoc perldoc && perldoc -T "$file" 2>/dev/null | head -n "${sizeline}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 psview() {
     local file="$1"
-    cmd_check ps2ascii ghostscript && nodash ps2ascii "$file" 2>/dev/null | _head && return 0
+    cmd_check ps2ascii ghostscript && nodash ps2ascii "$file" 2>/dev/null | head -n "${sizeline}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 classview() {
     local file="$1"
-    cmd_check procyon-decompiler procyon-decompiler && procyon-decompiler "$file" 2>/dev/null | _head && return 0
-    cmd_check procyon procyon && procyon "$file" 2>/dev/null | _head && return 0
+    cmd_check procyon-decompiler procyon-decompiler && procyon-decompiler "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check procyon procyon && procyon "$file" 2>/dev/null | head -n "${sizeline}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 dviview() {
     local file="$1"
-    cmd_check dvi2tty dvi2tty && dvi2tty -q "$file" | _head && return 0
+    cmd_check dvi2tty dvi2tty && dvi2tty -q "$file" | head -n "${sizeline}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 pgpview() {
     local file="$1"
-    cmd_check gpg gnupg && gpg --decrypt --quiet --no-tty --batch --yes "$file" | _head && return 0
+    cmd_check gpg gnupg && gpg --decrypt --quiet --no-tty --batch --yes "$file" | head -n "${sizeline}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 opensslview() {
     local file="$1"
     [[ "${file_ext}" =~ ^([Cc][Ss][Rr])$ ]] && 
-    cmd_check openssl openssl && openssl req -text -noout -in "$file" | _head && return 0
-    cmd_check openssl openssl && openssl storeutl -text -noout "$file" | _head && return 0
+    cmd_check openssl openssl && openssl req -text -noout -in "$file" | head -n "${sizeline}" && return 0
+    cmd_check openssl openssl && openssl storeutl -text -noout "$file" | head -n "${sizeline}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 jsonview() {
     local file="$1"
-    cmd_check jq jq && jq --color-output . "${file}" | _head && return 0
-    cmd_check python python && python -m json.tool -- "${file}" | _head && return 0
+    cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0
+    cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
@@ -1468,8 +1464,8 @@ margin() {
     cmd_check awk gawk || cmd_check -msg
     #fold -w 150 "$1" | sed 's/^/          /' | less -i &
     # [[ "${OS,,}" =~ "android" ]] && fold -w "${FOLD:-50}" "$file" | awk '{print "   " $0 "   "}' | \
-    # _head && return 0
-    _head "$file" | awk '{printf "%-30s\n", $0}' && return 0
+    # head -n "${sizeline}" && return 0
+    head -n "${sizeline}" "$file" | awk '{printf "%-30s\n", $0}' && return 0
 }
 
 _draw_file_preview() {
@@ -1615,7 +1611,7 @@ _draw_file_preview() {
                 ;;
             htm|html|xhtml)
                 if ! ishtml "$selected_file" |\
-                fmt -w "${width}" | _head; then
+                fmt -w "${width}" | head -n "${sizeline}"; then
                     printf '\n\e[33mWeb file: %s\e[m\n' "${selected_file##*/}" 
                     return 1
                 else
@@ -1647,7 +1643,7 @@ _draw_file_preview() {
                         return 0
                     fi
                 elif [[ "$mime_type" == *"text"* || "$mime_type" == *"xml"* || "$mime_type" == *"empty"* || "$mime_type2" =~ ^text/.+|application/xml$ ]]; then
-                    highlight_code "$selected_file" | _head 2>/dev/null
+                    highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null
                     return 0
                 elif [[ "$mime_type_full" =~ (audio|sound|video|media|stream) || "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]]; then
                     if ! media_info "$selected_file"; then
@@ -1679,7 +1675,7 @@ _draw_file_preview() {
             return 0
         else
             # If it is more than 30, it limits the display for the first 30 items
-            ls -pa --group-directories-first --color=always "$selected_file" | _head
+            ls -pa --group-directories-first --color=always "$selected_file" | head -n "${sizeline}"
             return 0
         fi
     else
