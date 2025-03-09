@@ -516,6 +516,11 @@ reset_terminal() {
     stty echo
 }
 
+cleanup() {
+    [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+    reset_terminal
+}
+
 clear_screen() {
     printf '\e[%sH\e[9999C\e[1J%b\e[1;%sr' \
            "$((LINES-2))" "${TMUX:+\e[2J}" "$max_items"
@@ -1078,10 +1083,11 @@ archive() {
 
     case "$file_lower" in
         *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.tar.lzma|*.tar.lz|*.tar.lz4|*.tar.br|*.tar.z|*.tar)
-            { _bsdtar "$file" && return 0; } ||
+            { bsdtar --list --file "$file" | head -n "${sizeline}" && return 0; } ||
             { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
-        *.tar.zst)
+        *.tar.zst|*.zst|*.zstd)
             { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check zstdcat zstd && zstd -lv "${file}" | head -n "${sizeline}" && return 0; } ||
             { _bsdtar "$file" && return 0; } ;;
         *.bz2)
             { cmd_check bzcat bzip2 && bzcat "$file" | head -n "${sizeline}" && return 0; } ||
@@ -1091,9 +1097,6 @@ archive() {
             { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.xz)
             { cmd_check xzcat xz && xzcat "$file" | head -n "${sizeline}" && return 0; } ||
-            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
-        *.zst|*.zstd)
-            { cmd_check zstdcat zstd && zstd -lv "${file}" | head -n "${sizeline}" && return 0; } ||
             { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
         *.zip|*.zipx|*.apk|*.xapk|*.apk+|*.jar|*.oxt|*.xpi|*.vsix)
             { _bsdtar "$file" && return 0; } ||
@@ -1136,7 +1139,7 @@ archive() {
         esac
 
     cmd_check atool atool && atool --list -- "${file}" | head -n "${sizeline}" && return 0
-    _bsdtar "${file}" && return 0
+    _bsdtar "$file" && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
@@ -1147,22 +1150,42 @@ office_convert() {
     [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
     [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
 
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvtable csvtable && (csvtable "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && cmd_check csvlook csvlook && (csvlook -S "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0
-    [[ "${file_ext}" =~ ^([Cc][Ss][Vv])$ ]] && column -t -s, "$file" | head -n "${sizeline}" && return 0
-    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Rr][Tt][Ff])$ ]] && cmd_check unrtf unrtf && (unrtf --text "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Dd][Oo][Cc])$ ]] && cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Dd][Oo][Cc][Xx])$ ]] && cmd_check docx2txt docx2txt && (docx2txt "$file" - 2>/dev/null | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^(odt|ods|odp|sxw)$ ]] && cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Ss][Xx][Ww])$ ]] && cmd_check sxw2txt sxw2txt && (sxw2txt "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Xx][Ll][Ss][Xx])$ ]] && cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Pp][Pp][Tt][Xx])$ ]] && cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
-    markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
-    [[ "${file_ext}" =~ ^([Ee][Pp][Uu][Bb])$ ]] && cmd_check epr epr && (epr -d "$file" 2>/dev/null |\
-    sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' | fmt -w "${width}" | head -n "${sizeline}") && return 0
+    case "${file_ext}" in
+        csv)
+            { cmd_check csvtable csvtable && (csvtable "$file" | head -n "${sizeline}") && return 0; } ||
+            { cmd_check csvlook csvlook && (csvlook -S "$file" | head -n "${sizeline}") && return 0; } ||
+            { awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0; } ||
+            column -t -s, "$file" | head -n "${sizeline}" && return 0
+            ;;
+        rtf)
+            { cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0; } ||
+            cmd_check unrtf unrtf && (unrtf --text "$file" | head -n "${sizeline}") && return 0
+            ;;
+        doc)
+            cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
+            ;;
+        docx)
+            cmd_check docx2txt docx2txt && (docx2txt "$file" - 2>/dev/null | head -n "${sizeline}") && return 0
+            ;;
+        odt|ods|odp|sxw)
+            { cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0; } ||
+            [[ "${file_ext}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && (sxw2txt "$file" | head -n "${sizeline}") && return 0
+            ;;
+        xlsx)
+            { cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0; } ||
+            cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0
+            ;;
+        pptx)
+            cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
+            markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
+            ;;
+        epub)
+            cmd_check epr epr && (epr -d "$file" 2>/dev/null |\
+            sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' |\
+            fold -s -w $(($(tput cols) - ${BOOKS_MARGIN:-10})) | head -n "${sizeline}") && return 0
+            ;;
+    esac
+
     cmd_check pandoc pandoc && (_pandoc "$file" | head -n "${sizeline}") && return 0
     cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 && 
     head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
@@ -1184,6 +1207,22 @@ markdown_reader() {
     mdless -P -- "$file" | head -n "${sizeline}" && return 0
     [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
     mdcat -- "$file" | head -n "${sizeline}" && return 0
+}
+
+test_books() {
+    local file="$1"
+    local books="$HOME/.shell_utils/scripts/books"
+    [[ -f "$books" ]] && "$books" "$file" && return 0
+    command -v books &>/dev/null && books "$file" && return 0
+}
+
+_books() {
+    local file="$1"
+    clear_screen
+    reset_terminal
+    test_books "$file"
+    setup_terminal
+    redraw
 }
 
 _picinfo() {
@@ -1461,12 +1500,9 @@ highlight_code() {
 
 margin() {
     local file="$1"
-    cmd_check fold coreutils || cmd_check -msg
-    cmd_check awk gawk || cmd_check -msg
-    #fold -w 150 "$1" | sed 's/^/          /' | less -i &
-    # [[ "${OS,,}" =~ "android" ]] && fold -w "${FOLD:-50}" "$file" | awk '{print "   " $0 "   "}' | \
-    # head -n "${sizeline}" && return 0
-    head -n "${sizeline}" "$file" | awk '{printf "%-30s\n", $0}' && return 0
+    cmd_check fold coreutils &&
+    fold -s -w $(($(tput cols) - 10)) "$file" | head -n "${sizeline}" && return 0
+    cmd_check -msg && return 1
 }
 
 _draw_file_preview() {
@@ -1719,6 +1755,10 @@ xdg_open() {
 }
 
 open() {
+    local file="${list[scroll]}"
+    local file_ext="${file##*.}"
+    local file_lower="${file_ext,,}"
+
     if [[ -d "$1"/ ]]; then
         search=
         search_end_early=
@@ -1741,8 +1781,37 @@ open() {
                 "${VISUAL:-${EDITOR:-vi}}" "$1"
                 setup_terminal
                 redraw
+                return 0
             ;;
-
+        esac
+        case "$file_lower" in
+            md|markdown)
+                _books "$file" && return 0
+            ;;
+            pod)
+                _books "$file" && return 0
+            ;;
+            pdf)
+                _books "$file" && return 0
+            ;;
+            png|jpg|jpeg)
+                _books "$file" && return 0
+            ;;
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+                _books "$file" && return 0
+            ;;
+            djvu)
+                _books "$file" && return 0
+            ;;
+            postscript|ps)
+                _books "$file" && return 0
+            ;;
+            dvi)
+                _books "$file" && return 0
+            ;;
+            htm|html|xhtml|xml)
+                _books "$file" && return 0
+            ;;
             *)
                 nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$1" &>/dev/null &
                 disown
@@ -2061,34 +2130,6 @@ delete_file() {
     fi
 }
 
-mark_bkp() {
-    # Clean marking moves directory
-    [[ $PWD != "${mark_dir}" ]] && {
-        marked_files=()
-    }
-
-    # Does not allow to mark empty directory item
-    [[ "${list[0]}" == empty && -z "${list[1]}" ]] && return
-
-    # Uses scroll directly instead of $1
-    local idx="$1"  # Past index should be $scroll
-    if [[ "${marked_files[$idx]}" == "${list[scroll]}" ]]; then
-        # Unmarks the file
-        unset "marked_files[$idx]"
-    else
-        # Mark the file
-        marked_files[$idx]="${list[scroll]}"
-        mark_dir="$PWD"
-    fi
-
-    # Cleans the current line and redesign only the selected item line
-    printf '\e[%sH\e[K' "$((scroll + 1))"  # Adjusts to the correct position
-    print_line "$scroll"
-
-    # Updates the status line
-    status_line
-}
-
 mark() {
     # Clean marking moves directory
     [[ $PWD != "${mark_dir}" ]] && {
@@ -2271,8 +2312,10 @@ keys() {
             open "${list[scroll]}"
         ;;
 
-        #     open "$OLDPWD"
-        ${PREVIEW_KEY_PREVIOUS:=-}|\
+        ${PREVIEW_KEY_PREVIOUS:=-})
+             open "$OLDPWD"
+        ;;
+
         ${PREVIEW_KEY_PARENT1:=h}|\
         ${PREVIEW_KEY_PARENT2:=$'\e[D'}|\
         ${PREVIEW_KEY_PARENT3:=$'\177'}|\
@@ -2556,6 +2599,8 @@ main() {
     [[ ! -d "$CACHE_PATH" ]] && mkdir -p "$CACHE_PATH"
     [[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
 
+    trap 'cleanup' EXIT
+
     # Read the user settings, if any, first of all
     setup_config
 
@@ -2592,7 +2637,6 @@ main() {
 
     shopt -s nocaseglob nullglob
 
-    trap 'reset_terminal' EXIT
     trap 'get_term_size; redraw' WINCH
     
     # Preview mode boot
