@@ -452,9 +452,9 @@ setup_config() {
 #RESOLUTION=""
 
 # Width for text folding in preview
-# Default: "50"
+# Default: "5"
 # Maximum line width for text wrapping with fold command
-#FOLD=""
+#PREVIEW_MARGIN=""
 
 # Maximum lines for file content preview
 # Default: "30" (non-Android) or "20" (Android)
@@ -1017,8 +1017,8 @@ extract_to_folder() {
 
 any_file() {
     file="$1"
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    head -n "${sizeline}" <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+    margin <(file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p') && echo &&
+    margin <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
 }
 
 _exiftool() {
@@ -1157,38 +1157,36 @@ office_convert() {
             { awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0; } ||
             column -t -s, "$file" | head -n "${sizeline}" && return 0
             ;;
-        rtf)
-            { cmd_check catdoc catdoc && (catdoc -- "$file" | head -n "${sizeline}") && return 0; } ||
-            cmd_check unrtf unrtf && (unrtf --text "$file" | head -n "${sizeline}") && return 0
-            ;;
-        doc)
-            cmd_check antiword antiword && (antiword "$file" | head -n "${sizeline}") && return 0
-            ;;
-        docx)
-            cmd_check docx2txt docx2txt && (docx2txt "$file" - 2>/dev/null | head -n "${sizeline}") && return 0
-            ;;
-        odt|ods|odp|sxw)
-            { cmd_check odt2txt odt2txt && (odt2txt "$file" | head -n "${sizeline}") && return 0; } ||
-            [[ "${file_ext}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && (sxw2txt "$file" | head -n "${sizeline}") && return 0
-            ;;
         xlsx)
             { cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0; } ||
             cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0
+            ;;
+        rtf)
+            { cmd_check catdoc catdoc && margin <(catdoc -- "$file") && return 0; } ||
+            cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0
+            ;;
+        doc)
+            cmd_check antiword antiword && margin <(antiword "$file") && return 0
+            ;;
+        docx)
+            cmd_check docx2txt docx2txt && margin <(docx2txt "$file" - 2>/dev/null) && return 0
+            ;;
+        odt|ods|odp|sxw)
+            { cmd_check odt2txt odt2txt && margin <(odt2txt "$file") && return 0; } ||
+            [[ "${file_ext}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0
             ;;
         pptx)
             cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
             markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
             ;;
         epub)
-            cmd_check epr epr && (epr -d "$file" 2>/dev/null |\
-            sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' |\
-            fold -s -w $(($(tput cols) - ${BOOKS_MARGIN:-10})) | head -n "${sizeline}") && return 0
+            cmd_check epr epr && margin <(epr -d "$file" 2>/dev/null | sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g') && return 0
             ;;
     esac
 
-    cmd_check pandoc pandoc && (_pandoc "$file" | head -n "${sizeline}") && return 0
+    cmd_check pandoc pandoc && margin <(_pandoc "$file") && return 0
     cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 && 
-    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0 
+    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
@@ -1368,7 +1366,7 @@ torrentview() {
 
 djvuview() {
     local file="$1"
-    cmd_check djvutxt djvutxt && djvutxt "$file" | head -n "${sizeline}" && return 0
+    cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0
     cmd_check exiftool exiftool &&
     (_exiftool "${file}" | head -n "${sizeline}") && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
@@ -1376,27 +1374,27 @@ djvuview() {
 
 podview() {
     local file="$1"
-    cmd_check pod2text pod2text && pod2text "$file" 2>/dev/null | head -n "${sizeline}" && return 0
-    cmd_check perldoc perldoc && perldoc -T "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0
+    cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 psview() {
     local file="$1"
-    cmd_check ps2ascii ghostscript && nodash ps2ascii "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 classview() {
     local file="$1"
-    cmd_check procyon-decompiler procyon-decompiler && procyon-decompiler "$file" 2>/dev/null | head -n "${sizeline}" && return 0
-    cmd_check procyon procyon && procyon "$file" 2>/dev/null | head -n "${sizeline}" && return 0
+    cmd_check procyon-decompiler procyon-decompiler && margin <(procyon-decompiler "$file" 2>/dev/null) && return 0
+    cmd_check procyon procyon && margin <(procyon "$file" 2>/dev/null) && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
 dviview() {
     local file="$1"
-    cmd_check dvi2tty dvi2tty && dvi2tty -q "$file" | head -n "${sizeline}" && return 0
+    cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0
     cmd_check -msg && echo && any_file "$file" && return 1
 }
 
@@ -1443,9 +1441,7 @@ handle_w3m() {
 }
 
 _html2text() {
-    nodash html2text "$1" "$2" | less -i &
-    less_pid=$!
-    wait "$less_pid" 
+    nodash html2text "$1" "$2"
     return 0
 }
 
@@ -1454,12 +1450,12 @@ ishtml() {
 	htmlopt=--unicode-snob
 	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
 	# 3 lines following can easily be reshuffled according to the preferred tool
-	cmd_check elinks elinks && nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null && return 0
-	cmd_check w3m w3m && handle_w3m "$1" </dev/null 2>/dev/null && return 0
-	cmd_check lynx lynx && lynx -force_html -dump "$arg1" </dev/null 2>/dev/null && return 0
+	cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0
+	cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0
+	cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0
 	# different versions of html2text existingi, force unicode
 	[[ "$1" == https://* ]] && return 0
-	cmd_check html2text python-html2text && _html2text "$htmlopt" "$1" </dev/null 2>/dev/null && return 0
+	cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0
     file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
 }
 
@@ -1501,8 +1497,42 @@ highlight_code() {
 margin() {
     local file="$1"
     cmd_check fold coreutils &&
-    fold -s -w $(($(tput cols) - 10)) "$file" | head -n "${sizeline}" && return 0
+    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-5})) "$file" | head -n "${sizeline}" && return 0
     cmd_check -msg && return 1
+}
+
+_mime_files() {
+    get_mime_type "$selected_file"
+    if [[ "$mime_type" == *"font"* ]]; then
+        if ! fontview "$selected_file"; then
+            printf '\n\e[33mFont file: %s\e[m\n' "${selected_file##*/}"
+            any_file "$selected_file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" == *"image"* || "$mime_type" =~ "image" ]]; then
+        if ! img2info "$selected_file"; then
+            printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
+            any_file "$selected_file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" == *"text"* || "$mime_type" == *"xml"* || "$mime_type" == *"empty"* || "$mime_type2" =~ ^text/.+|application/xml$ ]]; then
+        highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null && return 0
+        any_file "$selected_file"
+        return 1
+    elif [[ "$mime_type_full" =~ (audio|sound|video|media|stream) || "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]]; then
+        if ! media_info "$selected_file"; then
+            printf '\n\e[33mMedia file: %s\e[m\n' "${selected_file##*/}"
+            any_file "$selected_file"
+            return 1
+        else
+            return 0
+        fi
+    fi
+    return 1
 }
 
 _draw_file_preview() {
@@ -1512,191 +1542,8 @@ _draw_file_preview() {
     [[ "${OS,,}" =~ "android" ]] && local sizeline="${sizeline:-20}"
     [[ "${OS,,}" != "android" ]] && local width="${width:-200}"
     [[ "${OS,,}" =~ "android" ]] && local width="${width:-50}"
-        
-    if [[ -f "$selected_file" ]]; then
-        local file_ext="${selected_file##*.}"
-        file_ext="${file_ext,,}" # lowercase
-        
-        # Displays the current file name in the preview area
-        printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
 
-        case "$file_ext" in
-            a|apk|apk+|xapk|ace|alz|arc|arj|br|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lz4|lzh|lzma|lzo|rar|exe|rpm|\
-            7z|7zz|7za|7zr|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tz|tzo|war|xpi|xz|z|zip|zst|zstd|iso|vsix|zlib|zz)
-                [[ "${file}" =~ \.img(\.[^.]+)?$ ]] && any_file "$selected_file" && return 0
-                if ! archive "$selected_file"; then
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            img)
-                any_file "$selected_file" && return 0
-                ;;
-            txt)
-                margin "$selected_file" && return 0
-                ;;
-            md|markdown)
-                if ! markdown_reader "$selected_file"; then
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            class)
-                if ! classview "$selected_file"; then
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            pod)
-                if ! podview "$selected_file"; then
-                    printf '\n\e[33mPOD file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            pdf)
-                if ! pdfview "$selected_file"; then
-                    printf '\n\e[33mPDF file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            torrent)
-                if ! torrentview "$selected_file"; then
-                    printf '\n\e[33mTorrent file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            mp4|m4v|mov|avi|wmv|flv|webm|mkv|mpg|mpeg|3gp|3g2|ogv|asf|rm|rmvb|vob|ts|m2ts|mts|f4v|divx)
-                if ! video2static "$selected_file"; then
-                    printf '\n\e[33mVideo file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            mp3|wav|aac|m4a|flac|ogg|oga|opus|wma|alac|aiff|aif|au|snd|amr|ac3|dts|caf|mka|dff|dsf|wv|wvc)
-                if ! media_info "$selected_file"; then
-                    printf '\n\e[33mAudio file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            png|jpg|jpeg)
-                if ! imgview "$selected_file"; then
-                    printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
-                if ! office_convert "$selected_file"; then
-                    printf '\n\e[33mOffice file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            djvu)
-                if ! djvuview "$selected_file"; then
-                    printf '\n\e[33mDjvu file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            postscript|ps)
-                if ! psview "$selected_file"; then
-                    printf '\n\e[33mPS file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            x509|crl|csr)
-                if ! opensslview "$selected_file"; then
-                    printf '\n\e[33mx509/CRL/CSR/CA file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            pgp)
-                if ! pgpview "$selected_file"; then
-                    printf '\n\e[33mPGP file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            dvi)
-                if ! dviview "$selected_file"; then
-                    printf '\n\e[33mDVI file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            htm|html|xhtml)
-                if ! ishtml "$selected_file" |\
-                fmt -w "${width}" | head -n "${sizeline}"; then
-                    printf '\n\e[33mWeb file: %s\e[m\n' "${selected_file##*/}" 
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            json)
-                if ! jsonview "$selected_file"; then
-                    printf '\n\e[33mJSON file: %s\e[m\n' "${selected_file##*/}"
-                    return 1
-                else
-                    return 0
-                fi
-                ;;
-            *)
-                get_mime_type "$selected_file"
-                if [[ "$mime_type" == *"font"* ]]; then
-                    if ! fontview "$selected_file"; then
-                        printf '\n\e[33mFont file: %s\e[m\n' "${selected_file##*/}"
-                        return 1
-                    else
-                        return 0
-                    fi
-                elif [[ "$mime_type" == *"image"* || "$mime_type" =~ "image" ]]; then
-                    if ! img2info "$selected_file"; then
-                        printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
-                        return 1
-                    else
-                        return 0
-                    fi
-                elif [[ "$mime_type" == *"text"* || "$mime_type" == *"xml"* || "$mime_type" == *"empty"* || "$mime_type2" =~ ^text/.+|application/xml$ ]]; then
-                    highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null
-                    return 0
-                elif [[ "$mime_type_full" =~ (audio|sound|video|media|stream) || "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]]; then
-                    if ! media_info "$selected_file"; then
-                        printf '\n\e[33mMedia file: %s\e[m\n' "${selected_file##*/}"
-                        return 1
-                    else
-                        return 0
-                    fi
-                else
-                    any_file "$selected_file" && return 0
-                    return 1
-                fi
-                ;;
-        esac
-
-    elif [[ -d "$selected_file" ]]; then
+    if [[ -d "$selected_file" ]]; then
         local leng="$(ls -1A "$selected_file" | wc -l)"
         printf '\e[36mDirectory: %s\e[m\n' "${selected_file##*/}"
         [[ "$leng" == 0 ]] && printf '\e[36mEmpty folder\e[m\n\n'
@@ -1715,10 +1562,165 @@ _draw_file_preview() {
             ls -pa --group-directories-first --color=always "$selected_file" | head -n "${sizeline}"
             return 0
         fi
-    else
-        printf '\e[33mNo selected files\e[m\n'
-        return 1
+        
+    elif [[ -f "$selected_file" ]]; then
+        local file_ext="${selected_file##*.}"
+        file_ext="${file_ext,,}" # lowercase
+        
+        # Displays the current file name in the preview area
+        printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
+
+        case "$file_ext" in
+            a|apk|apk+|xapk|ace|alz|arc|arj|br|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lz4|lzh|lzma|lzo|rar|exe|rpm|\
+            7z|7zz|7za|7zr|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tz|tzo|war|xpi|xz|z|zip|zst|zstd|iso|vsix|zlib|zz)
+                [[ "${file}" =~ \.img(\.[^.]+)?$ ]] && any_file "$selected_file" && return 0
+                if ! archive "$selected_file"; then
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            txt)
+                margin "$selected_file" && return 0
+            ;;
+            img|rom)
+                any_file "$selected_file" && return 0
+            ;;
+            md|markdown)
+                if ! markdown_reader "$selected_file"; then
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            class)
+                if ! classview "$selected_file"; then
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pod)
+                if ! podview "$selected_file"; then
+                    printf '\n\e[33mPOD file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pdf)
+                if ! pdfview "$selected_file"; then
+                    printf '\n\e[33mPDF file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            torrent)
+                if ! torrentview "$selected_file"; then
+                    printf '\n\e[33mTorrent file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            mp4|m4v|mov|avi|wmv|flv|webm|mkv|mpg|mpeg|3gp|3g2|ogv|asf|rm|rmvb|vob|ts|m2ts|mts|f4v|divx)
+                if ! video2static "$selected_file"; then
+                    printf '\n\e[33mVideo file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            mp3|wav|aac|m4a|flac|ogg|oga|opus|wma|alac|aiff|aif|au|snd|amr|ac3|dts|caf|mka|dff|dsf|wv|wvc)
+                if ! media_info "$selected_file"; then
+                    printf '\n\e[33mAudio file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            png|jpg|jpeg)
+                if ! imgview "$selected_file"; then
+                    printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+                if ! office_convert "$selected_file"; then
+                    printf '\n\e[33mOffice file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            djvu)
+                if ! djvuview "$selected_file"; then
+                    printf '\n\e[33mDjvu file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            postscript|ps)
+                if ! psview "$selected_file"; then
+                    printf '\n\e[33mPS file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            x509|crl|csr)
+                if ! opensslview "$selected_file"; then
+                    printf '\n\e[33mx509/CRL/CSR/CA file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pgp)
+                if ! pgpview "$selected_file"; then
+                    printf '\n\e[33mPGP file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            dvi)
+                if ! dviview "$selected_file"; then
+                    printf '\n\e[33mDVI file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            htm|html|xhtml)
+                if ! ishtml "$selected_file" |\
+                fmt -w "${width}" | head -n "${sizeline}"; then
+                    printf '\n\e[33mWeb file: %s\e[m\n' "${selected_file##*/}" 
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            json)
+                if ! jsonview "$selected_file"; then
+                    printf '\n\e[33mJSON file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            *)
+                _mime_files && return 0
+                any_file "$selected_file" && return 1
+            ;;
+        esac
     fi
+    _mime_files && return 0
+    any_file "$selected_file" && return 1
 }
 
 draw_file_preview() {

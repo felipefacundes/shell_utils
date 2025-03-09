@@ -33,6 +33,7 @@ TMPBOOKDIR="${TMPDIR}/${SCRIPT%.*}"
 XDG_DOCUMENTS_DIR=${XDG_DOCUMENTS_DIR:-$(xdg-user-dir DOCUMENTS 2>/dev/null || echo "$HOME/Documents")}
 
 # Setting the eBook folders
+news_books="$1"
 books_folder="${HOME}/.shell_utils/books"
 xdg_books_folder="${XDG_DOCUMENTS_DIR}/Books"
 
@@ -41,7 +42,13 @@ xdg_books_folder="${XDG_DOCUMENTS_DIR}/Books"
 [[ ! -d "${xdg_books_folder}" ]] && mkdir -p "${xdg_books_folder}"
 
 # Combining the two folders to get all ebooks
-books_list=("${books_folder}"/*.* "${xdg_books_folder}"/*.*)
+if [[ -d "$news_books" ]]; then
+    books_list=("${news_books}"/*.* "${books_folder}"/*.* "${xdg_books_folder}"/*.*)
+    shift
+else
+    books_list=("${books_folder}"/*.* "${xdg_books_folder}"/*.*)
+    unset news_books
+fi
 
 # ANSI color for highlighting the selected book
 red="\033[1;31m"
@@ -50,6 +57,9 @@ nc="\033[0m"  # Reset
 
 cleanup() {
     [[ -d "${TMPBOOKDIR}" ]] && rm -rf "${TMPBOOKDIR}"
+    reset
+    clear
+    exit 0
 }
 trap cleanup EXIT
 
@@ -101,12 +111,12 @@ markdown_reader() {
 cmd_check() {
     [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
     {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
-    [[ "$1" == "-msg" ]] && echo "Install ${msg}" && no_cmd=() && exit 1
+    [[ "$1" == "-msg" ]] && printf '\e7\e[K%s\e8' "Install $msg" && no_cmd=() && exit 1
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
 less_pid() {
-    less -R -i &
+    less -S -R -i &
     less_pid=$!
     wait "$less_pid" 
     return 0
@@ -115,7 +125,7 @@ less_pid() {
 margin() {
     local file="$1"
     { cmd_check fold coreutils && cmd_check less less; } || cmd_check -msg
-    fold -s -w $(($(tput cols) - ${BOOKS_MARGIN:-10})) "$file" | less_pid && return 0
+    fold -s -w $(($(tput cols) - ${BOOKS_MARGIN:-5})) "$file" | less_pid && return 0
 }
 
 any_file() {
@@ -138,42 +148,34 @@ office_convert() {
             { awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | less_pid && return 0; } ||
             column -t -s, "$file" | less_pid && return 0
             ;;
-        rtf)
-            { cmd_check catdoc catdoc && catdoc -- "$file" |\
-            tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}" && return 0; } ||
-            cmd_check unrtf unrtf && unrtf --text "$file" |\
-            tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
-            ;;
-        doc)
-            cmd_check antiword antiword && antiword "$file" |\
-            tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
-            ;;
-        docx)
-            cmd_check docx2txt docx2txt && docx2txt "$file" - 2>/dev/null |\
-            tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
-            ;;
-        odt|ods|odp|sxw)
-            { cmd_check odt2txt odt2txt && odt2txt "$file" |\
-            tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}" && return 0; } ||
-            [[ "${ext_test}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && sxw2txt "$file" |\
-            tee "${temp_file}" >/dev/null 2>&1 && margin "${temp_file}"
-            ;;
         xlsx)
             { cmd_check xlsx2csv xlsx2csv && xlsx2csv -- "$file" | less_pid && return 0; } ||
             cmd_check xlscat xlscat && xlscat -L -R all "$file" | less_pid && return 0
+            ;;
+        rtf)
+            { cmd_check catdoc catdoc && margin <(catdoc -- "$file") && return 0; } ||
+            cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0
+            ;;
+        doc)
+            cmd_check antiword antiword && margin <(antiword "$file") && return 0
+            ;;
+        docx)
+            cmd_check docx2txt docx2txt && margin <(docx2txt "$file" - 2>/dev/null) && return 0
+            ;;
+        odt|ods|odp|sxw)
+            { cmd_check odt2txt odt2txt && margin <(odt2txt "$file") && return 0; } ||
+            [[ "${ext_test}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0
             ;;
         pptx)
             cmd_check pptx2md pptx2md && pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
             markdown_reader "$temp_file" && return 0
             ;;
         epub)
-            cmd_check epr epr && epr -d "$file" 2>/dev/null |\
-            sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g' | fold -s -w $(($(tput cols) - ${BOOKS_MARGIN:-10})) | less_pid && return 0
+            cmd_check epr epr && margin <(epr -d "$file" 2>/dev/null | sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g') && return 0
             ;;
     esac
 
-    cmd_check pandoc pandoc && pandoc -s -t plain -- "$file" | tee "${temp_file}" >/dev/null 2>&1 &&
-    margin "${temp_file}" && return 0
+    cmd_check pandoc pandoc && margin <(pandoc -s -t plain -- "$file") && return 0
     cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 &&
     margin "${temp_dir}"/*.txt && return 0 
     cmd_check -msg
@@ -212,12 +214,12 @@ ishtml() {
 	htmlopt=--unicode-snob
 	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
 	# 3 lines following can easily be reshuffled according to the preferred tool
-	cmd_check elinks elinks && nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null && return 0
-	cmd_check w3m w3m && handle_w3m "$1" </dev/null 2>/dev/null && return 0
-	cmd_check lynx lynx && lynx -force_html -dump "$arg1" </dev/null 2>/dev/null && return 0
+	cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0
+	cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0
+	cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0
 	# different versions of html2text existingi, force unicode
 	[[ "$1" == https://* ]] && return 0
-	cmd_check html2text python-html2text && _html2text "$htmlopt" "$1" </dev/null 2>/dev/null && return 0
+	cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0
     cmd_check -msg
 }
 
@@ -238,7 +240,11 @@ imgview() {
 
 less_img() {
     IMAGE_DIR="$1"
-    images=("$IMAGE_DIR"/*)
+    if [[ -d $IMAGE_DIR ]]; then
+        images=("$IMAGE_DIR"/*)
+    elif [[ -f $IMAGE_DIR ]]; then
+        images=("$IMAGE_DIR")
+    fi
     info_col="${INFO_COL:=\e[1;38;5;16;106m}"
     nc="\e[0m"
     index=0
@@ -302,8 +308,8 @@ pdfview() {
     cmd_check pdftotext poppler && 
     pdf_lines=$(pdftotext -l 1 -nopgbrk -q -- "$file" - | wc -l) &&
     [[ "$pdf_lines" -gt 0 ]] &&
-    pdftotext -layout -nopgbrk -q -- "$file" - 2>/dev/null | less_pid && return 0
-    cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" | less_pid && return 0 
+    margin <(pdftotext -layout -nopgbrk -q -- "$file" - 2>/dev/null) && return 0
+    cmd_check mutool mupdf && margin <(mutool draw -F txt -i -- "${file}") && return 0 
     cmd_check magick imagemagick && 
     magick -- "${file}" -auto-orient -filter Box -resize "$resolution" -quality 85 "$temp_file" 2>/dev/null &&
     find "${temp_dir}" -maxdepth 1 -type f | read -r && less_img "$temp_dir" && return 0
@@ -312,26 +318,26 @@ pdfview() {
 
 podview() {
     local file="$1"
-    cmd_check pod2text pod2text && pod2text "$file" 2>/dev/null | less_pid && return 0
-    cmd_check perldoc perldoc && perldoc -T "$file" 2>/dev/null | less_pid && return 0
+    cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0
+    cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0
     cmd_check -msg
 }
 
 djvuview() {
     local file="$1"
-    cmd_check djvutxt djvutxt && djvutxt "$file" 2>/dev/null | less_pid && return 0
+    cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0
     cmd_check -msg
 }
 
 psview() {
     local file="$1"
-    cmd_check ps2ascii ghostscript && nodash ps2ascii "$file" 2>/dev/null | less_pid && return 0
+    cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0
     cmd_check -msg
 }
 
 dviview() {
     local file="$1"
-    cmd_check dvi2tty dvi2tty && dvi2tty -q "$file" | less_pid && return 0
+    cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0
     cmd_check -msg
 }
 
@@ -387,7 +393,7 @@ select_book() {
             fi
             ;;
         png|jpg|jpeg)
-            if ! imgview "$book_path"; then
+            if ! less_img "$book_path"; then
                 printf '\n\e[33mImage file: %s\e[m\n' "${book_path##*/}"
                 return 1
             else
@@ -427,7 +433,7 @@ select_book() {
             fi
             ;;
         htm|html|xhtml|xml)
-            if ! ishtml "$book_path" | less_pid; then
+            if ! ishtml "$book_path"; then
                 printf '\n\e[33mWeb file: %s\e[m\n' "${book_path##*/}" 
                 return 1
             else
@@ -456,10 +462,10 @@ filtered_books=()
 
 temp_search_results="${TMPBOOKDIR}/grep_search_results.txt"
 
-stty -echo
-
 while true; do
     clear
+    stty -echo
+    printf '\e[?25l'
     echo -e "\nUse ↑/↓ or w/s to navigate, Enter to select a book, 'f' to find by name, 'g' to grep content.\n"
     display_books "$search_term"
     echo -e "\nOr use 'q' to exit."
@@ -483,12 +489,14 @@ while true; do
             fi
             ;;
         f|F)
+            stty echo
             echo -e "\nEnter search term: "
             read -r search_term
             mapfile -t filtered_books < <(find "$books_folder" "$xdg_books_folder" -type f -iname "*${search_term}*" -print0 2>/dev/null | xargs -0 -n1 echo)
             selected=0
             ;;
         g|G)
+            stty echo
             echo -e "\nEnter content search term: "
             read -r search_term
             grep -irl "$search_term" "$books_folder" "$xdg_books_folder" > "$temp_search_results" 2>/dev/null
@@ -496,25 +504,24 @@ while true; do
             selected=0
             ;;
         "")
-            break
+            # Display the selected book with highlight
+            if [[ -n "$search_term" ]]; then
+                echo -e "$highlight You selected: ${filtered_books[$selected]} $nc"
+            else
+                echo -e "$highlight You selected: ${books_list[$selected]} $nc"
+            fi
+            select_book
             ;;
         q|Q)
-            stty echo
+            reset
             exit 0
             ;;
         *)
             echo -e "\n${red}Invalid key!${nc}"
-            sleep 2
+            sleep 1
             ;;
     esac
     [[ -t 1 ]] || exit 1
 done
 
-# Display the selected book with highlight
 clear
-if [[ -n "$search_term" ]]; then
-    echo -e "$highlight You selected: ${filtered_books[$selected]} $nc"
-else
-    echo -e "$highlight You selected: ${books_list[$selected]} $nc"
-fi
-select_book
