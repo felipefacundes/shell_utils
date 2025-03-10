@@ -228,6 +228,8 @@ imgview() {
     
     [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
     img2sixel -w "${BOOKS_SIXEL_W:-1000}" -h "${BOOKS_SIXEL_H:-950}" "${file}" 2>/dev/null && return 0
+    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && [[ "${OS,,}" =~ "android" ]] &&
+    cmd_check viu viu && viu -w "${BOOKS_VIU_W:-63}" -h "${BOOKS_VIU_H:-25}" "${file}" 2>/dev/null && return 0
     [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && 
     cmd_check viu viu && viu -w "${BOOKS_VIU_W:-200}" -h "${BOOKS_VIU_H:-80}" "${file}" 2>/dev/null && return 0
     [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && cmd_check catimg catimg &&
@@ -348,6 +350,7 @@ xdg_open() {
 
 # Function to select and open a book
 select_book() {
+    OS=$(uname -o)
     local book_path="$1"
     local resolution=${RESOLUTION:=2480x3508} # A4 Dimension
     

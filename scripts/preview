@@ -255,6 +255,11 @@ setup_config() {
 # Key to copy a file or directory
 #PREVIEW_KEY_COPY=""
 
+# Copy to clipboard
+# Default: "Z"
+# Key to copy a file to clipboard
+#PREVIEW_KEY_CLIPBOARD=""
+
 # Toggle preview mode (first binding)
 # Default: "P"
 # Key to toggle between normal and preview modes
@@ -1531,6 +1536,10 @@ _mime_files() {
         else
             return 0
         fi
+    elif [[ "$mime_type" =~ (text|xml|python|css|htm|html|java|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null && return 0
+        any_file "$selected_file"
+        return 1
     fi
     return 1
 }
@@ -1891,6 +1900,48 @@ cmd_line() {
     printf '\e[2K\e[?25l\e8'
 }
 
+copy_to_clipboard() {
+    ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip."
+    local file="${1}"
+    local file_base="${1##*/}"
+    local file_ext="${1##*.}"
+    local ext_lower="${file_ext,,}"
+
+    if [ ! -f "$1" ]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' does not exist."
+        return 1
+    fi
+
+    local file_size=$(ls -l "$1" | awk '{print $5}')
+    local max_size=$((10 * 1024 * 1024))
+    get_mime_type "$file"
+
+    if [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
+        cat "$file" | xclip -selection clipboard -target image/jpg -i
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
+        cat "$file" | xclip -selection clipboard -target image/png -i
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(bmp)$ ]]; then
+        cat "$file" | xclip -selection clipboard -target image/bmp -i
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(ico)$ ]]; then
+        cat "$file" | xclip -selection clipboard -target image/ico -i
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
+        cat "$file" | xclip -selection clipboard -target image/gif -i
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    # elif [ "$file_size" -le "$max_size" ] && [[ "$mime_type" == *"text"* ]]
+    elif [ "$file_size" -le "$max_size" ] && 
+        [[ "$mime_type" =~ (text|xml|python|css|htm|html|java|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        cat "$file" | xclip -selection clipboard
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    else
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' is too large (>10 MB) or has an unsupported format and cannot be copied to the clipboard."
+    fi
+
+}
+
 copy_file() {
     [[ ! -e "${list[scroll]}" ]] &&
         return
@@ -2237,6 +2288,10 @@ keys() {
 
         ${PREVIEW_KEY_COPY:=C})
             copy_file
+        ;;
+
+        ${PREVIEW_KEY_CLIPBOARD:=Z})
+            copy_to_clipboard "${list[scroll]}"
         ;;
 
         ${PREVIEW_KEY_ERASE:=E})

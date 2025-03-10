@@ -1,0 +1,3 @@
+all_image() {
+    [[ "${1##*.}" =~ ^(jpg|jpeg|png|tif|tiff|bmp|gif|webp|svg|ico|heic|heif|raw|arw|cr2|nef|orf|sr2|psd|ai|eps|indd|cdr|dng|raf|rw2|pef|srw|x3f|jfif|exif|tga|pcx|pbm|pgm|ppm|hdr|bat|icns|jxl|jp2|jpx|jpm|mj2|avif|apng|bpg|dib|ecw|fits|flif|pgf|psb|sgi|tpl|wmf|emf|jxr|wdp|hdp|cur|ani|pns|jxs|jbig2|jng|mng|odg|otg|svgz|vml|wbmp|webm|wmp|xbm|xpm|xwd|yuv|kdc|mrw|dcr|mos|mef|iiq|3fr|erf|mdc|ptx|r3d|fff|nrw|srf|cap|rwz|crw|rwl)$ ]]
+}
