@@ -1243,7 +1243,7 @@ imgview() {
     local thumbnail="$2"
     
     [[ "$thumbnail" =~ ^-?[0-9]+$ ]] && {
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
+        [[ "${OS,,}" != "android" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
         img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0
          [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
         viu -w "${PREVIEW_THUMB_VIU_W:-50}" -h "${PREVIEW_THUMB_VIU_H:-16}" "${file}" 2>/dev/null && return 0
@@ -1253,7 +1253,7 @@ imgview() {
         chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0
     }
     [[ -z "$thumbnail" ]] && {
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+        [[ "${OS,,}" != "android" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
         img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ "${OS,,}" =~ "android" ]] &&
         cmd_check viu viu && viu -w "${PREVIEW_VIU_W:-63}" -h "${PREVIEW_VIU_H:-24}" "${file}" 2>/dev/null && return 0
@@ -1907,6 +1907,7 @@ cmd_line() {
 }
 
 copy_to_clipboard() {
+    [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && [[ "${OS,,}" != "android" ]] && ! type -p wl-copy >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install wl-clipboard." && return 1
     [[ "${OS,,}" != "android" ]] && ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip." && return 1
     [[ "${OS,,}" =~ "android" ]] && ! type -p termux-clipboard-set >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install termux-api." && return 1
     local file="${1}"
@@ -1923,27 +1924,31 @@ copy_to_clipboard() {
     local max_size=$((10 * 1024 * 1024))
     get_mime_type "$file"
 
-    if [[ "${OS,,}" =~ "android" ]] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp|bmp|jpg|jpeg|ico|gif)$ ]]; then
-        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' is too large (>10 MB) or has an unsupported format and cannot be copied to the clipboard."
-    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
-        cat "$file" | xclip -selection clipboard -target image/jpg -i
+    if [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/jpg -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
-        cat "$file" | xclip -selection clipboard -target image/png -i
+    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/png -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(bmp)$ ]]; then
-        cat "$file" | xclip -selection clipboard -target image/bmp -i
+    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(bmp)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/bmp -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(ico)$ ]]; then
-        cat "$file" | xclip -selection clipboard -target image/ico -i
+    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(ico)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/ico -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
-        cat "$file" | xclip -selection clipboard -target image/gif -i
+    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/gif -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
     elif [ "$file_size" -le "$max_size" ] && 
         [[ "$mime_type" == *"text"* || "$mime_type" =~ (text|xml|python|css|htm|html|java|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        [[ "${OS,,}" != "android" ]] && [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard
+        [[ "${OS,,}" != "android" ]] && [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         [[ "${OS,,}" =~ "android" ]] && cat "$file" | termux-clipboard-set
-        [[ "${OS,,}" != "android" ]] && cat "$file" | xclip -selection clipboard
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
     else
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' is too large (>10 MB) or has an unsupported format and cannot be copied to the clipboard."
