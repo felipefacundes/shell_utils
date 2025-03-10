@@ -1907,7 +1907,8 @@ cmd_line() {
 }
 
 copy_to_clipboard() {
-    ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip."
+    [[ "${OS,,}" != "android" ]] && ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip." && return 1
+    [[ "${OS,,}" =~ "android" ]] && ! type -p termux-clipboard-set >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install termux-api." && return 1
     local file="${1}"
     local file_base="${1##*/}"
     local file_ext="${1##*.}"
@@ -1922,7 +1923,7 @@ copy_to_clipboard() {
     local max_size=$((10 * 1024 * 1024))
     get_mime_type "$file"
 
-    if [[ "${OS,,}" =~ "android" ]] && [[ "$mime_type" == image/* ]]; then
+    if [[ "${OS,,}" =~ "android" ]] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp|bmp|jpg|jpeg|ico|gif)$ ]]; then
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' is too large (>10 MB) or has an unsupported format and cannot be copied to the clipboard."
     elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
         cat "$file" | xclip -selection clipboard -target image/jpg -i
@@ -1939,9 +1940,8 @@ copy_to_clipboard() {
     elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
         cat "$file" | xclip -selection clipboard -target image/gif -i
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    # elif [ "$file_size" -le "$max_size" ] && [[ "$mime_type" == *"text"* ]]
     elif [ "$file_size" -le "$max_size" ] && 
-        [[ "$mime_type" =~ (text|xml|python|css|htm|html|java|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        [[ "$mime_type" == *"text"* || "$mime_type" =~ (text|xml|python|css|htm|html|java|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
         [[ "${OS,,}" =~ "android" ]] && cat "$file" | termux-clipboard-set
         [[ "${OS,,}" != "android" ]] && cat "$file" | xclip -selection clipboard
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
