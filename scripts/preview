@@ -1256,7 +1256,7 @@ imgview() {
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
         img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && 
-        cmd_check viu viu && viu -w "${PREVIEW_VIU_H:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0
+        cmd_check viu viu && viu -w "${PREVIEW_VIU_W:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
         catimg -w "${PREVIEW_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0 
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&

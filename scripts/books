@@ -232,8 +232,12 @@ imgview() {
     cmd_check viu viu && viu -w "${BOOKS_VIU_W:-63}" -h "${BOOKS_VIU_H:-25}" "${file}" 2>/dev/null && return 0
     [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && 
     cmd_check viu viu && viu -w "${BOOKS_VIU_W:-200}" -h "${BOOKS_VIU_H:-80}" "${file}" 2>/dev/null && return 0
+    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && [[ "${OS,,}" =~ "android" ]] && 
+    cmd_check catimg catimg && catimg -w "${BOOKS_CATIMG_W:-50}" "${file}" 2>/dev/null && return 0 
     [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && cmd_check catimg catimg &&
     catimg -w "${BOOKS_CATIMG_W:-150}" "${file}" 2>/dev/null && return 0 
+    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && [[ "${OS,,}" =~ "android" ]] && 
+    cmd_check chafa chafa && chafa -s "${BOOKS_CHAFA_S:-23}" "${file}" 2>/dev/null && return 0
     [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && cmd_check chafa chafa &&
     chafa -s "${BOOKS_CHAFA_S:-70}" "${file}" 2>/dev/null && return 0
 
