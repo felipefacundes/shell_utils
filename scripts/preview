@@ -1922,7 +1922,9 @@ copy_to_clipboard() {
     local max_size=$((10 * 1024 * 1024))
     get_mime_type "$file"
 
-    if [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
+    if [ "$file_size" -le "$max_size" ] && [[ "${OS,,}" =~ "android" ]]; then
+        cat "$file" | termux-clipboard-set
+    elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
         cat "$file" | xclip -selection clipboard -target image/jpg -i
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
     elif [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
