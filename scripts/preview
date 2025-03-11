@@ -1243,9 +1243,9 @@ imgview() {
     local thumbnail="$2"
     
     [[ "$thumbnail" =~ ^-?[0-9]+$ ]] && {
-        [[ "${OS,,}" != "android" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
+        [[ -z "$TERMUX_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
         img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0
-         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
         viu -w "${PREVIEW_THUMB_VIU_W:-50}" -h "${PREVIEW_THUMB_VIU_H:-16}" "${file}" 2>/dev/null && return 0
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
         catimg -w "${PREVIEW_THUMB_CATIMG_W:-60}" "${file}" 2>/dev/null && return 0 
@@ -1253,17 +1253,17 @@ imgview() {
         chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0
     }
     [[ -z "$thumbnail" ]] && {
-        [[ "${OS,,}" != "android" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+        [[ -z "$TERMUX_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
         img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ "${OS,,}" =~ "android" ]] &&
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&
         cmd_check viu viu && viu -w "${PREVIEW_VIU_W:-63}" -h "${PREVIEW_VIU_H:-24}" "${file}" 2>/dev/null && return 0
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
         viu -w "${PREVIEW_VIU_W:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && [[ "${OS,,}" =~ "android" ]] &&
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && [[ -n "$TERMUX_VERSION" ]] &&
         cmd_check catimg catimg && catimg -w "${PREVIEW_CATIMG_W:-33}" "${file}" 2>/dev/null && return 0
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
         catimg -w "${PREVIEW_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && [[ "${OS,,}" =~ "android" ]] &&
+        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && [[ -n "$TERMUX_VERSION" ]] &&
         cmd_check chafa chafa && chafa -s "${PREVIEW_CHAFA_S:-17}" "${file}" 2>/dev/null && return 0
         [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
         chafa -s "${PREVIEW_CHAFA_S:-50}" "${file}" 2>/dev/null && return 0
@@ -1309,7 +1309,7 @@ video2static() {
     local info="${TMP_DIR}/info.txt"
     local resolution="${RESOLUTION/x/:}"
     local temp_file="${TMP_DIR}/temp_file.jpg"
-    [[ "${OS,,}" =~ "android" ]] && local sizeline=11
+    [[ -n "$TERMUX_VERSION" ]] && local sizeline=11
 
     function if_ff_extract {
         [[ -f "$temp_file" ]] && {
@@ -1335,7 +1335,7 @@ video2static() {
 media_info() {
     local file="$1"
     [[ "$sizeline" != 11 ]] && sizeline=27
-    # [[ "${OS,,}" =~ "android" ]] && cmd_check mediainfo mediainfo && 
+    # [[ -n "$TERMUX_VERSION" ]] && cmd_check mediainfo mediainfo && 
     # mediainfo "${file}" | sed '/General/d; /Complete name/d; s/                   //; s|\(.*:\)\s*.*/\([^/]*\)\(\.[^.]*\)$|\1\3|' | head -n "${sizeline}" && return 0
     cmd_check mediainfo mediainfo && mediainfo "${file}" |\
     sed '/General/d; /Complete name/d; /^Video/d; /^Audio/d; /^$/d; s/                   //; s|\(.*:\)\s*.*/|\1 |' |\
@@ -1542,7 +1542,7 @@ _mime_files() {
         else
             return 0
         fi
-    elif [[ "$mime_type" =~ (text|xml|python|css|htm|html|java|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+    elif [[ "$mime_type" =~ (text|xml|python|css|htm|html|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
         highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null && return 0
         any_file "$selected_file"
         return 1
@@ -1553,10 +1553,10 @@ _mime_files() {
 _draw_file_preview() {
     [[ -z "$1" ]] && local selected_file="${list[scroll]}"
     [[ -n "$1" ]] && local selected_file="$1"
-    [[ "${OS,,}" != "android" ]] && local sizeline="${sizeline:-30}"
-    [[ "${OS,,}" =~ "android" ]] && local sizeline="${sizeline:-20}"
-    [[ "${OS,,}" != "android" ]] && local width="${width:-200}"
-    [[ "${OS,,}" =~ "android" ]] && local width="${width:-50}"
+    [[ -z "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-30}"
+    [[ -n "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-20}"
+    [[ -z "$TERMUX_VERSION" ]] && local width="${width:-200}"
+    [[ -n "$TERMUX_VERSION" ]] && local width="${width:-50}"
 
     if [[ -d "$selected_file" ]]; then
         local leng="$(ls -1A "$selected_file" | wc -l)"
@@ -1907,9 +1907,9 @@ cmd_line() {
 }
 
 copy_to_clipboard() {
-    [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && [[ "${OS,,}" != "android" ]] && ! type -p wl-copy >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install wl-clipboard." && return 1
-    [[ "${OS,,}" != "android" ]] && ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip." && return 1
-    [[ "${OS,,}" =~ "android" ]] && ! type -p termux-clipboard-set >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install termux-api." && return 1
+    [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && [[ -z "$TERMUX_VERSION" ]] && ! type -p wl-copy >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install wl-clipboard." && return 1
+    [[ -z "$TERMUX_VERSION" ]] && ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip." && return 1
+    [[ -n "$TERMUX_VERSION" ]] && ! type -p termux-clipboard-set >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install termux-api." && return 1
     local file="${1}"
     local file_base="${1##*/}"
     local file_ext="${1##*.}"
@@ -1924,31 +1924,31 @@ copy_to_clipboard() {
     local max_size=$((10 * 1024 * 1024))
     get_mime_type "$file"
 
-    if [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
+    if [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
         [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/jpg -i
         [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
         [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/png -i
         [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(bmp)$ ]]; then
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(bmp)$ ]]; then
         [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/bmp -i
         [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(ico)$ ]]; then
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(ico)$ ]]; then
         [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/ico -i
         [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
-    elif [[ "${OS,,}" != "android" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
         [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/gif -i
         [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
     elif [ "$file_size" -le "$max_size" ] && 
-        [[ "$mime_type" == *"text"* || "$mime_type" =~ (text|xml|python|css|htm|html|java|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
-        [[ "${OS,,}" != "android" ]] && [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard
-        [[ "${OS,,}" != "android" ]] && [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
-        [[ "${OS,,}" =~ "android" ]] && cat "$file" | termux-clipboard-set
+        [[ "$mime_type" == *"text"* || "$mime_type" =~ (text|xml|python|css|htm|html|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        [[ -z "$TERMUX_VERSION" ]] && [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard
+        [[ -z "$TERMUX_VERSION" ]] && [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        [[ -n "$TERMUX_VERSION" ]] && cat "$file" | termux-clipboard-set
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
     else
         printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' is too large (>10 MB) or has an unsupported format and cannot be copied to the clipboard."
@@ -2250,7 +2250,7 @@ mark() {
 
 keys() {
     local key="$1"
-    [[ "${OS,,}" =~ "android" ]] && PREVIEW_LOOP_SCROLL=0
+    [[ -n "$TERMUX_VERSION" ]] && PREVIEW_LOOP_SCROLL=0
 
     [[ "$key" == $'\e' ]] && {
         read "${read_flags[@]}" -rsn 2
@@ -2658,7 +2658,6 @@ keys() {
 }
 
 main() {
-    OS=$(uname -o)
     SCRIPT="${0##*/}"
     TMPDIR="${TMPDIR:-/tmp}"
     TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
