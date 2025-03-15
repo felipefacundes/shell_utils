@@ -269,7 +269,9 @@ less_img() {
 
     # Pagination loop
     while true; do
-        printf '\e7\e[999H\e[K%b%s%b\e8' "$info_col" "Up: up or w | Down: down or s | Quit: q" "$nc"
+        total_page=${#images[@]}
+        current_page=$((index + 1))
+        printf '\e7\e[999H\e[K%b%s%b\e8' "$info_col" "Page: $current_page/$total_page | Up: up or w | Down: down or s | Quit: q" "$nc"
 
         read -rsn 1 key
 

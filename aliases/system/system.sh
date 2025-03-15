@@ -38,6 +38,7 @@ alias copy='clip'
 
 alias u='sudo pacman -Syyu --noconfirm --overwrite "*"'
 alias up="u"
+alias autoremove='sudo pacman -Rcs $(pacman -Qtdq)'
 
 if command -v yay &>/dev/null; then
     alias ua='u; yay -Sua'
