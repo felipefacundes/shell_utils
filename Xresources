@@ -179,14 +179,15 @@ URxvt*vt100*translations: #override \
 
 
 ! ------------------------------------------------------------------------------
-! xterm
+! RUN COMMAND: xrdb -merge ~/.Xresources
+! xterm 
 xterm*depth: 24
 xterm*termName: xterm-256color
 xterm*font: Hack NF
-xterm*faceName: Hack NF:size=18
-xterm*boldFont: xft:Hack NF:bold:size=18
-xterm*italicFont: xft:Hack NF:italic:size=18
-xterm*boldItalicFont: xft:Hack NF:bold:italic:size=18
+xterm*faceName: Hack NF:size=13
+xterm*boldFont: xft:Hack NF:bold:size=13
+xterm*italicFont: xft:Hack NF:italic:size=13
+xterm*boldItalicFont: xft:Hack NF:bold:italic:size=13
 xterm*antialias: true
 xterm*subPixel: true
 xterm*subPixelOrder: RGB

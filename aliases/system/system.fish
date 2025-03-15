@@ -36,8 +36,16 @@ alias clipcopy='clip'
 alias pbcopy='clip'
 alias copy='clip'
 
+alias u='sudo pacman -Syyu --noconfirm --overwrite "*"'
+alias up="u"
+
+if command -v yay > /dev/null
+    alias ua='u; yay -Sua'
+    alias sua='ua'
+    alias Sua='ua'
+end
+
 alias c='clear'
-alias u='sudo pacman -Syyu --noconfirm'
 alias list-gpu='~/.shell_utils/scripts/faqs/list-gpu.sh'
 alias gpu-list='list-gpu'
 alias INTEL='~/.shell_utils/scripts/faqs/intel-modesetting.sh'
@@ -52,7 +60,6 @@ alias mv='mv -v --backup=t'
 alias aur="yay -S --nodiffmenu --noeditmenu --noupgrademenu --mflags --skipinteg --noconfirm"
 alias cpi="cpupower frequency-info"
 alias cpu="cpupower frequency-info; lscpu"
-alias up="sudo pacman -Syyu"
 alias so="echo source ~/.zshrc; source ~/.zshrc"
 alias lwine="rm -rf ~/.local/share/applications/*wine*"
 alias remove_wine_desktop_shortcuts="lwine"

@@ -69,8 +69,8 @@ has_the_kernel_been_updated() {
             if [[ "$kernel_booted" != "$kernel_updated" ]]; then
                 [[ ! -f "${lock_file}.notification" ]] && notify-send -i "$icon" -u critical "Updated kernel" "Reboot system"
                 if [[ ! -f "$lock_file" ]]; then 
-                    sleep 15; ~/.shell_utils/scripts/systray_icon.py -i "$icon" -t "Reboot System" -m "Updated kernel" -n "Reboot system" &
-                    sleep 15; beep_reboot & ask_reboot &
+                    sleep 45; ~/.shell_utils/scripts/systray_icon.py -i "$icon" -t "Reboot System" -m "Updated kernel" -n "Reboot system" &
+                    sleep 60; beep_reboot & ask_reboot &
                     touch "$lock_file"
                 fi
             fi

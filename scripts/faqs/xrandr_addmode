@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+cat <<'EOF'
+First, list all available video outputs and the connected monitors using the command:
+$ xrandr
+
+CVT generates a model line based on the resolution and update rate you want. 
+For example, to create a mode of 1920x1080 to 75 Hz, run:
+$ cvt 1920 1080 75
+
+Output of CVT
+# 1920x1080 74.96 Hz (CVT 2.07M9) hsync: 83.85 kHz; pclk: 220.75 MHz
+Modeline "1920x1080_75.00"  220.75  1920 2056 2256 2592  1080 1083 1088 1129 -hsync +vsync
+
+Copy the generated model line (the second line).
+Use the previously copied model line:
+$ xrandr --newmode "1920x1080_75.00"  220.75  1920 2056 2256 2592  1080 1083 1088 1129 -hsync +vsync
+
+Add mode to the desired monitor. For example, to add to HDMI-0:
+$ xrandr --addmode HDMI-0 1920x1080_75.00
+
+Now apply video mode to the desired monitor. For example, to apply to HDMI-0:
+$ xrandr --output HDMI-0 --mode 1920x1080_75.00 --rate 75
+EOF
