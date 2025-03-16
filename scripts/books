@@ -64,8 +64,6 @@ for i in "${!books_list[@]}"; do
     esac
 done
 
-books_list=("${books_list[@]}")
-
 # ANSI color for highlighting the selected book
 red="\033[1;31m"
 highlight="\033[44;1;32m"  # Cyan background, bold green text
