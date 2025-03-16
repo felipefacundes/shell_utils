@@ -50,6 +50,22 @@ else
     unset news_books
 fi
 
+for i in "${!books_list[@]}"; do
+    declare -l ext_test="${books_list[$i]##*.}"
+    declare -l ext_test="${ext_test,,}" # lowercase
+
+    case $ext_test in 
+        csv|xls|xlsx|rtf|doc|docx|odt|ods|odp|sxw|ppt|pptx|ipynb|epub|txt|md|markdown|pod|pdf|png|jpg|jpeg|djvu|postscript|ps|dvi|htm|html|xhtml|xml)
+            continue
+        ;;
+        *)
+            unset "books_list[$i]"
+        ;;
+    esac
+done
+
+books_list=("${books_list[@]}")
+
 # ANSI color for highlighting the selected book
 red="\033[1;31m"
 highlight="\033[44;1;32m"  # Cyan background, bold green text
@@ -465,6 +481,7 @@ selected=0
 esc=$'\e'
 up=$'\e[A'
 down=$'\e[B'
+right=$'\e[C'
 search_term=""
 filtered_books=()
 
@@ -474,7 +491,7 @@ while true; do
     clear
     stty -echo
     printf '\e[?25l'
-    echo -e "\nUse ↑/↓ or w/s to navigate, Enter to select a book, 'f' to find by name, 'g' to grep content.\n"
+    echo -e "\nUse ↑/↓ or w/s to navigate, Enter to select a book, 'f' to find by name, 'c' clear search, 'g' to grep content.\n"
     display_books "$search_term"
     echo -e "\nOr use 'q' to exit."
 
@@ -500,8 +517,21 @@ while true; do
             stty echo
             echo -e "\nEnter search term: "
             read -r search_term
-            mapfile -t filtered_books < <(find "$books_folder" "$xdg_books_folder" -type f -iname "*${search_term}*" -print0 2>/dev/null | xargs -0 -n1 echo)
-            selected=0
+
+            # Busca os livros e armazena temporariamente em uma variável
+            search_results=$(find "$books_folder" "$xdg_books_folder" -type f -iname "*${search_term}*" -print 2>/dev/null)
+
+            # Verifica se há resultados
+            if [[ -z "$search_results" ]]; then
+                echo -e "\n${red}Book not found${nc}"
+                sleep 1
+                search_term=""  # Limpa o termo de pesquisa
+                filtered_books=()  # Limpa o array de livros filtrados
+            else
+                # Se houver resultados, mapeia para o array filtered_books
+                mapfile -t filtered_books <<< "$search_results"
+                selected=0
+            fi
             ;;
         g|G)
             stty echo
@@ -511,7 +541,7 @@ while true; do
             mapfile -t filtered_books < "$temp_search_results"
             selected=0
             ;;
-        "")
+        ""|"$right")
             # Display the selected book with highlight
             if [[ -n "$search_term" ]]; then
                 echo -e "$highlight You selected: ${filtered_books[$selected]} $nc"
@@ -519,6 +549,10 @@ while true; do
                 echo -e "$highlight You selected: ${books_list[$selected]} $nc"
             fi
             select_book
+            search_term=""
+            ;;
+        c|C)
+            search_term=""
             ;;
         q|Q)
             reset
