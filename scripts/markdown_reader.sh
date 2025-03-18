@@ -321,21 +321,27 @@ process_markdown() {
     [[ "$NO_LESS" == 1 ]] && pipe='cat'
     read -r -a cmd <<< "$pipe"
     
-    # Check if file exists
-    if [[ ! -f "$input_file" ]]; then
-        update_variables
-        echo -e "${MESSAGES[not_found]}"
-        show_help
+    # Check if input is from stdin (no file provided or file is '-')
+    if [[ -z "$input_file" || "$input_file" == "-" ]]; then
+        input_source="/dev/stdin"
+    else
+        # Check if file exists
+        if [[ ! -f "$input_file" ]]; then
+            update_variables
+            echo -e "${MESSAGES[not_found]}"
+            show_help
+        fi
+        input_source="$input_file"
     fi
     
-    # Read and process the markdown file line by line
+    # Read and process the markdown file or stdin line by line
     while IFS= read -r line || [ -n "$line" ]; do
 
         # Italic HTML tag
-        if [[ "$line" =~ \<i\>([^<]+)\<\/i\> ]]; then #[[ "$line" =~ \<i\>.*\<\/i\> ]] || 
+        if [[ "$line" =~ \<i\>([^<]+)\<\/i\> ]]; then #[[ "$line" =~ \<i\>.*\<\/i\> ]] ||
             detect_first_color
             line=$(echo -e "$line" | awk -v highlight="${COLOR_BULLET}" -v reset="${first_color}" '{gsub(/<i>([^<]*)<\/i>/, "<i>" highlight "&" reset "</i>")}1')
-        elif [[ "$line" =~ \<em\>([^<]+)\<\/em\> ]]; then #[[ "$line" =~ \<em\>.*\<\/em\> ]] ||
+        elif [[ "$line" =~ \<em\>([^<]+)\<\/em\> ]]; then
             detect_first_color
             line=$(echo -e "$line" | awk -v highlight="${COLOR_BULLET}" -v reset="${first_color}" '{gsub(/<em>([^<]*)<\/em>/, "<em>" highlight "&" reset "</em>")}1')
         fi
@@ -350,9 +356,9 @@ process_markdown() {
         if [[ "$line" =~ \*\*\<[^*]+\>\*\* ]] || [[ "$line" =~ \"\<[^*]+\>\" ]] || [[ "$line" =~ \'\<[^*]+\>\' ]] || [[ "$line" =~ \`\<[^*]+\>\` ]]; then
             true
         elif [[ "$line" =~ (.*)\<[^*]+\>(.*) ]]; then
+			# line="${line//<br>/}"
+			# line="${line//<\/br>/}"
             line=$(echo -e "$line" | sed 's/<[^>]*>//g')
-            # line="${line//<br>/}"
-            # line="${line//<\/br>/}"
         fi
 
         # Handle code blocks
@@ -448,7 +454,6 @@ process_markdown() {
             [[ "$NO_COLOR" == 1 || "$NO_CENTRALIZE" == 1 ]] && line=$(echo -e "${COLOR_TITLE1}" "${BASH_REMATCH[1]}")      
         fi
 
-        #if [[ "$line" =~ (.+)######[^#](.+)$ ]]; then
         if [[ "$line" =~ (.*)######(.*) ]]; then
             detect_first_color
             line=$(echo -e "$line" | awk -v bold="${COLOR_TITLE6}" -v reset="${first_color}" '{gsub(/######([^#]+)/, bold "&" reset)}1' | sed -E "s/######//g")
@@ -479,9 +484,10 @@ process_markdown() {
             echo -e "$line"    # Regular text
         fi
 
-    done < "$input_file" | "${cmd[@]}"
+    done < "$input_source" | "${cmd[@]}"
 }
 
+# Main function
 # Main function
 main() {
     local MARKDOWN_FILE=""
@@ -533,20 +539,17 @@ main() {
     
     define_colors
 
-    # Check if file is provided
-    if [ -z "$MARKDOWN_FILE" ]; then
-        update_variables
-        echo -e "${MESSAGES[no_input]}"
-        show_help
-    fi
-    
     # Check dependencies if syntax highlighting is enabled
     if [ -z "$NO_HIGHLIGHT" ]; then
         check_dependencies
     fi
     
-    # Process the markdown file
-    process_markdown "$MARKDOWN_FILE"
+    # Process input from file or stdin
+    if [[ -z "$MARKDOWN_FILE" || "$MARKDOWN_FILE" == "-" ]]; then
+        process_markdown ""
+    else
+        process_markdown "$MARKDOWN_FILE"
+    fi
 }
 
 # Call main with all arguments and pipe to less with raw output
