@@ -181,6 +181,8 @@ URxvt*vt100*translations: #override \
 ! ------------------------------------------------------------------------------
 ! RUN COMMAND: xrdb -merge ~/.Xresources
 ! xterm 
+! Allow sixel graphics. (Try: "convert -colors 16 foo.jpg sixel:-").
+xterm*decTerminalID	:	vt340
 xterm*depth: 24
 xterm*termName: xterm-256color
 xterm*font: Hack NF

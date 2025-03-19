@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+
+: <<DISCLAIMER
+This script was entirely created by hackerb9 (https://github.com/hackerb9/lsix)
+and is available in their GitHub repository.
+It was designed to display image thumbnails directly in the terminal using Sixel graphics,
+with support for customizations such as thumbnail size, background colors, and fonts.
+
+Modifications made:
+
+- Error output suppression: Filters were added to suppress unnecessary error messages,
+  such as warnings from Inkscape and TIFF.
+
+- Fallback to viu: If the terminal does not support Sixel, the script now generates a
+  temporary image using montage and convert from ImageMagick and displays it using viu,
+  a lightweight tool for viewing images in the terminal.
+
+These changes aim to improve the user experience on terminals without Sixel support,
+while preserving the original functionality of the script.
+DISCLAIMER
+
+# ls_image: like ls, but for images.
+# Shows thumbnails of images with titles directly in terminal.
+
+# Requirements: ImageMagick, viu (for fallback), and a Sixel terminal (optional)
+
+# The following defaults may be overridden if autodetection succeeds.
+numcolors=16     # Default number of colors in the palette.
+background=white # Default montage background.
+foreground=black # Default text color.
+width=800        # Default width of screen in pixels.
+
+# Feel free to edit these defaults to your liking.
+tilesize=120        # Width and height of each tile in the montage.
+tilewidth=$tilesize # (or specify separately, if you prefer)
+tileheight=$tilesize
+
+# If you get questionmarks for Unicode filenames, try using a different font.
+# You can list fonts available using `convert -list font`.
+#fontfamily=Droid-Sans-Fallback        # Great Asian font coverage
+fontfamily=Dejavu-Sans                # Wide coverage, comes with GNU/Linux
+#fontfamily=Mincho                    # Wide coverage, comes with MS Windows
+
+# Default font size is based on width of each tile in montage.
+fontsize=$((tilewidth/10))
+#fontsize=16             # (or set the point size directly, if you prefer)
+
+timeout=1.0             # How long to wait for terminal to respond
+                        # to a control sequence (in seconds).
+
+shopt -s expand_aliases        # Allow aliases for working around quirks.
+
+# For ImageMagick 6 <-> 7 compatibility.
+if type magick &>/dev/null; then
+    alias convert='magick'
+    alias montage='magick montage'
+fi
+
+if ! command -v magick montage &>/dev/null; then    # (implicit 'or')
+    echo "Please install ImageMagick" >&2
+    exit 1
+fi
+
+if type gsed &>/dev/null; then
+    alias sed=gsed        # Use GNU sed for MacOS & BSD.
+fi
+
+cleanup() {
+    echo -n $'\e\\'        # Escape sequence to stop SIXEL.
+    stty echo            # Reset terminal to show characters.
+    exit 0
+}
+trap cleanup SIGINT SIGHUP SIGABRT EXIT
+
+autodetect() {
+    # Various terminal automatic configuration routines.
+
+    # Don't show escape sequences the terminal doesn't understand.
+    stty -echo            # Hush-a Mandara Ni Pari
+
+    # IS TERMINAL SIXEL CAPABLE?        # Send Device Attributes
+    IFS=";?c" read -ra REPLY -s -t 1 -d "c" -p $'\e[c' >&2
+    for code in "${REPLY[@]}"; do
+        if [[ $code == "4" ]]; then
+            hassixel=yup
+            break
+        fi
+    done
+
+    # YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then hassixel=yeah; fi
+
+    if [[ -z "$hassixel" && -z "$LSIX_FORCE_SIXEL_SUPPORT" ]]; then
+        echo "Your terminal does not support Sixel graphics. Falling back to viu for image display." >&2
+        use_viu=true
+    fi
+
+    # TERMINAL COLOR AUTODETECTION.
+    # Find out how many color registers the terminal has
+    IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
+    [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+
+    # YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then numcolors=256; fi
+
+    # Increase colors, if needed
+    if [[ $numcolors -lt 256 ]]; then
+        # Attempt to set the number of colors to 256.
+        # This will work for xterm, but fail on a real vt340.
+        IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;3;256S' >&2
+        [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+    fi
+
+    # Query the terminal background and foreground colors.
+    IFS=";:/"  read -a REPLY -r -s -t ${timeout} -d "\\" -p $'\e]11;?\e\\' >&2
+    if [[ ${REPLY[1]} =~ ^rgb ]]; then
+        # Return value format: $'\e]11;rgb:ffff/0000/ffff\e\\'.
+        # ImageMagick wants colors formatted as #ffff0000ffff.
+        background='#'${REPLY[2]}${REPLY[3]}${REPLY[4]%%$'\e'*}
+        IFS=";:/"  read -a REPLY -r -s -t ${timeout} -d "\\" -p $'\e]10;?\e\\' >&2
+        if [[ ${REPLY[1]} =~ ^rgb ]]; then
+            foreground='#'${REPLY[2]}${REPLY[3]}${REPLY[4]%%$'\e'*}
+            # Check for "Reverse Video" (DECSCNM screen mode).
+            IFS=";?$"  read -ra REPLY -s -t ${timeout} -d "y" -p $'\e[?5$p'
+            if [[ ${REPLY[2]} == 1 || ${REPLY[2]} == 3 ]]; then
+                temp=$foreground
+                foreground=$background
+                background=$temp
+            fi
+        fi
+    fi
+    # YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then background=black; foreground=white; fi
+
+    # Send control sequence to query the sixel graphics geometry to
+    # find out how large of a sixel image can be shown.
+    IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?2;1;0S' >&2
+    if [[ ${REPLY[2]} -gt 0 ]]; then
+        width=${REPLY[2]}
+    else
+        # Nope. Fall back to dtterm WindowOps to approximate sixel geometry.
+        IFS=";" read -ra REPLY -s -t ${timeout} -d "t" -p $'\e[14t' >&2
+        if [[ $? == 0  &&  ${REPLY[2]} -gt 0 ]]; then
+            width=${REPLY[2]}
+        fi
+    fi
+
+    # BUG WORKAROUND: XTerm cannot show images wider than 1000px.
+    # Remove this hack once XTerm gets fixed. Last checked: XTerm(344)
+    if [[ $TERM =~ xterm && $width -ge 1000 ]]; then  width=1000; fi
+
+    # Space on either side of each tile is less than 0.5% of total screen width
+    tilexspace=$((width/201))
+    tileyspace=$((tilexspace/2))
+    # Figure out how many tiles we can fit per row. ("+ 1" is for -shadow).
+    numtiles=$((width/(tilewidth + 2*tilexspace + 1)))
+}
+
+main() {
+    # Discover and setup the terminal
+    autodetect
+
+    if [[ $# == 0 ]]; then
+        # No command line args? Use a sorted list of image files in CWD.
+        shopt -s nullglob nocaseglob nocasematch
+        set -- *{jpg,jpeg,png,gif,webp,tiff,tif,p?m,x[pb]m,bmp,ico,svg,eps}
+        [[ $# != 0 ]] || exit
+        readarray -t < <(printf "%s\n" "$@" | sort)
+
+        # Only show first frame of animated GIFs if filename not specified.
+        for x in ${!MAPFILE[*]}; do
+            if [[ ${MAPFILE[$x]} =~ (gif|webp)$ ]]; then
+                MAPFILE["$x"]="${MAPFILE[$x]}[0]"
+            fi
+        done
+        set -- "${MAPFILE[@]}"
+    else
+        # Command line args specified. Check for directories.
+        ls_image=$(realpath "$0")
+        for arg; do
+            if [ -d "$arg" ]; then
+                echo "Recursing on $arg" >&2
+                (cd "$arg" || false; $ls_image)
+            else
+                nodirs+=("$arg")
+            fi
+        done
+        set -- "${nodirs[@]}"
+    fi
+
+    # Resize on load: Save memory by appending this suffix to every filename.
+    resize="[${tilewidth}x${tileheight}]"
+
+    imoptions="-tile ${numtiles}x1" # Each montage is 1 row x $numtiles columns
+    imoptions+=" -geometry ${tilewidth}x${tileheight}>+${tilexspace}+${tileyspace}" # Size of each tile and spacing
+    imoptions+=" -background $background -fill $foreground" # Use terminal's colors
+    imoptions+=" -auto-orient "    # Properly rotate JPEGs from cameras
+    if [[ $numcolors -gt 16 ]]; then
+        imoptions+=" -shadow "        # Just for fun :-)
+    fi
+
+    # See top of this file to change fontfamily and fontsize.
+    [[ "$fontfamily" ]]  &&  imoptions+=" -font $fontfamily "
+    [[ "$fontsize" ]] &&     imoptions+=" -pointsize $fontsize "
+
+    # Create and display montages one row at a time.
+    while [ $# -gt 0 ]; do
+        # While we still have images to process...
+        onerow=()
+        goal=$(($# - numtiles)) # How many tiles left after this row
+        while [ $# -gt 0 -a $# -gt $goal ]; do
+            len=${#onerow[@]}
+            onerow[len++]="-label"
+            onerow[len++]=$(processlabel "$1")
+            onerow[len++]="file://$1"
+            shift
+        done
+
+        # Generate a temporary file for the montage
+        tempfile=$(mktemp /tmp/ls_image_XXXXXX.png)
+
+        # Generate the montage and save it to the temporary file
+        montage -quiet "${onerow[@]}" $imoptions "$tempfile" 2> >(tee /tmp/ls_image_errors.log | grep -v -e "TIFFReadDirectory" -e "Inkscape" >&2)
+
+        if [[ "$use_viu" == true ]]; then
+            # Use viu to display the temporary image file
+            viu "$tempfile"
+        else
+            # Display the montage using Sixel
+            convert -quiet "$tempfile" -colors $numcolors sixel:-
+        fi
+
+        # Clean up the temporary file
+        rm -f "$tempfile"
+    done
+}
+
+processlabel() {
+    # This routine is mostly to appease ImageMagick.
+    # 1. Remove silly [0] suffix and : prefix.
+    # 2. Quote percent backslash, and at sign.
+    # 3. Replace control characters with question marks.
+    # 4. If a filename is too long, remove extension (.jpg).
+    # 5. Split long filenames with newlines (recursively)
+    span=15            # filenames longer than span will be split
+    echo -n "$1" |
+        sed 's|^:||; s|\[0]$||;' | tr '[:cntrl:]' '?' |
+        awk -v span=$span -v ORS=""  '
+    function halve(s,      l,h) {    # l and h are locals
+        l=length(s);  h=int(l/2);
+        if (l <= span) { return s; }
+        return halve(substr(s, 1, h))  "\n"  halve(substr(s, h+1));
+    }
+    {
+      if ( length($0) > span ) gsub(/\..?.?.?.?$/, "");
+      print halve($0);
+    }
+    ' |
+        sed 's|%|%%|g; s|\\|\\\\|g; s|@|\\@|g;'
+}
+
+main "$@"
+
+# Send an escape sequence and wait for a response from the terminal
+# so that the program won't quit until images have finished transferring.
+read -rst 60 -d "c" -p $'\e[c' >&2
