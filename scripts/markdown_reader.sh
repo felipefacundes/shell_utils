@@ -274,14 +274,15 @@ highlight_code() {
     # Create temporary file for source-highlight
     echo "$content" > "$temp_file"
     
-    env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
+    [[ -z "$HIGH_MARK" || "$HIGH_MARK" == 1 ]] && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
         --out-format="${highlight_format}" \
         --force -- "${temp_file}" && rm -f "$temp_file" && return 0
-    env COLORTERM=8bit bat --color=always --style="plain" \
+    [[ -z "$HIGH_MARK" || "$HIGH_MARK" == 2 ]] && env COLORTERM=8bit bat --color=always --style="plain" \
         -- "${temp_file}" && rm -f "$temp_file" && return 0
     # Attempt syntax highlighting with specified language
-    source-highlight -f esc -s "$lang" -i "$temp_file" 2>/dev/null && rm -f "$temp_file" && return 0
-    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}"\
+    [[ -z "$HIGH_MARK" || "$HIGH_MARK" == 3 ]] && source-highlight -f esc -s "$lang" -i "$temp_file" 2>/dev/null &&
+	rm -f "$temp_file" && return 0
+    [[ -z "$HIGH_MARK" || "$HIGH_MARK" == 4 ]] && pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}"\
         -- "${temp_file}" && rm -f "$temp_file" && return 0
 
 	printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$content" && return 1

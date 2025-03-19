@@ -1490,13 +1490,13 @@ highlight_code() {
 
     # Attempt syntax highlighting with specified language
     cmd_check bat bat && env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "${file}" && return 0
+    cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
+        --out-format="${highlight_format}" \
+        --force -- "${file}" 2>/dev/null && return 0
     cmd_check source-highlight source-highlight &&
     source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0
     cmd_check pygmentize python-pygments && 
     pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}" -- "${file}" && return 0
-    cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
-        --out-format="${highlight_format}" \
-        --force -- "${file}" 2>/dev/null && return 0
     cmd_check glow glow && _glow "${file}" && return 0
     cmd_check mdless mdless && mdless -P -- "${file}" && return 0
     cmd_check mdcat mdcat && mdcat -- "${file}" && return 0
