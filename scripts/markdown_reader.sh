@@ -88,16 +88,15 @@ define_colors() {
     readonly COLOR_RESET='\033[0m'                                          # Reset color
 }
 
-
 # Check the system language and assign messages accordingly
+declare -A MESSAGES
 update_variables() {
-    declare -A MESSAGES
-
     if [[ "${LANG,,}" =~ pt_ ]]; then
         MESSAGES=(
             ["please_install"]="${RED}Erro: Dependências ausentes: ${YELLOW}${missing_deps[*]}\n${RED}Por favor, instale os pacotes necessários e tente novamente.${COLOR_RESET}"
             ["not_found"]="${RED}Arquivo não encontrado: ${input_file}${COLOR_RESET}\n"
             ["no_input"]="${RED}Erro: Nenhum arquivo de entrada especificado${COLOR_RESET}\n"
+			["and"]="${YELLOW}e"
             ["help"]=$(
         cat << EOF
 Leitor de Markdown - Um analisador e formatador de Markdown completo
@@ -133,6 +132,7 @@ EOF
             ["please_install"]="${RED}Error: Dependencias faltantes: ${YELLOW}${missing_deps[*]}\n${RED}Por favor, instala los paquetes necesarios e inténtalo de nuevo.${COLOR_RESET}"
             ["not_found"]="${RED}Archivo no encontrado: ${input_file}${COLOR_RESET}\n"
             ["no_input"]="${RED}Error: Ningún archivo de entrada especificado${COLOR_RESET}\n"
+			["and"]="${YELLOW}y"
             ["help"]=$(
         cat << EOF
 Lector de Markdown - Un analizador y formateador de Markdown completo
@@ -168,6 +168,7 @@ EOF
             ["please_install"]="${RED}Error: Missing dependencies: ${YELLOW}${missing_deps[*]}\n${RED}Please install the required packages and try again.${COLOR_RESET}"
             ["not_found"]="${RED}File not found: $input_file${COLOR_RESET}\n"
             ["no_input"]="${RED}Error: No input file specified${COLOR_RESET}\n"
+			["and"]="${YELLOW}and"
             ["help"]=$(
         cat << EOF
 Markdown Reader - A complete Markdown parser and formatter
@@ -201,20 +202,41 @@ EOF
     fi
 }
 
+cmd_check() {
+    if ! command -v "$1" 1>/dev/null && no_cmd+=("$1"); then
+		[[ "${#no_cmd[*]}" -gt 1 ]] && missing_deps=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
+		{if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || missing_deps="${no_cmd[*]}"
+		return 1
+	else
+	 	return 0
+	fi
+}
+
+_no_cmd() {
+	cmd_check highlight
+	cmd_check bat
+	cmd_check source-highlight
+	cmd_check pygmentize
+	if [ ${#no_cmd[@]} -ge 4 ]; then
+		return 1
+	fi
+	missing_deps=()
+	return 0
+}
 
 # Check for required dependencies
 check_dependencies() {
-    local os=$(uname -o)
-    local missing_deps=()
-    local count=0
-    for cmd in source-highlight less; do
-        if ! command -v "$cmd" &> /dev/null; then
-            missing_deps+=("$cmd")
-            [[ ${missing_deps[count]} == "source-highlight" ]] && [[ -n "$TERMUX_VERSION" ]] && \
-            [[ "$os" =~ "Android" ]] && unset 'missing_deps[-1]' && export NO_HIGHLIGHT=1
-            ((count++)) || true
-        fi
-    done
+	update_variables
+
+	_no_cmd
+
+	if ! command -v less &> /dev/null; then
+		if [ ${#missing_deps[@]} -ne 0 ]; then
+			missing_deps+=("${MESSAGES[and]} less")
+		else
+			missing_deps+=("less")
+		fi
+	fi
     
     if [ ${#missing_deps[@]} -ne 0 ]; then
         update_variables
@@ -257,12 +279,12 @@ highlight_code() {
         --force -- "${temp_file}" && rm -f "$temp_file" && return 0
     env COLORTERM=8bit bat --color=always --style="plain" \
         -- "${temp_file}" && rm -f "$temp_file" && return 0
+    # Attempt syntax highlighting with specified language
+    source-highlight -f esc -s "$lang" -i "$temp_file" 2>/dev/null && rm -f "$temp_file" && return 0
     pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}"\
         -- "${temp_file}" && rm -f "$temp_file" && return 0
 
-    # Attempt syntax highlighting with specified language
-    source-highlight -f esc -s "$lang" -i "$temp_file" 2>/dev/null && rm -f "$temp_file" && return 0
-        printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$content" && return 1
+	printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$content" && return 1
 }
 
 # Function to generate line separator
@@ -274,7 +296,7 @@ line_shell() {
 fill_background() {
     local color="$1"
     local text="$2"
-    local cols=$(tput cols)
+    cols=$(tput cols)
     printf "${color}%-*s${COLOR_RESET}\n" "$cols" "$text"
 }
 
@@ -488,7 +510,6 @@ process_markdown() {
 }
 
 # Main function
-# Main function
 main() {
     local MARKDOWN_FILE=""
     export NO_HIGHLIGHT=${NO_HIGHLIGHT:-""}
@@ -539,11 +560,17 @@ main() {
     
     define_colors
 
+	if [[ -z "$MARKDOWN_FILE" && ! -p /dev/stdin ]]; then
+        update_variables
+        echo -e "${MESSAGES[no_input]}"
+        show_help
+    fi
+	
     # Check dependencies if syntax highlighting is enabled
     if [ -z "$NO_HIGHLIGHT" ]; then
         check_dependencies
     fi
-    
+
     # Process input from file or stdin
     if [[ -z "$MARKDOWN_FILE" || "$MARKDOWN_FILE" == "-" ]]; then
         process_markdown ""
