@@ -865,7 +865,7 @@ cmd_check() {
     [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
     {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
     [[ "$1" == "-msg" ]] && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "(It was not possible to display the file). Install $msg" &&
-    no_cmd=() && read -rsn 1 -p "" && return 0
+    no_cmd=() && read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null && return 0
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
@@ -1143,9 +1143,9 @@ archive() {
             7z l -p -- "$file" | head -n "${sizeline}" && return 0 ;;
         esac
 
-    cmd_check atool atool && atool --list -- "${file}" | head -n "${sizeline}" && return 0
-    _bsdtar "$file" && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check atool atool && atool --list -- "${file}" | head -n "${sizeline}" && return 0; } ||
+    { _bsdtar "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 office_convert() {
@@ -1160,16 +1160,13 @@ office_convert() {
             { cmd_check csvtable csvtable && (csvtable "$file" | head -n "${sizeline}") && return 0; } ||
             { cmd_check csvlook csvlook && (csvlook -S "$file" | head -n "${sizeline}") && return 0; } ||
             { awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0; } ||
-            column -t -s, "$file" | head -n "${sizeline}" && return 0
-            ;;
+            { column -t -s, "$file" | head -n "${sizeline}" && return 0; } ;;
         xlsx)
             { cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0; } ||
-            cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0
-            ;;
+            { cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0; } ;;
         rtf)
             { cmd_check catdoc catdoc && margin <(catdoc -- "$file") && return 0; } ||
-            cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0
-            ;;
+            { cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0; } ;;
         doc)
             cmd_check antiword antiword && margin <(antiword "$file") && return 0
             ;;
@@ -1178,8 +1175,7 @@ office_convert() {
             ;;
         odt|ods|odp|sxw)
             { cmd_check odt2txt odt2txt && margin <(odt2txt "$file") && return 0; } ||
-            [[ "${file_ext}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0
-            ;;
+            { [[ "${file_ext}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0; } ;;
         pptx)
             cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
             markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
@@ -1189,34 +1185,34 @@ office_convert() {
             ;;
     esac
 
-    cmd_check pandoc pandoc && margin <(_pandoc "$file") && return 0
-    cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 && 
-    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check pandoc pandoc && margin <(_pandoc "$file") && return 0; } ||
+    { cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 &&
+    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 markdown_reader() {
     local file="$1"
     local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
-    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
-    "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
-    markdown_reader.sh -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 1 ]] && cmd_check glow glow &&
-    _glow_no_kill "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 2 ]] && cmd_check bat bat &&
-    env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
-    mdless -P -- "$file" | head -n "${sizeline}" && return 0
-    [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
-    mdcat -- "$file" | head -n "${sizeline}" && return 0
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
+    "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
+    markdown_reader.sh -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 1 ]] && cmd_check glow glow &&
+    _glow_no_kill "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 2 ]] && cmd_check bat bat &&
+    env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
+    mdless -P -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
+    mdcat -- "$file" | head -n "${sizeline}" && return 0; }
 }
 
 test_books() {
     local file="$1"
     local books="$HOME/.shell_utils/scripts/books"
-    [[ -f "$books" ]] && "$books" "$file" && return 0
-    command -v books &>/dev/null && books "$file" && return 0
+    { [[ -f "$books" ]] && "$books" "$file" && return 0; } ||
+    { command -v books &>/dev/null && books "$file" && return 0; }
 }
 
 _books() {
@@ -1230,53 +1226,81 @@ _books() {
 
 _picinfo() {
     local file="$1"
-    cmd_check mediainfo mediainfo && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
-    echo && mediainfo "$file" | sed 's/               //; s|\(.*:\)\s*.*/|\1 |' && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_exiftool "${file}" | head -n "${sizeline}") && return 0
-    cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_identify "${file}" | head -n "${sizeline}") && return 0
+    { cmd_check mediainfo mediainfo && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
+    echo && mediainfo "$file" | sed 's/               //; s|\(.*:\)\s*.*/|\1 |' && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_identify "${file}" | head -n "${sizeline}") && return 0; }
+}
+
+# TERMINAL COLOR AUTODETECTION.
+autodetect_color() {
+	# The following defaults may be overridden if autodetection succeeds.
+	numcolors=16     # Default number of colors in the palette.
+	timeout=0.25
+
+	# Find out how many color registers the terminal has
+	IFS=";" read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
+    [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+
+	# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then numcolors=256; fi
+
+	# Increase colors, if needed
+    if [[ $numcolors -lt 256 ]]; then
+        # Attempt to set the number of colors to 256.
+        # This will work for xterm, but fail on a real vt340.
+        IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;3;256S' >&2
+        [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+    fi
 }
 
 imgview() {
     local file="$1"
     local thumbnail="$2"
+	local sixel_size="${PREVIEW_SIXEL_W:-540}x${PREVIEW_SIXEL_H:-420}!"
+	local sixel_thumb_size="${PREVIEW_THUMB_SIXEL_W:-300}x${PREVIEW_THUMB_SIXEL_H:-200}!"
     
     [[ "$thumbnail" =~ ^-?[0-9]+$ ]] && {
-        [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
-        img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
-        viu -w "${PREVIEW_THUMB_VIU_W:-50}" -h "${PREVIEW_THUMB_VIU_H:-16}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
-        catimg -w "${PREVIEW_THUMB_CATIMG_W:-60}" "${file}" 2>/dev/null && return 0 
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
-        chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0
+		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+		magick -quiet "${file}" -auto-orient -resize "$sixel_thumb_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
+        img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        viu -w "${PREVIEW_THUMB_VIU_W:-50}" -h "${PREVIEW_THUMB_VIU_H:-16}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_THUMB_CATIMG_W:-60}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0; }
     }
     [[ -z "$thumbnail" ]] && {
-        [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
-        img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&
-        cmd_check viu viu && viu -w "${PREVIEW_VIU_W:-63}" -h "${PREVIEW_VIU_H:-24}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
-        viu -w "${PREVIEW_VIU_W:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && [[ -n "$TERMUX_VERSION" ]] &&
-        cmd_check catimg catimg && catimg -w "${PREVIEW_CATIMG_W:-33}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
-        catimg -w "${PREVIEW_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && [[ -n "$TERMUX_VERSION" ]] &&
-        cmd_check chafa chafa && chafa -s "${PREVIEW_CHAFA_S:-17}" "${file}" 2>/dev/null && return 0
-        [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
-        chafa -s "${PREVIEW_CHAFA_S:-50}" "${file}" 2>/dev/null && return 0
+		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+		magick -quiet "${file}" -auto-orient -resize "$sixel_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+        img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check viu viu && viu -w "${PREVIEW_VIU_W:-63}" -h "${PREVIEW_VIU_H:-24}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        viu -w "${PREVIEW_VIU_W:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check catimg catimg && catimg -w "${PREVIEW_CATIMG_W:-33}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check chafa chafa && chafa -s "${PREVIEW_CHAFA_S:-17}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_CHAFA_S:-50}" "${file}" 2>/dev/null && return 0; }
     }
-    _picinfo "$file" && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { _picinfo "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 fontview() {
     local file="$1"
     temp_file="${TMP_DIR}/temp_file.png"
     [[ -f "$temp_file" ]] && rm -f "$temp_file"
-    cmd_check fontimage fontforge && fontimage -o "${temp_file}" \
+    { cmd_check fontimage fontforge && fontimage -o "${temp_file}" \
                     --pixelsize "120" \
                     --fontname \
                     --pixelsize "80" \
@@ -1285,10 +1309,10 @@ fontview() {
                     --text "  0123456789.:,;(*!?') ff fl fi ffi ffl  " \
                     --text "  A white sheep peacefully grazes on the green pasture.  " \
                     "${file}" </dev/null 2>/dev/null &&
-    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && 
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && 
     [[ "${file_ext}" =~ ^(ttf|ttc|otf|pfa|pfb|ps|bdf|gbdf|pcf|snf|nfnt|fon|fnt|woff|woff2|svg|sfnt|sfd)$ ]] && 
-    echo && cmd_check -msg && return 1
+    echo && cmd_check -msg && return 1; }
 }
 
 img2info() {
@@ -1296,11 +1320,13 @@ img2info() {
     temp_file="${TMP_DIR}/temp_file.jpg"
     [[ -f "$temp_file" ]] && rm -f "$temp_file"
 
-    cmd_check magick imagemagick && ls "${TMP_DIR}" && 
-    magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
-    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
-    _picinfo "$file" && return 0
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
+	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+    { cmd_check magick imagemagick && ls "${TMP_DIR}" && 
+    magick -- "${file}[0]" -auto-orient -filter Box -resize "${RESOLUTION}!" -quality 85 "$temp_file" 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { _picinfo "$file" && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1; }
 }
 
 video2static() {
@@ -1320,15 +1346,15 @@ video2static() {
 
     [[ -f "$info" ]] && rm -f "$info"
     [[ -f "$temp_file" ]] && rm -f "$temp_file"
-    cmd_check ffmpeg ffmpeg && 
+    { cmd_check ffmpeg ffmpeg && 
     # black_start=$(ffmpeg -i "${file}" -vf "blackdetect=d=0.1:pic_th=0.98" -f null - 2>&1 | \
     # awk -F'start:' '/black_start/ {print $2}' | awk '{print $1}' | head -n 1) &&
     # [[ -n "$black_start" ]] && ffmpeg -i "${file}" -ss "$black_start" -frames:v 1 "$temp_file" </dev/null 2>/dev/null &&
     ffmpeg -i "${file}" -vf "select=eq(n\,30),scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
-    if_ff_extract && return 0
-    ffmpeg -i "${file}" -vf "scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
-    if_ff_extract && return 0
-    media_info "${file}" && return 0
+    if_ff_extract && return 0; } ||
+    { ffmpeg -i "${file}" -vf "scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
+    if_ff_extract && return 0; } ||
+    { media_info "${file}" && return 0; } ||
     return 1
 }
 
@@ -1337,13 +1363,13 @@ media_info() {
     [[ "$sizeline" != 11 ]] && sizeline=27
     # [[ -n "$TERMUX_VERSION" ]] && cmd_check mediainfo mediainfo && 
     # mediainfo "${file}" | sed '/General/d; /Complete name/d; s/                   //; s|\(.*:\)\s*.*/\([^/]*\)\(\.[^.]*\)$|\1\3|' | head -n "${sizeline}" && return 0
-    cmd_check mediainfo mediainfo && mediainfo "${file}" |\
+    { cmd_check mediainfo mediainfo && mediainfo "${file}" |\
     sed '/General/d; /Complete name/d; /^Video/d; /^Audio/d; /^$/d; s/                   //; s|\(.*:\)\s*.*/|\1 |' |\
-    head -n "${sizeline}" && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_exiftool "${file}" | head -n "${sizeline}") && return 0
-    cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    head -n "${sizeline}" && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 pdfview() {
@@ -1351,83 +1377,85 @@ pdfview() {
     temp_file="${TMP_DIR}/temp_file.jpg"
     [[ -f "$temp_file" ]] && rm -f "$temp_file"
 
-    cmd_check pdftotext poppler && 
+    { cmd_check pdftotext poppler && 
     pdf_lines=$(pdftotext -l 1 -nopgbrk -q -- "${file}" - | wc -l) &&
     [[ "$pdf_lines" -gt 0 ]] &&
     pdftotext -l 1 -nopgbrk -q -- "${file}" - | \
-    fmt -w "${width}" | head -n "${sizeline}" && return 0
-    cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" 1-10 | \
-    fmt -w "${width}" | head -n "${sizeline}" && return 0 
-    cmd_check magick imagemagick && 
-    magick -- "${file}[0]" -auto-orient -filter Box -resize "$RESOLUTION" -quality 85 "$temp_file" 2>/dev/null &&
-    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0
-    cmd_check pdfinfo poppler && pdfinfo "$file" && return 0
-    cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_exiftool "${file}" | head -n "${sizeline}") && return 0
-    cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
-    (_identify "${file}" | head -n "${sizeline}") && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" 1-10 | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
+	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+    { cmd_check magick imagemagick && 
+    magick -quiet -- "${file}[0]" -auto-orient -filter Box -resize "${RESOLUTION}!" -quality 85 "$temp_file" 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { cmd_check pdfinfo poppler && pdfinfo "$file" && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_identify "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 torrentview() {
     local file="$1"
-    cmd_check transmission-show transmission-cli && transmission-show -- "$file" && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check transmission-show transmission-cli && transmission-show -- "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 djvuview() {
     local file="$1"
-    cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0
-    cmd_check exiftool exiftool &&
-    (_exiftool "${file}" | head -n "${sizeline}") && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check exiftool exiftool &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 podview() {
     local file="$1"
-    cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0
-    cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 psview() {
     local file="$1"
-    cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 classview() {
     local file="$1"
-    cmd_check procyon-decompiler procyon-decompiler && margin <(procyon-decompiler "$file" 2>/dev/null) && return 0
-    cmd_check procyon procyon && margin <(procyon "$file" 2>/dev/null) && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check procyon-decompiler procyon-decompiler && margin <(procyon-decompiler "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check procyon procyon && margin <(procyon "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 dviview() {
     local file="$1"
-    cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 pgpview() {
     local file="$1"
-    cmd_check gpg gnupg && gpg --decrypt --quiet --no-tty --batch --yes "$file" | head -n "${sizeline}" && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check gpg gnupg && gpg --decrypt --quiet --no-tty --batch --yes "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 opensslview() {
     local file="$1"
-    [[ "${file_ext}" =~ ^([Cc][Ss][Rr])$ ]] && 
-    cmd_check openssl openssl && openssl req -text -noout -in "$file" | head -n "${sizeline}" && return 0
-    cmd_check openssl openssl && openssl storeutl -text -noout "$file" | head -n "${sizeline}" && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { [[ "${file_ext}" =~ ^([Cc][Ss][Rr])$ ]] && 
+    cmd_check openssl openssl && openssl req -text -noout -in "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check openssl openssl && openssl storeutl -text -noout "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 jsonview() {
     local file="$1"
-    cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0
-    cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0
-    cmd_check -msg && echo && any_file "$file" && return 1
+    { cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
 }
 
 nexttmp () {
@@ -1461,13 +1489,13 @@ ishtml() {
 	htmlopt=--unicode-snob
 	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
 	# 3 lines following can easily be reshuffled according to the preferred tool
-	cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0
-	cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0
-	cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0
+	{ cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0; } ||
 	# different versions of html2text existingi, force unicode
-	[[ "$1" == https://* ]] && return 0
-	cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0
-    file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1
+	{ [[ "$1" == https://* ]] && return 0; } ||
+	{ cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1; }
 }
 
 highlight_code() {
@@ -1489,26 +1517,26 @@ highlight_code() {
     fi
 
     # Attempt syntax highlighting with specified language
-    cmd_check bat bat && env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "${file}" && return 0
-    cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
+    { cmd_check bat bat && env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "${file}" && return 0; } ||
+    { cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
         --out-format="${highlight_format}" \
-        --force -- "${file}" 2>/dev/null && return 0
-    cmd_check source-highlight source-highlight &&
-    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0
-    cmd_check pygmentize python-pygments && 
-    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}" -- "${file}" && return 0
-    cmd_check glow glow && _glow "${file}" && return 0
-    cmd_check mdless mdless && mdless -P -- "${file}" && return 0
-    cmd_check mdcat mdcat && mdcat -- "${file}" && return 0
-    while IFS= read -r line; do
+        --force -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check source-highlight source-highlight &&
+    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0; } ||
+    { cmd_check pygmentize python-pygments && 
+    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}" -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check glow glow && _glow "${file}" && return 0; } ||
+    { cmd_check mdless mdless && mdless -P -- "${file}" && return 0; } ||
+    { cmd_check mdcat mdcat && mdcat -- "${file}" && return 0; } ||
+	{ while IFS= read -r line; do
         printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$line"
-    done < "$file"
+    done < "$file"; }
 }
 
 margin() {
     local file="$1"
-    cmd_check fold coreutils &&
-    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-5})) "$file" | head -n "${sizeline}" && return 0
+    { cmd_check fold coreutils &&
+    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-5})) "$file" | head -n "${sizeline}" && return 0; } ||
     cmd_check -msg && return 1
 }
 
@@ -2673,6 +2701,7 @@ main() {
 
     # Read the user settings, if any, first of all
     setup_config
+	autodetect_color
 
     RESOLUTION="${RESOLUTION:-854x480}"
     RESOLUTION="${RESOLUTION/X/x}"

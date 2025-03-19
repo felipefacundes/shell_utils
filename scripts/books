@@ -114,18 +114,18 @@ cmd_check() {
 markdown_reader() {
     local file="$1"
     local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
-    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
-    "$mr" -nc -nf -- "$file" && return 0
-    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
-    markdown_reader.sh -nc -nf -- "$file" && return 0
-    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 1 ]] && cmd_check glow glow &&
-    _glow_no_kill "$file" && return 0
-    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 2 ]] && cmd_check bat bat &&
-    env COLORTERM=8bit bat --color=always --style="plain" -- "$file" && return 0
-    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
-    mdless -P -- "$file" && return 0
-    [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
-    mdcat -- "$file" && return 0
+    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
+    "$mr" -nc -nf -- "$file" && return 0; } ||
+    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
+    markdown_reader.sh -nc -nf -- "$file" && return 0; } ||
+    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 1 ]] && cmd_check glow glow &&
+    _glow_no_kill "$file" && return 0; } ||
+    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 2 ]] && cmd_check bat bat &&
+    env COLORTERM=8bit bat --color=always --style="plain" -- "$file" && return 0; } ||
+    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
+    mdless -P -- "$file" && return 0; } ||
+    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
+    mdcat -- "$file" && return 0; } ||
     return 1
 }
 
@@ -139,7 +139,7 @@ less_pid() {
 margin() {
     local file="$1"
     { cmd_check fold coreutils && cmd_check less less; } || cmd_check -msg
-    fold -s -w $(($(tput cols) - ${BOOKS_MARGIN:-5})) "$file" | less_pid && return 0
+    { fold -s -w $(($(tput cols) - ${BOOKS_MARGIN:-5})) "$file" | less_pid && return 0; }
 }
 
 any_file() {
@@ -160,15 +160,15 @@ office_convert() {
             { cmd_check csvtable csvtable && csvtable "$file" | less_pid && return 0; } ||
             { cmd_check csvlook csvlook && csvlook -S "$file" | less_pid && return 0; } ||
             { awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | less_pid && return 0; } ||
-            column -t -s, "$file" | less_pid && return 0
+            { column -t -s, "$file" | less_pid && return 0; }
             ;;
         xlsx)
             { cmd_check xlsx2csv xlsx2csv && xlsx2csv -- "$file" | less_pid && return 0; } ||
-            cmd_check xlscat xlscat && xlscat -L -R all "$file" | less_pid && return 0
+            { cmd_check xlscat xlscat && xlscat -L -R all "$file" | less_pid && return 0; }
             ;;
         rtf)
             { cmd_check catdoc catdoc && margin <(catdoc -- "$file") && return 0; } ||
-            cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0
+            { cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0; }
             ;;
         doc)
             cmd_check antiword antiword && margin <(antiword "$file") && return 0
@@ -178,7 +178,7 @@ office_convert() {
             ;;
         odt|ods|odp|sxw)
             { cmd_check odt2txt odt2txt && margin <(odt2txt "$file") && return 0; } ||
-            [[ "${ext_test}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0
+            { [[ "${ext_test}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0; }
             ;;
         pptx)
             cmd_check pptx2md pptx2md && pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
@@ -189,9 +189,9 @@ office_convert() {
             ;;
     esac
 
-    cmd_check pandoc pandoc && margin <(pandoc -s -t plain -- "$file") && return 0
-    cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 &&
-    margin "${temp_dir}"/*.txt && return 0 
+    { cmd_check pandoc pandoc && margin <(pandoc -s -t plain -- "$file") && return 0; } ||
+    { cmd_check libreoffice libreoffice && libreoffice --headless --convert-to txt --outdir "${temp_dir}" "$file" >/dev/null 2>&1 &&
+    margin "${temp_dir}"/*.txt && return 0; } ||
     cmd_check -msg
 }
 
@@ -228,32 +228,57 @@ ishtml() {
 	htmlopt=--unicode-snob
 	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
 	# 3 lines following can easily be reshuffled according to the preferred tool
-	cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0
-	cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0
-	cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0
+	{ cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0; } ||
 	# different versions of html2text existingi, force unicode
-	[[ "$1" == https://* ]] && return 0
-	cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0
+	{ [[ "$1" == https://* ]] && return 0; } ||
+	{ cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0; } ||
     cmd_check -msg
+}
+
+# TERMINAL COLOR AUTODETECTION.
+autodetect_color() {
+	# The following defaults may be overridden if autodetection succeeds.
+	numcolors=16     # Default number of colors in the palette.
+	timeout=0.25
+
+	# Find out how many color registers the terminal has
+	IFS=";" read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
+    [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+
+	# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then numcolors=256; fi
+
+	# Increase colors, if needed
+    if [[ $numcolors -lt 256 ]]; then
+        # Attempt to set the number of colors to 256.
+        # This will work for xterm, but fail on a real vt340.
+        IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;3;256S' >&2
+        [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+    fi
 }
 
 imgview() {
     local file="$1"
+	local sixel_size="${BOOKS_SIXEL_W:-1000}x${BOOKS_SIXEL_H:-950}!"
     
-    [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
-    img2sixel -w "${BOOKS_SIXEL_W:-1000}" -h "${BOOKS_SIXEL_H:-950}" "${file}" 2>/dev/null && return 0
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&
-    cmd_check viu viu && viu -w "${BOOKS_VIU_W:-63}" -h "${BOOKS_VIU_H:-25}" "${file}" 2>/dev/null && return 0
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && 
-    cmd_check viu viu && viu -w "${BOOKS_VIU_W:-200}" -h "${BOOKS_VIU_H:-80}" "${file}" 2>/dev/null && return 0
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && [[ -n "$TERMUX_VERSION" ]] && 
-    cmd_check catimg catimg && catimg -w "${BOOKS_CATIMG_W:-50}" "${file}" 2>/dev/null && return 0 
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && cmd_check catimg catimg &&
-    catimg -w "${BOOKS_CATIMG_W:-150}" "${file}" 2>/dev/null && return 0 
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && [[ -n "$TERMUX_VERSION" ]] && 
-    cmd_check chafa chafa && chafa -s "${BOOKS_CHAFA_S:-23}" "${file}" 2>/dev/null && return 0
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && cmd_check chafa chafa &&
-    chafa -s "${BOOKS_CHAFA_S:-70}" "${file}" 2>/dev/null && return 0
+	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 1 ]] && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+    { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+    img2sixel -w "${BOOKS_SIXEL_W:-1000}" -h "${BOOKS_SIXEL_H:-950}" "${file}" 2>/dev/null && return 0; } ||
+    { [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+    cmd_check viu viu && viu -w "${BOOKS_VIU_W:-63}" -h "${BOOKS_VIU_H:-25}" "${file}" 2>/dev/null && return 0; } ||
+    { [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && 
+    cmd_check viu viu && viu -w "${BOOKS_VIU_W:-200}" -h "${BOOKS_VIU_H:-80}" "${file}" 2>/dev/null && return 0; } ||
+    { [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && [[ -n "$TERMUX_VERSION" ]] && 
+    cmd_check catimg catimg && catimg -w "${BOOKS_CATIMG_W:-50}" "${file}" 2>/dev/null && return 0; } ||
+    { [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && cmd_check catimg catimg &&
+    catimg -w "${BOOKS_CATIMG_W:-150}" "${file}" 2>/dev/null && return 0; } ||
+    { [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && [[ -n "$TERMUX_VERSION" ]] && 
+    cmd_check chafa chafa && chafa -s "${BOOKS_CHAFA_S:-23}" "${file}" 2>/dev/null && return 0; } ||
+    { [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && cmd_check chafa chafa &&
+    chafa -s "${BOOKS_CHAFA_S:-70}" "${file}" 2>/dev/null && return 0; } ||
 
     cmd_check -msg
 }
@@ -268,6 +293,8 @@ less_img() {
     info_col="${INFO_COL:=\e[1;38;5;16;106m}"
     nc="\e[0m"
     index=0
+
+	autodetect_color
 
     show_image() {
         imgview "${images[$index]}" 2>/dev/null
@@ -327,39 +354,39 @@ pdfview() {
     [[ -d "$temp_dir" ]] && rm -rf "$temp_dir"
     [[ ! -d "$temp_dir" ]] && mkdir -p "$temp_dir"
 
-    cmd_check pdftotext poppler && 
+    { cmd_check pdftotext poppler && 
     pdf_lines=$(pdftotext -l 1 -nopgbrk -q -- "$file" - | wc -l) &&
     [[ "$pdf_lines" -gt 0 ]] &&
-    margin <(pdftotext -layout -nopgbrk -q -- "$file" - 2>/dev/null) && return 0
-    cmd_check mutool mupdf && margin <(mutool draw -F txt -i -- "${file}") && return 0 
-    cmd_check magick imagemagick && 
-    magick -- "${file}" -auto-orient -filter Box -resize "$resolution" -quality 85 "$temp_file" 2>/dev/null &&
-    find "${temp_dir}" -maxdepth 1 -type f | read -r && less_img "$temp_dir" && return 0
+    margin <(pdftotext -layout -nopgbrk -q -- "$file" - 2>/dev/null) && return 0; } ||
+    { cmd_check mutool mupdf && margin <(mutool draw -F txt -i -- "${file}") && return 0; } ||
+    { cmd_check magick imagemagick && 
+    magick -quiet -- "${file}" -auto-orient -filter Box -resize "$resolution" -quality 85 "$temp_file" 2>/dev/null &&
+    find "${temp_dir}" -maxdepth 1 -type f | read -r && less_img "$temp_dir" && return 0; } ||
     cmd_check -msg
 }
 
 podview() {
     local file="$1"
-    cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0
-    cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0
+    { cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0; } ||
     cmd_check -msg
 }
 
 djvuview() {
     local file="$1"
-    cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0
+    { cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0; } ||
     cmd_check -msg
 }
 
 psview() {
     local file="$1"
-    cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0
+    { cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0; } ||
     cmd_check -msg
 }
 
 dviview() {
     local file="$1"
-    cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0
+    { cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0; } ||
     cmd_check -msg
 }
 

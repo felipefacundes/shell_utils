@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# License: GPLv3
+# Credits: hackerb9
+# Contrib: Felipe Facundes
 
 : <<DISCLAIMER
 This script was entirely created by hackerb9 (https://github.com/hackerb9/lsix)
@@ -24,6 +27,11 @@ DISCLAIMER
 
 # Requirements: ImageMagick, viu (for fallback), and a Sixel terminal (optional)
 
+SCRIPT="${0##*/}"
+TMPDIR="${TMPDIR:-/tmp}"
+TMPLSIMG="${TMPDIR}/${SCRIPT%.*}"
+[[ ! -d "$TMPLSIMG" ]] && mkdir -p "$TMPLSIMG"
+
 # The following defaults may be overridden if autodetection succeeds.
 numcolors=16     # Default number of colors in the palette.
 background=white # Default montage background.
@@ -45,7 +53,7 @@ fontfamily=Dejavu-Sans                # Wide coverage, comes with GNU/Linux
 fontsize=$((tilewidth/10))
 #fontsize=16             # (or set the point size directly, if you prefer)
 
-timeout=1.0             # How long to wait for terminal to respond
+timeout=0.25            # How long to wait for terminal to respond
                         # to a control sequence (in seconds).
 
 shopt -s expand_aliases        # Allow aliases for working around quirks.
@@ -68,6 +76,7 @@ fi
 cleanup() {
     echo -n $'\e\\'        # Escape sequence to stop SIXEL.
     stty echo            # Reset terminal to show characters.
+	[[ -d "$TMPLSIMG" ]] && rm -rf "$TMPLSIMG"
     exit 0
 }
 trap cleanup SIGINT SIGHUP SIGABRT EXIT
@@ -92,7 +101,7 @@ autodetect() {
 
     if [[ -z "$hassixel" && -z "$LSIX_FORCE_SIXEL_SUPPORT" ]]; then
         echo "Your terminal does not support Sixel graphics. Falling back to viu for image display." >&2
-        use_viu=true
+        viu=true
     fi
 
     # TERMINAL COLOR AUTODETECTION.
@@ -156,6 +165,11 @@ autodetect() {
     numtiles=$((width/(tilewidth + 2*tilexspace + 1)))
 }
 
+cmd_check() {
+	! command -v "$1" >/dev/null && return 1
+	return 0
+}
+
 main() {
     # Discover and setup the terminal
     autodetect
@@ -187,10 +201,7 @@ main() {
         done
         set -- "${nodirs[@]}"
     fi
-
-    # Resize on load: Save memory by appending this suffix to every filename.
-    resize="[${tilewidth}x${tileheight}]"
-
+    
     imoptions="-tile ${numtiles}x1" # Each montage is 1 row x $numtiles columns
     imoptions+=" -geometry ${tilewidth}x${tileheight}>+${tilexspace}+${tileyspace}" # Size of each tile and spacing
     imoptions+=" -background $background -fill $foreground" # Use terminal's colors
@@ -217,17 +228,19 @@ main() {
         done
 
         # Generate a temporary file for the montage
-        tempfile=$(mktemp /tmp/ls_image_XXXXXX.png)
+        tempfile=$(mktemp "${TMPLSIMG}"/ls_image_XXXXXX.png)
 
         # Generate the montage and save it to the temporary file
-        montage -quiet "${onerow[@]}" $imoptions "$tempfile" 2> >(tee /tmp/ls_image_errors.log | grep -v -e "TIFFReadDirectory" -e "Inkscape" >&2)
+		montage -quiet "${onerow[@]}" $imoptions "$tempfile" >/dev/null 2>&1
 
-        if [[ "$use_viu" == true ]]; then
+        if [[ "$viu" == true || "$viu" == 1 || "$viu" == ":" ]]; then
             # Use viu to display the temporary image file
-            viu "$tempfile"
+            { cmd_check viu && viu "$tempfile"; } ||
+			{ echo "Please install viu" >&2 && exit 1; }
         else
             # Display the montage using Sixel
-            convert -quiet "$tempfile" -colors $numcolors sixel:-
+            { convert -quiet "$tempfile" -colors $numcolors sixel:-; } ||
+			{ cmd_check img2sixel && img2sixel "$tempfile"; }
         fi
 
         # Clean up the temporary file
