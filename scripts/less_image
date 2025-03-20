@@ -6,6 +6,7 @@ clear
 
 # ANSI colors
 INFO_COL=${INFO_COL:-"\e[1;38;5;16;106m"} # Display instructions with cyan background and black text
+RED="\e[1;31m"
 NC="\e[0m"
 
 # Function to display help
@@ -80,6 +81,23 @@ INPUT_SOURCE="$1"
 # Array to hold image paths or data
 images=()
 
+# Function to list images in a directory
+list_images() {
+    local dir="$1"
+    shopt -s nullglob nocaseglob nocasematch
+    set -- "$dir"/*{jpg,jpeg,png,gif,webp,pdf,tiff,tif,p?m,x[pb]m,bmp,ico,svg,eps}
+    [[ $# != 0 ]] || return 1
+    readarray -t images < <(printf "%s\n" "$@" | sort)
+
+    # Only show first frame of animated GIFs if filename not specified.
+    for x in "${!images[@]}"; do
+        if [[ ${images[$x]} =~ (gif|webp|pdf)$ ]]; then
+            images["$x"]="${images[$x]}[0]"
+        fi
+    done
+    set -- "${images[@]}"
+}
+
 # Function to read image paths from stdin or a file
 read_image_paths() {
     while IFS= read -r line; do
@@ -93,10 +111,10 @@ read_image_paths() {
 
 # Function to handle raw image data from stdin
 handle_raw_image_data() {
-	SCRIPT="${0##*/}"
+    SCRIPT="${0##*/}"
     TMPDIR="${TMPDIR:-/tmp}"
     TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
-	[[ ! -d "$TMP_DIR" ]] && mkdir -p "$TMP_DIR"
+    [[ ! -d "$TMP_DIR" ]] && mkdir -p "$TMP_DIR"
     # If the input is a pipe, store the content in a temporary file
     if [[ -p /dev/stdin ]]; then
         TEMP_FILE=$(mktemp "${TMP_DIR}"/less_image_XXXXXX.sixel)
@@ -108,7 +126,7 @@ handle_raw_image_data() {
             magick - -resize "${LESS_IMG_SIXEL_W:-1000}x${LESS_IMG_SIXEL_H:-950}"! sixel:-
             exit 0
         else
-            echo "Error: ImageMagick (magick) is required to handle raw image data."
+            echo -e "${RED}Error: ImageMagick (magick) is required to handle raw image data.${NC}"
             exit 1
         fi
     fi
@@ -118,7 +136,7 @@ handle_raw_image_data() {
 if [[ "$INPUT_SOURCE" == "-" || -p /dev/stdin ]]; then
     # Check if stdin is a terminal (no data piped)
     if [[ -t 0 ]]; then
-        echo -e "Error: No input provided via stdin./n"
+        echo -e "${RED}Error: No input provided via stdin.${NC}"
         help | head -n 37
     else
         # Handle raw image data
@@ -126,7 +144,10 @@ if [[ "$INPUT_SOURCE" == "-" || -p /dev/stdin ]]; then
     fi
 elif [[ -d "$INPUT_SOURCE" ]]; then
     # Input is a directory: list all image files
-    images=("$INPUT_SOURCE"/*.[JjPp][PpNn][Gg])
+    if ! list_images "$INPUT_SOURCE"; then
+        echo -e "\n${RED}Error: No images found in the directory '$INPUT_SOURCE'.${NC}"
+        exit 1
+    fi
 elif [[ -f "$INPUT_SOURCE" ]]; then
     # Input is a single file: treat it as the only image
     images=("$INPUT_SOURCE")
@@ -136,14 +157,14 @@ else
         # Read image paths from the process substitution file
         read_image_paths < "$INPUT_SOURCE"
     else
-        echo -e "Error: '$INPUT_SOURCE' is not a valid directory, file, or stdin input.\n"
+        echo -e "${RED}Error: '$INPUT_SOURCE' is not a valid directory, file, or stdin input.${NC}\n"
         help | head -n 37
     fi
 fi
 
 # Check if there are any images to display
 if [[ ${#images[@]} -eq 0 ]]; then
-    echo -e "\nError: No images found in the input source."
+    echo -e "\n${RED}Error: No images found in the input source.${NC}"
     exit 1
 fi
 
@@ -159,18 +180,18 @@ cmd_check() {
 
 # TERMINAL COLOR AUTODETECTION.
 autodetect_color() {
-	# The following defaults may be overridden if autodetection succeeds.
-	numcolors=16     # Default number of colors in the palette.
-	timeout=0.25
+    # The following defaults may be overridden if autodetection succeeds.
+    numcolors=16     # Default number of colors in the palette.
+    timeout=0.25
 
-	# Find out how many color registers the terminal has
-	IFS=";" read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
+    # Find out how many color registers the terminal has
+    IFS=";" read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
     [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
 
-	# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    # YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
     if [[ "$TERM" == yaft* ]]; then numcolors=256; fi
 
-	# Increase colors, if needed
+    # Increase colors, if needed
     if [[ $numcolors -lt 256 ]]; then
         # Attempt to set the number of colors to 256.
         # This will work for xterm, but fail on a real vt340.
@@ -182,15 +203,15 @@ autodetect_color
 
 imgview() {
     local file="${images[$index]}"
-	local sixel_size="${LESS_IMG_SIXEL_W:-1000}x${LESS_IMG_SIXEL_H:-950}!"
+    local sixel_size="${LESS_IMG_SIXEL_W:-1000}x${LESS_IMG_SIXEL_H:-950}!"
 
-	[[ "$CLEAR" == true || "$CLEAR" == 1 || "$CLEAR" == ":" ]] && clear
+    [[ "$CLEAR" == true || "$CLEAR" == 1 || "$CLEAR" == ":" ]] && clear
     # Display the image using the appropriate tool
     if [[ -p /dev/stdin ]]; then
         cat "$file" 2>/dev/null && rm "$TEMP_FILE"
     else
-		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check magick imagemagick &&
-		magick -quiet "${file}" -auto-orient -resize "$sixel_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check magick imagemagick &&
+        magick -quiet "${file}" -auto-orient -resize "$sixel_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
         { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
         img2sixel -w "${LESS_IMG_SIXEL_W:-1000}" -h "${LESS_IMG_SIXEL_H:-950}" "${file}" 2>/dev/null && return 0; } ||
         { [[ -z "$LESS_IMG" || "$LESS_IMG" == 2 ]] && 
@@ -204,14 +225,14 @@ imgview() {
 }
 
 reset_terminal() {
-	clear
+    clear
     # Show the cursor again
     printf '\e[?7h\e[?25h\e[;r\e[?1049l'
     # Clean up temporary directory if it exists
-	[[ -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"
+    [[ -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"
     # Restore terminal settings
     stty echo </dev/tty >/dev/null 2>/dev/null
-	exit
+    exit
 }
 
 # Hide the cursor
@@ -224,7 +245,7 @@ stty -echo </dev/tty >/dev/null 2>/dev/null
 imgview
 
 keys() {
-	# Read user input
+    # Read user input
     read -rsn 1 key </dev/tty >/dev/null 2>/dev/null
 
     # Check if the key is an arrow (starts with \e)
@@ -253,24 +274,24 @@ keys() {
     esac
 }
 
-loop() {	
-	# Pagination loop
-	while true; do
-		total_page=${#images[@]}
+loop() {    
+    # Pagination loop
+    while true; do
+        total_page=${#images[@]}
         current_page=$((index + 1))
         printf '\e7\e[999H\e[K%b%s%b\e8' "$INFO_COL" "Page: $current_page/$total_page | Up: up or w | Down: down or s | Quit: q" "$NC"
-			
-		keys
-		[[ -t 1 ]] || reset_terminal
-	done
+            
+        keys
+        [[ -t 1 ]] || reset_terminal
+    done
 }
 
 main() {
-	trap 'reset_terminal' SIGINT SIGTERM SIGHUP SIGQUIT SIGABRT EXIT
+    trap 'reset_terminal' SIGINT SIGTERM SIGHUP SIGQUIT SIGABRT EXIT
 
-	loop &
-	loop_pid=$!
-	wait "$loop_pid"
+    loop &
+    loop_pid=$!
+    wait "$loop_pid"
 }
 
-main 
+main
