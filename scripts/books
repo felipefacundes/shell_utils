@@ -2,7 +2,6 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-
 : <<'DOCUMENTATION'
 This Bash script is designed to manage and display a list of books stored in a specified directory, allowing users to read them in various formats.
 
@@ -283,6 +282,46 @@ imgview() {
     cmd_check -msg
 }
 
+# Pagination loop
+less_img_pagination_loop() {
+    while true; do
+        total_page=${#images[@]}
+        current_page=$((index + 1))
+        printf '\e7\e[999H\e[K%b%s%b\e8' "$info_col" "Page: $current_page/$total_page | Up: up or w | Down: down or s | Quit: q" "$nc"
+
+        read -rsn 1 key </dev/tty >/dev/null 2>/dev/null
+
+        # Check if the key is an arrow (starts with \e)
+        if [[ "$key" == $'\e' ]]; then
+            read -rsn 2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
+            key="$key$key2"
+        fi
+
+        case "$key" in
+            w|$'\e[A') # Up (previous image)
+                if (( index > 0 )); then
+                    ((index--))
+                    show_image
+                fi
+                ;;
+            s|$'\e[B') # Down (next image)
+                if (( index < ${#images[@]} - 1 )); then
+                    ((index++))
+                    show_image
+                fi
+                ;;
+            q|Q) # Quit
+                # Re-enable echo for key presses
+                stty echo </dev/tty >/dev/null 2>/dev/null
+                clear
+                # Show the cursor again
+                printf '\e[?25h'
+                break
+                ;;
+        esac
+    done
+}
+
 less_img() {
     IMAGE_DIR="$1"
     if [[ -d $IMAGE_DIR ]]; then
@@ -306,45 +345,11 @@ less_img() {
     show_image
 
     # Disable echo for key presses
-    stty -echo
+    stty -echo </dev/tty >/dev/null 2>/dev/null
 
-    # Pagination loop
-    while true; do
-        total_page=${#images[@]}
-        current_page=$((index + 1))
-        printf '\e7\e[999H\e[K%b%s%b\e8' "$info_col" "Page: $current_page/$total_page | Up: up or w | Down: down or s | Quit: q" "$nc"
-
-        read -rsn 1 key
-
-        # Check if the key is an arrow (starts with \e)
-        if [[ "$key" == $'\e' ]]; then
-            read -rsn 2 -t 0.1 key2
-            key="$key$key2"
-        fi
-
-        case "$key" in
-            w|$'\e[A') # Up (previous image)
-                if (( index > 0 )); then
-                    ((index--))
-                    show_image
-                fi
-                ;;
-            s|$'\e[B') # Down (next image)
-                if (( index < ${#images[@]} - 1 )); then
-                    ((index++))
-                    show_image
-                fi
-                ;;
-            q|Q) # Quit
-                # Re-enable echo for key presses
-                stty echo
-                clear
-                # Show the cursor again
-                printf '\e[?25h'
-                break
-                ;;
-        esac
-    done
+	less_img_pagination_loop &
+	less_img_pid=$!
+	wait "$less_img_pid"
 }
 
 pdfview() {
@@ -514,7 +519,7 @@ temp_search_results="${TMPBOOKDIR}/grep_search_results.txt"
 
 while true; do
     clear
-    stty -echo
+    stty -echo </dev/tty >/dev/null 2>/dev/null
     printf '\e[?25l'
     echo -e "\nUse ↑/↓ or w/s to navigate, Enter to select a book, 'f' to find by name, 'c' clear search, 'g' to grep content.\n"
     display_books "$search_term"
@@ -539,7 +544,7 @@ while true; do
             fi
             ;;
         f|F)
-            stty echo
+            stty echo </dev/tty >/dev/null 2>/dev/null
             echo -e "\nEnter search term: "
             read -r search_term
 
@@ -559,7 +564,7 @@ while true; do
             fi
             ;;
         g|G)
-            stty echo
+            stty echo </dev/tty >/dev/null 2>/dev/null
             echo -e "\nEnter content search term: "
             read -r search_term
             grep -irl "$search_term" "$books_folder" "$xdg_books_folder" > "$temp_search_results" 2>/dev/null

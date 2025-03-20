@@ -2,16 +2,70 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+clear
+
+# ANSI colors
+INFO_COL=${INFO_COL:-"\e[1;38;5;16;106m"} # Display instructions with cyan background and black text
+NC="\e[0m"
+
 # Function to display help
 help() {
-    echo "Usage: ${0##*/} [OPTIONS] IMAGE_DIR_OR_FILE"
-    echo "Display images from a directory, file, or stdin using img2sixel/viu/catimg/ImageMagick."
-    echo
-    echo "Options:"
-    echo "  -h, --help    Show this help message and exit"
-    echo
-    echo "Arguments:"
-    echo "  IMAGE_DIR_OR_FILE  Directory containing images, a single image file, or '-' for stdin"
+    cat <<EOF | less -i
+Usage: ${0##*/} [OPTIONS] IMAGE_DIR_OR_FILE
+
+Display images from a directory, file, or stdin using various image display tools such as img2sixel, viu, catimg, or ImageMagick.
+
+Options:
+  -h, --help    Display this help message and exit.
+
+Arguments:
+  IMAGE_DIR_OR_FILE  Specify the source of images. This can be:
+                     - A directory containing image files.
+                     - A single image file.
+                     - '-' to read image data from stdin.
+
+Description:
+  This script allows you to view images directly in the terminal using various tools. It supports
+  multiple image formats and can handle input from directories, individual files, or standard input.
+  The script automatically detects the best available tool to display the images and provides a simple
+  interface for navigating through multiple images.
+
+Supported Tools:
+  - img2sixel: A tool for displaying images in the terminal using the SIXEL protocol.
+  - viu: A fast terminal image viewer with support for various formats.
+  - catimg: A simple tool to display images in the terminal using ASCII art.
+  - ImageMagick (magick): A powerful image manipulation tool that can also display images in the terminal.
+
+Environment Variables:
+  INFO_COL: Set the ANSI color for displaying instructions.
+  LESS_IMG_SIXEL_W: Set the width for SIXEL image display (default: 1000).
+  LESS_IMG_SIXEL_H: Set the height for SIXEL image display (default: 950).
+  LESS_IMG_VIU_W: Set the width for viu image display (default: 200).
+  LESS_IMG_VIU_H: Set the height for viu image display (default: 80).
+  LESS_IMG_CATIMG_W: Set the width for catimg image display (default: 150).
+  LESS_IMG_CHAFA_S: Set the size for chafa image display (default: 70).
+  CLEAR: Control whether the terminal is cleared before displaying an image.
+         - Accepted values: true, 1, or ":" to enable clearing.
+         - If not set or set to any other value, the terminal will not be cleared.
+
+Navigation:
+  - Use 'w' or the up arrow key to view the previous image.
+  - Use 's' or the down arrow key to view the next image.
+  - Press 'q' or 'Q' to quit the image viewer.
+
+Examples:
+  ${0##*/} /path/to/images          # View images from a directory.
+  ${0##*/} image.jpg                # View a single image file.
+  cat image.jpg | ${0##*/} -        # View an image from stdin.
+
+Notes:
+  - If no tool is specified via the LESS_IMG environment variable, the script will attempt to use
+    the best available tool in the following order: img2sixel, viu, catimg, chafa, or ImageMagick.
+  - Temporary files created from stdin input are stored in /tmp and are automatically cleaned up.
+
+License: GPLv3
+Credits: Felipe Facundes
+EOF
     exit 0
 }
 
@@ -39,9 +93,13 @@ read_image_paths() {
 
 # Function to handle raw image data from stdin
 handle_raw_image_data() {
+	SCRIPT="${0##*/}"
+    TMPDIR="${TMPDIR:-/tmp}"
+    TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
+	[[ ! -d "$TMP_DIR" ]] && mkdir -p "$TMP_DIR"
     # If the input is a pipe, store the content in a temporary file
     if [[ -p /dev/stdin ]]; then
-        TEMP_FILE=$(mktemp)
+        TEMP_FILE=$(mktemp "${TMP_DIR}"/less_image_XXXXXX.sixel)
         cat - > "$TEMP_FILE"
         images+=("$TEMP_FILE")
     else
@@ -60,8 +118,8 @@ handle_raw_image_data() {
 if [[ "$INPUT_SOURCE" == "-" || -p /dev/stdin ]]; then
     # Check if stdin is a terminal (no data piped)
     if [[ -t 0 ]]; then
-        echo "Error: No input provided via stdin."
-        help
+        echo -e "Error: No input provided via stdin./n"
+        help | head -n 37
     else
         # Handle raw image data
         handle_raw_image_data
@@ -78,23 +136,19 @@ else
         # Read image paths from the process substitution file
         read_image_paths < "$INPUT_SOURCE"
     else
-        echo "Error: '$INPUT_SOURCE' is not a valid directory, file, or stdin input."
-        help
+        echo -e "Error: '$INPUT_SOURCE' is not a valid directory, file, or stdin input.\n"
+        help | head -n 37
     fi
 fi
 
 # Check if there are any images to display
 if [[ ${#images[@]} -eq 0 ]]; then
-    echo "Error: No images found in the input source."
+    echo -e "\nError: No images found in the input source."
     exit 1
 fi
 
 # Initial index
 index=0
-
-# ANSI colors
-black_on_cyan="\e[1;38;5;16;106m"
-nc="\e[0m"
 
 cmd_check() {
     [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
@@ -130,9 +184,9 @@ imgview() {
     local file="${images[$index]}"
 	local sixel_size="${LESS_IMG_SIXEL_W:-1000}x${LESS_IMG_SIXEL_H:-950}!"
 
+	[[ "$CLEAR" == true || "$CLEAR" == 1 || "$CLEAR" == ":" ]] && clear
     # Display the image using the appropriate tool
     if [[ -p /dev/stdin ]]; then
-		clear
         cat "$file" 2>/dev/null && rm "$TEMP_FILE"
     else
 		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check magick imagemagick &&
@@ -153,10 +207,8 @@ reset_terminal() {
 	clear
     # Show the cursor again
     printf '\e[?7h\e[?25h\e[;r\e[?1049l'
-    # Clean up temporary file if it exists
-    if [[ -n "$TEMP_FILE" && -f "$TEMP_FILE" ]]; then
-        rm "$TEMP_FILE"
-    fi
+    # Clean up temporary directory if it exists
+	[[ -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"
     # Restore terminal settings
     stty echo </dev/tty >/dev/null 2>/dev/null
 	exit
@@ -201,14 +253,24 @@ keys() {
     esac
 }
 
-main() {	
+loop() {	
 	# Pagination loop
 	while true; do
-		# Display instructions with cyan background and black text
-		printf '\e7\e[999H\e[K%b%s%b\e8' "$black_on_cyan" "Up: up or w | Down: down or s | Quit: q" "$nc"
+		total_page=${#images[@]}
+        current_page=$((index + 1))
+        printf '\e7\e[999H\e[K%b%s%b\e8' "$INFO_COL" "Page: $current_page/$total_page | Up: up or w | Down: down or s | Quit: q" "$NC"
 			
 		keys
+		[[ -t 1 ]] || reset_terminal
 	done
+}
+
+main() {
+	trap 'reset_terminal' SIGINT SIGTERM SIGHUP SIGQUIT SIGABRT EXIT
+
+	loop &
+	loop_pid=$!
+	wait "$loop_pid"
 }
 
 main 
