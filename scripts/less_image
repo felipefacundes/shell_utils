@@ -4,14 +4,14 @@
 
 # Function to display help
 help() {
-    echo "Usage: $0 [OPTIONS] IMAGE_DIR"
-    echo "Display images in a directory using img2sixel/viu/catimg."
+    echo "Usage: ${0##*/} [OPTIONS] IMAGE_DIR_OR_FILE"
+    echo "Display images from a directory, file, or stdin using img2sixel/viu/catimg/ImageMagick."
     echo
     echo "Options:"
     echo "  -h, --help    Show this help message and exit"
     echo
     echo "Arguments:"
-    echo "  IMAGE_DIR     Directory containing images to display"
+    echo "  IMAGE_DIR_OR_FILE  Directory containing images, a single image file, or '-' for stdin"
     exit 0
 }
 
@@ -20,17 +20,74 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     help
 fi
 
-# Directory containing images
-IMAGE_DIR="$1"
+# Input source (directory, file, or stdin)
+INPUT_SOURCE="$1"
 
-# Check if the provided argument is a directory
-if [[ ! -d "$IMAGE_DIR" ]]; then
-    echo "Error: '$IMAGE_DIR' is not a valid directory."
-    help
+# Array to hold image paths or data
+images=()
+
+# Function to read image paths from stdin or a file
+read_image_paths() {
+    while IFS= read -r line; do
+        # Remove leading/trailing whitespace and ignore empty lines
+        line=$(echo "$line" | xargs)
+        if [[ -n "$line" ]]; then
+            images+=("$line")
+        fi
+    done
+}
+
+# Function to handle raw image data from stdin
+handle_raw_image_data() {
+    # If the input is a pipe, store the content in a temporary file
+    if [[ -p /dev/stdin ]]; then
+        TEMP_FILE=$(mktemp)
+        cat - > "$TEMP_FILE"
+        images+=("$TEMP_FILE")
+    else
+        # Use ImageMagick to convert raw image data to sixel and display it
+        if command -v magick >/dev/null 2>&1; then
+            magick - -resize "${LESS_IMG_SIXEL_W:-1000}x${LESS_IMG_SIXEL_H:-950}"! sixel:-
+            exit 0
+        else
+            echo "Error: ImageMagick (magick) is required to handle raw image data."
+            exit 1
+        fi
+    fi
+}
+
+# Check if input is from stdin (pipe or process substitution)
+if [[ "$INPUT_SOURCE" == "-" || -p /dev/stdin ]]; then
+    # Check if stdin is a terminal (no data piped)
+    if [[ -t 0 ]]; then
+        echo "Error: No input provided via stdin."
+        help
+    else
+        # Handle raw image data
+        handle_raw_image_data
+    fi
+elif [[ -d "$INPUT_SOURCE" ]]; then
+    # Input is a directory: list all image files
+    images=("$INPUT_SOURCE"/*.[JjPp][PpNn][Gg])
+elif [[ -f "$INPUT_SOURCE" ]]; then
+    # Input is a single file: treat it as the only image
+    images=("$INPUT_SOURCE")
+else
+    # Check if the input is a process substitution (e.g., <(lsix))
+    if [[ "$INPUT_SOURCE" =~ ^/proc/self/fd/[0-9]+$ ]]; then
+        # Read image paths from the process substitution file
+        read_image_paths < "$INPUT_SOURCE"
+    else
+        echo "Error: '$INPUT_SOURCE' is not a valid directory, file, or stdin input."
+        help
+    fi
 fi
 
-# List of image files in the directory
-images=("$IMAGE_DIR"/*.[JjPp][PpNn][Gg])
+# Check if there are any images to display
+if [[ ${#images[@]} -eq 0 ]]; then
+    echo "Error: No images found in the input source."
+    exit 1
+fi
 
 # Initial index
 index=0
@@ -46,41 +103,81 @@ cmd_check() {
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
+# TERMINAL COLOR AUTODETECTION.
+autodetect_color() {
+	# The following defaults may be overridden if autodetection succeeds.
+	numcolors=16     # Default number of colors in the palette.
+	timeout=0.25
+
+	# Find out how many color registers the terminal has
+	IFS=";" read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
+    [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+
+	# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then numcolors=256; fi
+
+	# Increase colors, if needed
+    if [[ $numcolors -lt 256 ]]; then
+        # Attempt to set the number of colors to 256.
+        # This will work for xterm, but fail on a real vt340.
+        IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;3;256S' >&2
+        [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+    fi
+}
+autodetect_color
+
 imgview() {
     local file="${images[$index]}"
-    
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
-    img2sixel -w "${BOOKS_SIXEL_W:-1000}" -h "${BOOKS_SIXEL_H:-950}" "${file}" 2>/dev/null && return 0
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 2 ]] && 
-    cmd_check viu viu && viu -w "${BOOKS_VIU_W:-200}" -h "${BOOKS_VIU_H:-80}" "${file}" 2>/dev/null && return 0
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 3 ]] && cmd_check catimg catimg &&
-    catimg -w "${BOOKS_CATIMG_W:-150}" "${file}" 2>/dev/null && return 0 
-    [[ -z "$BOOKS_IMG" || "$BOOKS_IMG" == 4 ]] && cmd_check chafa chafa &&
-    chafa -s "${BOOKS_CHAFA_S:-70}" "${file}" 2>/dev/null && return 0
+	local sixel_size="${LESS_IMG_SIXEL_W:-1000}x${LESS_IMG_SIXEL_H:-950}!"
 
-    cmd_check -msg && echo && any_file "$file" && return 1
+    # Display the image using the appropriate tool
+    if [[ -p /dev/stdin ]]; then
+		clear
+        cat "$file" 2>/dev/null && rm "$TEMP_FILE"
+    else
+		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check magick imagemagick &&
+		magick -quiet "${file}" -auto-orient -resize "$sixel_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+        img2sixel -w "${LESS_IMG_SIXEL_W:-1000}" -h "${LESS_IMG_SIXEL_H:-950}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$LESS_IMG" || "$LESS_IMG" == 2 ]] && 
+        cmd_check viu viu && viu -w "${LESS_IMG_VIU_W:-200}" -h "${LESS_IMG_VIU_H:-80}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$LESS_IMG" || "$LESS_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${LESS_IMG_CATIMG_W:-150}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$LESS_IMG" || "$LESS_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${LESS_IMG_CHAFA_S:-70}" "${file}" 2>/dev/null && return 0; } ||
+        { cmd_check -msg && echo && any_file "$file" && return 1; }
+    fi
+}
+
+reset_terminal() {
+	clear
+    # Show the cursor again
+    printf '\e[?7h\e[?25h\e[;r\e[?1049l'
+    # Clean up temporary file if it exists
+    if [[ -n "$TEMP_FILE" && -f "$TEMP_FILE" ]]; then
+        rm "$TEMP_FILE"
+    fi
+    # Restore terminal settings
+    stty echo </dev/tty >/dev/null 2>/dev/null
+	exit
 }
 
 # Hide the cursor
 printf '\e[?25l'
 
+# Disable echo for key presses
+stty -echo </dev/tty >/dev/null 2>/dev/null
+
 # Display the first image
 imgview
 
-# Disable echo for key presses
-stty -echo
-
-# Pagination loop
-while true; do
-    # Display instructions with cyan background and black text
-    printf '\e7\e[999H\e[K%b%s%b\e8' "$black_on_cyan" "Up: up or w | Down: down or s | Quit: q" "$nc"
-
-    # Read user input
-    read -rsn 1 key
+keys() {
+	# Read user input
+    read -rsn 1 key </dev/tty >/dev/null 2>/dev/null
 
     # Check if the key is an arrow (starts with \e)
     if [[ "$key" == $'\e' ]]; then
-        read -rsn 2 -t 0.1 key2
+        read -rsn 2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
         key="$key$key2"
     fi
 
@@ -99,12 +196,19 @@ while true; do
             ;;
         q|Q) # Quit
             # Re-enable echo for key presses
-            stty echo
-            clear
-            # Show the cursor again
-            printf '\e[?25h'
-            break
+            reset_terminal
             ;;
     esac
-    [[ -t 1 ]] || exit 1
-done
+}
+
+main() {	
+	# Pagination loop
+	while true; do
+		# Display instructions with cyan background and black text
+		printf '\e7\e[999H\e[K%b%s%b\e8' "$black_on_cyan" "Up: up or w | Down: down or s | Quit: q" "$nc"
+			
+		keys
+	done
+}
+
+main 

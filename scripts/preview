@@ -513,12 +513,21 @@ get_os() {
 
 setup_terminal() {
     printf '\e[?1049h\e[?7l\e[?25l\e[2J\e[1;%sr' "$max_items"
-    stty -echo
+    stty -echo </dev/tty >/dev/null 2>/dev/null
 }
 
 reset_terminal() {
+    # Reset the terminal to a useable state (undo all changes).
+    # '\e[?7h':   Re-enable line wrapping.
+    # '\e[?25h':  Unhide the cursor.
+    # '\e[2J':    Clear the terminal.
+    # '\e[;r':    Set the scroll region to its default value.
+    #             Also sets cursor to (0,0).
+    # '\e[?1049l: Restore main screen buffer.
     printf '\e[?7h\e[?25h\e[2J\e[;r\e[?1049l'
-    stty echo
+
+    # Show user input.
+    stty echo </dev/tty >/dev/null 2>/dev/null
 }
 
 cleanup() {
@@ -891,7 +900,7 @@ draw_info() {
         fi
 
        # Wait for the next user input
-        read -srn 1 key
+        read -srn 1 key </dev/tty >/dev/null 2>/dev/null
         # If the key is not 'i', redesign and leaves the loop
         [[ "$key" != "i" ]] && {
             [[ "$preserve_status" == 1 ]] && toggle_preview_mode
@@ -2281,10 +2290,10 @@ keys() {
     [[ -n "$TERMUX_VERSION" ]] && PREVIEW_LOOP_SCROLL=0
 
     [[ "$key" == $'\e' ]] && {
-        read "${read_flags[@]}" -rsn 2
+        read "${read_flags[@]}" -rsn 2 </dev/tty >/dev/null 2>/dev/null
 
         [[ "${1}${REPLY}" == $'\e\e['* ]] &&
-            read "${read_flags[@]}" -rsn 1 _
+            read "${read_flags[@]}" -rsn 1 _ </dev/tty >/dev/null 2>/dev/null
 
         local special_key="${1}${REPLY}"
     }
@@ -2685,6 +2694,14 @@ keys() {
     fi
 }
 
+version() {
+	if command -v jq >/dev/null; then
+		printf '%s\n' "preview 1.0.$(curl -s https://api.github.com/repos/felipefacundes/preview/commits\?sha\=main | jq length)"
+	else
+		printf '%s\n' "preview 1.0"
+	fi
+}
+
 main() {
     SCRIPT="${0##*/}"
     TMPDIR="${TMPDIR:-/tmp}"
@@ -2697,8 +2714,6 @@ main() {
     [[ ! -d "$CACHE_PATH" ]] && mkdir -p "$CACHE_PATH"
     [[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
 
-    trap 'cleanup' EXIT
-
     # Read the user settings, if any, first of all
     setup_config
 	autodetect_color
@@ -2710,8 +2725,8 @@ main() {
 
     cd "${2:-$1}" &>/dev/null ||:
 
-    [[ "$1" == -v ]] && {
-        printf '%s\n' "preview 1.0"
+    [[ "$1" == -v || "$1" == --version ]] && {
+        printf '%s\n' "$(version)"
         exit 0
     }
 
@@ -2736,6 +2751,8 @@ main() {
 
     shopt -s nocaseglob nullglob
 
+	trap 'cleanup' EXIT
+
     trap 'get_term_size; redraw' WINCH
     
     # Preview mode boot
@@ -2751,7 +2768,7 @@ main() {
     for ((;;)); {
         read "${read_flags[@]}" -srn 1 && keys "$REPLY"
 
-        [[ -t 1 ]] || exit 1
+        [[ -t 1 ]] || { cleanup && exit 1; }
     }
 }
 
