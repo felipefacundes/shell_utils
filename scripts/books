@@ -27,7 +27,7 @@ trap '(kill -TERM -- -$$) &>/dev/null' SIGINT SIGTERM SIGHUP SIGQUIT
 clear
 
 SCRIPT="${0##*/}"
-TMPDIR="${TMPDIR:-/tmp}"
+TMPDIR="${TMPDIR:-${HOME}/.cache}"
 TMPBOOKDIR="${TMPDIR}/${SCRIPT%.*}"
 XDG_DOCUMENTS_DIR=${XDG_DOCUMENTS_DIR:-$(xdg-user-dir DOCUMENTS 2>/dev/null || echo "$HOME/Documents")}
 
@@ -54,7 +54,7 @@ for i in "${!books_list[@]}"; do
     declare -l ext_test="${ext_test,,}" # lowercase
 
     case $ext_test in 
-        csv|xls|xlsx|rtf|doc|docx|odt|ods|odp|sxw|ppt|pptx|ipynb|epub|txt|md|markdown|pod|pdf|png|jpg|jpeg|djvu|postscript|ps|dvi|htm|html|xhtml|xml)
+        csv|xls|xlsx|rtf|doc|docx|odt|ods|odp|sxw|ppt|pptx|ipynb|epub|txt|md|markdown|pod|cbz|cbr|pdf|png|jpg|jpeg|djvu|postscript|ps|dvi|htm|html|xhtml|xml)
             continue
         ;;
         *)
@@ -370,6 +370,36 @@ pdfview() {
     cmd_check -msg
 }
 
+comics_view() {
+    local file="$1"
+    local file_extension="${file%.*}"          # Remove the file extension
+    local folder_name="${file_extension##*/}" # Remove path
+    local temp_dir="${TMPBOOKDIR}/comics/$folder_name"
+
+    # Create the temporary directory for comics
+    mkdir -p "${temp_dir}"
+
+    # Extract the file to the temporary directory
+    7z x "$file" -o"${temp_dir}" > /dev/null 2>&1
+
+    # Check if the images are in the main directory or in subdirectories
+    local image_dir="${temp_dir}"
+    if [[ -z "$(find "${temp_dir}" -maxdepth 1 -type f -name '*.jpg' -o -name '*.jpeg' -o -name '*.png')" ]]; then
+        # If no images are found in the main directory, search in subdirectories
+        image_dir=$(find "${temp_dir}" -type d -exec bash -c 'ls -1 "{}"/*.jpg "{}"/*.jpeg "{}"/*.png 2>/dev/null | grep -q . && echo "{}"' \; | head -n 1)
+    fi
+
+    # If a directory with images is found, pass it to the less_img function
+    if [[ -n "$image_dir" ]]; then
+        less_img "$image_dir"
+    else
+        echo "No images found in the comic file."
+    fi
+
+    # Clean up the temporary directory after viewing
+    rm -rf "${temp_dir}"
+}
+
 podview() {
     local file="$1"
     { cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0; } ||
@@ -433,6 +463,14 @@ select_book() {
         pod)
             if ! podview "$book_path"; then
                 printf '\n\e[33mPOD file: %s\e[m\n' "${book_path##*/}"
+                return 1
+            else
+                return 0
+            fi
+            ;;
+        cbz|cbr)
+            if ! comics_view "$book_path"; then
+                printf '\n\e[33mComics file: %s\e[m\n' "${book_path##*/}"
                 return 1
             else
                 return 0

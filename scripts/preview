@@ -984,7 +984,7 @@ extract_to_folder() {
         *.rar)
             { check_command unrar unrar && unrar x -inul "$file" "$folder_name/"; } || 
             { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
-        *.7z|*.7za|*.7zz|*.7zr|*.dmg)
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg|*.cbz|*.cbr)
             check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
         *.iso)
             check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
