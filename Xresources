@@ -193,7 +193,7 @@ xterm*externalBorder: 0
 xterm*marginBell: false
 xterm*urgentOnBell: false
 xterm*transparent: true
-xterm*shading: 90
+xterm*shading: 40
 xterm*perl-lib: /usr/lib/xterm/perl
 
 ! Font settings
