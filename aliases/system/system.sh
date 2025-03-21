@@ -20,10 +20,6 @@ alias bi='b'
 alias bin='b'
 alias del='echo "Use: rm"'
 alias s='sudo'
-alias p='pacman'
-alias sp='s pacman'
-alias spS='s pacman -S'
-alias pSs='pacman -Ss'
 alias sS='screen -S'
 alias sr='screen -r'
 alias sls='screen -ls'
@@ -35,16 +31,6 @@ alias clipboard='clip' #for https://getclipboard.app Use: cb command
 alias clipcopy='clip'
 alias pbcopy='clip'
 alias copy='clip'
-
-alias u='sudo pacman -Syyu --noconfirm --overwrite "*"'
-alias up="u"
-alias autoremove='sudo pacman -Rcs $(pacman -Qtdq)'
-
-if command -v yay &>/dev/null; then
-    alias ua='u; yay -Sua'
-    alias sua='ua'
-    alias Sua='ua'
-fi
 
 alias c='clear'
 alias list-gpu='~/.shell_utils/scripts/faqs/list-gpu.sh'
@@ -84,8 +70,7 @@ alias fp='export DISPLAY=":0" && unset HISTFILE && firefox --private-window'
 alias firefox_private='fp'
 alias private='fp'
 alias ex='export'
-alias undevel_packages='sudo pacman -Rcs autoconf texinfo pkgconf patch make m4 groff flex binutils automake autoconf gcc'
-alias devel_packages='sudo pacman -S autoconf texinfo pkgconf patch make m4 groff flex binutils automake autoconf gcc'
+
 alias bkp='~/.shell_utils/scripts/faqs/bkp.sh'
 alias wine_list='bash <(curl -s https://raw.githubusercontent.com/felipefacundes/PS/master/other_scripts/wine_list.sh)'
 alias vpn_wgcf_warp_cloudflare='~/.shell_utils/scripts/faqs/vpn_wgcf_warp_cloudflare.sh'
