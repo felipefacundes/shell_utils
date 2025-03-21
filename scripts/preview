@@ -1277,8 +1277,10 @@ imgview() {
 	local sixel_thumb_size="${PREVIEW_THUMB_SIXEL_W:-300}x${PREVIEW_THUMB_SIXEL_H:-200}!"
     
     [[ "$thumbnail" =~ ^-?[0-9]+$ ]] && {
+		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_thumb_size}" -colors "$numcolors" jpg:- | idump -f && return 0; } ||
 		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
-		magick -quiet "${file}" -auto-orient -resize "$sixel_thumb_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_thumb_size}" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
         { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
         img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0; } ||
         { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
@@ -1289,9 +1291,10 @@ imgview() {
         chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0; }
     }
     [[ -z "$thumbnail" ]] && {
-		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && idump -f "${file}" && return 0; } ||
+		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" -colors "$numcolors" jpg:- | idump -f && return 0; } ||
 		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
-		magick -quiet "${file}" -auto-orient -resize "$sixel_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
         { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
         img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0; } ||
         { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&

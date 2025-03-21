@@ -210,8 +210,10 @@ imgview() {
     if [[ -p /dev/stdin ]]; then
         cat "$file" 2>/dev/null && rm "$TEMP_FILE"
     else
+		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" -colors "$numcolors" jpg:- | idump -f && return 0; } ||
         { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check magick imagemagick &&
-        magick -quiet "${file}" -auto-orient -resize "$sixel_size" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+        magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
         { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$LESS_IMG" || "$LESS_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
         img2sixel -w "${LESS_IMG_SIXEL_W:-1000}" -h "${LESS_IMG_SIXEL_H:-950}" "${file}" 2>/dev/null && return 0; } ||
         { [[ -z "$LESS_IMG" || "$LESS_IMG" == 2 ]] && 
