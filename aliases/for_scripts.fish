@@ -36,3 +36,5 @@ alias prime='~/.shell_utils/scripts/prime.sh'
 alias primo='prime'
 alias number_prime='prime'
 alias numero_primo='prime'
+
+alias xrdb_settings='~/.shell_utils/scripts/xresources_settings'

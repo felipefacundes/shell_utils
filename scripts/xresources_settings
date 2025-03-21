@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+source=~/.shell_utils/Xresources
+settings=~/.Xresources
+
+message() {
+	echo 'Xresources has been successfully configured!'
+}
+
+[[ ! -f "$settings" ]] && cp -f "$source" "$settings" &&
+xrdb -merge "$settings" && message && exit
+
+md5sum_source="$(md5sum "$source" | awk '{ print $1 }')"
+md5sum_xresources="$(md5sum "$settings" | awk '{ print $1 }')"
+
+if [[ -f "$settings" ]]; then
+
+	if [[ "$md5sum_xresources" != "$md5sum_source" ]]; then
+		cp -f "$source" "$settings"
+		xrdb -merge "$settings"
+		message
+		exit
+	else
+		echo 'Nothing to be done, Xresources is already configured!'
+		exit
+	fi
+
+fi

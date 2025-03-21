@@ -123,9 +123,9 @@ URxvt*cursorBlink: false
 URxvt*cursorStyle: bar
 
 ! Select settings
-URxvt*highlightColor: #33ccff
+URxvt*highlightColor: #bdeeff
 URxvt*highlightTextColor: #24283b
-URxvt*urlColor: #73daca
+URxvt*urlColor: #02e6f2
 URxvt*urlLauncher: default
 URxvt*matcher.button: 1
 URxvt*perl-ext-common: matcher,clipboard
@@ -233,9 +233,9 @@ xterm*cursorBlink: false
 xterm*cursorStyle: bar
 
 ! Select settings
-xterm*highlightColor: #33ccff
+xterm*highlightColor: #bdeeff
 xterm*highlightTextColor: #24283b
-xterm*urlColor: #73daca
+xterm*urlColor: #02e6f2
 xterm*urlLauncher: default
 xterm*matcher.button: 1
 xterm*perl-ext-common: matcher,clipboard
