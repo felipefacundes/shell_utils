@@ -87,23 +87,36 @@ autodetect() {
     # Don't show escape sequences the terminal doesn't understand.
     stty -echo            # Hush-a Mandara Ni Pari
 
-    # IS TERMINAL SIXEL CAPABLE?        # Send Device Attributes
-    IFS=";?c" read -ra REPLY -s -t 1 -d "c" -p $'\e[c' >&2
-    for code in "${REPLY[@]}"; do
-        if [[ $code == "4" ]]; then
-            hassixel=yup
-            break
-        fi
-    done
+	[[ ${XDG_SESSION_TYPE,,} != tty ]] && [[ -z "$ALACRITTY_WINDOW_ID" ]] &&
+	[[ -z "$CONTOUR_PROFILE" ]] && [[ -z "$WEZTERM_UNIX_SOCKET" ]] && {
+		# IS TERMINAL SIXEL CAPABLE?        # Send Device Attributes
+		IFS=";?c" read -ra REPLY -s -t 1 -d "c" -p $'\e[c' >&2
+		for code in "${REPLY[@]}"; do
+			if [[ $code == "4" ]]; then
+				hassixel=yup
+				break
+			fi
+		done
 
-    # YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
-    if [[ "$TERM" == yaft* ]]; then hassixel=yeah; fi
+		# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+		if [[ "$TERM" == yaft* ]]; then hassixel=yeah; fi
 
-    if [[ -z "$hassixel" && -z "$LSIX_FORCE_SIXEL_SUPPORT" ]]; then
-        echo "Your terminal does not support Sixel graphics. Falling back to viu for image display." >&2
-        viu=true
-    fi
+		if [[ -z "$hassixel" && -z "$LSIX_FORCE_SIXEL_SUPPORT" ]]; then
+			cat <<-EOF >&2
+			Error: Your terminal does not report having sixel graphics support.
+					Falling back to viu for image display.
 
+			Please use a sixel capable terminal, such as alacritty-sixel-git,
+			or contour, or wezterm, or xterm -ti vt340.
+
+			You may test your terminal by viewing a single image, like so:
+
+				convert foo.jpg  -geometry 800x480  sixel:-
+			EOF
+			viu=true
+		fi
+	}
+    
     # TERMINAL COLOR AUTODETECTION.
     # Find out how many color registers the terminal has
     IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
@@ -235,10 +248,14 @@ main() {
 
         if [[ "$viu" == true || "$viu" == 1 || "$viu" == ":" ]]; then
             # Use viu to display the temporary image file
+            { [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump && 
+			convert -quiet "$tempfile" -colors $numcolors jpg:- | idump -f; } ||
             { cmd_check viu && viu "$tempfile"; } ||
 			{ echo "Please install viu" >&2 && exit 1; }
         else
             # Display the montage using Sixel
+            { [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump && 
+			convert -quiet "$tempfile" -colors $numcolors jpg:- | idump -f; } ||
             { convert -quiet "$tempfile" -colors $numcolors sixel:-; } ||
 			{ cmd_check img2sixel && img2sixel "$tempfile"; }
         fi

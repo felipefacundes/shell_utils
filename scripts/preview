@@ -1338,6 +1338,8 @@ img2info() {
     temp_file="${TMP_DIR}/temp_file.jpg"
     [[ -f "$temp_file" ]] && rm -f "$temp_file"
 
+	{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" jpg:- | idump -f && return 0; } ||
 	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
 	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
     { cmd_check magick imagemagick && ls "${TMP_DIR}" && 
@@ -1402,6 +1404,8 @@ pdfview() {
     fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
     { cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" 1-10 | \
     fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
+	{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" jpg:- | idump -f && return 0; } ||
 	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
 	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
     { cmd_check magick imagemagick && 
