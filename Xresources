@@ -50,7 +50,7 @@ Xcursor.size: 24
 *.color7:       #bac1de
 *.color15:      #bac1de
 
-! ------------------------------------------------------------------------------
+! ----------------------------------ROFI----------------------------------
 ! Rofi
 rofi.font: monospace 12
 rofi.padding: 20
@@ -65,10 +65,11 @@ rofi.color-active: argb:00000000, #49bbfb, argb:00000000, argb:00000000, #e29a49
 rofi.kb-cancel: Escape,Alt+F1
 
 ! ----------------------------------URxvt----------------------------------
+! URxvt
 ! RUN COMMAND: xrdb -merge ~/.Xresources
 ! Allow sixel graphics with TerminalID:	vt340. (Try: "convert -colors 16 foo.jpg sixel:-").
 ! Terminal settings
-! URxvt*decTerminalID: vt340
+URxvt*decTerminalID: vt340
 URxvt*depth: 24
 URxvt*termName: URxvt-256color
 URxvt*loginShell: true
@@ -118,9 +119,9 @@ URxvt*pointerColorBackground: #24283b
 
 ! Cursor settings
 URxvt*cursorColor: #33cccc
-URxvt*cursorUnderline: false
+URxvt*cursorUnderLine: false
+URxvt*cursorBar: true
 URxvt*cursorBlink: false
-URxvt*cursorStyle: bar
 
 ! Select settings
 URxvt*highlightColor: #bdeeff
@@ -175,6 +176,7 @@ URxvt*vt100*translations: #override \
     Ctrl <KeyPress> minus: smaller-vt-font()
 
 ! ----------------------------------XTERM----------------------------------
+! XTerm
 ! RUN COMMAND: xrdb -merge ~/.Xresources
 ! Allow sixel graphics with TerminalID:	vt340. (Try: "convert -colors 16 foo.jpg sixel:-").
 ! Terminal settings
@@ -228,9 +230,9 @@ xterm*pointerColorBackground: #24283b
 
 ! Cursor settings
 xterm*cursorColor: #33cccc
-xterm*cursorUnderline: false
+xterm*cursorUnderLine: false
+xterm*cursorBar: true
 xterm*cursorBlink: false
-xterm*cursorStyle: bar
 
 ! Select settings
 xterm*highlightColor: #bdeeff
@@ -243,7 +245,7 @@ xterm*copyCommand: xsel -ib
 xterm*pasteCommand: xsel -ob
 xterm*cutchars: " ()*,<>[]{}|'`\""
 xterm*tripleclickwords: true
-XTerm*selectToClipboard: true
+xterm*selectToClipboard: true
 
 ! Colors
 ! Colors.normal
