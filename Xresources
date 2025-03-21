@@ -13,59 +13,42 @@ Xcursor.size: 24
 !*.background:  #1c2023
 !*.cursorColor: #778899
 
-!*.color0:  #1c2023
-!*.color1:  #bf616a
-!*.color2:  #a3be8c
-!*.color3:  #ebcb8b
-!*.color4:  #8fa1b3
-!*.color5:  #b48ead
-!*.color6:  #96b5b4
-!*.color7:  #E1E1E1
-!*.color8:  #919ba0
-!*.color9:  #bf616a
-!*.color10: #a3be8c
-!*.color11: #ebcb8b
-!*.color12: #8fa1b3
-!*.color13: #b48ead
-!*.color14: #96b5b4
-!*.color15: #c0c5ce
-
 ! special
-*.foreground:   #c6c8d1
-*.background:   black
-*.cursorColor:  #e4e4e4
+*.foreground:   #33cccc
+*.background:   #24283b
+*.cursorColor:  #33cccc
 
 ! black
-*.color0:       #121212
-*.color8:       #585858
+*.color0:       #707070
+*.color8:       #707070
 
 ! red
-*.color1:       #ff0000
-*.color9:       #e30000
+*.color1:       #f10e38
+*.color9:       #f10e38
 
 ! green
 *.color2:       #00ff00
-*.color10:      #1ce11c
+*.color10:      #05f005
 
 ! yellow
-*.color3:       #f7ff00
-*.color11:      #e4ea35
+*.color3:       #ffff00
+*.color11:      #ffff00
 
 ! blue
-*.color4:       #003aff
-*.color12:      #355eea
+*.color4:       #0000ff
+*.color12:      #0000ff
 
 ! magenta
-*.color5:       #c900ff
-*.color13:      #c900ff
+*.color5:       #cc66ff
+*.color13:      #bb9af7
 
 ! cyan
-*.color6:       #47f7ff
-*.color14:      #35e2ea
+*.color6:       #33ccff
+*.color14:      #33ccff
 
 ! white
-*.color7:       #fff7e9
-*.color15:      #e4e4e4
+*.color7:       #bac1de
+*.color15:      #bac1de
 
 ! ------------------------------------------------------------------------------
 ! Rofi
@@ -85,7 +68,7 @@ rofi.kb-cancel: Escape,Alt+F1
 ! RUN COMMAND: xrdb -merge ~/.Xresources
 ! Allow sixel graphics with TerminalID:	vt340. (Try: "convert -colors 16 foo.jpg sixel:-").
 ! Terminal settings
-URxvt*decTerminalID: vt340
+! URxvt*decTerminalID: vt340
 URxvt*depth: 24
 URxvt*termName: URxvt-256color
 URxvt*loginShell: true
