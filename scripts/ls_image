@@ -58,12 +58,6 @@ timeout=0.25            # How long to wait for terminal to respond
 
 shopt -s expand_aliases        # Allow aliases for working around quirks.
 
-# For ImageMagick 6 <-> 7 compatibility.
-if type magick &>/dev/null; then
-    alias convert='magick'
-    alias montage='magick montage'
-fi
-
 if ! command -v magick montage &>/dev/null; then    # (implicit 'or')
     echo "Please install ImageMagick" >&2
     exit 1
@@ -81,6 +75,35 @@ cleanup() {
 }
 trap cleanup SIGINT SIGHUP SIGABRT EXIT
 
+sixeldetect() {
+	# IS TERMINAL SIXEL CAPABLE?        # Send Device Attributes
+	IFS=";?c" read -ra REPLY -s -t 1 -d "c" -p $'\e[c' >&2
+	for code in "${REPLY[@]}"; do
+		if [[ $code == "4" ]]; then
+			hassixel=yup
+			break
+		fi
+	done
+
+	# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+	if [[ "$TERM" == yaft* ]]; then hassixel=yeah; fi
+
+	if [[ -z "$hassixel" && -z "$LSIX_FORCE_SIXEL_SUPPORT" ]]; then
+		cat <<-EOF >&2
+		Error: Your terminal does not report having sixel graphics support.
+				Falling back to viu for image display.
+
+		Please use a sixel capable terminal, such as alacritty-sixel-git,
+		or contour, or wezterm, or xterm -ti vt340.
+
+		You may test your terminal by viewing a single image, like so:
+
+			magick foo.jpg  -geometry 800x480  sixel:-
+		EOF
+		viu=true
+	fi
+}
+
 autodetect() {
     # Various terminal automatic configuration routines.
 
@@ -89,32 +112,7 @@ autodetect() {
 
 	[[ ${XDG_SESSION_TYPE,,} != tty ]] && [[ -z "$ALACRITTY_WINDOW_ID" ]] &&
 	[[ -z "$CONTOUR_PROFILE" ]] && [[ -z "$WEZTERM_UNIX_SOCKET" ]] && {
-		# IS TERMINAL SIXEL CAPABLE?        # Send Device Attributes
-		IFS=";?c" read -ra REPLY -s -t 1 -d "c" -p $'\e[c' >&2
-		for code in "${REPLY[@]}"; do
-			if [[ $code == "4" ]]; then
-				hassixel=yup
-				break
-			fi
-		done
-
-		# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
-		if [[ "$TERM" == yaft* ]]; then hassixel=yeah; fi
-
-		if [[ -z "$hassixel" && -z "$LSIX_FORCE_SIXEL_SUPPORT" ]]; then
-			cat <<-EOF >&2
-			Error: Your terminal does not report having sixel graphics support.
-					Falling back to viu for image display.
-
-			Please use a sixel capable terminal, such as alacritty-sixel-git,
-			or contour, or wezterm, or xterm -ti vt340.
-
-			You may test your terminal by viewing a single image, like so:
-
-				convert foo.jpg  -geometry 800x480  sixel:-
-			EOF
-			viu=true
-		fi
+		sixeldetect
 	}
     
     # TERMINAL COLOR AUTODETECTION.
@@ -244,19 +242,17 @@ main() {
         tempfile=$(mktemp "${TMPLSIMG}"/ls_image_XXXXXX.png)
 
         # Generate the montage and save it to the temporary file
-		montage -quiet "${onerow[@]}" $imoptions "$tempfile" >/dev/null 2>&1
+		magick montage -quiet "${onerow[@]}" $imoptions "$tempfile" >/dev/null 2>&1
 
         if [[ "$viu" == true || "$viu" == 1 || "$viu" == ":" ]]; then
             # Use viu to display the temporary image file
-            { [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump && 
-			convert -quiet "$tempfile" -colors $numcolors jpg:- | idump -f; } ||
             { cmd_check viu && viu "$tempfile"; } ||
 			{ echo "Please install viu" >&2 && exit 1; }
         else
             # Display the montage using Sixel
             { [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump && 
-			convert -quiet "$tempfile" -colors $numcolors jpg:- | idump -f; } ||
-            { convert -quiet "$tempfile" -colors $numcolors sixel:-; } ||
+			magick -quiet "$tempfile" jpg:- 2>/dev/null | idump -f 2>/dev/null; } ||
+            { magick -quiet "$tempfile" -colors $numcolors sixel:-; } ||
 			{ cmd_check img2sixel && img2sixel "$tempfile"; }
         fi
 

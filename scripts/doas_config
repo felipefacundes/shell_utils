@@ -44,7 +44,7 @@ while true; do
     user=${user:-$(getent passwd 1000 | cut -d':' -f1)}  # Default to $USER if no input
 
     # Validate username
-    if [[ ! "$user" =~ [0-9] ]] && [[ ! "$user" =~ [[:punct:]] ]] && [[ ! "$user" =~ [[:cntrl:]] ]]; then
+    if [[ ! "$user" =~ [[:punct:]] ]] && [[ ! "$user" =~ [[:cntrl:]] ]]; then
         break  # Exit loop if valid
     else
         echo "${MESSAGES[invalid_user]}"
