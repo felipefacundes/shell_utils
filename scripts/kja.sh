@@ -110,25 +110,29 @@ help() {
 		${SCRIPT} --blue    # Tema azul para melhor legibilidade
 
 	ARQUIVO DE DADOS:
-		${DB_FILE}          Banco SQLite com o texto bíblico
-		${LAST_CHAPTER_FILE} Armazena último capítulo lido
+        Banco SQLite com o texto bíblico (${DB_FILE})
+        Armazena último capítulo lido    (${LAST_CHAPTER_FILE})
 
 	DEPENDÊNCIAS:
 		sqlite3, dialog     Necessários para busca e interface
 	EOF
+	exit 0
 }
+
+hide_cursor() { printf "\e[?25l"; }
+show_cursor() { printf "\e[?25h"; }
 
 prepare_terminal() {
 	# Esconder o cursor
-	printf '\e[?25l'
+	hide_cursor
 
 	# Desabilitar o echo das teclas pressionadas
-	stty -echo </dev/tty >/dev/null 2>/dev/null
+	stty -echo -icanon </dev/tty >/dev/null 2>/dev/null
 }
 
 reset_terminal() {
 	# Mostrar o cursor
-	printf '\e[?25h'
+	show_cursor
 
 	# Habilitar o echo das teclas pressionadas
 	stty echo </dev/tty >/dev/null 2>/dev/null
@@ -424,6 +428,7 @@ mostrar_versiculos() {
         
         # Captura de tecla
         IFS= read -rsn1 key </dev/tty >/dev/null 2>/dev/null
+		
         if [[ $key == $'\033' ]]; then  # Tecla de escape (setas)
             read -rsn2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
             case "$key2" in

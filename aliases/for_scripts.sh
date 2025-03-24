@@ -38,3 +38,6 @@ alias number_prime='prime'
 alias numero_primo='prime'
 
 alias xrdb_settings='~/.shell_utils/scripts/xresources_settings'
+
+alias kja='~/.shell_utils/scripts/kja.sh'
+alias biblia_kja='kja'
