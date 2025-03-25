@@ -10,22 +10,23 @@ and then hashing the sorted list. If no directory is specified, it displays usag
 and relevant commands for generating the hash.
 DOCUMENTATION
 
-if [[ -d "$1" ]]; then
-    directory="$1"
+directory="$1"
+
+if [[ -d "$directory" ]]; then
     find "$directory" -type f -exec md5sum {} \; | awk '{print $1}' | sort -k 2 | md5sum | awk '{print $1}'
 else
     echo "Usage: ${0##*/} directory"
-    cat - <<'EOF'
+    cat <<-'EOF'
 
-Relevant Commands:
+	Relevant Commands:
 
-tar -cf - directory | md5sum
-find directory -type f -exec md5sum {} \; | awk '{print $1}' | sort -k 2 | md5sum | awk '{print $1}'
-find directory -type f -exec md5sum {} + | awk '{print $1}' | LC_ALL=C sort | md5sum | awk '{print $1}'
-find directory -type f -exec md5sum {} \; | awk '{print $1}' | LC_ALL=C sort | md5sum | awk '{print $1}'
+	tar -cf - directory | md5sum
+	find directory -type f -exec md5sum {} \; | awk '{print $1}' | sort -k 2 | md5sum | awk '{print $1}'
+	find directory -type f -exec md5sum {} + | awk '{print $1}' | LC_ALL=C sort | md5sum | awk '{print $1}'
+	find directory -type f -exec md5sum {} \; | awk '{print $1}' | LC_ALL=C sort | md5sum | awk '{print $1}'
 
-This first summarizes all of the file contents individually, in a predictable order,
-then passes that list of file names and MD5 hashes to be hashed itself,
-giving a single value that only changes when the content of one of the files in the tree changes.
-EOF
+	This first summarizes all of the file contents individually, in a predictable order,
+	then passes that list of file names and MD5 hashes to be hashed itself,
+	giving a single value that only changes when the content of one of the files in the tree changes.
+	EOF
 fi

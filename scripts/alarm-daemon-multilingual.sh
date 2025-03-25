@@ -67,6 +67,11 @@ DOCUMENTATION
 # Supply error prints!
 exec 2>/dev/null
 
+SCRIPT="${0##*/}"
+TMPDIR="${TMPDIR:-/tmp}"
+LOCKDIR="${TMPDIR}/${SCRIPT%.*}"
+SOCKET_FILE="${LOCKDIR}/${SCRIPT%.*}.socket"
+
 # Declare an associative array for multilingual messages
 declare -A MESSAGES
 if [[ "${LANG,,}" =~ pt_ ]]; then
@@ -87,6 +92,8 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [hour_invalid]="Hora inválida! Use um valor entre 00 e 23."
         [minute_invalid]="Minuto inválido! Use um valor entre 00 e 59."
         [error_data]="Erro nos dados"
+		["no_daemon"]="Sem execução!"
+		["no_socket"]="O alarme não está em execução. Execute: $SCRIPT -r"
         ["year_empty"]="O campo do ano está vazio."
         ["month_empty"]="O campo do mês está vazio."
         ["day_empty"]="O campo do dia está vazio."
@@ -137,6 +144,8 @@ elif [[ "${LANG,,}" =~ fr_ ]]; then
         ["hour_invalid"]="Heure invalide ! Utilisez une valeur entre 00 et 23."
         ["minute_invalid"]="Minute invalide ! Utilisez une valeur entre 00 et 59."
         ["error_data"]="Erreur de données"
+		["no_daemon"]="Pas en cours d'exécution !"
+    	["no_socket"]="L'alarme n'est pas en cours d'exécution. Exécutez : $SCRIPT -r"
         ["year_empty"]="Le champ de l'année est vide."
         ["month_empty"]="Le champ du mois est vide."
         ["day_empty"]="Le champ du jour est vide."
@@ -187,6 +196,8 @@ elif [[ "${LANG,,}" =~ de_ ]]; then
         ["hour_invalid"]="Ungültige Stunde! Verwenden Sie einen Wert zwischen 00 und 23."
         ["minute_invalid"]="Ungültige Minute! Verwenden Sie einen Wert zwischen 00 und 59."
         ["error_data"]="Datenfehler"
+		["no_daemon"]="Nicht in Ausführung!"
+    	["no_socket"]="Der Alarm wird nicht ausgeführt. Führen Sie aus: $SCRIPT -r"
         ["year_empty"]="Das Jahr-Feld ist leer."
         ["month_empty"]="Das Monat-Feld ist leer."
         ["day_empty"]="Das Tag-Feld ist leer."
@@ -237,6 +248,8 @@ elif [[ "${LANG,,}" =~ ro_ ]]; then
         ["hour_invalid"]="Oră invalidă! Utilizați o valoare între 00 și 23."
         ["minute_invalid"]="Minut invalid! Utilizați o valoare între 00 și 59."
         ["error_data"]="Eroare de date"
+		["no_daemon"]="Nu rulează!"
+    	["no_socket"]="Alarma nu rulează. Executați: $SCRIPT -r"
         ["year_empty"]="Câmpul pentru anul este gol."
         ["month_empty"]="Câmpul pentru lună este gol."
         ["day_empty"]="Câmpul pentru zi este gol."
@@ -287,6 +300,8 @@ elif [[ "${LANG,,}" =~ ru_ ]]; then
         ["hour_invalid"]="Недопустимый час! Используйте значение от 00 до 23."
         ["minute_invalid"]="Недопустимая минута! Используйте значение от 00 до 59."
         ["error_data"]="Ошибка данных"
+		["no_daemon"]="Не выполняется!"
+		["no_socket"]="Тревога не активна. Запустите: $SCRIPT -r"
         ["year_empty"]="Поле года пустое."
         ["month_empty"]="Поле месяца пустое."
         ["day_empty"]="Поле дня пустое."
@@ -337,6 +352,8 @@ elif [[ "${LANG,,}" =~ zh_ ]]; then
         ["hour_invalid"]="无效的小时！请输入00到23之间的值。"
         ["minute_invalid"]="无效的分钟！请输入00到59之间的值。"
         ["error_data"]="数据错误"
+    	["no_daemon"]="未运行！"
+    	["no_socket"]="警报未运行。请执行: $SCRIPT -r"
         ["year_empty"]="年份字段为空。"
         ["month_empty"]="月份字段为空。"
         ["day_empty"]="日期字段为空。"
@@ -387,6 +404,8 @@ elif [[ "${LANG,,}" =~ ko_ ]]; then
         ["hour_invalid"]="잘못된 시간입니다! 00부터 23 사이의 값을 사용하세요."
         ["minute_invalid"]="잘못된 분입니다! 00부터 59 사이의 값을 사용하세요."
         ["error_data"]="데이터 오류"
+		["no_daemon"]="실행 중이 아닙니다!"
+		["no_socket"]="알람이 실행되고 있지 않습니다. 실행 명령: $SCRIPT -r"
         ["year_empty"]="연도 필드가 비어 있습니다."
         ["month_empty"]="월 필드가 비어 있습니다."
         ["day_empty"]="날짜 필드가 비어 있습니다."
@@ -437,6 +456,8 @@ elif [[ "${LANG,,}" =~ he_ ]]; then
         ["hour_invalid"]="!שעה לא חוקית השתמש בערך בין 00 ל-23."
         ["minute_invalid"]="!דקה לא חוקית השתמש בערך בין 00 ל-59."
         ["error_data"]="שגיאת נתונים"
+		["no_daemon"]="לא בפועל!"
+		["no_socket"]="האזעקה לא פועלת. הפעל: $SCRIPT -r"
         ["year_empty"]="שדה השנה ריק."
         ["month_empty"]="שדה החודש ריק."
         ["day_empty"]="שדה היום ריק."
@@ -487,6 +508,8 @@ elif [[ "${LANG,,}" =~ ar_ ]]; then
         ["hour_invalid"]="!ساعة غير صالحة استخدم قيمة بين 00 و 23."
         ["minute_invalid"]="!دقيقة غير صالحة استخدم قيمة بين 00 و 59."
         ["error_data"]="خطأ في البيانات"
+		["no_daemon"]="لا يعمل!"
+		["no_socket"]="إنذار غير نشط. نفّذ: $SCRIPT -r"
         ["year_empty"]="حقل السنة فارغ."
         ["month_empty"]="حقل الشهر فارغ."
         ["day_empty"]="حقل اليوم فارغ."
@@ -537,6 +560,8 @@ elif [[ "${LANG,,}" =~ ja_ ]]; then
         ["hour_invalid"]="無効な時間です！ 00から23の値を使用してください。"
         ["minute_invalid"]="無効な分です！ 00から59の値を使用してください。"
         ["error_data"]="データエラー"
+		["no_daemon"]="実行されていません！"
+		["no_socket"]="アラームが作動していません。実行: $SCRIPT -r"
         ["year_empty"]="年のフィールドが空です。"
         ["month_empty"]="月のフィールドが空です。"
         ["day_empty"]="日のフィールドが空です。"
@@ -587,6 +612,8 @@ elif [[ "${LANG,,}" =~ es_ ]]; then
         ["hour_invalid"]="¡Hora inválida! Use un valor entre 00 y 23."
         ["minute_invalid"]="¡Minuto inválido! Use un valor entre 00 y 59."
         ["error_data"]="Error de Datos"
+		["no_daemon"]="¡No se está ejecutando!"
+		["no_socket"]="La alarma no está en ejecución. Ejecute: $SCRIPT -r"
         ["year_empty"]="El campo del año está vacío."
         ["month_empty"]="El campo del mes está vacío."
         ["day_empty"]="El campo del día está vacío."
@@ -637,6 +664,8 @@ else
         ["hour_invalid"]="Invalid hour! Use a value between 00 and 23."
         ["minute_invalid"]="Invalid minute! Use a value between 00 and 59."
         ["error_data"]="Data Error"
+		["no_daemon"]="Not running!"
+		["no_socket"]="Alarm is not running. Execute: $SCRIPT -r"
         ["year_empty"]="The year field is empty."
         ["month_empty"]="The month field is empty."
         ["day_empty"]="The day field is empty."
@@ -670,9 +699,6 @@ else
         ["help_help"]="  -h    Show this help"
     )
 fi
-
-# Set environment for date
-#LC_ALL=c
 
 # Directory for alarms
 ALARM_DIR="$HOME/.alarms"
@@ -843,15 +869,14 @@ lock_generate() {
 # Function to run and execute alarms as a daemon
 run_alarms() {
     while true; do
-        SCRIPT="${0##*/}"
-        TMPDIR="${TMPDIR:-/tmp}"
-        LOCKDIR="${TMPDIR}/${SCRIPT%.*}"
         current_year=$(LC_ALL=c date +%Y)
         current_month=$(LC_ALL=c date +%m)
         current_day=$(LC_ALL=c date +%d)
         current_hour=$(LC_ALL=c date +%H)
         current_minute=$(LC_ALL=c date +%M)
         current_weekday=$(date +%a | tr '[A-Z]' '[a-z]') # e.g., Mon, Tue, Wed
+
+		[[ ! -f "$SOCKET_FILE" ]] && touch "$SOCKET_FILE"
         
         for alarm_file in "$ALARM_DIR"/*.alarm; do
             # Check if the file exists
@@ -896,6 +921,8 @@ run_alarms() {
                 # { [ "$current_month" -lt "$month" ] || [ "$current_month" -eq "$month" ] && [ "$current_day" -lt "$day" ]; }; then
                 #     continue
                 # fi
+
+                [ "$current_minute" -ne "$minute" ] && [ -f "$lock_file" ] && rm -f "$lock_file"
 
                 if [ "$current_minute" -eq "$minute" ] && [ -f "$lock_file" ]; then
                     continue
@@ -980,7 +1007,11 @@ show_help() {
 # Check options passed to the script
 case "$1" in
     -c)
-        create_alarm
+		if [[ -f "$SOCKET_FILE" ]]; then
+        	create_alarm
+		else
+			zenity --error --title="${MESSAGES["no_daemon"]}" --text="${MESSAGES["no_socket"]}" 2>/dev/null
+		fi
         ;;
     -r)
         run_alarms
