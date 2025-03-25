@@ -863,7 +863,7 @@ create_alarm() {
 }
 
 lock_generate() { 
-    touch "$1" && sleep 120 && rm "$1"
+    touch "$1" && sleep 70 && rm -f "$1"
 }
 
 # Function to run and execute alarms as a daemon
