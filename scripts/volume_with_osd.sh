@@ -32,27 +32,32 @@ default_device() {
     pactl list short sinks | awk -v sink_name="$sink_name" '$2 == sink_name {print $1}'
 }
 
+get_current_volume() {
+    local sink_name=$(pactl get-default-sink)
+    LC_ALL=c pactl list sinks | awk -v sink_name="$sink_name" '
+        $0 ~ "Sink #" {in_sink = 0} 
+        $0 ~ "Name: " sink_name {in_sink = 1} 
+        in_sink && $0 ~ "Volume:" {gsub("%","",$5); print $5; exit}
+    '
+}
+
 volume_set() {
     local volume="$1"
-    pactl set-sink-volume "$(default_device)" "$volume"
+    # Limit volume to 0-150% (PulseAudio permite até 150%)
+    if (( volume > 150 )); then
+        volume=150
+    elif (( volume < 0 )); then
+        volume=0
+    fi
+    pactl set-sink-volume "$(default_device)" "$volume%"
     pkill -9 osd_cat
     xrefresh
 }
 
 volume_filter() {
-    # Obtém o nome do sink padrão
-    local sink_name=$(pactl get-default-sink)
-    
-    # Obtém o volume do sink padrão
-    local volume=$(LC_ALL=c pactl list sinks | awk -v sink_name="$sink_name" '
-        $0 ~ "Sink #" {in_sink = 0} 
-        $0 ~ "Name: " sink_name {in_sink = 1} 
-        in_sink && $0 ~ "Volume:" {print $5; exit}
-    ')
-    
-    echo "Volume: $volume"
+    local current_volume=$(get_current_volume)
+    echo "Volume: $current_volume%"
 }
-
 
 # xset fp+ ~/.fonts
 
@@ -70,12 +75,45 @@ display_xosd() {
 }
 
 volume() {
-    local volume="$1"
-    echo "$(volume_set "$volume"; pkill -9 osd_cat; xrefresh; volume_filter | display_xosd)"
+    local change="$1"
+    local current_volume=$(get_current_volume)
+    local new_volume
+    
+    # Remove % sign if present
+    change=${change%\%}
+    
+    # Calculate new volume
+    if [[ $change == +* ]]; then
+        new_volume=$(( current_volume + ${change#+} ))
+    elif [[ $change == -* ]]; then
+        new_volume=$(( current_volume - ${change#-} ))
+    else
+        new_volume=$change
+    fi
+    
+    # Ensure new volume is between 0 and 150
+    if (( new_volume > 150 )); then
+        new_volume=150
+    elif (( new_volume < 0 )); then
+        new_volume=0
+    fi
+    
+    echo "$(volume_set "$new_volume"; pkill -9 osd_cat; xrefresh; volume_filter | display_xosd)"
 }
 
 display_mute() {
-    LC_ALL=c pactl list sinks | grep "Mute:" | head -n1 | cut -f2
+    local sink_name=$(pactl get-default-sink)
+    local mute_status=$(LC_ALL=c pactl list sinks | awk -v sink_name="$sink_name" '
+        $0 ~ "Sink #" {in_sink = 0} 
+        $0 ~ "Name: " sink_name {in_sink = 1} 
+        in_sink && $0 ~ "Mute:" {print $2; exit}
+    ')
+    
+    if [[ "$mute_status" == "yes" ]]; then
+        echo "Muted"
+    else
+        echo "Unmuted"
+    fi
 }
 
 toggle_mute() {
@@ -91,23 +129,17 @@ if [[ -z "$1" ]] || [[ $1 == "-h" || $1 == "--help" ]]; then
     exit 0
 fi
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -v)
-            volume "$2"
-            shift 2
-            continue
-            ;;
-        -m)
-            mute
-            shift 
-            continue
-            ;;
-        *)
-            help
-            ;;
-    esac
-done
+case $1 in
+	-v)
+		volume "$2"
+		;;
+	-m)
+		mute
+		;;
+	*)
+		help
+		;;
+esac
 
 # Wait for all child processes to finish
 wait
