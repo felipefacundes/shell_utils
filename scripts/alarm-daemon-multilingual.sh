@@ -70,7 +70,7 @@ exec 2>/dev/null
 SCRIPT="${0##*/}"
 TMPDIR="${TMPDIR:-/tmp}"
 LOCKDIR="${TMPDIR}/${SCRIPT%.*}"
-SOCKET_FILE="${LOCKDIR}/${SCRIPT%.*}.socket"
+PID_FILE="${LOCKDIR}/${SCRIPT%.*}.pid"
 
 # Declare an associative array for multilingual messages
 declare -A MESSAGES
@@ -913,7 +913,7 @@ run_alarms() {
         current_minute=$(LC_ALL=c date +%M)
         current_weekday=$(date +%a | tr '[A-Z]' '[a-z]') # e.g., Mon, Tue, Wed
 
-		[[ ! -f "$SOCKET_FILE" ]] && touch "$SOCKET_FILE" && { pgrep -f "$SCRIPT" | tee "$SOCKET_FILE" >/dev/null; }
+		[[ ! -f "$PID_FILE" ]] && touch "$PID_FILE" && { pgrep -f "$SCRIPT" | tee "$PID_FILE" >/dev/null; }
         
         for alarm_file in "$ALARM_DIR"/*.alarm; do
             # Check if the file exists
@@ -1054,7 +1054,7 @@ show_help() {
 # Check options passed to the script
 case "$1" in
     -c)
-		if [[ -f "$SOCKET_FILE" ]]; then
+		if [[ -f "$PID_FILE" ]]; then
         	create_alarm
 		else
 			zenity --error --title="${MESSAGES["no_daemon"]}" --text="${MESSAGES["no_socket"]}" 2>/dev/null
