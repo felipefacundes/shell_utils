@@ -103,6 +103,8 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         ["enter_alarm_message"]="Digite a mensagem a ser exibida quando o alarme tocar:"
         ["execute_script"]="Execute script/comando?"
         ["execute_script_question"]="Você deseja executar um script ou comando?"
+        ["execute_method"]="Como deseja executar?"
+        ["enter_command"]="Digite o comando:"
         ["select_the_script"]="Selecione o script/comando a ser executado:"
         ["open_file"]="Abrir arquivo?"
         ["open_file_question"]="Você deseja abrir um arquivo com xdg-open?"
@@ -155,6 +157,8 @@ elif [[ "${LANG,,}" =~ fr_ ]]; then
         ["enter_alarm_message"]="Entrez le message à afficher lorsque l'alarme sonne :"
         ["execute_script"]="Exécuter un script/commande ?"
         ["execute_script_question"]="Voulez-vous exécuter un script ou une commande ?"
+		["execute_method"]="Comment souhaitez-vous exécuter ?"
+		["enter_command"]="Entrez la commande :"
         ["select_the_script"]="Sélectionnez le script/la commande à exécuter :"
         ["open_file"]="Ouvrir un fichier ?"
         ["open_file_question"]="Voulez-vous ouvrir un fichier avec xdg-open ?"
@@ -207,6 +211,8 @@ elif [[ "${LANG,,}" =~ de_ ]]; then
         ["enter_alarm_message"]="Geben Sie die Nachricht ein, die angezeigt werden soll, wenn der Alarm ausgelöst wird:"
         ["execute_script"]="Skript/Befehl ausführen?"
         ["execute_script_question"]="Möchten Sie ein Skript oder einen Befehl ausführen?"
+		["execute_method"]="Wie möchten Sie ausführen?"  
+		["enter_command"]="Geben Sie den Befehl ein:"  
         ["select_the_script"]="Wählen Sie das Skript/den Befehl aus, das/der ausgeführt werden soll:"
         ["open_file"]="Datei öffnen?"
         ["open_file_question"]="Möchten Sie eine Datei mit xdg-open öffnen?"
@@ -259,6 +265,8 @@ elif [[ "${LANG,,}" =~ ro_ ]]; then
         ["enter_alarm_message"]="Introduceți mesajul care va fi afișat când alarma se declanșează:"
         ["execute_script"]="Executați script/comandă?"
         ["execute_script_question"]="Doriți să executați un script sau o comandă?"
+		["execute_method"]="Cum doriți să executați?"  
+		["enter_command"]="Introduceți comanda:"
         ["select_the_script"]="Selectați scriptul/comanda de executat:"
         ["open_file"]="Deschideți fișierul?"
         ["open_file_question"]="Doriți să deschideți un fișier cu xdg-open?"
@@ -311,6 +319,8 @@ elif [[ "${LANG,,}" =~ ru_ ]]; then
         ["enter_alarm_message"]="Введите сообщение, которое будет отображаться при срабатывании будильника:"
         ["execute_script"]="Выполнить скрипт/команду?"
         ["execute_script_question"]="Хотите выполнить скрипт или команду?"
+		["execute_method"]="Как вы хотите выполнить?"  
+		["enter_command"]="Введите команду:"  
         ["select_the_script"]="Выберите скрипт/команду для выполнения:"
         ["open_file"]="Открыть файл?"
         ["open_file_question"]="Хотите открыть файл с помощью xdg-open?"
@@ -363,6 +373,8 @@ elif [[ "${LANG,,}" =~ zh_ ]]; then
         ["enter_alarm_message"]="请输入闹钟响起时显示的消息："
         ["execute_script"]="执行脚本/命令？"
         ["execute_script_question"]="您想要执行脚本或命令吗？"
+		["execute_method"]="您想如何执行？"  
+		["enter_command"]="请输入命令："  
         ["select_the_script"]="选择要执行的脚本/命令："
         ["open_file"]="打开文件？"
         ["open_file_question"]="您想用 xdg-open 打开文件吗？"
@@ -415,6 +427,8 @@ elif [[ "${LANG,,}" =~ ko_ ]]; then
         ["enter_alarm_message"]="알람이 울릴 때 표시할 메시지를 입력하세요:"
         ["execute_script"]="스크립트/명령 실행?"
         ["execute_script_question"]="스크립트나 명령을 실행하시겠습니까?"
+		["execute_method"]="어떻게 실행하시겠습니까?"  
+		["enter_command"]="명령어를 입력하세요:"  
         ["select_the_script"]="실행할 스크립트/명령을 선택하세요:"
         ["open_file"]="파일 열기?"
         ["open_file_question"]="xdg-open으로 파일을 열겠습니까?"
@@ -467,6 +481,8 @@ elif [[ "${LANG,,}" =~ he_ ]]; then
         ["enter_alarm_message"]="הזן את ההודעה שתוצג כאשר ההתראה תופעל:"
         ["execute_script"]="להריץ סקריפט/פקודה?"
         ["execute_script_question"]="האם ברצונך להריץ סקריפט או פקודה?"
+		["execute_method"]="איך תרצה להפעיל?"  
+		["enter_command"]="הזן את הפקודה:"  
         ["select_the_script"]="בחר את הסקריפט/פקודה להרצה:"
         ["open_file"]="לפתוח קובץ?"
         ["open_file_question"]="האם ברצונך לפתוח קובץ עם xdg-open?"
@@ -519,6 +535,8 @@ elif [[ "${LANG,,}" =~ ar_ ]]; then
         ["enter_alarm_message"]="أدخل الرسالة التي ستظهر عند تشغيل التنبيه:"
         ["execute_script"]="تشغيل سكربت/أمر؟"
         ["execute_script_question"]="هل ترغب في تشغيل سكربت أو أمر؟"
+		["execute_method"]="كيف تريد التنفيذ؟"  
+		["enter_command"]="أدخل الأمر:"  
         ["select_the_script"]="اختر السكربت/الأمر للتشغيل:"
         ["open_file"]="فتح ملف؟"
         ["open_file_question"]="هل ترغب في فتح ملف باستخدام xdg-open؟"
@@ -571,6 +589,8 @@ elif [[ "${LANG,,}" =~ ja_ ]]; then
         ["enter_alarm_message"]="アラームが鳴ったときに表示するメッセージを入力してください:"
         ["execute_script"]="スクリプト/コマンドを実行しますか?"
         ["execute_script_question"]="スクリプトまたはコマンドを実行しますか?"
+		["execute_method"]="どのように実行しますか？"
+		["enter_command"]="コマンドを入力してください："
         ["select_the_script"]="実行するスクリプト/コマンドを選択してください:"
         ["open_file"]="ファイルを開きますか?"
         ["open_file_question"]="xdg-openでファイルを開きますか?"
@@ -623,6 +643,8 @@ elif [[ "${LANG,,}" =~ es_ ]]; then
         ["enter_alarm_message"]="Introduce el mensaje que se mostrará cuando suene la alarma:"
         ["execute_script"]="¿Ejecutar script/comando?"
         ["execute_script_question"]="¿Quieres ejecutar un script o comando?"
+		["execute_method"]="¿Cómo deseas ejecutarlo?"
+		["enter_command"]="Introduce el comando:"
         ["select_the_script"]="Selecciona el script/comando a ejecutar:"
         ["open_file"]="¿Abrir archivo?"
         ["open_file_question"]="¿Quieres abrir un archivo con xdg-open?"
@@ -675,6 +697,8 @@ else
         ["enter_alarm_message"]="Enter the message to display when the alarm goes off:"
         ["execute_script"]="Execute script/command?"
         ["execute_script_question"]="Do you want to execute a script or command?"
+		["execute_method"]="How do you want to execute?"
+		["enter_command"]="Enter the command:"
         ["select_the_script"]="Select the script/command to execute:"
         ["open_file"]="Open file?"
         ["open_file_question"]="Do you want to open a file with xdg-open?"
@@ -821,9 +845,22 @@ create_alarm() {
     # Ask if a script/command should be executed
     execute_script=$(zenity --question --title="${MESSAGES[execute_script]}" --text="${MESSAGES[execute_script_question]}" && echo "yes" || echo "no" 2>/dev/null)
     
-    if [[ "$execute_script" == "yes" ]]; then
-        script_path=$(zenity --file-selection --title="${MESSAGES[select_the_script]}" 2>/dev/null)
-    fi
+	if [[ "$execute_script" == "yes" ]]; then
+		method=$(zenity --list --radiolist \
+			--title="${MESSAGES[execute_script]}" \
+			--text="${MESSAGES[execute_method]}" \
+			--column="${MESSAGES[select]}" --column="${MESSAGES[option]}" \
+			TRUE "${MESSAGES[open_file]}" FALSE "${MESSAGES[execute_script]}" 2>/dev/null)
+
+		if [ "$method" == "${MESSAGES[open_file]}" ]; then
+			script_path=$(zenity --file-selection --title="${MESSAGES[select_the_script]}" 2>/dev/null)
+
+		elif [ "$method" == "${MESSAGES[execute_script]}" ]; then
+			script_path=$(zenity --entry --title="${MESSAGES[execute_script]}" --text="${MESSAGES[enter_command]}" 2>/dev/null)
+
+		fi
+
+	fi
 
     # Ask if a file should be opened with xdg-open
     open_file=$(zenity --question --title="${MESSAGES[open_file]}" --text="${MESSAGES[open_file_question]}" && echo "yes" || echo "no" 2>/dev/null)
@@ -876,7 +913,7 @@ run_alarms() {
         current_minute=$(LC_ALL=c date +%M)
         current_weekday=$(date +%a | tr '[A-Z]' '[a-z]') # e.g., Mon, Tue, Wed
 
-		[[ ! -f "$SOCKET_FILE" ]] && touch "$SOCKET_FILE"
+		[[ ! -f "$SOCKET_FILE" ]] && touch "$SOCKET_FILE" && { pgrep -f "$SCRIPT" | tee "$SOCKET_FILE" >/dev/null; }
         
         for alarm_file in "$ALARM_DIR"/*.alarm; do
             # Check if the file exists
@@ -967,20 +1004,30 @@ run_alarms() {
                 # Ask if the alarm should repeat in the next 10 minutes
                 repeat_10=$(zenity --question --title="${MESSAGES[repeat_alarm_title]}" --text="${MESSAGES[repeat_alarm_10_question]}" && echo "yes" || echo "no" 2>/dev/null)
 
-                if [[ "$repeat_10" == "yes" ]]; then
-                    # Create a new alarm file for 10 minutes after the current alarm
-                    new_minute=$(LC_ALL=c date -d "+10 minutes" +%M)
-                    new_hour=$(LC_ALL=c date -d "+10 minutes" +%H)
-                    new_alarm_file="$ALARM_DIR/alarm_$(LC_ALL=c date +'%Y-%m-%d_%H:%M:%S')_repeat.alarm"
-                    cp -f "$alarm_file" "$new_alarm_file"
-                    sed -i "s/^Hour:.*/Hour: $new_hour/" "$new_alarm_file"
-                    sed -i "s/^Minute:.*/Minute: $new_minute/" "$new_alarm_file"
-                    sed -i "s/^Repetition:.*/Repetition: ${MESSAGES[only_this_day]}/" "$new_alarm_file"
-                fi
+				if [[ "$repeat_10" == "yes" ]]; then
+					# Calculate the new date and time, 10 minutes later, considering the transition of the day
+					new_year=$(LC_ALL=c date -d "+10 minutes" +%Y)
+					new_month=$(LC_ALL=c date -d "+10 minutes" +%m)
+					new_day=$(LC_ALL=c date -d "+10 minutes" +%d)
+					new_hour=$(LC_ALL=c date -d "+10 minutes" +%H)
+					new_minute=$(LC_ALL=c date -d "+10 minutes" +%M)
+					
+					# Create a new alarm file with the updated date and time
+					new_alarm_file="$ALARM_DIR/alarm_$(LC_ALL=c date +'%Y-%m-%d_%H:%M:%S')_repeat.alarm"
+					cp -f "$alarm_file" "$new_alarm_file"
+					
+					# Update date and time fields in the new file
+					sed -i "s/^Year:.*/Year: $new_year/" "$new_alarm_file"
+					sed -i "s/^Month:.*/Month: $new_month/" "$new_alarm_file"
+					sed -i "s/^Day:.*/Day: $new_day/" "$new_alarm_file"
+					sed -i "s/^Hour:.*/Hour: $new_hour/" "$new_alarm_file"
+					sed -i "s/^Minute:.*/Minute: $new_minute/" "$new_alarm_file"
+					sed -i "s/^Repetition:.*/Repetition: ${MESSAGES[only_this_day]}/" "$new_alarm_file"
+				fi
 
                 # If the alarm is not set to repeat, delete the file after execution
                 if [[ "$repeat_alarm" == "${MESSAGES[only_this_day]}" ]]; then
-                    rm -f "$alarm_file"
+					rm -f "$alarm_file"
                 fi
 
                 if [ "$current_minute" -eq "$minute" ] && [ ! -f "$lock_file" ]; then
