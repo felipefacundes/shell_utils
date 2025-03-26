@@ -17,8 +17,8 @@ SCRIPT="${0##*/}"
 CACHEDIR="${HOME}/.cache"
 PATH1="/usr/share/kja/$FILE"
 PATH2="$HOME/.shell_utils/database/kja/$FILE"
-CACHEKJA="${CACHEDIR}/${SCRIPT%.*}"
-LAST_CHAPTER_FILE="${CACHEKJA}/KJA_LAST_CHAPTER_FILE.db"
+CACHE_KJA="${CACHEDIR}/${SCRIPT%.*}"
+LAST_CHAPTER_FILE="${CACHE_KJA}/KJA_LAST_CHAPTER_FILE.db"
 
 if [[ -f "$PATH1" ]]; then
 	DB_FILE="$PATH1"
@@ -28,7 +28,7 @@ elif [[ -f "$FILE" ]]; then
 	DB_FILE="$FILE"
 fi
 
-[[ ! -d "${CACHEKJA}" ]] && mkdir -p "${CACHEKJA}"
+[[ ! -d "${CACHE_KJA}" ]] && mkdir -p "${CACHE_KJA}"
 
 [ -f "$DB_FILE" ] && {
 	MD5SUM_DB_FILE=$(md5sum "$DB_FILE" | awk '{print $1}')
@@ -131,6 +131,9 @@ prepare_terminal() {
 }
 
 reset_terminal() {
+	# Desabilita eventos do mouse
+	echo -ne "\033[?1000l\033[?1006l"
+
 	# Mostrar o cursor
 	show_cursor
 
@@ -382,22 +385,22 @@ mostrar_versiculos() {
 	}
 
     # Função para exibir a página atual
-    display_page() {
-        clear
-        echo -ne "${STYLE}${all_screen}"
-        
-        # Cabeçalho
-        echo -e "${bold}$nome_livro $capitulo${reset}${STYLE}"
-        [[ -n "$search_pattern" ]] && echo -e "\033[33mPadrão: /$search_pattern (${#search_matches[@]} matches)$reset"
-        echo -e "${STYLE}--------------------------------------------------\n"
-        
-        # Conteúdo (com highlight das buscas)
-        for ((i=current_line; i<current_line+lines_per_page && i<total_lines; i++)); do
-            line="${lines[i]}"
-            if [[ -n "$search_pattern" ]]; then
-                # Destaca os matches
-                flags=""
-                [[ $case_insensitive -eq 1 ]] && flags+="I"
+	display_page() {
+		clear
+		echo -ne "${STYLE}${all_screen}"
+		
+		# Cabeçalho
+		echo -e "${bold}$nome_livro $capitulo${reset}${STYLE}"
+		[[ -n "$search_pattern" ]] && echo -e "\033[33mPadrão: /$search_pattern (${#search_matches[@]} matches)$reset"
+		echo -e "${STYLE}--------------------------------------------------\n"
+		
+		# Conteúdo (com highlight das buscas)
+		for ((i=current_line; i<current_line+lines_per_page && i<total_lines; i++)); do
+			line="${lines[i]}"
+			if [[ -n "$search_pattern" ]]; then
+				# Destaca os matches
+				flags=""
+				[[ $case_insensitive -eq 1 ]] && flags+="I"
 				line=$(awk -v search="$search_pattern" -v style="${STYLE}" \
 				-v yellow="${HIGHLIGHT}" -v reset="$reset" -v ignore_case="$case_insensitive" \
 					'BEGIN {
@@ -426,66 +429,95 @@ mostrar_versiculos() {
     # Loop principal de navegação
     while [[ $quit -eq 0 ]]; do
         display_page
+		# Habilita relatórios estendidos do mouse
+		echo -ne "\033[?1000h\033[?1006h"
         
         # Captura de tecla
         IFS= read -rsn1 key </dev/tty >/dev/null 2>/dev/null
-		
-        if [[ $key == $'\033' ]]; then  # Tecla de escape (setas)
-            read -rsn2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
-            case "$key2" in
-                '[A') # Seta para cima
-                    ((current_line = current_line > 0 ? current_line - 1 : 0))
-                    ;;
-                '[B') # Seta para baixo
-                    ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line))
-                    ;;
-            esac
-        elif [[ $key == '/' ]]; then  # Iniciar busca
+
+		# Bloco de captura de teclas:
+		if [[ $key == $'\033' ]]; then
+			read -rsn2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
+			case "$key2" in
+				'[A') # Seta para cima
+					if [[ $current_line -gt 0 ]]; then
+						((current_line--))
+					fi
+					;;
+				'[B') # Seta para baixo
+					if [[ $current_line -lt $((total_lines - lines_per_page)) ]]; then
+						((current_line++))
+					fi
+					;;
+				'[<') # Evento de mouse no formato SGR
+					# Ler o evento SGR até o 'M'
+					mouse_event=""
+					while IFS= read -rsn1 char </dev/tty >/dev/null 2>/dev/null; do
+						mouse_event+="$char"
+						[[ "$char" == "M" ]] && break
+					done
+					# Extrair o código do botão (antes do primeiro ';')
+					button=$(echo "$mouse_event" | cut -d';' -f1)
+					case $button in
+						64) # Roda para cima (scroll up)
+							if [[ $current_line -gt 0 ]]; then
+								((current_line--))
+							fi
+							;;
+						65) # Roda para baixo (scroll down)
+							if [[ $current_line -lt $((total_lines - lines_per_page)) ]]; then
+								((current_line++))
+							fi
+							;;
+					esac
+					;;
+			esac
+		elif [[ $key == '/' ]]; then  # Iniciar busca
 			reset_terminal
-            echo -ne "\033[33m/"
-            read -re search_pattern
-            if [[ -n "$search_pattern" ]]; then
-                find_matches
-                if [[ ${#search_matches[@]} -gt 0 ]]; then
-                    current_line=${search_matches[0]}
-                fi
-            fi
-        elif [[ $key == 'n' || $key == 'N' ]]; then  # Próximo match
-            if [[ ${#search_matches[@]} -gt 0 ]]; then
-                ((current_match = (current_match + 1) % ${#search_matches[@]}))
-                current_line=${search_matches[$current_match]}
-            fi
-        else
-            case "$key" in
-                'w'|'j'|'W'|'J') # Tecla W (cima)
-                    ((current_line = current_line > 0 ? current_line - 1 : 0))
-                    ;;
-                's'|'k'|'S'|'K') # Tecla S (baixo)
-                    ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line))
-                    ;;
+			echo -ne "\033[33m/"
+			read -re search_pattern
+			if [[ -n "$search_pattern" ]]; then
+				find_matches
+				if [[ ${#search_matches[@]} -gt 0 ]]; then
+					current_line=${search_matches[0]}
+				fi
+			fi
+		elif [[ $key == 'n' || $key == 'N' ]]; then  # Próximo match
+			if [[ ${#search_matches[@]} -gt 0 ]]; then
+				((current_match = (current_match + 1) % ${#search_matches[@]}))
+				current_line=${search_matches[$current_match]}
+			fi
+		else
+			case "$key" in
+				'w'|'k'|'W'|'K') # Tecla W (cima)
+					((current_line = current_line > 0 ? current_line - 1 : 0))
+					;;
+				's'|'j'|'S'|'J') # Tecla S (baixo)
+					((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line))
+					;;
 				'c'|'l'|'C'|'L')
 					prepare_terminal
 					search_pattern=""
 					search_matches=()
 					current_match=0
 					current_line=0  # Volta ao topo do capítulo
-                    ;;
-                'q'|'Q') # Tecla Q (sair)
-                    quit=1
-                    ;;
-                'i'|'I') # Alternar case-sensitive
-                    ((case_insensitive = !case_insensitive))
-                    if [[ -n "$search_pattern" ]]; then
-                        find_matches
-                    fi
-                    ;;
-            esac
-        fi
-    done
+					;;
+				'q'|'Q') # Tecla Q (sair)
+					quit=1
+					;;
+				'i'|'I') # Alternar case-sensitive
+					((case_insensitive = !case_insensitive))
+					if [[ -n "$search_pattern" ]]; then
+						find_matches
+					fi
+					;;
+			esac
+		fi
+	done
 
-    # Restaura cores ao sair
-    echo -ne "\033[0m"
-    clear
+	# Restaura cores ao sair
+	echo -ne "\033[0m"
+	clear
 }
 
 case $1 in
