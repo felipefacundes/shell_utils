@@ -78,47 +78,136 @@ declare -a LIVROS=(
 )
 
 help() {
-	cat <<-EOF
-	${SCRIPT} - Navegador da Bíblia King James Atualizada para terminal
+    cat <<-EOF
+    ${SCRIPT} - Navegador da Bíblia King James Atualizada para terminal
 
-	USO:
-		${SCRIPT} [OPÇÕES]
+    USO:
+        ${SCRIPT} [OPÇÕES]
 
-	OPÇÕES:
-		-h, --help          Mostra esta ajuda
-		-d, --dark          Tema escuro (fundo preto, texto branco)
-		-db,--dbrown        Tema marrom escuro (fundo preto, texto laranja)
-		-w, --white         Tema claro (fundo branco, texto preto)
-		-b, --blue          Tema azul (fundo azul escuro, texto ciano)
-		-hig,--highlight    Tema alto contraste (fundo cinza, texto verde)
-		-bb,--bbrown        Tema bege (fundo bege, texto marrom)
+    OPÇÕES:
+        -h, --help          Mostra esta ajuda
+        -d, --dark          Tema escuro (fundo preto, texto branco)
+        -db,--dbrown        Tema marrom escuro (fundo preto, texto laranja)
+        -w, --white         Tema claro (fundo branco, texto preto)
+        -b, --blue          Tema azul (fundo azul escuro, texto ciano)
+        -hi,--highlight    Tema alto contraste (fundo cinza, texto verde)
+        -bb,--bbrown        Tema bege (fundo bege, texto marrom)
 
-	VARIÁVEIS DE ESTILO (via linha de comando ou edição no script):
-		STYLE               Controla cores do texto/fundo (códigos ANSI)
-		HIGHLIGHT           Cor dos termos buscados (padrão: amarelo)
-		KJA_MARGIN          Margem lateral do texto (padrão: 5)
+    VARIÁVEIS DE ESTILO (via linha de comando ou edição no script):
+        STYLE               Controla cores do texto/fundo (códigos ANSI)
+        HIGHLIGHT           Cor dos termos buscados (padrão: amarelo)
+        KJA_MARGIN          Margem lateral do texto (padrão: 5)
 
-	CONTROLES INTERATIVOS:
-		/                   Buscar termos nos versículos
-		n/N                 Navegar entre resultados da busca
-		I                   Alternar busca sensível a maiúsculas
-		w/s, ↑/↓, j/k       Rolagem vertical
-		c                   Voltar ao topo do capítulo
-		q                   Sair para seleção de livros
+    CONTROLES INTERATIVOS:
+        Navegação:
+        ↑/↓, w/s, j/k       Rolagem vertical
+        ←/→, h/l            Capítulo anterior/próximo
+        c                   Limpar os termos da busca e voltar ao topo do capítulo
+        q                   Sair para seleção de livros
 
-	EXEMPLOS:
-		${SCRIPT} --dark    # Executa com tema escuro
-		${SCRIPT} --blue    # Tema azul para melhor legibilidade
+        Busca:
+        /                   Buscar termos nos versículos
+        n/N                 Navegar entre resultados da busca
+        I                   Alternar busca sensível a maiúsculas
 
-	ARQUIVO DE DADOS:
+        Histórico e cópia:
+        S                   Salvar capítulo no histórico
+        Z                   Copiar capítulo para área de transferência
+        D                   Deletar item do histórico (no gerenciador)
+
+        Mouse:
+        Scroll              Rolagem vertical
+        Clique              Navegação em links (se aplicável)
+
+    MENU PRINCIPAL:
+        1. Buscar livro por número
+        2. Buscar livro por inicial
+        3. Buscar termo na Bíblia
+        4. Buscar termo em um livro específico
+        5. Último capítulo acessado
+        6. Gerenciar histórico de capítulos
+
+    EXEMPLOS:
+        ${SCRIPT} --dark    # Executa com tema escuro
+        ${SCRIPT} --blue    # Tema azul para melhor legibilidade
+
+    ARQUIVO DE DADOS:
         Banco SQLite com o texto bíblico (${DB_FILE})
-        Armazena último capítulo lido    (${LAST_CHAPTER_FILE})
+        Histórico de capítulos          (${HISTORY_FILE})
+        Último capítulo lido            (${LAST_CHAPTER_FILE})
 
-	DEPENDÊNCIAS:
-		sqlite3, dialog     Necessários para busca e interface
-	EOF
-	exit 0
+    DEPENDÊNCIAS:
+        sqlite3, dialog     Necessários para busca e interface
+        xclip/wl-copy/termux-clipboard-set  Para cópia para área de transferência
+
+    RECURSOS AVANÇADOS:
+        - Histórico de capítulos visitados (acessível pelo menu)
+        - Copiar capítulos inteiros para área de transferência (tecla Z)
+        - Navegação rápida entre capítulos (setas esquerda/direita)
+        - Destaque de termos de busca com cores personalizáveis
+        - Suporte a múltiplos ambientes (X11, Wayland, Termux)
+EOF
+    exit 0
 }
+
+# Verifica métodos para copiar para área de transferência
+setup_clipboard() {
+    # Termux (Android)
+    if [[ -n "$TERMUX_VERSION" ]]; then
+        if command -v termux-clipboard-set &> /dev/null; then
+            clipboard_copy() {
+                echo -ne "$1" | termux-clipboard-set
+                notify_send "Bíblia KJA" "Capítulo copiado para área de transferência!"
+            }
+        else
+            clipboard_copy() {
+                dialog --title "Aviso" --msgbox "termux-clipboard-set não está disponível. Não é possível copiar para área de transferência." 8 50
+            }
+        fi
+    
+    # Wayland
+    elif [[ ${XDG_SESSION_TYPE,,} == "wayland" ]]; then
+        if command -v wl-copy &> /dev/null; then
+            clipboard_copy() {
+                echo -ne "$1" | wl-copy
+                notify_send "Bíblia KJA" "Capítulo copiado para área de transferência!"
+            }
+        else
+            clipboard_copy() {
+                dialog --title "Aviso" --msgbox "wl-copy não está instalado. Não é possível copiar para área de transferência no Wayland." 8 50
+            }
+        fi
+    
+    # X11
+    elif [[ ${XDG_SESSION_TYPE,,} == "x11" ]] || [[ -n "$DISPLAY" ]]; then
+        if command -v xclip &> /dev/null; then
+            clipboard_copy() {
+                echo -ne "$1" | xclip -selection clipboard
+                notify_send "Bíblia KJA" "Capítulo copiado para área de transferência!"
+            }
+        else
+            clipboard_copy() {
+                dialog --title "Aviso" --msgbox "xclip não está instalado. Não é possível copiar para área de transferência no X11." 8 50
+            }
+        fi
+    
+    # Outros ambientes (macOS, etc)
+    else
+        if command -v pbcopy &> /dev/null; then  # macOS
+            clipboard_copy() {
+                echo -ne "$1" | pbcopy
+                notify_send "Bíblia KJA" "Capítulo copiado para área de transferência!"
+            }
+        else
+            clipboard_copy() {
+                dialog --title "Aviso" --msgbox "Nenhum método de cópia para área de transferência disponível para este ambiente." 8 50
+            }
+        fi
+    fi
+}
+
+# Configura o clipboard apropriado para o ambiente
+setup_clipboard
 
 hide_cursor() { printf "\e[?25l"; }
 show_cursor() { printf "\e[?25h"; }
@@ -146,6 +235,8 @@ reset_terminal() {
 
 notify_send() {
 	dialog --title "$1" --msgbox "$2" 8 40 >/dev/tty 2>&1
+	[[ ${XDG_SESSION_TYPE,,} != tty ]] && [[ -z "$TERMUX_VERSION" ]] && 
+	command -v notify-send >/dev/null && notify-send "$1" "$2"
 }
 
 gerenciar_historico() {
@@ -505,8 +596,8 @@ mostrar_versiculos() {
             echo -e "Match $((current_match + 1))/${#search_matches[@]} | "
         fi
         echo -e "${bold}${STYLE}Linha $((current_line + 1))-$((current_line + lines_per_page < total_lines ? current_line + lines_per_page : total_lines))/$total_lines"
-        [[ -z "$TERMUX_VERSION" ]] && echo -e "${bold}Controles: [↑/↓ ou w/s ou j/k para Navegar] [/ Buscar termos] [N/n Próximo] [Q/q Sair]"
-        [[ -n "$TERMUX_VERSION" ]] && echo -e "${bold}Controles:\n[↑/↓ ou w/s ou j/k para Navegar] [/ Buscar termos]\n[N/n Próximo] [Q/q Sair]"
+		[[ -z "$TERMUX_VERSION" ]] && echo -e "${bold}Controles: [↑/↓ ou w/s ou j/k para Navegar] [/ Buscar termos] [N/n Próximo] [S Salvar capítulo] [Z Copiar capítulo] [Q/q Sair]"
+		[[ -n "$TERMUX_VERSION" ]] && echo -e "${bold}Controles:\n[↑/↓ ou w/s ou j/k para Navegar] [/ Buscar termos]\n[N/n Próximo] [S Salvar capítulo] [Z Copiar capítulo] [Q/q Sair]"
     }
 
     # Loop principal de navegação
@@ -565,16 +656,17 @@ mostrar_versiculos() {
 					current_line=${search_matches[0]}
 				fi
 			fi
-		elif [[ $key == 'n' || $key == 'N' ]]; then  # Próximo match
-			if [[ ${#search_matches[@]} -gt 0 ]]; then
-				((current_match = (current_match + 1) % ${#search_matches[@]}))
-				current_line=${search_matches[$current_match]}
-			fi
 		else
 			case "$key" in
 				'q'|'Q') # Tecla Q (sair)
 					quit=1
 					break
+					;;
+				'n'|'N') # Próximo match
+					if [[ ${#search_matches[@]} -gt 0 ]]; then
+						((current_match = (current_match + 1) % ${#search_matches[@]}))
+						current_line=${search_matches[$current_match]}
+					fi
 					;;
 				'k'|'K') # Tecla W (cima)
 					((current_line = current_line > 0 ? current_line - 1 : 0))
@@ -586,15 +678,9 @@ mostrar_versiculos() {
 					# Verifica se já existe no histórico
 					if grep -q "^${livro_id}|${nome_livro}|${capitulo}$" "$HISTORY_FILE"; then
 						notify_send "Bíblia KJA" "Capítulo $capitulo de $nome_livro já está no histórico!"
-						[[ ${XDG_SESSION_TYPE,,} != tty ]] && [[ -z "$TERMUX_VERSION" ]] && 
-						command -v notify-send >/dev/null &&
-						notify-send "Bíblia KJA" "Capítulo $capitulo de $nome_livro já está no histórico!"
 					else
 						echo "${livro_id}|${nome_livro}|${capitulo}" | tee -a "$HISTORY_FILE" >/dev/null
 						notify_send "Bíblia KJA" "Capítulo $capitulo de $nome_livro salvo no histórico!"
-						[[ ${XDG_SESSION_TYPE,,} != tty ]] && [[ -z "$TERMUX_VERSION" ]] &&
-						command -v notify-send >/dev/null &&
-						notify-send "Bíblia KJA" "Capítulo $capitulo de $nome_livro salvo no histórico!"
 					fi
 					;;
 				'c'|'C')
@@ -604,13 +690,28 @@ mostrar_versiculos() {
 					current_match=0
 					current_line=0  # Volta ao topo do capítulo
 					;;
+				'z'|'Z') # Tecla Z - copiar capítulo para área de transferência
+					# Consulta todos os versículos do capítulo
+					versiculos=$(sqlite3 -separator " " "$DB_FILE" "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo ORDER BY verse;")
+					
+					# Formata o texto para copiar
+					texto_para_copiar="$nome_livro $capitulo\n\n"
+					while IFS= read -r linha; do
+						# Remove tags HTML e formatação especial
+						linha_limpa=$(echo "$linha" | sed -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
+						texto_para_copiar+="$linha_limpa\n"
+					done <<< "$versiculos"
+					
+					# Copia para área de transferência
+					clipboard_copy "$texto_para_copiar"
+					;;
 				'l'|'L')
 					next_chapter
-					return
+					#return
 					;;
 				'h'|'H')
 					prev_chapter
-					return
+					#return
 					;;
 				'i'|'I') # Alternar case-sensitive
 					((case_insensitive = !case_insensitive))
@@ -643,7 +744,7 @@ case $1 in
 	-b|--blue)
 		STYLE='\033[38;5;51;48;5;24m'
 	;;
-	-hig|--highlight)
+	-hi|--highlight)
 		STYLE='\033[38;5;155;48;5;241m'
 	;;
 	-bb|--bbrown)
