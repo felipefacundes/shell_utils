@@ -18,6 +18,7 @@ CACHEDIR="${HOME}/.cache"
 PATH1="/usr/share/kja/$FILE"
 PATH2="$HOME/.shell_utils/database/kja/$FILE"
 CACHE_KJA="${CACHEDIR}/${SCRIPT%.*}"
+HISTORY_FILE="${CACHE_KJA}/KJA_HISTORY_FILE.db"
 LAST_CHAPTER_FILE="${CACHE_KJA}/KJA_LAST_CHAPTER_FILE.db"
 
 if [[ -f "$PATH1" ]]; then
@@ -121,13 +122,15 @@ help() {
 
 hide_cursor() { printf "\e[?25l"; }
 show_cursor() { printf "\e[?25h"; }
+hide_echo() { stty -echo -icanon </dev/tty >/dev/null 2>/dev/null; }
+show_echo() { stty echo </dev/tty >/dev/null 2>/dev/null; }
 
 prepare_terminal() {
 	# Esconder o cursor
 	hide_cursor
 
 	# Desabilitar o echo das teclas pressionadas
-	stty -echo -icanon </dev/tty >/dev/null 2>/dev/null
+	hide_echo
 }
 
 reset_terminal() {
@@ -138,7 +141,65 @@ reset_terminal() {
 	show_cursor
 
 	# Habilitar o echo das teclas pressionadas
-	stty echo </dev/tty >/dev/null 2>/dev/null
+	show_echo
+}
+
+notify_send() {
+	dialog --title "$1" --msgbox "$2" 8 40 >/dev/tty 2>&1
+}
+
+gerenciar_historico() {
+    if [ ! -f "$HISTORY_FILE" ] || [ ! -s "$HISTORY_FILE" ]; then
+        dialog --title "Histórico" --msgbox "Nenhum capítulo no histórico ainda." 8 40 >/dev/tty 2>&1
+        return
+    fi
+
+    # Ler o histórico e formatar para exibição
+    declare -a historico_itens
+    while IFS="|" read -r id nome cap; do
+        historico_itens+=("$id|$nome|$cap" "$nome Capítulo $cap")
+    done < "$HISTORY_FILE"
+
+    while true; do
+        escolha=$(dialog --title "Gerenciar Histórico" \
+                         --menu "Selecione um capítulo (D para deletar):" \
+                         40 80 40 "${historico_itens[@]}" \
+                         2>&1 >/dev/tty)
+        
+        if [ -z "$escolha" ]; then
+            break
+        fi
+
+        # Espera MUITO curto por uma tecla
+        read -rsn1 -t 1 key </dev/tty >/dev/null 2>&1
+        
+        # Verificar se pressionou 'D' (case insensitive)
+        if [[ "${key^^}" == "D" ]]; then  
+            dialog --title "Histórico" \
+                   --yesno "Pressione 'Sim' para deletar ou 'Não' para abrir o capítulo" \
+                   8 40 >/dev/tty 2>&1
+
+            if [ $? -eq 0 ]; then  # Sim - deletar
+                # Remove a linha exata do arquivo
+                grep -vF "$escolha" "$HISTORY_FILE" > "${HISTORY_FILE}.tmp"
+                mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
+                
+                # Atualiza a lista
+                historico_itens=()
+                while IFS="|" read -r id nome cap; do
+                    historico_itens+=("$id|$nome|$cap" "$nome Capítulo $cap")
+                done < "$HISTORY_FILE"
+                
+                dialog --title "Histórico" --msgbox "Item removido do histórico." 8 40
+                continue  # Volta para o menu após deletar
+            fi
+        fi
+        
+        # Abre o capítulo
+        IFS="|" read -r livro_id nome_livro cap <<< "$escolha"
+        mostrar_versiculos "$livro_id" "$nome_livro" "$cap"
+        return
+    done
 }
 
 # Função para exibir o menu de livros
@@ -157,6 +218,7 @@ mostrar_livros() {
             "3" "Buscar termo na Bíblia" \
             "4" "Buscar termo em um livro específico" \
 			"5" "$ultimo_capitulo_option" \
+			"6" "Gerenciar histórico de capítulos" \
             "q" "Sair" 2>&1 >/dev/tty)
 
         case $OPCAO in
@@ -227,6 +289,9 @@ mostrar_livros() {
                     mostrar_versiculos "$livro_id" "$nome_livro" "$capitulo"
                 fi
                 ;;
+			6)
+				gerenciar_historico
+				;;
             q)
                 clear
 				reset_terminal
@@ -322,6 +387,24 @@ mostrar_capitulos() {
             break # Volta ao menu de livros se o usuário pressionar Esc
         fi
     done
+}
+
+next_chapter() {
+	# Verifica se existe próximo capítulo
+	next_chapter=$(sqlite3 "$DB_FILE" "SELECT MIN(chapter) FROM verse WHERE book_id = $livro_id AND chapter > $capitulo;")
+	if [ -n "$next_chapter" ]; then
+		mostrar_versiculos "$livro_id" "$nome_livro" "$next_chapter"
+		return
+	fi
+}
+
+prev_chapter() {
+	# Verifica se existe capítulo anterior
+	prev_chapter=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id AND chapter < $capitulo;")
+	if [ -n "$prev_chapter" ]; then
+		mostrar_versiculos "$livro_id" "$nome_livro" "$prev_chapter"
+		return
+	fi
 }
 
 # Função para exibir os versículos de um capítulo
@@ -440,14 +523,18 @@ mostrar_versiculos() {
 			read -rsn2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
 			case "$key2" in
 				'[A') # Seta para cima
-					if [[ $current_line -gt 0 ]]; then
-						((current_line--))
-					fi
+					((current_line = current_line > 0 ? current_line - 1 : 0))
 					;;
 				'[B') # Seta para baixo
-					if [[ $current_line -lt $((total_lines - lines_per_page)) ]]; then
-						((current_line++))
-					fi
+					((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line))
+					;;
+				'[C') # Seta para direita - próximo capítulo
+					next_chapter
+					return
+					;;
+				'[D') # Seta para esquerda - capítulo anterior
+					prev_chapter
+					return
 					;;
 				'[<') # Evento de mouse no formato SGR
 					# Ler o evento SGR até o 'M'
@@ -460,14 +547,10 @@ mostrar_versiculos() {
 					button=$(echo "$mouse_event" | cut -d';' -f1)
 					case $button in
 						64) # Roda para cima (scroll up)
-							if [[ $current_line -gt 0 ]]; then
-								((current_line--))
-							fi
+							((current_line = current_line > 0 ? current_line - 1 : 0))
 							;;
 						65) # Roda para baixo (scroll down)
-							if [[ $current_line -lt $((total_lines - lines_per_page)) ]]; then
-								((current_line++))
-							fi
+							((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line))
 							;;
 					esac
 					;;
@@ -489,21 +572,39 @@ mostrar_versiculos() {
 			fi
 		else
 			case "$key" in
-				'w'|'k'|'W'|'K') # Tecla W (cima)
+				'q'|'Q') # Tecla Q (sair)
+					quit=1
+					break
+					;;
+				'k'|'K') # Tecla W (cima)
 					((current_line = current_line > 0 ? current_line - 1 : 0))
 					;;
-				's'|'j'|'S'|'J') # Tecla S (baixo)
+				'j'|'J') # Tecla S (baixo)
 					((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line))
 					;;
-				'c'|'l'|'C'|'L')
+				's'|'S') # Tecla S - salvar no histórico
+					# Verifica se já existe no histórico
+					if grep -q "^${livro_id}|${nome_livro}|${capitulo}$" "$HISTORY_FILE"; then
+						notify_send "Bíblia KJA" "Capítulo $capitulo de $nome_livro já está no histórico!"
+					else
+						echo "${livro_id}|${nome_livro}|${capitulo}" | tee -a "$HISTORY_FILE" >/dev/null
+						notify_send "Bíblia KJA" "Capítulo $capitulo de $nome_livro salvo no histórico!"
+					fi
+					;;
+				'c'|'C')
 					prepare_terminal
 					search_pattern=""
 					search_matches=()
 					current_match=0
 					current_line=0  # Volta ao topo do capítulo
 					;;
-				'q'|'Q') # Tecla Q (sair)
-					quit=1
+				'l'|'L')
+					next_chapter
+					return
+					;;
+				'h'|'H')
+					prev_chapter
+					return
 					;;
 				'i'|'I') # Alternar case-sensitive
 					((case_insensitive = !case_insensitive))
