@@ -586,9 +586,13 @@ mostrar_versiculos() {
 					# Verifica se já existe no histórico
 					if grep -q "^${livro_id}|${nome_livro}|${capitulo}$" "$HISTORY_FILE"; then
 						notify_send "Bíblia KJA" "Capítulo $capitulo de $nome_livro já está no histórico!"
+						[[ ${XDG_SESSION_TYPE,,} != tty ]] && command -v notify-send >/dev/null &&
+						notify-send "Bíblia KJA" "Capítulo $capitulo de $nome_livro já está no histórico!"
 					else
 						echo "${livro_id}|${nome_livro}|${capitulo}" | tee -a "$HISTORY_FILE" >/dev/null
 						notify_send "Bíblia KJA" "Capítulo $capitulo de $nome_livro salvo no histórico!"
+						[[ ${XDG_SESSION_TYPE,,} != tty ]] && command -v notify-send >/dev/null &&
+						notify-send "Bíblia KJA" "Capítulo $capitulo de $nome_livro salvo no histórico!"
 					fi
 					;;
 				'c'|'C')
