@@ -498,6 +498,60 @@ prev_chapter() {
 	fi
 }
 
+prepare_clipboard() {
+    # Pergunta ao usuário quais versículos deseja copiar
+    versiculos_selecionados=$(dialog --title "Selecionar Versículos" \
+        --inputbox "Digite os versículos desejados (ex: 1 3 5-7 10):" \
+        10 50 2>&1 >/dev/tty)
+
+    # Se o usuário cancelar ou deixar vazio, copia todo o capítulo
+    if [[ -z "$versiculos_selecionados" ]]; then
+        # Consulta todos os versículos do capítulo
+        versiculos=$(sqlite3 -separator " " "$DB_FILE" "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo ORDER BY verse;")
+        
+        # Formata o texto para copiar
+        texto_para_copiar="$nome_livro $capitulo\n\n"
+        while IFS= read -r linha; do
+            # Remove tags HTML e formatação especial
+            linha_limpa=$(echo "$linha" | sed -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
+            texto_para_copiar+="$linha_limpa\n"
+        done <<< "$versiculos"
+    else
+        # Processa os versículos selecionados
+        declare -a versiculos_array
+        for item in $versiculos_selecionados; do
+            if [[ $item == *-* ]]; then
+                # Processa intervalo (ex: 5-10)
+                inicio=${item%-*}
+                fim=${item#*-}
+                for ((v=inicio; v<=fim; v++)); do
+                    versiculos_array+=("$v")
+                done
+            else
+                # Adiciona versículo individual
+                versiculos_array+=("$item")
+            fi
+        done
+
+        # Consulta os versículos selecionados
+        texto_para_copiar=""
+        for v in "${versiculos_array[@]}"; do
+            versiculo=$(sqlite3 -separator " " "$DB_FILE" "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo AND verse = $v;")
+            if [[ -n "$versiculo" ]]; then
+                # Remove tags HTML e formatação especial
+                versiculo_limpo=$(echo "$versiculo" | sed -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
+                texto_para_copiar+="$versiculo_limpo\n"
+            fi
+        done
+
+        # Adiciona livro e capítulo no final
+        texto_para_copiar+="($nome_livro $capitulo)"
+    fi
+
+    # Copia para área de transferência
+    clipboard_copy "$texto_para_copiar"
+}
+
 # Função para exibir os versículos de um capítulo
 mostrar_versiculos() {
     local livro_id=$1
@@ -691,19 +745,7 @@ mostrar_versiculos() {
 					current_line=0  # Volta ao topo do capítulo
 					;;
 				'z'|'Z') # Tecla Z - copiar capítulo para área de transferência
-					# Consulta todos os versículos do capítulo
-					versiculos=$(sqlite3 -separator " " "$DB_FILE" "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo ORDER BY verse;")
-					
-					# Formata o texto para copiar
-					texto_para_copiar="$nome_livro $capitulo\n\n"
-					while IFS= read -r linha; do
-						# Remove tags HTML e formatação especial
-						linha_limpa=$(echo "$linha" | sed -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
-						texto_para_copiar+="$linha_limpa\n"
-					done <<< "$versiculos"
-					
-					# Copia para área de transferência
-					clipboard_copy "$texto_para_copiar"
+					prepare_clipboard
 					;;
 				'l'|'L')
 					next_chapter
