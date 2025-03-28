@@ -20,6 +20,7 @@ PATH2="$HOME/.shell_utils/database/kja/$FILE"
 CACHE_KJA="${CACHEDIR}/${SCRIPT%.*}"
 HISTORY_FILE="${CACHE_KJA}/KJA_HISTORY_FILE.db"
 LAST_CHAPTER_FILE="${CACHE_KJA}/KJA_LAST_CHAPTER_FILE.db"
+RANDOM_CHAPTER_FILE="${CACHE_KJA}/KJA_RANDOM_CHAPTER_FILE.db"
 
 if [[ -f "$PATH1" ]]; then
 	DB_FILE="$PATH1"
@@ -293,6 +294,78 @@ gerenciar_historico() {
     done
 }
 
+random_chapter() {
+    TOTAL_CHAPTERS=1189  # Total de capítulos na Bíblia cristã
+    
+    # Se o arquivo não existir, cria um vazio
+    [[ ! -f "$RANDOM_CHAPTER_FILE" ]] && touch "$RANDOM_CHAPTER_FILE"
+    
+    # Se o arquivo contiver todos os capítulos, reinicia
+    if [[ $(wc -l < "$RANDOM_CHAPTER_FILE") -ge $TOTAL_CHAPTERS ]]; then
+        rm "$RANDOM_CHAPTER_FILE"
+        touch "$RANDOM_CHAPTER_FILE"
+    fi
+    
+    while true; do
+        # Gera um livro aleatório (1-66)
+        livro_id=$((RANDOM % 66 + 1))
+        
+        # Obtém o nome do livro
+        for ((i=0; i<${#LIVROS[@]}; i+=2)); do
+            if [[ "${LIVROS[$i]}" == "$livro_id" ]]; then
+                nome_livro="${LIVROS[$i+1]}"
+                break
+            fi
+        done
+        
+        # Obtém o número máximo de capítulos para este livro
+        max_capitulos=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;")
+        
+        # Gera um capítulo aleatório para este livro
+        capitulo=$((RANDOM % max_capitulos + 1))
+        
+        # Verifica se este capítulo já foi mostrado
+        if ! grep -q "^${livro_id}|${nome_livro}|${capitulo}$" "$RANDOM_CHAPTER_FILE"; then
+            # Adiciona ao histórico de capítulos mostrados
+            echo "${livro_id}|${nome_livro}|${capitulo}" >> "$RANDOM_CHAPTER_FILE"
+            
+            # Mostra o capítulo selecionado
+            mostrar_versiculos "$livro_id" "$nome_livro" "$capitulo"
+            return
+        fi
+    done
+}
+
+show_random_stats() {
+    [[ ! -f "$RANDOM_CHAPTER_FILE" ]] && {
+        dialog --title "Estatísticas" --msgbox "Nenhum capítulo foi mostrado ainda." 7 40
+        return
+    }
+
+    total_shown=$(wc -l < "$RANDOM_CHAPTER_FILE")
+    remaining=$((1189 - total_shown))
+    
+    # Contagem por livro
+    declare -A book_counts
+    while IFS="|" read -r id _ _; do
+        ((book_counts[$id]++))
+    done < "$RANDOM_CHAPTER_FILE"
+
+    # Prepara relatório
+    stats_report="Capítulos mostrados: $total_shown\nRestantes: $remaining\n\nDistribuição por livro:\n"
+    
+    for id in "${!book_counts[@]}"; do
+        for ((i=0; i<${#LIVROS[@]}; i+=2)); do
+            [[ "${LIVROS[$i]}" == "$id" ]] && {
+                stats_report+="${LIVROS[i+1]}: ${book_counts[$id]}\n"
+                break
+            }
+        done
+    done
+
+    dialog --title "Estatísticas da Palavra do Dia" --msgbox "$stats_report" 20 60
+}
+
 # Função para exibir o menu de livros
 mostrar_livros() {
 	prepare_terminal
@@ -310,6 +383,8 @@ mostrar_livros() {
             "4" "Buscar termo em um livro específico" \
 			"5" "$ultimo_capitulo_option" \
 			"6" "Gerenciar histórico de capítulos" \
+			"7" "Palavra do dia" \
+			"8" "Estatísticas da Palavra do Dia" \
             "q" "Sair" 2>&1 >/dev/tty)
 
         case $OPCAO in
@@ -382,6 +457,12 @@ mostrar_livros() {
                 ;;
 			6)
 				gerenciar_historico
+				;;
+			7)
+				random_chapter
+				;;
+			8)
+				show_random_stats
 				;;
             q)
                 clear
