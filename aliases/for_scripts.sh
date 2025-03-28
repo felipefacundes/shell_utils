@@ -1,3 +1,4 @@
+alias fff='PREVIEW_MODE=0 ~/.shell_utils/scripts/preview'
 alias juros_compostos='~/.shell_utils/scripts/compound_interest'
 
 alias renomear_imagens_de_onde_parou='~/.shell_utils/scripts/rename_images_of_where_it_stopped.sh'
