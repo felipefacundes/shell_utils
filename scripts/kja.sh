@@ -513,7 +513,7 @@ prepare_clipboard() {
         texto_para_copiar="$nome_livro $capitulo\n\n"
         while IFS= read -r linha; do
             # Remove tags HTML e formatação especial
-            linha_limpa=$(echo "$linha" | sed -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
+            linha_limpa=$(echo "$linha" | sed -e 's/^[0-9]\+/\0./' -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
             texto_para_copiar+="$linha_limpa\n"
         done <<< "$versiculos"
     else
@@ -539,13 +539,13 @@ prepare_clipboard() {
             versiculo=$(sqlite3 -separator " " "$DB_FILE" "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo AND verse = $v;")
             if [[ -n "$versiculo" ]]; then
                 # Remove tags HTML e formatação especial
-                versiculo_limpo=$(echo "$versiculo" | sed -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
+                versiculo_limpo=$(echo "$versiculo" | sed -e 's/^[0-9]\+/\0./' -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
                 texto_para_copiar+="$versiculo_limpo\n"
             fi
         done
 
         # Adiciona livro e capítulo no final
-        texto_para_copiar+="($nome_livro $capitulo)"
+        texto_para_copiar+="(${nome_livro}, $capitulo)"
     fi
 
     # Copia para área de transferência
@@ -580,8 +580,9 @@ mostrar_versiculos() {
     # Processa e formata todos os versículos
     local formatted_text=""
     while IFS= read -r linha; do
-        linha=$(echo "$linha" | sed -E -e 's|<i>([^<]*)</i>|\\e[3m\1\\e[23m|g' \
-                                      -e 's|<small>([^<]*)</small>|\L\1|g')
+		linha=$(echo "$linha" | sed -e 's/^[[:digit:]]\{1,\}/&./' \
+								-e 's|<i>\([^<]*\)</i>|\\e[3m\1\\e[23m|g' \
+								-e 's|<small>\([^<]*\)</small>|\L\1|g')
         formatted_text+="$linha"$'\n'
     done <<< "$VERSICULOS"
 
