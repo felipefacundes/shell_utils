@@ -55,6 +55,10 @@ only_xrdb() {
     exec "${scripts}"/cursor_theme_fix.sh -o
 }
 
+alarm_daemon() {
+	! pgrep -f alarm-daemon-multilingual.sh && exec "${scripts}"/alarm-daemon-multilingual.sh -r
+}
+
 # Restore persistent volume TV
 restore_persistent_volume_tv_lg() {
     local script_restore=~/.local/bin/tv-default-volume.sh
@@ -222,6 +226,9 @@ start_sound &
 
 ### Battery ###
 battery_check &
+
+### Alarm ###
+alarm_daemon &
 
 # Notifies if the kernel has been updated
 has_the_kernel_been_updated &
