@@ -732,8 +732,8 @@ mostrar_versiculos() {
             echo -e "Match $((current_match + 1))/${#search_matches[@]} | "
         fi
         echo -e "${bold}${STYLE}Linha $((current_line + 1))-$((current_line + lines_per_page < total_lines ? current_line + lines_per_page : total_lines))/$total_lines"
-		[[ -z "$TERMUX_VERSION" ]] && echo -e "${bold}Controles: [↑/↓ ou w/s ou j/k para Navegar] [/ Buscar termos] [N/n Próximo] [S Salvar capítulo] [Z Copiar capítulo] [Q/q Sair]"
-		[[ -n "$TERMUX_VERSION" ]] && echo -e "${bold}Controles:\n[↑/↓ ou w/s ou j/k para Navegar] [/ Buscar termos]\n[N/n Próximo] [S Salvar capítulo] [Z Copiar capítulo] [Q/q Sair]"
+		[[ -z "$TERMUX_VERSION" ]] && echo -e "${bold}Controles: [↑/↓ ou j/k para Navegar] [/ Procurar] [N Próximo] [S Salvar capítulo] [Z Copiar] [Q Sair]"
+		[[ -n "$TERMUX_VERSION" ]] && echo -e "${bold}Controles:\n[↑/↓ ou j/k para Navegar] [/ Procurar]\n[N Próximo] [S Salvar capítulo] [Z Copiar] [Q Sair]"
     }
 
     # Loop principal de navegação
