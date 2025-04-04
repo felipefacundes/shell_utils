@@ -71,6 +71,8 @@ SCRIPT="${0##*/}"
 TMPDIR="${TMPDIR:-/tmp}"
 LOCKDIR="${TMPDIR}/${SCRIPT%.*}"
 PID_FILE="${LOCKDIR}/${SCRIPT%.*}.pid"
+# Sound file for alert
+SOUND=${SOUND:="/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"}
 
 # Declare an associative array for multilingual messages
 declare -A MESSAGES
@@ -756,14 +758,11 @@ visual_alert() {
 }
 
 # Function for audio alert using paplay
-audio_alert() {
-    # Sound file for alert
-    sound="/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
-    
+audio_alert() {    
     # Play sound repeatedly until Zenity is closed
     while true; do
-        pactl upload-sample "$sound"
-        paplay "$sound" --volume=76767
+        pactl upload-sample "$SOUND"
+        paplay "$SOUND" --volume=76767
         sleep 1
     done
 }

@@ -430,7 +430,10 @@ mostrar_livros() {
                             done
                         fi
                     fi
+				else
+					dialog --title "Erro" --msgbox "Informe as iniciais de algum livro!" 8 40
                 fi
+				LIVROS_FILTRADOS=()
                 ;;
             3)
                 TERMO=$(dialog --title "Buscar termo na Bíblia" --inputbox "Digite o termo que deseja buscar:" 8 40 2>&1 >/dev/tty)
