@@ -90,6 +90,7 @@ help() {
     OPÇÕES:
         -h, --help          Mostra esta ajuda
         -l, --livro         Buscar livro desejado pela inicial.
+        -m, --margin        Define uma margem extra para todo texto.
         -d, --dark          Tema escuro (fundo preto, texto branco)
         -db,--dbrown        Tema marrom escuro (fundo preto, texto laranja)
         -w, --white         Tema claro (fundo branco, texto preto)
@@ -899,13 +900,17 @@ while [ $# -gt 0 ]; do
 			STYLE='\033[38;5;94;48;5;187m'
 		;;
 		-m|--margin)
-			{ [[ $2 =~ [0-9]+ ]] && KJA_MARGIN=$2; } || { echo -e "${RED}São aceitos apenas números para margem!$NC" && exit 1; }
+			{ [[ "$2" =~ ^[0-9]+$ ]] && KJA_MARGIN="$2"; } || { echo -e "${RED}São aceitos apenas números para margem!$NC" && exit 1; }
 			shift 2
 		;;
 		-l|--livro)
-			shift
+			if [ -z "$2" ]; then  
+				echo "Erro: --livro requer um nome." >&2
+				exit 1
+			fi
 			prepare_terminal
-			buscar_livros "$1"
+			buscar_livros "$2"  
+			shift 2             
 			break
 		;;
 	esac
