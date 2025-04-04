@@ -12,6 +12,8 @@
 7. Portável: verifica dependências ("sqlite3", "dialog") e valida o arquivo bíblico.  
 DOCUMENTATION
 
+NC="\033[0m"
+RED="\033[1;31m"
 FILE="kja.sqlite"
 SCRIPT="${0##*/}"
 CACHEDIR="${HOME}/.cache"
@@ -79,7 +81,7 @@ declare -a LIVROS=(
 )
 
 help() {
-    cat <<-EOF
+    cat <<-EOF | less -i
     ${SCRIPT} - Navegador da Bíblia King James Atualizada para terminal
 
     USO:
@@ -87,11 +89,12 @@ help() {
 
     OPÇÕES:
         -h, --help          Mostra esta ajuda
+        -l, --livro         Buscar livro desejado pela inicial.
         -d, --dark          Tema escuro (fundo preto, texto branco)
         -db,--dbrown        Tema marrom escuro (fundo preto, texto laranja)
         -w, --white         Tema claro (fundo branco, texto preto)
         -b, --blue          Tema azul (fundo azul escuro, texto ciano)
-        -hi,--highlight    Tema alto contraste (fundo cinza, texto verde)
+        -hi,--highlight     Tema alto contraste (fundo cinza, texto verde)
         -bb,--bbrown        Tema bege (fundo bege, texto marrom)
 
     VARIÁVEIS DE ESTILO (via linha de comando ou edição no script):
@@ -366,6 +369,45 @@ show_random_stats() {
     dialog --title "Estatísticas da Palavra do Dia" --msgbox "$stats_report" 20 60
 }
 
+buscar_livros() {
+	if [ -z "$1" ]; then
+		INICIAL=$(dialog --title "Bíblia KJA" --inputbox "Digite a inicial do livro:" 8 40 2>&1 >/dev/tty)
+	else
+		INICIAL="$1"
+	fi
+
+	if [ -n "$INICIAL" ]; then
+		INICIAL="${INICIAL,,}"
+		
+		# Filtra os livros que começam com a inicial digitada
+		declare -a LIVROS_FILTRADOS
+		for ((i=0; i<${#LIVROS[@]}; i+=2)); do
+			if [[ "${LIVROS[$i+1]}" == ${INICIAL^}* ]]; then
+				LIVROS_FILTRADOS+=("${LIVROS[$i]}" "${LIVROS[$i+1]}")
+			fi
+		done
+
+		if [ ${#LIVROS_FILTRADOS[@]} -eq 0 ]; then
+			dialog --title "Erro" --msgbox "Nenhum livro encontrado com a inicial '$INICIAL'." 8 40
+		else
+			LIVRO=$(dialog --title "Bíblia KJA" --menu "Escolha um livro:" 40 60 40 "${LIVROS_FILTRADOS[@]}" 2>&1 >/dev/tty)
+			if [ -n "$LIVRO" ]; then
+				# Busca o nome do livro correspondente ao ID selecionado
+				for ((i=0; i<${#LIVROS[@]}; i+=2)); do
+					if [ "${LIVROS[$i]}" == "$LIVRO" ]; then
+						NOME_LIVRO="${LIVROS[$i+1]}"
+						mostrar_capitulos "$LIVRO" "$NOME_LIVRO"
+						break
+					fi
+				done
+			fi
+		fi
+	else
+		dialog --title "Erro" --msgbox "Informe as iniciais de algum livro!" 8 40
+	fi
+	LIVROS_FILTRADOS=()
+}
+
 # Função para exibir o menu de livros
 mostrar_livros() {
 	prepare_terminal
@@ -405,35 +447,7 @@ mostrar_livros() {
                 fi
                 ;;
             2)
-                INICIAL=$(dialog --title "Bíblia KJA" --inputbox "Digite a inicial do livro:" 8 40 2>&1 >/dev/tty)
-                if [ -n "$INICIAL" ]; then
-                    # Filtra os livros que começam com a inicial digitada
-                    declare -a LIVROS_FILTRADOS
-                    for ((i=0; i<${#LIVROS[@]}; i+=2)); do
-                        if [[ "${LIVROS[$i+1]}" == ${INICIAL^}* ]]; then
-                            LIVROS_FILTRADOS+=("${LIVROS[$i]}" "${LIVROS[$i+1]}")
-                        fi
-                    done
-
-                    if [ ${#LIVROS_FILTRADOS[@]} -eq 0 ]; then
-                        dialog --title "Erro" --msgbox "Nenhum livro encontrado com a inicial '$INICIAL'." 8 40
-                    else
-                        LIVRO=$(dialog --title "Bíblia KJA" --menu "Escolha um livro:" 40 60 40 "${LIVROS_FILTRADOS[@]}" 2>&1 >/dev/tty)
-                        if [ -n "$LIVRO" ]; then
-                            # Busca o nome do livro correspondente ao ID selecionado
-                            for ((i=0; i<${#LIVROS[@]}; i+=2)); do
-                                if [ "${LIVROS[$i]}" == "$LIVRO" ]; then
-                                    NOME_LIVRO="${LIVROS[$i+1]}"
-                                    mostrar_capitulos "$LIVRO" "$NOME_LIVRO"
-                                    break
-                                fi
-                            done
-                        fi
-                    fi
-				else
-					dialog --title "Erro" --msgbox "Informe as iniciais de algum livro!" 8 40
-                fi
-				LIVROS_FILTRADOS=()
+                buscar_livros
                 ;;
             3)
                 TERMO=$(dialog --title "Buscar termo na Bíblia" --inputbox "Digite o termo que deseja buscar:" 8 40 2>&1 >/dev/tty)
@@ -855,29 +869,47 @@ mostrar_versiculos() {
 	clear
 }
 
-case $1 in
-	-h|--help)
-		help
-	;;
-	-d|--dark)
-		STYLE='\033[38;5;231;48;5;16m'
-	;;
-	-db|--dbrown)
-		STYLE='\033[38;5;209;48;5;16m'
-	;;
-	-w|--white)
-		STYLE='\033[38;5;16;48;5;231m'
-	;;
-	-b|--blue)
-		STYLE='\033[38;5;51;48;5;24m'
-	;;
-	-hi|--highlight)
-		STYLE='\033[38;5;155;48;5;241m'
-	;;
-	-bb|--bbrown)
-		STYLE='\033[38;5;94;48;5;187m'
-	;;
-esac
+while [ $# -gt 0 ]; do
+	case $1 in
+		-h|--help)
+			help
+		;;
+		-d|--dark)
+			shift
+			STYLE='\033[38;5;231;48;5;16m'
+		;;
+		-db|--dbrown)
+			shift
+			STYLE='\033[38;5;209;48;5;16m'
+		;;
+		-w|--white)
+			shift
+			STYLE='\033[38;5;16;48;5;231m'
+		;;
+		-b|--blue)
+			shift
+			STYLE='\033[38;5;51;48;5;24m'
+		;;
+		-hi|--highlight)
+			shift
+			STYLE='\033[38;5;155;48;5;241m'
+		;;
+		-bb|--bbrown)
+			shift
+			STYLE='\033[38;5;94;48;5;187m'
+		;;
+		-m|--margin)
+			{ [[ $2 =~ [0-9]+ ]] && KJA_MARGIN=$2; } || { echo -e "${RED}São aceitos apenas números para margem!$NC" && exit 1; }
+			shift 2
+		;;
+		-l|--livro)
+			shift
+			prepare_terminal
+			buscar_livros "$1"
+			break
+		;;
+	esac
+done
 
 # Loop principal
 mostrar_livros
