@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+# Melhorias: Sistema avançado de mapeamento Debian/Ubuntu -> Arch Linux
+
+SCRIPT=${0##*/}
+DEB2ARCH_MAP="$HOME/.config/deb2arch_map.conf"
+CACHE_DIR="$HOME/.cache/$SCRIPT"
+PKGFILE_CACHE="$CACHE_DIR/pkgfile_cache"
+VIRTUAL_PKGS="$CACHE_DIR/virtual-packages"
+LOG_FILE="$CACHE_DIR/conversion.log"
+
+# Cores para mensagens
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
+NC='\033[0m' # No Color
+
+# Inicialização
+mkdir -p "$CACHE_DIR"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+# Função para baixar e extrair pacotes virtuais
+download_virtual_pkgs() {
+    echo -e "${YELLOW}==> Baixando lista de pacotes virtuais...${NC}"
+    if ! curl -sLf "https://github.com/helixarch/virtual-packages-list-generator/archive/master.tar.gz" -o "$CACHE_DIR/virtual-pkgs.tar.gz"; then
+        echo -e "${RED}Erro: Falha ao baixar pacotes virtuais${NC}"
+        return 1
+    fi
+    tar xzf "$CACHE_DIR/virtual-pkgs.tar.gz" -C "$CACHE_DIR" --strip-components=1 \
+        "virtual-packages-list-generator-master/virtual-packages"
+    rm -f "$CACHE_DIR/virtual-pkgs.tar.gz"
+}
+
+# Função para inicializar cache de pacotes
+init_pkg_cache() {
+    echo -e "${YELLOW}==> Atualizando cache de pacotes...${NC}"
+    
+    # Baixa lista de pacotes do AUR
+    if ! curl -s -f "https://aur.archlinux.org/packages.gz" -o "$CACHE_DIR/aur-packages.gz"; then
+        echo -e "${RED}Erro: Falha ao baixar lista de pacotes AUR${NC}"
+        return 1
+    fi
+    gzip -df "$CACHE_DIR/aur-packages.gz"
+    
+    # Baixa lista de pacotes do Arch oficial
+    if ! pacman -Sql > "$CACHE_DIR/arch-packages"; then
+        echo -e "${RED}Erro: Falha ao obter lista de pacotes do Arch${NC}"
+        return 1
+    fi
+    
+    # Baixa listas do Debian
+    echo -e "${YELLOW}==> Baixando listas do Debian...${NC}"
+    debian_arch=$(case $(uname -m) in x86_64) echo "amd64";; i686) echo "i386";; *) echo "$arch";; esac)
+    
+    for repo in main contrib non-free; do
+        if ! curl -s -f "http://ftp.debian.org/debian/dists/stable/$repo/binary-$debian_arch/Packages.gz" -o "$CACHE_DIR/debian-$repo-packages.gz"; then
+            echo -e "${RED}Erro: Falha ao baixar lista $repo do Debian${NC}"
+            continue
+        fi
+        gzip -df "$CACHE_DIR/debian-$repo-packages.gz"
+        # Extrai nomes de pacotes
+        grep "^Package:" "$CACHE_DIR/debian-$repo-packages" | cut -d' ' -f2 >> "$CACHE_DIR/debian-all-packages"
+    done
+    
+    # Baixa listas do Ubuntu
+    echo -e "${YELLOW}==> Baixando listas do Ubuntu...${NC}"
+    ubuntu_version=$(curl -s https://packages.ubuntu.com | grep -oP 'option value="\K[^"]+' | grep -v updated | head -1)
+    
+    if [ "$(uname -m)" = "x86_64" ]; then
+        ubuntu_url="http://archive.ubuntu.com/ubuntu/dists/$ubuntu_version"
+    else
+        ubuntu_url="http://ports.ubuntu.com/ubuntu-ports/dists/$ubuntu_version"
+    fi
+    
+    for repo in main restricted universe multiverse; do
+        if ! curl -s -f "$ubuntu_url/$repo/binary-$debian_arch/Packages.gz" -o "$CACHE_DIR/ubuntu-$repo-packages.gz"; then
+            echo -e "${RED}Erro: Falha ao baixar lista $repo do Ubuntu${NC}"
+            continue
+        fi
+        gzip -df "$CACHE_DIR/ubuntu-$repo-packages.gz"
+        # Extrai nomes de pacotes
+        grep "^Package:" "$CACHE_DIR/ubuntu-$repo-packages" | cut -d' ' -f2 >> "$CACHE_DIR/ubuntu-all-packages"
+    done
+    
+    # Baixa pacotes virtuais
+    download_virtual_pkgs
+    
+    # Cria cache combinado
+    cat "$CACHE_DIR/arch-packages" "$CACHE_DIR/aur-packages" | sort -u > "$PKGFILE_CACHE"
+    sort -u "$CACHE_DIR/debian-all-packages" > "$CACHE_DIR/debian-packages"
+    sort -u "$CACHE_DIR/ubuntu-all-packages" > "$CACHE_DIR/ubuntu-packages"
+    
+    echo -e "${GREEN}==> Cache de pacotes atualizado com sucesso!${NC}"
+    return 0
+}
+
+# Função para mapear dependências
+map_dependency() {
+    local deb_pkg="$1"
+    local mapped_pkg
+    
+    # 1. Verifica no mapeamento manual primeiro
+    mapped_pkg=$(grep -i "^$deb_pkg=" "$DEB2ARCH_MAP" | cut -d'=' -f2)
+    if [ -n "$mapped_pkg" ]; then
+        echo "$mapped_pkg"
+        return 0
+    fi
+    
+    # 2. Verifica em pacotes virtuais
+    mapped_pkg=$(grep -i -x "$deb_pkg" "$VIRTUAL_PKGS" | head -1)
+    if [ -n "$mapped_pkg" ]; then
+        echo "$mapped_pkg"
+        return 0
+    fi
+    
+    # 3. Tenta encontrar correspondência direta
+    if grep -q -i -x "$deb_pkg" "$PKGFILE_CACHE"; then
+        echo "$deb_pkg"
+        return 0
+    fi
+    
+    # 4. Tenta variações comuns
+    local clean_pkg=$(echo "$deb_pkg" | sed -e 's/^lib//' -e 's/-dev$//' -e 's/-bin$//' -e 's/-data$//' -e 's/-dbg$//')
+    
+    if [ "$clean_pkg" != "$deb_pkg" ] && grep -q -i -x "$clean_pkg" "$PKGFILE_CACHE"; then
+        echo "$clean_pkg"
+        echo "$deb_pkg=$clean_pkg" >> "$DEB2ARCH_MAP"
+        return 0
+    fi
+    
+    # 5. Verifica se é um metapacote do Debian/Ubuntu
+    if grep -q -i -x "$deb_pkg" "$CACHE_DIR/debian-packages" || grep -q -i -x "$deb_pkg" "$CACHE_DIR/ubuntu-packages"; then
+        echo -e "${YELLOW}Aviso: $deb_pkg é um pacote do Debian/Ubuntu que pode não ser necessário no Arch${NC}" >&2
+        echo "ignored"
+        return 1
+    fi
+    
+    # 6. Tenta procurar com pkgfile (mais lento)
+    local pkgfile_result=$(pkgfile -sb "$deb_pkg" 2>/dev/null | head -1)
+    if [ -n "$pkgfile_result" ]; then
+        echo "$pkgfile_result"
+        echo "$deb_pkg=$pkgfile_result" >> "$DEB2ARCH_MAP"
+        return 0
+    fi
+    
+    # 7. Se nada for encontrado, retorna o original (usuário pode corrigir depois)
+    echo -e "${RED}Não encontrado equivalente para: $deb_pkg${NC}" >&2
+    echo "$deb_pkg"
+    return 1
+}
+
+# Verifica se o arquivo existe
+if [ $# -eq 0 ]; then
+    echo -e "${BLUE}Uso:${NC} $SCRIPT <pacote.deb>"
+    echo -e "${BLUE}Exemplo:${NC} $SCRIPT google-chrome-stable_current_amd64.deb"
+    exit 1
+fi
+
+DEB_FILE="$1"
+if [ ! -f "$DEB_FILE" ]; then
+    echo -e "${RED}Erro: Arquivo '$DEB_FILE' não encontrado.${NC}"
+    exit 1
+fi
+
+if ! file "$DEB_FILE" | grep -q "Debian binary package"; then
+    echo -e "${RED}Erro: '$DEB_FILE' não parece ser um pacote .deb válido.${NC}"
+    exit 1
+fi
+
+# Atualiza cache de pacotes
+init_pkg_cache || echo -e "${YELLOW}Aviso: Usando cache antigo${NC}"
+
+# Cria um diretório temporário
+TMP_DIR=$(mktemp -d "$CACHE_DIR/${SCRIPT}_XXXXX")
+trap "rm -rf '$TMP_DIR'" EXIT
+
+# Extrai o pacote .deb
+echo -e "${BLUE}==> Extraindo o pacote .deb...${NC}"
+dpkg-deb -x "$DEB_FILE" "$TMP_DIR/package"
+dpkg-deb --control "$DEB_FILE" "$TMP_DIR/control"
+mkdir -p "$TMP_DIR/control/DEBIAN"
+mv "$TMP_DIR/control"/* "$TMP_DIR/control/DEBIAN/" 2>/dev/null
+
+CONTROL_FILE="$TMP_DIR/control/DEBIAN/control"
+if [ ! -f "$CONTROL_FILE" ]; then
+    echo -e "${RED}Erro: Não foi possível encontrar o arquivo de controle.${NC}"
+    exit 1
+fi
+
+get_control_value() {
+    grep -i "^$1:" "$CONTROL_FILE" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+process_depends() {
+    local depends=$(get_control_value Depends)
+    if [ -z "$depends" ]; then
+        echo ""
+        return
+    fi
+    
+    # Processa a string de dependências
+    depends=$(echo "$depends" | sed -E 's/\([^)]+\)//g' | sed 's/|[[:space:]]*/ /g' | sed 's/,[[:space:]]*/ /g' | tr -s ' ')
+    depends=$(echo "$depends" | sed -E 's/\bdebconf[^ ]*//g' | tr -d '|' | tr -s ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    # Mapeia cada dependência
+    local mapped_depends=""
+    for dep in $depends; do
+        clean_dep=$(echo "$dep" | cut -d: -f1)
+        mapped_dep=$(map_dependency "$clean_dep")
+        
+        if [ "$mapped_dep" != "ignored" ]; then
+            if [ "$mapped_dep" != "$clean_dep" ]; then
+                echo -e "${GREEN}Mapeado: $clean_dep -> $mapped_dep${NC}" >&2
+            fi
+            mapped_depends="$mapped_depends $mapped_dep"
+        fi
+    done
+    
+    echo "$mapped_depends" | tr -s ' ' | sed 's/^ //;s/ $//'
+}
+
+PKGNAME=$(get_control_value Package | tr '[:upper:]' '[:lower:]')
+VERSION=$(get_control_value Version)
+ARCH=$(get_control_value Architecture)
+DESCRIPTION=$(get_control_value Description)
+MAINTAINER=$(get_control_value Maintainer)
+DEPENDS=$(process_depends)
+HOMEPAGE=$(get_control_value Homepage)
+
+case "$ARCH" in
+    amd64) ARCH="x86_64" ;;
+    i386) ARCH="i686" ;;
+    all) ARCH="any" ;;
+esac
+
+echo -e "${BLUE}==> Gerando PKGBUILD...${NC}"
+cat > PKGBUILD <<EOF
+# Maintainer: $MAINTAINER
+# Convertido de .deb para PKGBUILD por $SCRIPT
+
+pkgname=$PKGNAME
+pkgver=${VERSION%%-*}
+pkgrel=1
+pkgdesc="$DESCRIPTION"
+arch=('$ARCH')
+url="$HOMEPAGE"
+license=($(get_control_value License | head -1))
+depends=($DEPENDS)
+source=("$DEB_FILE")
+sha256sums=('$(sha256sum "$DEB_FILE" | cut -d' ' -f1)')
+
+prepare() {
+    # Extrai o pacote .deb durante a fase prepare
+    mkdir -p "\$srcdir/package"
+    dpkg-deb -x "\$srcdir/$DEB_FILE" "\$srcdir/package"
+}
+
+package() {
+    # Copia os arquivos extraídos
+    cp -r "\$srcdir/package/"* "\$pkgdir"
+    
+    # Corrige permissões
+    find "\$pkgdir" -type d -exec chmod 755 {} \;
+    find "\$pkgdir" -type f -exec chmod 644 {} \;
+    
+    # Aplica permissões especiais para binários
+    find "\$pkgdir/usr/bin" -type f -exec chmod 755 {} \; 2>/dev/null || true
+}
+EOF
+
+echo -e "${GREEN}==> PKGBUILD gerado com sucesso!${NC}"
+echo -e "${YELLOW}Recomendações:${NC}"
+echo "1. Verifique as dependências (especialmente as marcadas em vermelho)"
+echo "2. Ajuste a licença conforme os padrões do Arch"
+echo "3. Verifique scripts pós-instalação"
+echo "4. Execute 'makepkg -si' para construir e instalar"
+echo -e "${BLUE}Log completo em: $LOG_FILE${NC}"
