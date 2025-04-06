@@ -142,7 +142,6 @@ configure_by_extension() {
                 for mime in $mime_types; do
                     # Extrair padrões de extensão do mime type (se existirem)
                     if [[ $mime == */* ]]; then
-                        mime_base=${mime%%/*}
                         mime_subtype=${mime#*/}
                         # Verificar se o subtype contém a extensão
                         if [[ $mime_subtype == *$extension* ]]; then
@@ -197,6 +196,197 @@ configure_by_extension() {
         else
             error_msg "Nenhum aplicativo válido encontrado para $choice"
         fi
+    done
+}
+
+# Função principal para configurar associação por extensão (filtro dinâmico)
+configure_by_extension_to_custom_program() {
+    while true; do
+        extension=$(whiptail --inputbox "Digite a extensão do arquivo (sem o ponto):" 8 50 \
+        --title "Configurar Associação" 3>&1 1>&2 2>&3)
+        
+        if [ $? -ne 0 ]; then
+            return 1 # Usuário cancelou
+        fi
+        
+        # Remover qualquer ponto que o usuário possa ter digitado
+        extension=${extension#.}
+        extension=${extension,,} # Converter para minúsculas
+        
+        if [ -z "$extension" ]; then
+            error_msg "Por favor, digite uma extensão válida."
+            continue
+        fi
+
+        # Carregar todos os mime types e seus padrões de extensão
+        declare -A mime_patterns
+        while IFS= read -r desktop_file; do
+            if grep -q "^MimeType=" "$desktop_file"; then
+                mime_types=$(grep "^MimeType=" "$desktop_file" | cut -d= -f2 | tr ";" " ")
+                for mime in $mime_types; do
+                    # Extrair padrões de extensão do mime type (se existirem)
+                    if [[ $mime == */* ]]; then
+                        mime_subtype=${mime#*/}
+                        # Verificar se o subtype contém a extensão
+                        if [[ $mime_subtype == *$extension* ]]; then
+                            mime_patterns["$mime"]=1
+                        fi
+                    fi
+                done
+            fi
+        done < <(find /usr/share/applications ~/.local/share/applications -name "*.desktop" 2>/dev/null)
+
+        # Se nenhum match foi encontrado, tentar com o tipo MIME genérico
+        if [ ${#mime_patterns[@]} -eq 0 ]; then
+            # Criar arquivo temporário para detecção
+            temp_file=$(mktemp --suffix=".$extension")
+            mime_type=$(file --brief --mime-type "$temp_file" 2>/dev/null)
+            rm -f "$temp_file"
+            
+            if [ -z "$mime_type" ] || [[ "$mime_type" == */*unknown* ]] || [[ "$mime_type" == */*empty* ]]; then
+                error_msg "Nenhum tipo MIME encontrado para a extensão .$extension\n\nUse a opção 3 para navegar manualmente."
+                continue
+            fi
+            mime_patterns["$mime_type"]=1
+        fi
+
+        # Se apenas um tipo MIME foi encontrado
+        if [ ${#mime_patterns[@]} -eq 1 ]; then
+            mime_type="${!mime_patterns[@]}"
+            
+            while true; do
+                program_cmd=$(whiptail --inputbox "Digite o comando ou nome do programa que deseja associar à extensão .$extension:" \
+                10 60 --title "Associar Programa" 3>&1 1>&2 2>&3)
+                
+                if [ $? -ne 0 ]; then
+                    break 2 # Usuário cancelou, voltar ao menu principal
+                fi
+                
+                if [ -z "$program_cmd" ]; then
+                    error_msg "Por favor, digite um comando válido."
+                    continue
+                fi
+
+                # Busca ampla por arquivos .desktop (sem verificar MIME type)
+                desktop_files=()
+                while IFS= read -r -d '' desktop_file; do
+                    # Verifica se:
+                    # 1. O comando no Exec= contém o termo buscado OU
+                    # 2. O nome do arquivo contém o termo OU
+                    # 3. O Name= contém o termo
+                    if grep -qi "Exec=.*$program_cmd" "$desktop_file" ||
+                       [[ "$(basename "$desktop_file")" == *"$program_cmd"* ]] ||
+                       grep -qi "Name=.*$program_cmd" "$desktop_file"; then
+                        desktop_files+=("$desktop_file")
+                    fi
+                done < <(find /usr/share/applications ~/.local/share/applications -name "*.desktop" -print0 2>/dev/null)
+
+                if [ ${#desktop_files[@]} -eq 0 ]; then
+                    error_msg "Nenhum programa encontrado com '$program_cmd'.\n\nTente um termo diferente ou mais específico."
+                    continue
+                elif [ ${#desktop_files[@]} -eq 1 ]; then
+                    desktop_file_found="${desktop_files[0]}"
+                else
+                    # Se múltiplos encontrados, deixar o usuário escolher
+                    menu_items=()
+                    for file in "${desktop_files[@]}"; do
+                        app_name=$(grep -m1 "^Name=" "$file" | cut -d= -f2)
+                        app_exec=$(grep -m1 "^Exec=" "$file" | cut -d= -f2 | cut -d' ' -f1)
+                        menu_items+=("$file" "$app_name ($app_exec)")
+                    done
+                    
+                    desktop_file_found=$(whiptail --title "Selecionar Aplicativo" \
+                        --menu "Múltiplos programas encontrados. Selecione um:" \
+                        20 80 10 "${menu_items[@]}" 3>&1 1>&2 2>&3)
+                    
+                    if [ $? -ne 0 ]; then
+                        continue # Voltar a pedir o comando
+                    fi
+                fi
+
+                # Confirmar associação
+                app_name=$(grep -m1 "^Name=" "$desktop_file_found" | cut -d= -f2)
+                if whiptail --yesno "Deseja associar .$extension ($mime_type) a:\n\n$app_name?\n\n(Tipo MIME: $mime_type)" \
+                    --title "Confirmar Associação" 12 60; then
+                    set_default_app "$mime_type" "$desktop_file_found"
+                    return 0
+                else
+                    continue # Voltar a pedir o comando
+                fi
+            done
+        fi
+
+        # Se múltiplos tipos MIME foram encontrados
+        menu_items=()
+        for mime in "${!mime_patterns[@]}"; do
+            menu_items+=("$mime" "Tipo MIME para .$extension")
+        done
+
+        choice=$(whiptail --title "Seleção de Tipo MIME" \
+        --menu "Múltiplos tipos MIME encontrados para .$extension\nSelecione o apropriado:" \
+        20 80 10 "${menu_items[@]}" 3>&1 1>&2 2>&3)
+
+        if [ $? -ne 0 ] || [ -z "$choice" ]; then
+            continue
+        fi
+
+        # Mesmo tratamento para múltiplos MIME types
+        while true; do
+            program_cmd=$(whiptail --inputbox "Digite o comando ou nome do programa que deseja associar à extensão .$extension:" \
+            10 60 --title "Associar Programa" 3>&1 1>&2 2>&3)
+            
+            if [ $? -ne 0 ]; then
+                break # Voltar à seleção de MIME type
+            fi
+            
+            if [ -z "$program_cmd" ]; then
+                error_msg "Por favor, digite um comando válido."
+                continue
+            fi
+
+            # Busca ampla (sem verificar MIME type)
+            desktop_files=()
+            while IFS= read -r -d '' desktop_file; do
+                if grep -qi "Exec=.*$program_cmd" "$desktop_file" ||
+                   [[ "$(basename "$desktop_file")" == *"$program_cmd"* ]] ||
+                   grep -qi "Name=.*$program_cmd" "$desktop_file"; then
+                    desktop_files+=("$desktop_file")
+                fi
+            done < <(find /usr/share/applications ~/.local/share/applications -name "*.desktop" -print0 2>/dev/null)
+
+            if [ ${#desktop_files[@]} -eq 0 ]; then
+                error_msg "Nenhum programa encontrado com '$program_cmd'.\n\nTente um termo diferente ou mais específico."
+                continue
+            elif [ ${#desktop_files[@]} -eq 1 ]; then
+                desktop_file_found="${desktop_files[0]}"
+            else
+                # Se múltiplos encontrados, deixar o usuário escolher
+                menu_items=()
+                for file in "${desktop_files[@]}"; do
+                    app_name=$(grep -m1 "^Name=" "$file" | cut -d= -f2)
+                    app_exec=$(grep -m1 "^Exec=" "$file" | cut -d= -f2 | cut -d' ' -f1)
+                    menu_items+=("$file" "$app_name ($app_exec)")
+                done
+                
+                desktop_file_found=$(whiptail --title "Selecionar Aplicativo" \
+                    --menu "Múltiplos programas encontrados. Selecione um:" \
+                    20 80 10 "${menu_items[@]}" 3>&1 1>&2 2>&3)
+                
+                if [ $? -ne 0 ]; then
+                    continue # Voltar a pedir o comando
+                fi
+            fi
+
+            # Confirmar associação
+            app_name=$(grep -m1 "^Name=" "$desktop_file_found" | cut -d= -f2)
+            if whiptail --yesno "Deseja associar .$extension ($choice) a:\n\n$app_name?\n\n(Tipo MIME: $choice)" \
+                --title "Confirmar Associação" 12 60; then
+                set_default_app "$choice" "$desktop_file_found"
+                return 0
+            else
+                continue # Voltar a pedir o comando
+            fi
+        done
     done
 }
 
@@ -343,15 +533,17 @@ while true; do
     choice=$(whiptail --title "Configurador de Associações de Arquivos" \
     --menu "Escolha uma opção:" 15 60 5 \
     "1" "Configurar por extensão de arquivo" \
-    "2" "Configurar por arquivo específico" \
-    "3" "Listar todos os tipos MIME e aplicativos" \
-    "4" "Sair" 3>&1 1>&2 2>&3)
+    "2" "Configurar por extensão para um programa favorito" \
+    "3" "Configurar por arquivo específico" \
+    "4" "Listar todos os tipos MIME e aplicativos" \
+    "5" "Sair" 3>&1 1>&2 2>&3)
     
     case $choice in
         1) configure_by_extension ;;
-        2) configure_by_file ;;
-        3) list_all_mime_types ;;
-        4) break ;;
+        2) configure_by_extension_to_custom_program ;;
+        3) configure_by_file ;;
+        4) list_all_mime_types ;;
+        5) break ;;
         *) break ;;
     esac
 done
