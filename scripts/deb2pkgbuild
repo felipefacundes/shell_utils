@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+DEB_FILE="$1"
+SCRIPT=${##0*/}
+
+# Cores para mensagens
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Verifica se o nome do arquivo .deb foi fornecido
+if [ $# -eq 0 ]; then
+    echo "Uso: $SCRIPT <pacote.deb>"
+    echo "Exemplo: $SCRIPT google-chrome-stable_current_amd64.deb"
+    exit 1
+fi
+
+# Verifica se o arquivo existe
+if [ ! -f "$DEB_FILE" ]; then
+    echo "${RED}Erro: Arquivo '$DEB_FILE' não encontrado.${NC}"
+    exit 1
+fi
+
+# Verifica se é um arquivo .deb válido
+if ! file "$DEB_FILE" | grep -q "Debian binary package"; then
+    echo "${RED}Erro: '$DEB_FILE' não parece ser um pacote .deb válido.${NC}"
+    exit 1
+fi
+
+# Cria um diretório temporário
+[[ ! -d ~/.cache/$SCRIPT ]] && mkdir -p "$HOME/.cache/$SCRIPT"
+TMP_DIR=$(mktemp -d "$HOME/.cache/$SCRIPT/${SCRIPT}_XXXXX")
+trap "rm -rf '$TMP_DIR'" EXIT
+
+# Extrai o pacote .deb
+echo -e "${YELLOW}Extraindo o pacote .deb...${NC}"
+dpkg-deb -x "$DEB_FILE" "$TMP_DIR/package"
+dpkg-deb --control "$DEB_FILE" "$TMP_DIR/control"
+mkdir -p "$TMP_DIR/control/DEBIAN"
+mv "$TMP_DIR/control"/* "$TMP_DIR/control/DEBIAN/" 2>/dev/null
+
+# Extrai informações do controle
+CONTROL_FILE="$TMP_DIR/control/DEBIAN/control"
+if [ ! -f "$CONTROL_FILE" ]; then
+    echo "${RED}Erro: Não foi possível encontrar o arquivo de controle.${NC}"
+    exit 1
+fi
+
+# Função para obter valores do controle
+get_control_value() {
+    grep -i "^$1:" "$CONTROL_FILE" | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# Processa as dependências corretamente
+process_depends() {
+    local depends="$1"
+    if [ -z "$depends" ]; then
+        echo ""
+        return
+    fi
+    
+    # Remove versões específicas (tudo entre parênteses)
+    depends=$(echo "$depends" | sed -E 's/\([^)]+\)//g')
+    
+    # Substitui | por espaço (alternativas)
+    depends=$(echo "$depends" | sed 's/|[[:space:]]*/ /g')
+    
+    # Remove espaços extras e vírgulas
+    depends=$(echo "$depends" | sed 's/,[[:space:]]*/ /g' | tr -s ' ')
+    
+    # Remove pacotes irrelevantes ou problemáticos
+    depends=$(echo "$depends" | sed -E 's/\bdebconf[^ ]*//g')
+    
+    # Remove qualquer lixo restante
+    depends=$(echo "$depends" | tr -d '|' | tr -s ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    echo "$depends"
+}
+
+# Função para converter dependências do Debian para o Arch Linux
+arch_deps() {
+    deb_depends="$1"
+    local arch_depends=()
+    
+    # Se não houver dependências, retorna vazio
+    if [[ -z "$deb_depends" ]]; then
+        echo ""
+        return
+    fi
+    
+    # Itera sobre cada dependência
+    for dep in $deb_depends; do
+		local arch_pkg=""
+        
+        # Tentativa 1: Remove sufixos após números (libgtk-3-0 -> libgtk-3)
+        if [[ -z "$arch_pkg" ]]; then
+			local modified_dep=$(echo "$dep" | awk '{
+				for (i=1; i<=NF; i++) {
+					# Padrão para versões como -X-Y (libgtk-3-0 → libgtk-3)
+					if ($i ~ /-[0-9]+-[0-9]+$/) {
+						sub(/-[0-9]+$/, "", $i)  # Remove apenas o último -0
+					}
+					# Padrão para versões com ponto (libatspi2.0-0 → libatspi2.0)
+					else if ($i ~ /\.[0-9]+-[0-9]+$/) {
+						sub(/-[0-9]+$/, "", $i)
+					}
+					# Padrão para números no final (libnotify4 → libnotify)
+					else if ($i ~ /[0-9]+$/ && $i !~ /[.-]/) {
+						sub(/[0-9]+$/, "", $i)
+					}
+					print $i
+				}
+			}')
+			arch_pkg=$(pacman -Ssq "${modified_dep}" | head -n1)
+        fi
+        
+        # Tentativa 2: Remove todos números e sufixos (libgtk-3-0 -> libgtk)
+        if [[ -z "$arch_pkg" ]]; then
+            local simplified_dep=$(echo "$dep" | sed -E 's/[0-9.-]//g')
+            arch_pkg=$(pacman -Ssq "${simplified_dep}" | head -n1)
+        fi
+        
+		# Tentativa 3: Pesquisa exata
+        [[ -z "$arch_pkg" ]] && arch_pkg=$(pacman -Ssq "^${dep}\$" | head -n1)
+
+		# Se ainda não encontrou, tenta uma pesquisa mais ampla
+		[[ -z "$arch_pkg" ]] && arch_pkg=$(pacman -Ssq "${dep}" | head -n1)
+
+		if [[ "$arch_pkg" =~ ^flatpak ]]; then
+			local arch_pkg=""
+		fi
+
+        # Se encontrou um pacote correspondente, adiciona à lista
+        if [[ -n "$arch_pkg" ]]; then
+            arch_depends+=("$arch_pkg")
+        else
+            # Se não encontrou, mantém o original (o usuário será avisado para verificar)
+            arch_depends+=("$dep")
+        fi
+    done
+    
+    echo "${arch_depends[@]}"
+}
+
+# Obtém metadados do pacote
+_DEB_DEPENDS=$(get_control_value Depends)
+_DEB_OPTDEPENDS=$(get_control_value Recommends)
+DEB_DEPENDS=$(process_depends "$_DEB_DEPENDS")
+DEB_OPTDEPENDS=$(process_depends "$_DEB_OPTDEPENDS")
+DEPENDS=$(arch_deps "$DEB_DEPENDS")
+OPTDEPENDS=$(arch_deps "$DEB_OPTDEPENDS")
+PKGNAME=$(get_control_value Package | tr '[:upper:]' '[:lower:]')
+VERSION=$(get_control_value Version)
+ARCH=$(get_control_value Architecture)
+DESCRIPTION=$(get_control_value Description)
+MAINTAINER=$(get_control_value Maintainer)
+HOMEPAGE=$(get_control_value Homepage)
+
+# Mapeamento de arquiteturas
+case "$ARCH" in
+    amd64) ARCH="x86_64" ;;
+    i386) ARCH="i686" ;;
+    all) ARCH="any" ;;
+esac
+
+# Gera o PKGBUILD
+echo -e "${GREEN}Gerando PKGBUILD...${NC}"
+cat > PKGBUILD <<EOF
+# Maintainer: $MAINTAINER
+# Traduzido de .deb para PKGBUILD por deb2pkgbuild
+
+pkgname=$PKGNAME
+pkgver=${VERSION%%-*}
+pkgrel=1
+pkgdesc="$DESCRIPTION"
+arch=('$ARCH')
+url="$HOMEPAGE"
+license=($(get_control_value License | head -1))
+original_deb_depends=(${DEB_DEPENDS//,/ })
+original_deb_optdepends=(${DEB_OPTDEPENDS//,/ })
+depends=(${DEPENDS//,/ })
+optdepends=(${OPTDEPENDS//,/ })
+source=("$DEB_FILE")
+sha256sums=('$(sha256sum "$DEB_FILE" | cut -d' ' -f1)')
+
+prepare() {
+    # Extrai o pacote .deb durante a fase prepare
+    mkdir -p "\$srcdir/package"
+    dpkg-deb -x "\$srcdir/$DEB_FILE" "\$srcdir/package"
+}
+
+package() {
+	# Apenas linka temporariamente
+    ln -s "\$srcdir/package/"* "\$pkgdir"
+
+    # Corrige permissões
+    find "\$pkgdir" -type d -exec chmod 755 {} \;
+    find "\$pkgdir" -type f -exec chmod 644 {} \;
+    
+    # Aplica permissões especiais para binários
+    find "\$pkgdir/usr/bin" -type f -exec chmod 755 {} \; 2>/dev/null || true
+    #find "\$pkgdir/opt" -type f -exec bash -c 'file -b "{}" | grep -iq "elf" && chmod 755 "{}"' \; 2>/dev/null || true
+	find "\$pkgdir/opt" -type f -exec file -b {} + | grep -i ': elf' | cut -d: -f1 | xargs -r chmod 755 2>/dev/null || true
+
+    # Fix permissões
+	rm -rf "\$pkgdir/"*
+    cp -rf "\$srcdir/package/"* "\$pkgdir"
+}
+EOF
+
+echo -e "${YELLOW}PKGBUILD gerado com sucesso!${NC}"
+echo -e "${GREEN}Recomenda-se verificar e ajustar manualmente o PKGBUILD antes de construir o pacote.${NC}"
+echo -e "${YELLOW}Especialmente:${NC}"
+echo "1. As dependências podem precisar de ajustes para nomes de pacotes do Arch"
+echo "2. A licença pode precisar ser verificada"
+echo "3. Scripts pós-instalação podem precisar ser convertidos"
