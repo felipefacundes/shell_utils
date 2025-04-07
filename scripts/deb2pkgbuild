@@ -95,7 +95,10 @@ arch_deps() {
     for dep in $deb_depends; do
 		local arch_pkg=""
         
-        # Tentativa 1: Remove sufixos após números (libgtk-3-0 -> libgtk-3)
+		# Tentativa 1: Pesquisa exata
+        [[ -z "$arch_pkg" ]] && arch_pkg=$(pacman -Ssq ^"${dep}"\$ | head -n1)
+
+        # Tentativa 2: Remove sufixos após números (libgtk-3-0 -> libgtk-3)
         if [[ -z "$arch_pkg" ]]; then
 			local modified_dep=$(echo "$dep" | awk '{
 				for (i=1; i<=NF; i++) {
@@ -114,17 +117,16 @@ arch_deps() {
 					print $i
 				}
 			}')
-			arch_pkg=$(pacman -Ssq "${modified_dep}" | head -n1)
+			arch_pkg=$(pacman -Ssq ^"${modified_dep}"\$ | head -n1)
+			[[ -z "$arch_pkg" ]] && arch_pkg=$(pacman -Ssq "${modified_dep}" | head -n1)
         fi
         
-        # Tentativa 2: Remove todos números e sufixos (libgtk-3-0 -> libgtk)
+        # Tentativa 3: Remove todos números e sufixos (libgtk-3-0 -> libgtk)
         if [[ -z "$arch_pkg" ]]; then
             local simplified_dep=$(echo "$dep" | sed -E 's/[0-9.-]//g')
-            arch_pkg=$(pacman -Ssq "${simplified_dep}" | head -n1)
+            arch_pkg=$(pacman -Ssq ^"${simplified_dep}"\$ | head -n1)
+            [[ -z "$arch_pkg" ]] && arch_pkg=$(pacman -Ssq "${simplified_dep}" | head -n1)
         fi
-        
-		# Tentativa 3: Pesquisa exata
-        [[ -z "$arch_pkg" ]] && arch_pkg=$(pacman -Ssq "^${dep}\$" | head -n1)
 
 		# Se ainda não encontrou, tenta uma pesquisa mais ampla
 		[[ -z "$arch_pkg" ]] && arch_pkg=$(pacman -Ssq "${dep}" | head -n1)
@@ -136,9 +138,6 @@ arch_deps() {
         # Se encontrou um pacote correspondente, adiciona à lista
         if [[ -n "$arch_pkg" ]]; then
             arch_depends+=("$arch_pkg")
-        else
-            # Se não encontrou, mantém o original (o usuário será avisado para verificar)
-            arch_depends+=("$dep")
         fi
     done
     
