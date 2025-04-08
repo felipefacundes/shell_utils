@@ -23,11 +23,20 @@ cleanup() { [[ -d "${FONTPREVIEWTEMPDIR}" ]] && rm -rf "${FONTPREVIEWTEMPDIR}"; 
 trap cleanup INT EXIT
 
 VERSION=1.0
-FONT_SIZE=24
-SIZE=1000x700
-BG_COLOR="#ffffff"
-FG_COLOR="#000000"
-PREVIEW_TEXT=$(
+if [[ -n "$TERMUX_VERSION" ]]; then
+	FONT_SIZE="${FONT_SIZE:-16}"
+	SIZE="${SIZE:-600x300}"
+	FZF_MARGIN_R="${FZF_MARGIN_R:-60}"
+	FZF_MARGIN_H="${FZF_MARGIN_H:-40}"
+else
+	FONT_SIZE="${FONT_SIZE:-24}"
+	SIZE="${SIZE:-1000x700}"
+	FZF_MARGIN_R="${FZF_MARGIN_R:-80}"
+	FZF_MARGIN_H="${FZF_MARGIN_H:-80}"
+fi
+BG_COLOR=${BG_COLOR:-"#ffffff"}
+FG_COLOR=${FG_COLOR:-"#000000"}
+PREVIEW_TEXT="${PREVIEW_TEXT:-$(
 	cat <<-EOF
 	{}
 
@@ -42,7 +51,7 @@ PREVIEW_TEXT=$(
 	A white sheep peacefully 
 	grazes on the green pasture.
 	EOF
-)
+)}"
 
 # Check if fzf and ImageMagick are installed
 if ! command -v fzf magick &> /dev/null; then
@@ -80,6 +89,63 @@ else
 	MODE='sixel:-'
 fi
 
+read -ra cmd <<< "$MODE"
+
+setup_clipboard() {
+    # Termux (Android)
+    if [[ -n "$TERMUX_VERSION" ]]; then
+        if command -v termux-clipboard-set &> /dev/null; then
+            clipboard_copy() {
+                echo "$1" | termux-clipboard-set
+                echo "Font copied to clipboard!"
+            }
+        else
+            clipboard_copy() {
+                echo "termux-clipboard-set is not available. Cannot copy to clipboard."
+            }
+        fi
+    
+    # Wayland
+    elif [[ ${XDG_SESSION_TYPE,,} == "wayland" ]]; then
+        if command -v wl-copy &> /dev/null; then
+            clipboard_copy() {
+                echo "$1" | wl-copy
+                echo "Font copied to clipboard!"
+            }
+        else
+            clipboard_copy() {
+                echo "wl-copy is not installed. Cannot copy to clipboard in Wayland."
+            }
+        fi
+    
+    # X11
+    elif [[ ${XDG_SESSION_TYPE,,} == "x11" ]] || [[ -n "$DISPLAY" ]]; then
+        if command -v xclip &> /dev/null; then
+            clipboard_copy() {
+                echo "$1" | xclip -selection clipboard
+                echo "Font copied to clipboard!"
+            }
+        else
+            clipboard_copy() {
+                echo "xclip is not installed. Cannot copy to clipboard in X11."
+            }
+        fi
+    
+    # Other environments (macOS, etc)
+    else
+        if command -v pbcopy &> /dev/null; then  # macOS
+            clipboard_copy() {
+                echo "$1" | pbcopy
+                echo "Font copied to clipboard!"
+            }
+        else
+            clipboard_copy() {
+                echo "No clipboard copy method available for this environment."
+            }
+        fi
+    fi
+}
+
 show_help() {
 printf "%s" "\
 usage: $SCRIPT [-h] [--size \"px\"] [--font-size \"FONT_SIZE\"] [--bg-color \"BG_COLOR\"] 
@@ -96,6 +162,8 @@ optional arguments:
    -i,  --input           filename of the input font (.otf, .ttf, .woff are supported)
    -o,  --output          filename of the output preview image (input.png if not set)
    -s,  --size            size of the font preview window
+   -mr, --margin-right    fzf margin right
+   -mh, --margin-height   fzf margin height
    -fs, --font-size       font size
    -bg, --bg-color        background color of the font preview window
    -fg, --fg-color        foreground color of the font preview window
@@ -110,6 +178,14 @@ while [[ $# -gt 0 ]]; do
 			shift
             SIZE="$1"
             ;;
+		-mr|--margin-right)
+			shift
+			FZF_MARGIN_R="$1"
+			;;
+		-mh|--margin-height)
+			shift
+			FZF_MARGIN_H="$1"
+			;;
         -h|--help)
             show_help
             exit
@@ -162,8 +238,6 @@ else
     font_list=$(magick -list font | grep "Font:" | awk '{print $2}' | sort -u)
 fi
 
-read -ra cmd <<< "$MODE"
-
 if [[ -n "$output_file" ]]; then
 	[[ ! -f "$font_list" ]] && echo "Use -i to specify the font file and -o to extract the image" && exit 1
 	magick -size "$SIZE" -background "$BG_COLOR" -fill "$FG_COLOR" -font "$font_list" \
@@ -175,11 +249,13 @@ elif [[ -z "$output_file" ]]; then
 		--prompt="🔍 Select a font: " \
 		--preview="magick -size \"$SIZE\" -background \"$BG_COLOR\" -fill \"$FG_COLOR\" -font '{}' \
 		-pointsize \"$FONT_SIZE\" label:\"$PREVIEW_TEXT\" -geometry \"$SIZE\" ${cmd[*]}" \
-		--preview-window="right:80%:border-left" \
-		--height=80%)
+		--preview-window="right:${FZF_MARGIN_R}%:border-left" \
+		--height="${FZF_MARGIN_H}"%)
 	# If a font was selected, show confirmation
 	if [[ -n "$selected_font" ]]; then
 		echo "✅ Selected font: $selected_font"
+		setup_clipboard
+		clipboard_copy "$selected_font"
 	else
 		echo "🚫 No font selected."
 	fi
