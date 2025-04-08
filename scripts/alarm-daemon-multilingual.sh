@@ -112,6 +112,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
 		["open_file_question"]="Você deseja abrir um arquivo com xdg-open?"
 		["open_file_select"]="Selecione o arquivo a ser aberto:"
 		["repeat_alarm"]="Repetir Alarme?"
+		["delete_alarm"]="Deletar este alarme?"
 		["repeat_alarm_question"]="Você gostaria que o alarme se repetisse?"
 		["select"]="Selecione"
 		["option"]="Opção"
@@ -166,6 +167,7 @@ elif [[ "${LANG,,}" =~ fr_ ]]; then
 		["open_file_question"]="Voulez-vous ouvrir un fichier avec xdg-open ?"
 		["open_file_select"]="Sélectionnez le fichier à ouvrir :"
 		["repeat_alarm"]="Répéter l'alarme ?"
+		["delete_alarm"]="Supprimer cette alarme ?"
 		["repeat_alarm_question"]="Souhaitez-vous répéter l'alarme ?"
 		["select"]="Sélectionner"
 		["option"]="Option"
@@ -220,6 +222,7 @@ elif [[ "${LANG,,}" =~ de_ ]]; then
 		["open_file_question"]="Möchten Sie eine Datei mit xdg-open öffnen?"
 		["open_file_select"]="Wählen Sie die zu öffnende Datei aus:"
 		["repeat_alarm"]="Alarm wiederholen?"
+		["delete_alarm"]="Diesen Alarm löschen?"  
 		["repeat_alarm_question"]="Möchten Sie den Alarm wiederholen?"
 		["select"]="Auswählen"
 		["option"]="Option"
@@ -274,6 +277,7 @@ elif [[ "${LANG,,}" =~ ro_ ]]; then
 		["open_file_question"]="Doriți să deschideți un fișier cu xdg-open?"
 		["open_file_select"]="Selectați fișierul de deschis:"
 		["repeat_alarm"]="Repetați alarma?"
+		["delete_alarm"]="Ștergeți acest alarmă?"  
 		["repeat_alarm_question"]="Doriți să repetați alarma?"
 		["select"]="Selectați"
 		["option"]="Opțiune"
@@ -328,6 +332,7 @@ elif [[ "${LANG,,}" =~ ru_ ]]; then
 		["open_file_question"]="Хотите открыть файл с помощью xdg-open?"
 		["open_file_select"]="Выберите файл для открытия:"
 		["repeat_alarm"]="Повторить будильник?"
+		["delete_alarm"]="Удалить этот будильник?"  
 		["repeat_alarm_question"]="Хотите повторить будильник?"
 		["select"]="Выбрать"
 		["option"]="Опция"
@@ -382,6 +387,7 @@ elif [[ "${LANG,,}" =~ zh_ ]]; then
 		["open_file_question"]="您想用 xdg-open 打开文件吗？"
 		["open_file_select"]="选择要打开的文件："
 		["repeat_alarm"]="重复闹钟？"
+		["delete_alarm"]="删除此闹钟？"
 		["repeat_alarm_question"]="您想重复这个闹钟吗？"
 		["select"]="选择"
 		["option"]="选项"
@@ -436,6 +442,7 @@ elif [[ "${LANG,,}" =~ ko_ ]]; then
 		["open_file_question"]="xdg-open으로 파일을 열겠습니까?"
 		["open_file_select"]="열 파일을 선택하세요:"
 		["repeat_alarm"]="알람 반복?"
+		["delete_alarm"]="이 알람을 삭제할까요?"
 		["repeat_alarm_question"]="이 알람을 반복하시겠습니까?"
 		["select"]="선택"
 		["option"]="옵션"
@@ -490,6 +497,7 @@ elif [[ "${LANG,,}" =~ he_ ]]; then
 		["open_file_question"]="האם ברצונך לפתוח קובץ עם xdg-open?"
 		["open_file_select"]="בחר את הקובץ לפתיחה:"
 		["repeat_alarm"]="לחזור על ההתראה?"
+		["delete_alarm"]="למחוק את השעון המעורר הזה?"
 		["repeat_alarm_question"]="האם ברצונך לחזור על ההתראה?"
 		["select"]="בחר"
 		["option"]="אפשרות"
@@ -544,6 +552,7 @@ elif [[ "${LANG,,}" =~ ar_ ]]; then
 		["open_file_question"]="هل ترغب في فتح ملف باستخدام xdg-open؟"
 		["open_file_select"]="اختر الملف لفتحه:"
 		["repeat_alarm"]="تكرار التنبيه؟"
+		["delete_alarm"]="حذف هذا المنبه؟"
 		["repeat_alarm_question"]="هل ترغب في تكرار التنبيه؟"
 		["select"]="اختر"
 		["option"]="خيار"
@@ -598,6 +607,7 @@ elif [[ "${LANG,,}" =~ ja_ ]]; then
 		["open_file_question"]="xdg-openでファイルを開きますか?"
 		["open_file_select"]="開くファイルを選択してください:"
 		["repeat_alarm"]="アラームを繰り返しますか?"
+		["delete_alarm"]="このアラームを削除しますか？"
 		["repeat_alarm_question"]="アラームを繰り返しますか?"
 		["select"]="選択"
 		["option"]="オプション"
@@ -652,6 +662,7 @@ elif [[ "${LANG,,}" =~ es_ ]]; then
 		["open_file_question"]="¿Quieres abrir un archivo con xdg-open?"
 		["open_file_select"]="Selecciona el archivo a abrir:"
 		["repeat_alarm"]="¿Repetir alarma?"
+		["delete_alarm"]="¿Eliminar esta alarma?"
 		["repeat_alarm_question"]="¿Te gustaría repetir la alarma?"
 		["select"]="Seleccionar"
 		["option"]="Opción"
@@ -706,6 +717,7 @@ else
 		["open_file_question"]="Do you want to open a file with xdg-open?"
 		["open_file_select"]="Select the file to open:"
 		["repeat_alarm"]="Repeat Alarm?"
+		["delete_alarm"]="Delete this alarm?"
 		["repeat_alarm_question"]="Would you like the alarm to repeat?"
 		["select"]="Select"
 		["option"]="Option"
@@ -1022,7 +1034,7 @@ run_alarms() {
 					sed -i "s/^Hour:.*/Hour: $new_hour/" "$new_alarm_file"
 					sed -i "s/^Minute:.*/Minute: $new_minute/" "$new_alarm_file"
 					sed -i "s/^Repetition:.*/Repetition: ${MESSAGES[only_this_day]}/" "$new_alarm_file"
-				fi
+				fi	
 
                 # If the alarm is not set to repeat, delete the file after execution
                 if [[ "$repeat_alarm" == "${MESSAGES[only_this_day]}" ]]; then
@@ -1032,6 +1044,10 @@ run_alarms() {
                 if [ "$current_minute" -eq "$minute" ] && [ ! -f "$lock_file" ]; then
                     lock_generate "$lock_file" &
                 fi
+				
+				if [[ -f "$alarm_file" ]]; then
+					zenity --question --title="${MESSAGES[delete_alarm]}" --text="${MESSAGES[delete_alarm]}" && rm -f "$alarm_file"
+				fi
             fi
         done
         # Wait 5 seconds before checking alarms again
