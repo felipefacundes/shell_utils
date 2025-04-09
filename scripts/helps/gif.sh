@@ -4,14 +4,19 @@ gif()
 cat <<'EOF'
 # 1. Criar gif de alttíssima qualidade com paleta a parte:
 
-Já com a resolução desejada:
+Já com a resolução desejada método ULTRAPASSADO:
 $ ffmpeg -i OnePiece.mkv -filter_complex '[0:v] palettegen' palette.png
 $ ffmpeg -ss 00:00:26.00 -t 8 -r 23 -i Video.mkv -i palette.png \
     -filter_complex '[0:v][1:v] paletteuse' -pix_fmt rgb24 -s 616x182 OnePiece.gif
 
+2. MELHOR MÉTODO. Criar gif de alttíssima qualidade com paleta diretamente e já definindo o número de quadros e escala:
+
+$ ffmpeg -i OnePiece.mkv \
+	-vf "fps=15,scale=800:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 0 OnePiece.gif
+
 Obs.: Se não definir a resolusção de saída '-s 616x182' será a resolução original do vídeo.
 
-2. Criar gif de alttíssima qualidade com paleta diretamente e já definindo o número de quadros e escala:
+3. Método 2. Criar gif de alttíssima qualidade com paleta diretamente e já definindo o número de quadros e escala:
 
 $ ffmpeg -filter_complex "[0:v] fps=6,scale=w=1080:h=-1,split [a][b];[a] palettegen [p];[b][p] paletteuse" \
     -i OnePiece.mkv -ss 00:00:05 -r 6 OnePiece.gif

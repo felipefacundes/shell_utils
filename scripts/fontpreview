@@ -146,11 +146,31 @@ setup_clipboard() {
     fi
 }
 
+show_requirements() {
+printf "%s" "\
+usage: $SCRIPT [--requirements]
+
+Essential dependencies and their purposes:
+
+Core requirements:
+   fzf                    Fuzzy finder for interactive font selection
+   ImageMagick            Font preview generation and display (magick command)
+
+Optional dependencies:
+   wl-copy                (Wayland) Copy fonts to clipboard
+   xclip                  (X11) Copy fonts to clipboard  
+   termux-clipboard-set   (Termux) Copy fonts to clipboard
+   feh                    Fallback image viewer for terminals without Sixel support
+   xdg-open               Fallback image viewer for Desktops without feh
+"
+}
+
 show_help() {
 printf "%s" "\
 usage: $SCRIPT [-h] [--size \"px\"] [--font-size \"FONT_SIZE\"] [--bg-color \"BG_COLOR\"] 
                       [--fg-color \"FG_COLOR\"] [--preview-text \"PREVIEW_TEXT\"] [-i font.otf] 
-                      [-o preview.png] [--version]
+                      [--margin-right value] [--margin-height value] [-o fontpreview.png]
+                      [--version]
  
 ┌─┐┌─┐┌┐┌┌┬┐┌─┐┬─┐┌─┐┬  ┬┬┌─┐┬ ┬
 ├┤ │ ││││ │ ├─┘├┬┘├┤ └┐┌┘│├┤ │││
@@ -159,17 +179,66 @@ Very customizable and minimal font previewer written in bash
  
 optional arguments:
    -h,  --help            show this help message and exit
+   -r,  --requirements    show dependencies and their purposes
    -i,  --input           filename of the input font (.otf, .ttf, .woff are supported)
+   -in, --install         add custom fonts to your system
    -o,  --output          filename of the output preview image (input.png if not set)
-   -s,  --size            size of the font preview window
-   -mr, --margin-right    fzf margin right
-   -mh, --margin-height   fzf margin height
-   -fs, --font-size       font size
-   -bg, --bg-color        background color of the font preview window
-   -fg, --fg-color        foreground color of the font preview window
+   -s,  --size            size of the font preview window (default: $SIZE)
+   -mr, --margin-right    fzf margin right (default: $FZF_MARGIN_R)
+   -mh, --margin-height   fzf margin height (default: $FZF_MARGIN_H)
+   -fs, --font-size       font size (default: $FONT_SIZE)
+   -bg, --bg-color        background color of the font preview window (default: $BG_COLOR)
+   -fg, --fg-color        foreground color of the font preview window (default: $FG_COLOR)
    -t,  --text            preview text that should be displayed in the font preview window
    -v,  --version         show the version of fontpreview you are using
+
+Environment Variables:
+   FONT_SIZE              Set default font size (currently: $FONT_SIZE)
+   SIZE                   Set default preview size (currently: $SIZE)
+   FZF_MARGIN_R           Set default fzf right margin (currently: $FZF_MARGIN_R)
+   FZF_MARGIN_H           Set default fzf height margin (currently: $FZF_MARGIN_H)
+   BG_COLOR               Set default background color (currently: $BG_COLOR)
+   FG_COLOR               Set default foreground color (currently: $FG_COLOR)
+   PREVIEW_TEXT           Set default preview text
 "
+echo
+show_requirements
+}
+
+install_font() {
+    if [[ -f "$input_font" ]]; then
+        local fonts_dir=~/.fonts
+        local basename=${input_font##*/}
+        local oneextless=${basename%.*}
+        local font_dir="${fonts_dir}/${oneextless}"
+
+        # Check if file is a valid font
+        if_font=$(file "$input_font")
+        if_font=${if_font,,}
+        if ! [[ ${if_font} =~ "font" ]]; then
+            echo "Error: The file is not a valid font file." >&2
+            exit 1
+        fi
+
+        # Check if font is already installed
+        if [[ -d "$font_dir" ]]; then
+            echo "Warning: The font is already installed!" >&2
+            exit 1
+        fi
+
+        # Install the font
+        mkdir -p "$font_dir"
+        cp "$input_font" "$font_dir" || {
+            echo "Error: Failed to copy the font file." >&2
+            exit 1
+        }
+        fc-cache -fv >/dev/null &
+        echo "Font installed successfully in: $font_dir"
+    else
+        echo "Usage: Use '-i' to specify the font file and '--install' to install it." >&2
+        exit 1
+    fi
+	exit 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -190,6 +259,10 @@ while [[ $# -gt 0 ]]; do
             show_help
             exit
             ;;
+        -r|--requirements)
+            show_requirements
+            exit
+            ;;
         -v|--version)
             echo "$VERSION"
             exit
@@ -197,6 +270,10 @@ while [[ $# -gt 0 ]]; do
         -i|--input)
 			shift
             input_font="$1"
+            ;;
+        -in|--install)
+			shift
+			install_font
             ;;
         -o|--output)
 			shift

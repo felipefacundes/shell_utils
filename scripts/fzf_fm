@@ -1,0 +1,466 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A simple file manager written in bash with file preview capabilities, inspired by "fff", "lesspipe", and "ranger". 
+It uses "fzf" as its interface, enhancing file previews with custom commands for efficient navigation. 
+It offers configurable shortcuts to streamline file management.
+DOCUMENTATION
+
+clear
+
+setup_config() {
+    local config_file="$CONFIG_PATH/preview.conf"
+    
+    # If config file already exists, source it
+    if [[ -f "$config_file" ]]; then
+        source "$config_file"
+        return 0
+    fi
+    
+    # Create the configuration file with default values and explanations
+    cat > "$config_file" << 'EOF'
+# Preview configuration file
+
+# Style for pygmentize code highlighting
+# Default: "autumn"
+# Pygmentize style to use for syntax highlighting
+#PYGMENTIZE_STYLE=""
+EOF
+
+    # Make the config file user-executable
+    chmod u+x "$config_file"
+    
+    # Source the newly created config file
+    source "$config_file"
+}
+
+get_os() {
+    case $OSTYPE in
+        darwin*)
+            opener=open
+            file_flags=bIL
+        ;;
+        haiku)
+            opener=open
+        ;;
+    esac
+}
+
+cleanup() {
+    [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+}
+
+setup_options() {
+    [[ $PREVIEW_FILE_FORMAT == *%f* ]] && {
+        file_pre=${PREVIEW_FILE_FORMAT/'%f'*}
+        file_post=${PREVIEW_FILE_FORMAT/*'%f'}
+    }
+
+    # Format for marked files.
+    [[ $PREVIEW_MARK_FORMAT == *%f* ]] && {
+        mark_pre=${PREVIEW_MARK_FORMAT/'%f'*}
+        mark_post=${PREVIEW_MARK_FORMAT/*'%f'}
+    }
+
+    file -I &>/dev/null || : "${file_flags:=biL}"
+}
+
+get_ls_colors() {
+    [[ -z $LS_COLORS ]] && {
+        PREVIEW_LS_COLORS=0
+        return
+    }
+
+    IFS=: read -ra ls_cols <<< "$LS_COLORS"
+
+    for ((i=0;i<${#ls_cols[@]};i++)) {
+        [[ ${ls_cols[i]} =~ ^\*[^\.] ]] &&
+            ls_patterns+="${ls_cols[i]/=*}|"
+
+        [[ ${ls_cols[i]} =~ ^(\*|\.) ]] && {
+            ls_cols[i]=${ls_cols[i]#\*}
+            ls_cols[i]=ls_${ls_cols[i]#.}
+        }
+    }
+
+    ls_cols=("${ls_cols[@]//[^a-zA-Z0-9=\\;]/_}")
+
+    ls_patterns=${ls_patterns//\*}
+    ls_patterns=${ls_patterns%?}
+
+    export "${ls_cols[@]}" &>/dev/null
+}
+
+get_mime_type() {
+    mime_type=$(file "-${file_flags:-biL}" "$1" 2>/dev/null | awk '{print $1}')
+    mime_type2=$(file --dereference --brief --mime-type -- "$1" 2>/dev/null)
+    mime_type_full=$(file "$1" | sed -n 's/.*:\s*\(.*\)/\1/p')
+    mime_type="${mime_type,,}"
+    mime_type2="${mime_type,,}"
+    mime_type_full="${mime_type_full,,}"
+}
+
+status_line() {
+    local mark_ui="[${#marked_files[@]}][selected] "
+    
+    # Get base directory and current directory
+    basedir="$(dirname "$PWD")"
+    lastdir="$(basename "$PWD")"
+    
+    # Format the PWD for display
+    PWD_display="$basedir/$lastdir"
+    
+    printf '\r\e[K\e[1;48;5;128;38;5;16m %s \e[m %s %s' \
+        "[FZF Preview]" \
+        "${marked_files[*]:+${mark_ui}}" \
+        "${PWD_display}"
+}
+
+cmd_check() {
+    [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
+    {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
+    [[ "$1" == "-msg" ]] && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "(It was not possible to display the file). Install $msg" &&
+    no_cmd=() && read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null && return 0
+    ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
+}
+
+draw_file_preview() {
+    local file="$1"
+    local width=$(( $(tput cols) * 80 / 100 ))
+    local height=$(( $(tput lines) * 80 / 100 ))
+    local sizeline=$((height - 5))
+
+    if [[ -d "$file" ]]; then
+        local leng="$(ls -1A "$file" | wc -l)"
+        printf '\e[36mDirectory: %s\e[m\n' "${file##*/}"
+        [[ "$leng" == 0 ]] && printf '\e[36mEmpty folder\e[m\n\n'
+        [[ "$leng" -gt 0 ]] && printf '\e[36mTotal Files: %s\e[m\n\n' "$leng"
+        ls -lha --group-directories-first --color=always "$file" | head -n 2
+        printf '%s\n' "----------------------------------------------------"
+        
+        item_count=$(ls -pa --group-directories-first "$file" | wc -l)
+        if [ "$item_count" -le 30 ]; then
+            ls -pa --group-directories-first --color=always "$file"
+        else
+            ls -pa --group-directories-first --color=always "$file" | head -n "${sizeline}"
+        fi
+        
+    elif [[ -f "$file" ]]; then
+        local file_ext="${file##*.}"
+        file_ext="${file_ext,,}"
+
+        printf '\e[36mFile: %s\e[m\n\n' "${file##*/}"
+
+        case "$file_ext" in
+            a|apk|apk+|xapk|ace|alz|arc|arj|br|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lz4|lzh|lzma|lzo|rar|exe|rpm|\
+            7z|7zz|7za|7zr|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tz|tzo|war|xpi|xz|z|zip|zst|zstd|iso|vsix|zlib|zz)
+                archive "$file" || any_file "$file"
+            ;;
+            txt)
+                margin "$file"
+            ;;
+            md|markdown)
+                markdown_reader "$file" || any_file "$file"
+            ;;
+            class)
+                classview "$file" || any_file "$file"
+            ;;
+            pod)
+                podview "$file" || any_file "$file"
+            ;;
+            pdf)
+                pdfview "$file" || any_file "$file"
+            ;;
+            torrent)
+                torrentview "$file" || any_file "$file"
+            ;;
+            mp4|m4v|mov|avi|wmv|flv|webm|mkv|mpg|mpeg|3gp|3g2|ogv|asf|rm|rmvb|vob|ts|m2ts|mts|f4v|divx)
+                video2static "$file" || any_file "$file"
+            ;;
+            mp3|wav|aac|m4a|flac|ogg|oga|opus|wma|alac|aiff|aif|au|snd|amr|ac3|dts|caf|mka|dff|dsf|wv|wvc)
+                media_info "$file" || any_file "$file"
+            ;;
+            png|jpg|jpeg)
+                imgview "$file" || any_file "$file"
+            ;;
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+                office_convert "$file" || any_file "$file"
+            ;;
+            djvu)
+                djvuview "$file" || any_file "$file"
+            ;;
+            postscript|ps)
+                psview "$file" || any_file "$file"
+            ;;
+            x509|crl|csr)
+                opensslview "$file" || any_file "$file"
+            ;;
+            pgp)
+                pgpview "$file" || any_file "$file"
+            ;;
+            dvi)
+                dviview "$file" || any_file "$file"
+            ;;
+            htm|html|xhtml)
+                ishtml "$file" | fmt -w "${width}" | head -n "${sizeline}" || any_file "$file"
+            ;;
+            json)
+                jsonview "$file" || any_file "$file"
+            ;;
+            *)
+                _mime_files || any_file "$file"
+            ;;
+        esac
+    fi
+}
+
+margin() {
+    local file="$1"
+    { cmd_check fold coreutils &&
+    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-5})) "$file" | head -n "${sizeline}" && return 0; } ||
+    cmd_check -msg && return 1
+}
+
+any_file() {
+    file="$1"
+    margin <(file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p') && echo &&
+    margin <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+}
+
+highlight_code() {
+    local file="$1"
+    COLOR_RESET='\033[0m' 
+    COLOR_CODE='\033[38;5;155;48;5;241m'
+    HIGHLIGHT_OPTIONS="--replace-tabs=${HIGHLIGHT_TABWIDTH:-8} --style=${HIGHLIGHT_STYLE:-pablo} ${HIGHLIGHT_OPTIONS:-}"
+
+    ## Syntax highlight
+    if [[ "$( tput colors )" -ge 256 ]]; then
+        local pygmentize_format='terminal256'
+        local highlight_format='xterm256'
+    else
+        local pygmentize_format='terminal'
+        local highlight_format='ansi'
+    fi
+    if [ -z "$lang" ]; then
+        lang="$file_ext"  # Default language
+    fi
+
+    { cmd_check bat bat && env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "${file}" && return 0; } ||
+    { cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
+        --out-format="${highlight_format}" \
+        --force -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check source-highlight source-highlight &&
+    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0; } ||
+    { cmd_check pygmentize python-pygments && 
+    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}" -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check glow glow && _glow "${file}" && return 0; } ||
+    { cmd_check mdless mdless && mdless -P -- "${file}" && return 0; } ||
+    { cmd_check mdcat mdcat && mdcat -- "${file}" && return 0; } ||
+	{ while IFS= read -r line; do
+        printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$line"
+    done < "$file"; }
+}
+
+main() {
+    SCRIPT="${0##*/}"
+    TMPDIR="${TMPDIR:-/tmp}"
+    TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
+    CACHE_PATH="${XDG_CACHE_HOME:=${HOME}/.cache}/preview"
+    CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/preview"
+    
+    [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+    [[ ! -d "$CONFIG_PATH" ]] && mkdir -p "$CONFIG_PATH"
+    [[ ! -d "$CACHE_PATH" ]] && mkdir -p "$CACHE_PATH"
+    [[ ! -d "${TMP_DIR}" ]] && mkdir -p "${TMP_DIR}"
+
+    setup_config
+    get_os
+    setup_options
+    ((${PREVIEW_LS_COLORS:=1} == 1)) && get_ls_colors
+
+    local selected_file=$(fzf --preview-window="right:80%:border-left" \
+                            --height=80% \
+                            --preview "bash -c 'source \"$0\"; draw_file_preview {}'" \
+                            --bind "ctrl-l:execute(bash -c 'source \"$0\"; open {}')" \
+                            --bind "ctrl-o:execute(bash -c 'source \"$0\"; xdg_open {}')" \
+                            --bind "ctrl-y:execute(bash -c 'source \"$0\"; copy_to_clipboard {}')" \
+                            --bind "ctrl-e:execute(bash -c 'source \"$0\"; extract_to_folder {}')" \
+                            --bind "ctrl-d:execute(bash -c 'source \"$0\"; delete_file {}')" \
+                            --bind "ctrl-r:execute(bash -c 'source \"$0\"; redraw')" \
+                            --bind "ctrl-h:execute(bash -c 'source \"$0\"; open ..')" \
+                            --header "$(status_line)")
+
+    if [[ -n "$selected_file" ]]; then
+        if [[ -d "$selected_file" ]]; then
+            open "$selected_file"
+            main
+        else
+            open "$selected_file"
+        fi
+    fi
+
+    cleanup
+}
+
+open() {
+    local file="$1"
+    
+    if [[ -d "$file" ]]; then
+        cd "$file" || return
+        main
+    elif [[ -f "$file" ]]; then
+        get_mime_type "$file"
+        
+        case "$mime_type" in
+            text/*|*x-empty*|*json*)
+                "${VISUAL:-${EDITOR:-vi}}" "$file"
+                main
+            ;;
+            *)
+                xdg_open "$file"
+            ;;
+        esac
+    fi
+}
+
+xdg_open() {
+    nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$1" &>/dev/null &
+    disown
+}
+
+copy_to_clipboard() {
+    [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && [[ -z "$TERMUX_VERSION" ]] && ! type -p wl-copy >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install wl-clipboard." && return 1
+    [[ -z "$TERMUX_VERSION" ]] && ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip." && return 1
+    [[ -n "$TERMUX_VERSION" ]] && ! type -p termux-clipboard-set >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install termux-api." && return 1
+    
+    local file="$1"
+    if [ ! -f "$file" ]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File does not exist."
+        return 1
+    fi
+
+    local file_size=$(ls -l "$file" | awk '{print $5}')
+    local max_size=$((10 * 1024 * 1024))
+    get_mime_type "$file"
+
+    if [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ]]; then
+        if [[ "$mime_type" == *"text"* ]]; then
+            [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard
+            [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File copied to clipboard successfully."
+        elif [[ "$mime_type" == *"image"* ]]; then
+            [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/png -i
+            [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Image copied to clipboard successfully."
+        else
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Unsupported file type for clipboard."
+        fi
+    elif [[ -n "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "$mime_type" == *"text"* ]]; then
+        cat "$file" | termux-clipboard-set
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File copied to clipboard successfully."
+    else
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File is too large (>10 MB) or has an unsupported format."
+    fi
+}
+
+extract_to_folder() {
+    local file="$1"
+    
+    if [ ! -f "$file" ]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File not found"
+        return 1
+    fi
+    
+    local file_lower="${file,,}"
+    local file_extension="${file%.*}"
+    local folder_name="${file_extension%.*}"
+    local only_file="${file##*/}"
+    
+    if [[ -d "$folder_name" ]]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Directory exists"
+        return 1
+    elif ! mkdir -p "$folder_name"; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Could not create directory"
+        return 1
+    fi
+
+    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extracting '$file' to '$folder_name'..."
+    
+    case "$file_lower" in
+        *.tar.bz2|*.tbz2) tar -xjf "$file" -C "$folder_name" ;;
+        *.tar.gz|*.tgz) tar -xzf "$file" -C "$folder_name" ;;
+        *.tar.xz) tar -xJf "$file" -C "$folder_name" ;;
+        *.tar.zst) tar --zstd -xvf "$file" -C "$folder_name" ;;
+        *.tar.lzma) tar --lzma -xvf "$file" -C "$folder_name" ;;
+        *.tar) tar -xvf "$file" -C "$folder_name" ;;
+        *.bz2) bunzip2 -c "$file" > "$folder_name/${only_file%.bz2}" ;;
+        *.gz) gunzip -c "$file" > "$folder_name/${only_file%.gz}" ;;
+        *.xz) unxz -c "$file" > "$folder_name/${only_file%.xz}" ;;
+        *.zst) unzstd "$file" -o "$folder_name/${only_file%.zst}" ;;
+        *.zip|*.zipx|*.apk|*.xapk|*.apk+|*.jar) unzip -q "$file" -d "$folder_name" ;;
+        *.rar) unrar x -inul "$file" "$folder_name/" ;;
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg|*.cbz|*.cbr) 7z x "$file" -o"$folder_name" ;;
+        *.iso) 7z x "$file" -o"$folder_name" ;;
+        *.cab) cabextract "$file" -d "$folder_name" ;;
+        *.arj) unarj x "$file" "$folder_name/" ;;
+        *.lzh|*.lha) lha -x "$file" -w "$folder_name" ;;
+        *.rpm) rpm2cpio "$file" | cpio -idmv -D "$folder_name" ;;
+        *.deb) dpkg-deb -x "$file" "$folder_name" ;;
+        *.z) uncompress -c "$file" > "$folder_name/${only_file%.z}" ;;
+        *.ace) unace x "$file" "$folder_name/" ;;
+        *.exe) 7z x "$file" -o"$folder_name" ;;
+        *) 
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Unsupported format: $file"
+            rmdir "$folder_name" 2>/dev/null
+            return 1 
+        ;;
+    esac
+    
+    if [ $? -eq 0 ]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extraction completed successfully!"
+        return 0
+    else
+        rmdir "$folder_name"
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Error during extraction"
+        return 1
+    fi
+}
+
+delete_file() {
+    local file="$1"
+    if [[ ! -e "$file" ]]; then
+        return
+    fi
+    
+    local filename="${file##*/}"
+    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Delete '${filename}'? (y/N): "
+    read -rsn 1 reply </dev/tty >/dev/null 2>/dev/null
+    
+    if [[ "$reply" =~ ^[Yy]$ ]]; then
+        if [[ -w "$file" ]]; then
+            if rm -rf "$file" 2>/dev/null; then
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File deleted successfully!"
+                return 0
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Deletion failed."
+                return 1
+            fi
+        else
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write access to file/directory."
+            return 1
+        fi
+    else
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Deletion canceled."
+        return 0
+    fi
+}
+
+redraw() {
+    main
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
