@@ -133,18 +133,21 @@ draw_file_preview() {
     local sizeline=$((height - 5))
 
     if [[ -d "$file" ]]; then
-        local leng="$(ls -1A "$file" | wc -l)"
+        local ls_cmd="ls -lha --group-directories-first --color=always"
+        [[ $SHOW_HIDDEN -eq 0 ]] && ls_cmd="ls -lh --group-directories-first --color=always"
+        
+        local leng="$($ls_cmd "$file" | wc -l)"
         printf '\e[36mDirectory: %s\e[m\n' "${file##*/}"
         [[ "$leng" == 0 ]] && printf '\e[36mEmpty folder\e[m\n\n'
         [[ "$leng" -gt 0 ]] && printf '\e[36mTotal Files: %s\e[m\n\n' "$leng"
-        ls -lha --group-directories-first --color=always "$file" | head -n 2
+        $ls_cmd "$file" | head -n 2
         printf '%s\n' "----------------------------------------------------"
         
-        item_count=$(ls -pa --group-directories-first "$file" | wc -l)
+        item_count=$($ls_cmd "$file" | wc -l)
         if [ "$item_count" -le 30 ]; then
-            ls -pa --group-directories-first --color=always "$file"
+            $ls_cmd "$file"
         else
-            ls -pa --group-directories-first --color=always "$file" | head -n "${sizeline}"
+            $ls_cmd "$file" | head -n "${sizeline}"
         fi
         
     elif [[ -f "$file" ]]; then
@@ -270,6 +273,10 @@ main() {
     CACHE_PATH="${XDG_CACHE_HOME:=${HOME}/.cache}/preview"
     CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/preview"
     
+    # Variáveis para controlar os estados
+    SHOW_HIDDEN=0  # 0 = não mostrar ocultos, 1 = mostrar ocultos
+    INDEX_MODE=1   # 1 = indexação ligada, 0 = indexação desligada
+    
     [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
     [[ ! -d "$CONFIG_PATH" ]] && mkdir -p "$CONFIG_PATH"
     [[ ! -d "$CACHE_PATH" ]] && mkdir -p "$CACHE_PATH"
@@ -280,26 +287,48 @@ main() {
     setup_options
     ((${PREVIEW_LS_COLORS:=1} == 1)) && get_ls_colors
 
-    local selected_file=$(fzf --preview-window="right:80%:border-left" \
-                            --height=80% \
-                            --preview "bash -c 'source \"$0\"; draw_file_preview {}'" \
-                            --bind "ctrl-l:execute(bash -c 'source \"$0\"; open {}')" \
-                            --bind "ctrl-o:execute(bash -c 'source \"$0\"; xdg_open {}')" \
-                            --bind "ctrl-y:execute(bash -c 'source \"$0\"; copy_to_clipboard {}')" \
-                            --bind "ctrl-e:execute(bash -c 'source \"$0\"; extract_to_folder {}')" \
-                            --bind "ctrl-d:execute(bash -c 'source \"$0\"; delete_file {}')" \
-                            --bind "ctrl-r:execute(bash -c 'source \"$0\"; redraw')" \
-                            --bind "ctrl-h:execute(bash -c 'source \"$0\"; open ..')" \
-                            --header "$(status_line)")
+    # Função para construir o comando ls base
+    build_ls_command() {
+        local ls_cmd="ls -pa --group-directories-first"
+        [[ $SHOW_HIDDEN -eq 0 ]] && ls_cmd="ls -p --group-directories-first"
+        echo "$ls_cmd"
+    }
 
-    if [[ -n "$selected_file" ]]; then
-        if [[ -d "$selected_file" ]]; then
-            open "$selected_file"
-            main
+    # Configuração inicial do fzf
+    local fzf_opts=(
+        "--preview-window=right:80%:border-left"
+        "--height=80%"
+        "--preview" "bash -c 'source \"$0\"; draw_file_preview {}'"
+        "--bind" "ctrl-l:execute(bash -c 'source \"$0\"; open {}')"
+        "--bind" "ctrl-o:execute(bash -c 'source \"$0\"; xdg_open {}')"
+        "--bind" "ctrl-y:execute(bash -c 'source \"$0\"; copy_to_clipboard {}')"
+        "--bind" "ctrl-e:execute(bash -c 'source \"$0\"; extract_to_folder {}')"
+        "--bind" "ctrl-d:execute(bash -c 'source \"$0\"; delete_file {}')"
+        "--bind" "ctrl-r:execute(bash -c 'source \"$0\"; redraw')"
+        "--bind" "ctrl-h:execute(bash -c 'source \"$0\"; open ..')"
+        # Novos bindings
+        "--bind" "ctrl-a:reload($(build_ls_command))"  # Alternar arquivos ocultos
+        "--bind" "ctrl-x:toggle-search"                # Alternar indexação
+        "--header" "$(status_line)"
+    )
+
+    # Adicionar opção de indexação inicial
+    [[ $INDEX_MODE -eq 1 ]] || fzf_opts+=("--no-search")
+
+    # Função principal do loop
+    while true; do
+        local selected_file=$(fzf "${fzf_opts[@]}")
+
+        if [[ -n "$selected_file" ]]; then
+            if [[ -d "$selected_file" ]]; then
+                open "$selected_file"
+            else
+                open "$selected_file"
+            fi
         else
-            open "$selected_file"
+            break
         fi
-    fi
+    done
 
     cleanup
 }
