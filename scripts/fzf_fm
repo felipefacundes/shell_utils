@@ -33,6 +33,20 @@ MARGIN_PREVIEW="${CACHE_FZF_DIR}/margin_preview"
 [[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
 exec 2>"${TMPDIR}/${SCRIPT%.*}-debug.log"
 
+########################## PREVIEW FILE MANAGER
+margin() {
+    local file="$1"
+    { cmd_check fold coreutils &&
+    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-5})) "$file" && return 0; } ||
+    cmd_check -msg && return 1
+}
+
+any_file() {
+    file="$1"
+    margin <(file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p') && echo &&
+    margin <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+}
+########################## FZF FILE MANAGER
 # Function for cleaning paths returned by the FZF
 clean_path() {
     local path="$1"
@@ -217,6 +231,7 @@ preview_file() {
     
     # Get the Mime Type
     mime_type=$(file --mime-type -b "$file" 2>/dev/null || echo "application/octet-stream")
+	sixel_size="${PREVIEW_SIXEL_W:-800}x${PREVIEW_SIXEL_H:-600}!"
     
     case "$mime_type" in
         text/*|*/json|*/csv|*/xml|*script*)
@@ -229,7 +244,9 @@ preview_file() {
             fi
             ;;
         image/*)
-            if command -v viu >/dev/null; then
+            if command -v magick >/dev/null; then
+				magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" sixel:-
+            elif command -v viu >/dev/null; then
                 viu -t "$file" 2>/dev/null
             elif command -v chafa >/dev/null; then
                 chafa --format=symbols -s 80x40 "$file" 2>/dev/null
@@ -255,6 +272,7 @@ preview_file() {
                 fi
             else
                 file -b "$file" 2>/dev/null
+				any_file "$file"
             fi
             ;;
     esac
