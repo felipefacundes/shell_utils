@@ -2,7 +2,6 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# [Mantive toda a documentação original]
 : <<'DOCUMENTATION'
 A simple file manager written in bash with file preview capabilities, inspired by "fff", "lesspipe", and "ranger". 
 It uses "lf" as its foundation, enhancing file previews with custom commands for efficient navigation. 
@@ -2204,10 +2203,6 @@ case "$1" in
     --preview-file)
         shift
         preview_file "$1"
-        ;;
-	--open)
-        shift
-        open "$1"
         ;;
     *)
         main_with_fzf
