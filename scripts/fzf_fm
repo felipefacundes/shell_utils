@@ -31,9 +31,32 @@ MARGIN_PREVIEW="${CACHE_FZF_DIR}/margin_preview"
 [[ ! -d "$CACHE_FZF_DIR" ]] && mkdir -p "$CACHE_FZF_DIR"
 [[ ! -d "$TMP_FZF_DIR" ]] && mkdir -p "$TMP_FZF_DIR"
 [[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
+declare -a marked_files=()
 exec 2>"${TMPDIR}/${SCRIPT%.*}-debug.log"
+MARK_LOG="${TMP_FZF_DIR}/mark.log"
+touch "$MARK_LOG"  
+MARKED_FILES_FILE="${TMP_FZF_DIR}/marked_files"
+touch "$MARKED_FILES_FILE"
+generate_mark_file() {
+	marked_files=()
+	[[ -f "$MARKED_FILES_FILE" ]] && rm -f "$MARKED_FILES_FILE"
+	[[ ! -f "$MARKED_FILES_FILE" ]] && touch "$MARKED_FILES_FILE"
+}
+declare -a marked_files
+# Carrega o array inicialmente
+readarray -t marked_files < "$MARKED_FILES_FILE"
+
+cleanup() { [[ -d "$TMP_FZF_DIR" ]] && rm -rf "$TMP_FZF_DIR" 2>/dev/null; }
 
 ########################## PREVIEW FILE MANAGER
+cmd_check() {
+    [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
+    {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
+    [[ "$1" == "-msg" ]] && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "(It was not possible to display the file). Install $msg" &&
+    no_cmd=() && read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null && return 0
+    ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
+}
+
 margin() {
     local file="$1"
     { cmd_check fold coreutils &&
@@ -51,6 +74,49 @@ any_file() {
 clean_path() {
     local path="$1"
     echo "$path" | awk '{gsub(/^[[:space:]]+|[[:space:]]+$/, ""); gsub(/^'\''|'\''$/, ""); gsub(/'\''/, ""); gsub(/\\+/, ""); print}'
+}
+
+mark() {
+    local file="$1"
+    # Get the absolute path of the file
+    local real_path
+    real_path=$(realpath "$file" 2>/dev/null) || {
+        echo "$(date): mark: Failure when obtaining realpath to '$file'" >> "$MARK_LOG"
+        return 1
+    }
+
+    echo "$(date): mark: Trying to mark/uncheck: '$real_path'" >> "$MARK_LOG"
+
+    # Loads the current array of the file
+    local temp_marked_files=()
+    if [[ -s "$MARKED_FILES_FILE" ]]; then
+        readarray -t temp_marked_files < "$MARKED_FILES_FILE"
+    fi
+
+    # Check if the file is already marked
+    local index
+    for index in "${!temp_marked_files[@]}"; do
+        if [[ "${temp_marked_files[index]}" == "$real_path" ]]; then
+            # Removes the file if it is already marked
+            unset 'temp_marked_files[index]'
+            echo "$(date): mark: Unmarked: '$real_path'" >> "$MARK_LOG"
+            # Save the updated array or clean the empty file
+            if [ ${#temp_marked_files[@]} -eq 0 ]; then
+                : > "$MARKED_FILES_FILE"  # Cleans the file
+            else
+                printf "%s\n" "${temp_marked_files[@]}" > "$MARKED_FILES_FILE"
+            fi
+            echo "$(date): Mark: marked_files after uncheck: ${temp_marked_files[*]}" >> "$MARK_LOG"
+            return 0
+        fi
+    done
+
+    # Add the file to the array if not marked
+    temp_marked_files+=("$real_path")
+    echo "$(date): mark: Marked: '$real_path'" >> "$MARK_LOG"
+    # Save the updated array
+    printf "%s\n" "${temp_marked_files[@]}" > "$MARKED_FILES_FILE"
+    echo "$(date): mark: marked_files after scoring: ${temp_marked_files[*]}" >> "$MARK_LOG"
 }
 
 help() {
@@ -79,27 +145,33 @@ Search Modes:
 
 File Operations:
   Ctrl-d                - Mark selected file (logs to temporary file)
+  Ctrl-e                - Delete selected or marked files
+  Ctrl-y                - Mark/unmark selected file
   Right/Enter           - Open file with appropriate handler
 
 Preview Features:
   - Text files:         Syntax highlighting (bat/highlight/fallback to head)
-  - Images:             Thumbnail preview (viu/chafa/fallback to file info)
+  - Images:             Thumbnail preview (magick/viu/chafa/fallback to file info)
   - PDFs:               Text extraction (pdftotext/fallback to file info)
   - Directories:        List contents (exa/ls)
-  - Other files:        File type information
+  - Other files:        File type information and strings extraction
   - Adjustable margin:  Dynamic resizing (40-150) with Ctrl-h/Ctrl-l
 
 Configuration:
   - Preview margin:     Persisted in $MARGIN_PREVIEW
-  - UI Preferences:     Stored in $CACHE_FZF_DIR
+  - UI Preferences:     Stored in $CACHE_FZF_DIR (recursive, hidden files, cycle)
   - Debug logs:         Written to ${TMPDIR}/${SCRIPT%.*}-debug.log
+  - Marked files:       Persisted in $MARKED_FILES_FILE
 
 New Features:
-  - Help system:        Accessible via F1/? key
-  - Whiptail dialog:    Alternative help display
-  - Improved preview:   Better media file handling
-  - Key bindings:       More intuitive shortcuts
-  - Stability fixes:    Better error handling
+  - Help system:        Accessible via F1/? key with whiptail dialog option
+  - File deletion:      Single or multiple marked files with confirmation
+  - Marking system:     Toggle mark/unmark files with visual feedback ([<])
+  - MIME-type handling:  Enhanced support for json, csv, xml, scripts, audio, video
+  - Directory view:     Improved with exa/ls fallback and icons
+  - Recursive search:   Toggleable with fd/find for deep directory exploration
+  - Path display:       Color-coded current directory with ANSI support
+  - Stability:          Robust error handling, temp file cleanup, debug logging
 
 Note: 
 - All temporary files are stored in $TMP_FZF_DIR
@@ -120,10 +192,56 @@ dialog_help() {
     rm -f "$helpfile"
 }
 
+print_pwd() {
+    basedir="$1"
+    previous_directory=$(printf '%b\n' "\033[${PWD_PREVIOUS_DIRECTORY:-1;38;5;16}m") # Black ansi 256 
+    last_dir=$(printf '%b\n' "\033[${PWD_LAST_DIR:-1;33}m")                          # Yellow
+    bar=$(printf '%b\n' "\033[${PWD_BAR:-1;96}m")                                    # Cyan
+    ncpf=$(printf '\033[0m')
+
+    printf '%b\n' "$basedir" | awk -v pd="$previous_directory" -v bar="$bar" -v ld="$last_dir" -v reset="$ncpf" '
+    {
+        # Treat root special case
+        if ($0 == "/") {
+            print bar "/" reset;
+            exit;
+        }
+        
+        # Split keeping empty positions to treat absolute paths
+        len = split($0, parts, "/");
+        output = "";
+        
+        # Absolute Path (starts with /)
+        if ($0 ~ /^\//) {
+            output = bar "/" pd;
+            start_idx = 2;
+        } 
+        # Relative Path
+        else {
+            start_idx = 1;
+        }
+        
+        # Build every part of the Path
+        for (i = start_idx; i <= len; i++) {
+            if (parts[i] != "") {
+                if (i == len) {
+                    # Last Directory - Yellow
+                    output = output ld parts[i] reset;
+                } else {
+                    # Intermediate Directories - Black
+                    output = output parts[i] bar "/" pd;
+                }
+            }
+        }
+        
+        print output;
+    }'
+}
+
 print_filemanager_header() {
-    header_top="  ${1:-$PWD}"
-    echo "$header_top"
-    { [ "$PWD" = "/" ] && echo "/"; } || echo " .."
+    header_top="  $(print_pwd "${1:-$PWD}")"
+    echo -e "\033[${ICO_FOLDER:-1;96}m$header_top"
+    { [ "$PWD" = "/" ] && echo -e "\033[${ICO_FOLDER:-1;96}m/"; } || echo -e "\033[${ICO_FOLDER:-1;96}m .."
 }
 
 # Safe Function to find Directories
@@ -152,52 +270,134 @@ safe_find_dirs() {
 
 # Safe Function to List Directories
 safe_ls() {
-	if [[ -f "$CACHE_FZF_DIR/recursive" ]]; then
-		print_filemanager_header "$1"
-		safe_find_dirs
-	else
-		# First show the header
-		print_filemanager_header "$1"
-		
-		# Then list the contents
-		if [ "$list_cmd" = "exa" ]; then
-			"$list_cmd" \
-				$showhidden \
-				$longfilemanager \
-				$list_opts \
-				--icons \
-				--classify \
-				--git \
-				--git-ignore \
-				--ignore-glob 'buffers' \
-				--group-directories-first \
-				--colour=always \
-				-1 --level 1 "${1:-$PWD}" 2>/dev/null | sed "s/\*$//g"
-		else
-			"$list_cmd" \
-				$showhidden \
-				$list_opts \
-				"${1:-$PWD}" 2>/dev/null
-		fi
-	fi
+    if [[ -f "$CACHE_FZF_DIR/recursive" ]]; then
+        print_filemanager_header "$1"
+        safe_find_dirs
+    else
+        # Primeiro mostra o cabeçalho
+        print_filemanager_header "$1"
+        
+        # Comando
+        list_opts="--group-directories-first --color=always"
+
+        # Lista os conteúdos
+        local file_list
+        if command -v ls >/dev/null; then
+            file_list=$(ls $showhidden $list_opts "${1:-$PWD}" 2>/dev/null | sed "s/\*$//g; s|/$||")
+        else
+            file_list=$(find "${1:-$PWD}" -maxdepth 1 -not -path '*/\.*' 2>/dev/null | sed "s|${1:-$PWD}/||")
+        fi
+
+        # Loga the list of files
+        echo "$(date): safe_ls: file_list: $file_list" >> "$MARK_LOG"
+        # Loads marked_files from the file
+        readarray -t marked_files < "$MARKED_FILES_FILE"
+        echo "$(date): safe_ls: marked_files: ${marked_files[*]}" >> "$MARK_LOG"
+
+        # Process the list to add [<] to marked files
+        while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            # Remove Clean Comparison Codes
+            file_clean=$(echo "$file" | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g')
+            # Get the absolute path of the file
+            local real_path
+            real_path=$(realpath "${1:-$PWD}/$file_clean" 2>/dev/null) || {
+                echo "$(date): safe_ls: Failure when obtaining realpath to '${1:-$PWD}/$file_clean'" >> "$MARK_LOG"
+                echo "$file"
+                continue
+            }
+            local marked=false
+            for marked_file in "${marked_files[@]}"; do
+                if [[ "$marked_file" == "$real_path" ]]; then
+                    marked=true
+                    break
+                fi
+            done
+            if [[ "$marked" == true ]]; then
+                echo "$file [<]"
+            else
+                echo "$file"
+            fi
+        done <<< "$file_list"
+    fi
 }
 
 # Main configuration
 SCRIPT_PATH="$(realpath "$0")"
 preview_cmd="bash \"$SCRIPT_PATH\" --preview-file {}"
+read -ra redraw <<< "$preview_cmd"
 
-# Command Verification
-list_cmd=""
-if command -v exa >/dev/null; then
-    list_cmd="exa"
-    list_opts="-1 --icons --classify --git --git-ignore --group-directories-first --colour=always"
-elif command -v ls >/dev/null; then
-    list_cmd="ls"
-    list_opts="-1 --group-directories-first --classify --color=always"
-else
-    echo "Error: Neither exa nor ls found in PATH" >&2
-    exit 1
-fi
+delete_file() {
+    local path="$1"
+	file="$(clean_path "$path")"
+	file="${file% "[<]"}"
+
+    [[ ! -e "${file}" ]] &&
+        return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Deletar um único arquivo selecionado
+        local filename="${file##*/}"
+        cmd_reply=$({ whiptail --yesno "Delete '${filename}'?" 10 60 --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
+
+        if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+            if [[ -w "${file}" ]]; then
+                if rm -rf "${file}" 2>/dev/null; then
+                    "${redraw[@]}"
+                    whiptail --title "Success" --msgbox "File: \"$filename\" deleted successfully!" 10 60 2>&1 >/dev/tty
+                else
+                    whiptail --title "Warn" --msgbox "warn: deletion failed." 10 60 >/dev/null 2>&1 >/dev/tty
+                fi
+            else
+                whiptail --title "Warn" --msgbox "warn: no write access to file/directory." 10 60 >/dev/null 2>&1 >/dev/tty
+            fi
+        else
+           whiptail --title "Canceled" --msgbox "Deletion canceled." 10 60 >/dev/null 2>&1 >/dev/tty
+        fi
+    # Deletar arquivos marcados
+    else
+        # Verifica permissão de escrita no diretório atual
+        if [[ ! -w "$PWD" ]]; then
+            whiptail --title "Warn" --msgbox "No write permission in the current directory ($PWD)." 10 60 >/dev/null 2>&1 >/dev/tty
+        else
+            # Lista os arquivos marcados para confirmação
+            local file_list=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                file_list="$file_list $basename"
+            done
+
+            cmd_reply=$({ whiptail --yesno --scrolltext "Delete the following files? (y/N):\n\n$file_list" 10 60 --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
+            if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                # Verifica permissões e deleta
+                local failed=false
+                for file in "${marked_files[@]}"; do
+                    if [[ -w "$file" ]]; then
+                        if ! rm -rf "$file" 2>/dev/null; then
+                            failed=true
+                        fi
+                    else
+                        failed=true
+                        whiptail --title "Warn" --msgbox "warn: no write access to '$file'." 10 60 >/dev/null 2>&1 >/dev/tty
+                    fi
+                done
+
+                if [[ "$failed" == false ]]; then
+					generate_mark_file
+                    "${redraw[@]}"
+                    whiptail --title "Success" --msgbox "Files deleted successfully!" 10 60 >/dev/null 2>&1 >/dev/tty
+                else
+					generate_mark_file
+					[[ -f "$MARKED_FILES_FILE" ]] && rm -f "$MARKED_FILES_FILE" && touch "$MARKED_FILES_FILE"
+                    "${redraw[@]}"
+                    whiptail --title "Warn" --msgbox "warn: some deletions failed." 10 60 >/dev/null 2>&1 >/dev/tty
+                fi
+            else
+				generate_mark_file
+                whiptail --title "Warn" --msgbox "Deletion canceled." 10 60 >/dev/null 2>&1 >/dev/tty
+            fi
+        fi
+    fi
+}
 
 # Function for dealing with selected files
 handle_selected_files() {
@@ -219,12 +419,32 @@ handle_selected_files() {
     esac
 }
 
+directory_view() {
+	local file="$1"
+	if command -v exa >/dev/null; then
+		exa -1 $longfilemanager --icons --classify \
+		--group-directories-first --colour=always \
+		"$file" 2>/dev/null | sed 's|/$||'
+	else
+		ls -1 $longfilemanager --classify \
+		--group-directories-first --color=always \
+		-F "$file" 2>/dev/null | sed 's|/$||'
+	fi
+}
+
 preview_file() {
     local path="$1"
     file=$(clean_path "$path")
+	file=${file% "[<]"}
 
+	if [[ "$file" == " .." ]]; then
+		directory_view ".."
+		return
+	elif [[ "$file" =~ " " ]]; then
+		echo -e "\033[${CURRENT_DIR:-1;33}mCurrent Directory:\033[0m ["$(print_pwd "$PWD")"]"
+		return
     # Check if the file exists
-    if [ ! -e "$file" ]; then
+    elif [ ! -e "$file" ]; then
         echo "File not found: $file"
         return 1
     fi
@@ -265,11 +485,7 @@ preview_file() {
             ;;
         *)
             if [ -d "$file" ]; then
-                if command -v exa >/dev/null; then
-                    exa -1 --icons --classify --group-directories-first --colour=always "$file" 2>/dev/null
-                else
-                    ls -1 --classify --group-directories-first --color=always -F "$file" 2>/dev/null
-                fi
+				directory_view "$file"
             else
                 file -b "$file" 2>/dev/null
 				any_file "$file"
@@ -285,9 +501,6 @@ fzf_pid() {
     wait "$fzf_pid" 
     return 0
 }
-
-# Initialization
-cleanup() { rm -rf "$TMP_FZF_DIR" 2>/dev/null; }
 
 fzf_binds() {
 	local path="$1"
@@ -311,27 +524,29 @@ fzf_binds() {
 		--bind "right:execute-silent(rm \"$TMP_FZF_DIR/querytext\";)+accept" \
 		--bind 'left:top+up+accept' \
 		--bind "ctrl-d:execute(echo \"Selected: {}\" > \"$TMP_FZF_DIR/selected.log\")+accept" \
+		--bind "ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept" \
 		--bind "ctrl-h:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -lt 150 ]; then new=\$((current + 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept" \
 		--bind "ctrl-l:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -gt 40 ]; then new=\$((current - 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept" \
 		--bind "ctrl-p:toggle-preview+execute-silent({ [ ! -f \"$CACHE_FZF_DIR/hidepreview\" ] && touch \"$CACHE_FZF_DIR/hidepreview\"; } || rm -f \"$CACHE_FZF_DIR/hidepreview\")+top+accept" \
 		--bind "ctrl-r,ctrl-s:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/recursive\" ] && touch \"$CACHE_FZF_DIR/recursive\"; } || rm -f \"$CACHE_FZF_DIR/recursive\")+top+accept" \
 		--bind "alt-h:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/showhidden\" ] && touch \"$CACHE_FZF_DIR/showhidden\"; } || rm -f \"$CACHE_FZF_DIR/showhidden\")+top+accept" \
 		--bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept" \
-		--expect=enter,right 2>&1)"
+		--bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --mark-file {})+reload(bash \"$SCRIPT_PATH\" --list-files {})" \
+        --expect=enter,right 2>&1)"
 
 	selected=$(clean_path "$select")
 
 	if [ -f "$TMP_FZF_DIR/signal" ]; then
 		fzf_error=$(cat "$TMP_FZF_DIR/signal")
         rm -f "$TMP_FZF_DIR/signal"  # Clean to avoid false positives
-        [ "$fzf_error" -eq 130 ] && return 1  # Retorna erro apenas se for Ctrl+C
+        [ "$fzf_error" -eq 130 ] && return 1  # Returns error only if it is ctrl+c
     fi
 
     return 0
 }
 
 main() {
-    # Starts in the initial directory (passed as an argument or current)
+    # Starts in the initial directory
     builtin cd "$initial_dir" || exit 1
     
     while true; do
@@ -340,12 +555,38 @@ main() {
         cycle_status=$([ -f "$CACHE_FZF_DIR/cycle" ] && echo "on" || echo "off")
         recursive_status=$([ -f "$CACHE_FZF_DIR/recursive" ] && echo "on" || echo "off")
         preview_status=$([ ! -f "$CACHE_FZF_DIR/hidepreview" ] && echo "on" || echo "off")
-        header_text=$(echo -e "╭─ STATUS ────────────────────────╮\n  ? for help |\n  Preview:$preview_status | Cycle:$cycle_status | 🔍:$recursive_status\n╰─────────────────────────────────╯")
+        
+        # Loads marked_files from the file
+        readarray -t marked_files < <(cat "$MARKED_FILES_FILE" 2>/dev/null || true)
+        echo "$(date): main: Marked_files before the Header: ${marked_files[*]}" >> "$MARK_LOG"
+        echo "$(date): main: marked_files_file content: $(cat "$MARKED_FILES_FILE" 2>/dev/null || echo "empty")" >> "$MARK_LOG"
+        
+        # Builds Header_Text with Marked Files
+        local marked_files_status=""
+        if [ ${#marked_files[@]} -gt 0 ]; then
+            marked_files_status="Marked files:\n"
+            for file in "${marked_files[@]}"; do
+                if [[ -n "$file" ]]; then
+                    basename=$(basename "$file")
+                    marked_files_status+="  [<] $basename\n"
+                fi
+            done
+            # Removes the section if no valid file has been added
+            if [[ "$marked_files_status" == "Marked files:\n" ]]; then
+                marked_files_status="No files marked"
+            fi
+        else
+            marked_files_status="No files marked"
+        fi
+        header_text=$(echo -e "╭─ STATUS ────────────────────────╮\n  ? for help |\n  Preview:$preview_status | Cycle:$cycle_status | 🔍:$recursive_status\n$marked_files_status\n╰─────────────────────────────────╯")
+        
+        # Connect the Header Text
+        echo "$(date): main: header_text: $header_text" >> "$MARK_LOG"
         
         { [ -f "$CACHE_FZF_DIR/cycle" ] && cycle="--cycle"; } || cycle="--ansi"
         { [ -f "$CACHE_FZF_DIR/showhidden" ] && showhidden='-a'; } || showhidden=''
         { [ -f "$CACHE_FZF_DIR/hidepreview" ] && hidepreview=":hidden"; } || hidepreview=''
-        { [ -f "$CACHE_FZF_DIR/longfilemanager" ] && longfilemanager='--long'; } || longfilemanager=''
+        { [ -f "$CACHE_FZF_DIR/longfilemanager" ] && longfilemanager='-l'; } || longfilemanager=''
                 
         # Selection logic with new binds
         fzf_binds "$PWD" || { cleanup && exit 130; }
@@ -354,17 +595,17 @@ main() {
         key="$(head -1 <<< "$selected")"
         selected="$(tail -n +2 <<< "$selected")"
         selected=$(clean_path "$selected")
+		selected=${selected% "[<]"}
         
         # Selection processing
         if [ -d "$selected" ]; then
             builtin cd "$selected" || continue
-        elif [ "$selected" = " .." ]; then
+        elif [[ "$selected" == " .." ]]; then
             builtin cd .. || true
         else
             file_path=$(realpath "$PWD/$selected" 2>/dev/null || echo "$PWD/$selected")
-            # If it was pressed right or enter the file
+            # If it was pressed right or enter
             if [[ "$key" == "right" || "$key" == "enter" ]]; then
-                # If it is a text file, open in the editor
                 handle_selected_files "$file_path"
             fi
         fi
@@ -375,18 +616,29 @@ case "$1" in
     --version)
         echo "$SCRIPT $VERSION"
         ;;
+    --help)
+        help
+        ;;
+    --show-help)
+        dialog_help
+        ;;
     --preview-file)
         shift
         preview_file "$1"
         ;;
     --list-files)
+		shift
         safe_ls "$PWD"
         ;;
-    --help)
-		help
+	--delete-file)
+		shift
+        delete_file "$1"
 		;;
-    --show-help)
-        dialog_help
+    --mark-file)
+        shift
+        # Removes the suffix [<] if present
+        file_clean=${1% "[<]"}
+        mark "$file_clean"
         ;;
     *)
         main "$@"
