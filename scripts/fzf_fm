@@ -4,13 +4,14 @@
 trap "" SIGTSTP  # No Ctrl+Z.
 
 : <<'DOCUMENTATION'
-Preview pane for files (text, images, PDFs) with adjustable width (40-150 via Ctrl-h/l)
+Preview pane for files (text, images, PDFs) with adjustable width (20-150 via Ctrl-h/l)
 Directory browsing with exa/ls fallback, hidden file toggle, and recursive search
 Keybind-driven operations (open/edit files, toggle views, mark selections)
 MIME-type handling (text editors, image viewers, media players)
 Persistent settings in ~/.cache including preview margins and UI preferences
 ANSI colors/icons support with bat/highlight for syntax highlighting
 Debug logging and temporary file cleanup system for stability
+Uses fzf for fuzzy finding and is based on ranger and lesspipe for file previews
 DOCUMENTATION
 
 clear
@@ -49,9 +50,8 @@ generate_mark_file() {
 # Prepare the Archive Array
 declare -a marked_files=()
 readarray -t marked_files < "$MARKED_FILES_FILE"
-message_width=$(($(tput cols) / 3))   # 1/3 of the terminal width
-message_height=$(($(tput lines) / 4)) # 1/4 of the terminal height
-export header_text
+{ [[ -n "$XTERM_VERSION" ]] && message_width=$(($(tput cols) - 9)); } || message_width=$(($(tput cols) / 3))		# 1/3 of the terminal width
+{ [[ -n "$XTERM_VERSION" ]] && message_height=$(($(tput lines) - 9)); } || message_height=$(($(tput lines) / 4))	# 1/4 of the terminal height
 
 cleanup() { [[ -d "$TMP_FZF_DIR" ]] && rm -rf "$TMP_FZF_DIR" 2>/dev/null; }
 
@@ -64,25 +64,25 @@ Navigation:
   Enter                 - Open selected file/directory
   Right                 - Open selected file/directory
   Left                  - Go up one level
-  Ctrl-q                - Exit file manager
+  Ctrl-q/Ctrl-c/Esc     - Exit file manager
   F1 or ?               - Show this help menu
 
 View Modes:
   Ctrl-p                - Toggle preview panel
   Ctrl-h                - Increase preview margin (+5)
   Ctrl-l                - Decrease preview margin (-5)
-  F5                    - Refresh current view
+  Ctrl-r/F5             - Refresh current view
   Alt-h                 - Toggle hidden files visibility
   Alt-c                 - Toggle cyclic scrolling
 
 Search Modes:
-  Ctrl-r / Ctrl-s       - Toggle recursive search
+  Ctrl-f                - Toggle recursive search
   Type text             - Search/filter items
 
 File Operations:
   Ctrl-d                - Mark selected file (logs to temporary file)
   Ctrl-e                - Delete selected or marked files
-  Ctrl-y                - Mark/unmark selected file
+  Alt-a                 - Mark/unmark selected file
   Right/Enter           - Open file with appropriate handler
 
 Preview Features:
@@ -91,7 +91,7 @@ Preview Features:
   - PDFs:               Text extraction (pdftotext/fallback to file info)
   - Directories:        List contents (exa/ls)
   - Other files:        File type information and strings extraction
-  - Adjustable margin:  Dynamic resizing (40-150) with Ctrl-h/Ctrl-l
+  - Adjustable margin:  Dynamic resizing (20-150) with Ctrl-h/Ctrl-l
 
 Configuration:
   - Preview margin:     Persisted in $MARGIN_PREVIEW
@@ -680,18 +680,18 @@ fzf_binds() {
         --bind "f1,?:execute(bash \"$SCRIPT_PATH\" --show-help {})"
         --preview-window="right:$margin_preview:noborder$hidepreview"
         --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
-        --bind "f5:execute(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
-        --bind "ctrl-c:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
+        --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
         --bind "ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
+        --bind "ctrl-r,f5:execute(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
         --bind "ctrl-d:execute(echo \"Selected: {}\" > \"$TMP_FZF_DIR/selected.log\")+accept"
+        --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
         --bind "alt-z:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/header\" ] && touch \"$CACHE_FZF_DIR/header\"; } || rm -f \"$CACHE_FZF_DIR/header\")+top+accept"
 		--bind "alt-a:execute(bash \"$SCRIPT_PATH\" --mark-file {})+clear-query+clear-selection+unix-line-discard+reload(bash \"$SCRIPT_PATH\" --list-files {})"
         --bind "alt-h:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/showhidden\" ] && touch \"$CACHE_FZF_DIR/showhidden\"; } || rm -f \"$CACHE_FZF_DIR/showhidden\")+top+accept"
-        --bind "ctrl-r,ctrl-s:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/recursive\" ] && touch \"$CACHE_FZF_DIR/recursive\"; } || rm -f \"$CACHE_FZF_DIR/recursive\")+top+accept"
         --bind "alt-l:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/longfilemanager\" ] && touch \"$CACHE_FZF_DIR/longfilemanager\"; } || rm -f \"$CACHE_FZF_DIR/longfilemanager\")+top+accept"
         --bind "ctrl-p:toggle-preview+execute-silent({ [ ! -f \"$CACHE_FZF_DIR/hidepreview\" ] && touch \"$CACHE_FZF_DIR/hidepreview\"; } || rm -f \"$CACHE_FZF_DIR/hidepreview\")+top+accept"
-        --bind "ctrl-l:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -gt 40 ]; then new=\$((current - 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
+        --bind "ctrl-l:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -gt 20 ]; then new=\$((current - 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
         --bind "ctrl-h:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -lt 150 ]; then new=\$((current + 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
     )
 
