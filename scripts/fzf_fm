@@ -30,8 +30,8 @@ TMPDIR="${TMPDIR:-/tmp}"
 TMP_FZF_DIR="${TMPDIR}/${SCRIPT%.*}"
 CACHE_FZF_DIR="${XDG_CACHE_HOME:=${HOME}/.cache}/${SCRIPT%.*}"
 MARGIN_PREVIEW="${CACHE_FZF_DIR}/margin_preview"
-[[ ! -d "$CACHE_FZF_DIR" ]] && mkdir -p "$CACHE_FZF_DIR"
 [[ ! -d "$TMP_FZF_DIR" ]] && mkdir -p "$TMP_FZF_DIR"
+[[ ! -d "$CACHE_FZF_DIR" ]] && mkdir -p "$CACHE_FZF_DIR"
 [[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
 exec 2>"${TMPDIR}/${SCRIPT%.*}-debug.log"
 MARK_LOG="${TMP_FZF_DIR}/mark.log"
@@ -202,8 +202,6 @@ mark() {
         return 1
     }
 
-    echo "$(date): mark: Trying to mark/uncheck: '$real_path'" >> "$MARK_LOG"
-
     # Loads the current array of the file
     local temp_marked_files=()
     if [[ -s "$MARKED_FILES_FILE" ]]; then
@@ -216,24 +214,20 @@ mark() {
         if [[ "${temp_marked_files[index]}" == "$real_path" ]]; then
             # Removes the file if it is already marked
             unset 'temp_marked_files[index]'
-            echo "$(date): mark: Unmarked: '$real_path'" >> "$MARK_LOG"
             # Save the updated array or clean the empty file
             if [ ${#temp_marked_files[@]} -eq 0 ]; then
                 : > "$MARKED_FILES_FILE"  # Cleans the file
             else
                 printf "%s\n" "${temp_marked_files[@]}" > "$MARKED_FILES_FILE"
             fi
-            echo "$(date): Mark: marked_files after uncheck: ${temp_marked_files[*]}" >> "$MARK_LOG"
             return 0
         fi
     done
 
     # Add the file to the array if not marked
     temp_marked_files+=("$real_path")
-    echo "$(date): mark: Marked: '$real_path'" >> "$MARK_LOG"
     # Save the updated array
     printf "%s\n" "${temp_marked_files[@]}" > "$MARKED_FILES_FILE"
-    echo "$(date): mark: marked_files after scoring: ${temp_marked_files[*]}" >> "$MARK_LOG"
 }
 
 print_pwd() {
@@ -334,11 +328,8 @@ safe_ls() {
             file_list=$(find "${1:-$PWD}" -maxdepth 1 -not -path '*/\.*' 2>/dev/null | sed "s|${1:-$PWD}/||")
         fi
 
-        # Loga the list of files
-        echo "$(date): safe_ls: file_list: $file_list" >> "$MARK_LOG"
         # Loads marked_files from the file
         readarray -t marked_files < "$MARKED_FILES_FILE"
-        echo "$(date): safe_ls: marked_files: ${marked_files[*]}" >> "$MARK_LOG"
 
         # Process the list to add [<] to marked files
         while IFS= read -r file; do
@@ -660,6 +651,7 @@ fzf_binds() {
     path=$(clean_path "$path")
     header_text=$(f_header_text)
     margin_preview=$(cat "$MARGIN_PREVIEW")
+	query=$(cat "$TMP_FZF_DIR/query" || echo "")
     { [ -f "$CACHE_FZF_DIR/cycle" ] && cycle="--cycle"; } || cycle="--ansi"
     { [ -f "$CACHE_FZF_DIR/hidepreview" ] && hidepreview=":hidden"; } || hidepreview=''
     { [ ! -f "$CACHE_FZF_DIR/header" ] && header="--header=$header_text"; } || header="--ansi"
@@ -670,6 +662,7 @@ fzf_binds() {
         --ansi
         --no-bold
         "$header"
+		--query="$query"
         --bind shift-tab:up
         --bind 'enter:accept'
         --bind "right:accept"
@@ -677,22 +670,22 @@ fzf_binds() {
         --bind 'ctrl-space:jump'
         --preview="$preview_cmd"
         --bind 'left:top+up+accept'
+        --bind "ctrl-r,f5:top+accept"
         --bind "f1,?:execute(bash \"$SCRIPT_PATH\" --show-help {})"
         --preview-window="right:$margin_preview:noborder$hidepreview"
         --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
         --bind "ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
-        --bind "ctrl-r,f5:execute(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
         --bind "ctrl-d:execute(echo \"Selected: {}\" > \"$TMP_FZF_DIR/selected.log\")+accept"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
         --bind "alt-z:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/header\" ] && touch \"$CACHE_FZF_DIR/header\"; } || rm -f \"$CACHE_FZF_DIR/header\")+top+accept"
-		--bind "alt-a:execute(bash \"$SCRIPT_PATH\" --mark-file {})+clear-query+clear-selection+unix-line-discard+reload(bash \"$SCRIPT_PATH\" --list-files {})"
         --bind "alt-h:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/showhidden\" ] && touch \"$CACHE_FZF_DIR/showhidden\"; } || rm -f \"$CACHE_FZF_DIR/showhidden\")+top+accept"
         --bind "alt-l:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/longfilemanager\" ] && touch \"$CACHE_FZF_DIR/longfilemanager\"; } || rm -f \"$CACHE_FZF_DIR/longfilemanager\")+top+accept"
         --bind "ctrl-p:toggle-preview+execute-silent({ [ ! -f \"$CACHE_FZF_DIR/hidepreview\" ] && touch \"$CACHE_FZF_DIR/hidepreview\"; } || rm -f \"$CACHE_FZF_DIR/hidepreview\")+top+accept"
         --bind "ctrl-l:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -gt 20 ]; then new=\$((current - 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
         --bind "ctrl-h:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -lt 150 ]; then new=\$((current + 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
+		--bind "alt-a:execute(bash \"$SCRIPT_PATH\" --mark-file {}; bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\"; echo {q} > \"$TMP_FZF_DIR/query\"; echo {} > \"$TMP_FZF_DIR/selected\"; echo \$(( {n} + 1 )) > \"'\"$FZF_POS\"'\"; echo \$(( {n} + 1 )) > \"$TMP_FZF_DIR/fzf_pos\")+reload(bash \"$SCRIPT_PATH\" --list-files {})+refresh-preview+pos($FZF_POS)"
     )
 
     select="$(safe_ls "$path" | \
@@ -717,11 +710,6 @@ main() {
     while true; do 
         # Loads marked_files from the file
         readarray -t marked_files < <(cat "$MARKED_FILES_FILE" 2>/dev/null || true)
-        echo "$(date): main: Marked_files before the Header: ${marked_files[*]}" >> "$MARK_LOG"
-        echo "$(date): main: marked_files_file content: $(cat "$MARKED_FILES_FILE" 2>/dev/null || echo "empty")" >> "$MARK_LOG"
-
-        # Connect the Header Text
-        echo "$(date): main: header_text: $header_text" >> "$MARK_LOG"
                 
         # Selection logic with new binds
         fzf_binds "$PWD" || { cleanup && exit 130; }
@@ -756,6 +744,9 @@ case "$1" in
         ;;
     --show-help)
         dialog_help
+        ;;
+	--update-header)
+        f_header_text
         ;;
     --preview-file)
         shift
