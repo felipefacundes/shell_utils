@@ -50,8 +50,8 @@ generate_mark_file() {
 # Prepare the Archive Array
 declare -a marked_files=()
 readarray -t marked_files < "$MARKED_FILES_FILE"
-{ [[ -n "$XTERM_VERSION" ]] && message_width=$(($(tput cols) - 9)); } || message_width=$(($(tput cols) / 3))		# 1/3 of the terminal width
-{ [[ -n "$XTERM_VERSION" ]] && message_height=$(($(tput lines) - 9)); } || message_height=$(($(tput lines) / 4))	# 1/4 of the terminal height
+{ [[ -n "$XTERM_VERSION" ]] && message_width=$(($(tput cols) - 1)); } || message_width=$(($(tput cols) / 3))		# 1/3 of the terminal width
+{ [[ -n "$XTERM_VERSION" ]] && message_height=$(($(tput lines) - 1)); } || message_height=$(($(tput lines) / 4))	# 1/4 of the terminal height
 
 cleanup() { [[ -d "$TMP_FZF_DIR" ]] && rm -rf "$TMP_FZF_DIR" 2>/dev/null; }
 
