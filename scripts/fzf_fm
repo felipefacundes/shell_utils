@@ -162,8 +162,8 @@ clean_path() {
 }
 
 f_header_text() {
+	find_status=$([ -f "$CACHE_FZF_DIR/find" ] && echo "on" || echo "off")
 	cycle_status=$([ -f "$CACHE_FZF_DIR/cycle" ] && echo "on" || echo "off")
-	recursive_status=$([ -f "$CACHE_FZF_DIR/recursive" ] && echo "on" || echo "off")
 	preview_status=$([ ! -f "$CACHE_FZF_DIR/hidepreview" ] && echo "on" || echo "off")
 
 	# Builds header_text with marked Files
@@ -187,7 +187,7 @@ f_header_text() {
 	cat <<-EOF | echo -e "$(cat)"
 	╭─ STATUS ────────────────────────╮
 	 ? for help |
-	 Preview:$preview_status | Cycle:$cycle_status | 🔍:$recursive_status
+	 Preview:$preview_status | Cycle:$cycle_status | 🔍:$find_status
 	 $marked_files_status
 	╰─────────────────────────────────╯
 	EOF
@@ -314,7 +314,7 @@ safe_find_dirs() {
 
 # Safe Function to List Directories
 safe_ls() {
-    if [[ -f "$CACHE_FZF_DIR/recursive" ]]; then
+    if [[ -f "$CACHE_FZF_DIR/find" ]]; then
         print_filemanager_header "$1"
         safe_find_dirs
     else
