@@ -88,16 +88,14 @@ if ! sudo -v; then
 fi
 
 sudo sed -i \
-    -e "/^GRUB_THEME=/c\\$new_grub_theme" \
+    -e "s|^[[:space:]]*#\{0,1\}[[:space:]]*GRUB_THEME=.*|$new_grub_theme|" \
     /etc/default/grub
 
-sudo grub-mkconfig -o /boot/grub/grub.cfg
-
-if [[ $? -eq 0 ]]; then
-    echo -e "\nGRUB theme successfully updated to $selected_theme."
-    echo "Located in $(cat /etc/default/grub | grep GRUB_THEME=)"
-    echo "Run 'update-grub' to apply the changes" If it has not been applied.
+ if sudo grub-mkconfig -o /boot/grub/grub.cfg; then
+    echo -e "\n\033[1;32mGRUB theme successfully updated to $selected_theme."
+    echo -e "\033[1;33mLocated in $(cat /etc/default/grub | grep GRUB_THEME=)"
+    echo -e "\033[1;32mRun 'update-grub' to apply the changes. If it has not been applied.\033[0m"
 else
-    echo "Error updating file /etc/default/grub."
+    echo -e "\033[1;31mError updating file /etc/default/grub."
     exit 1
 fi

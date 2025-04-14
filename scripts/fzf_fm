@@ -235,6 +235,110 @@ mark() {
     printf "%s\n" "${temp_marked_files[@]}" > "$MARKED_FILES_FILE"
 }
 
+mark_all_only() {
+    # Clean previous markings
+    generate_mark_file
+    
+    # Get the list of all visible files/directories
+    local file_list=()
+    if [[ -f "$CACHE_FZF_DIR/showhidden" ]]; then
+        # Includes hidden files
+        if command -v ls >/dev/null; then
+            mapfile -t file_list < <(ls -A --group-directories-first --color=never 2>/dev/null)
+        else
+            mapfile -t file_list < <(find . -maxdepth 1 -not -path '.' -printf '%P\n' 2>/dev/null)
+        fi
+    else
+        # Delete Hidden Files
+        if command -v ls >/dev/null; then
+            mapfile -t file_list < <(ls --group-directories-first --color=never 2>/dev/null)
+        else
+            mapfile -t file_list < <(find . -maxdepth 1 -not -path '*/\.*' -not -path '.' -printf '%P\n' 2>/dev/null)
+        fi
+    fi
+
+    # Process each file
+    marked_files=()
+    for file in "${file_list[@]}"; do
+        # Ignores empty lines and the current directory
+        [[ -z "$file" ]] && continue
+        
+        # Get the absolute path
+        local abs_path
+        abs_path=$(realpath "$file" 2>/dev/null || echo "$PWD/$file")
+        
+        # Check if it is a valid file/directory
+        if [[ -e "$abs_path" && "$abs_path" != "$PWD" ]]; then
+            marked_files+=("$abs_path")
+        fi
+    done
+
+    # Save in the Marking File
+    if [[ ${#marked_files[@]} -gt 0 ]]; then
+        printf "%s\n" "${marked_files[@]}" > "$MARKED_FILES_FILE"
+    else
+        : > "$MARKED_FILES_FILE" # Cleans the file if there are no files
+    fi
+
+    # Updates the interface
+    "${redraw[@]}"
+}
+
+mark_all_toggle() {
+    # Loads files currently marked
+    local current_marked=()
+    [[ -f "$MARKED_FILES_FILE" ]] && readarray -t current_marked < "$MARKED_FILES_FILE"
+
+    # Get all files visible in the directory
+    local all_files=()
+    if [[ -f "$CACHE_FZF_DIR/showhidden" ]]; then
+        # Includes hidden files
+        if command -v ls >/dev/null; then
+            mapfile -t all_files < <(ls -A --group-directories-first --color=never 2>/dev/null)
+        else
+            mapfile -t all_files < <(find . -maxdepth 1 -not -path '.' -printf '%P\n' 2>/dev/null)
+        fi
+    else
+        # Delete Hidden Files
+        if command -v ls >/dev/null; then
+            mapfile -t all_files < <(ls --group-directories-first --color=never 2>/dev/null)
+        else
+            mapfile -t all_files < <(find . -maxdepth 1 -not -path '*/\.*' -not -path '.' -printf '%P\n' 2>/dev/null)
+        fi
+    fi
+
+    # Processes inversion
+    marked_files=()
+    for file in "${all_files[@]}"; do
+        [[ -z "$file" ]] && continue
+        
+        local abs_path
+        abs_path=$(realpath "$file" 2>/dev/null || echo "$PWD/$file")
+        
+        # Check if the file is currently marked
+        local is_marked=0
+        for marked in "${current_marked[@]}"; do
+            if [[ "$marked" == "$abs_path" ]]; then
+                is_marked=1
+                break
+            fi
+        done
+
+        # Invert the state: if it was marked, unmarked; If it wasn't, brand
+        [[ $is_marked -eq 0 ]] && marked_files+=("$abs_path")
+    done
+
+    # Update the marking file
+    if [[ ${#marked_files[@]} -gt 0 ]]; then
+        printf "%s\n" "${marked_files[@]}" > "$MARKED_FILES_FILE"
+    else
+        : > "$MARKED_FILES_FILE" # Clean if everyone was unmarked
+    fi
+
+    # Updates the interface
+    "${redraw[@]}"
+}
+
 print_pwd() {
     basedir="$1"
     previous_directory=$(printf '%b\n' "\033[${PWD_PREVIOUS_DIRECTORY:-1;38;5;16}m") # Black ansi 256 
@@ -317,15 +421,15 @@ safe_ls() {
         print_filemanager_header "$1"
         safe_find_dirs
     else
-        # Primeiro mostra o cabeçalho
+        # First show the header
         print_filemanager_header "$1"
         
-        # Comando
+        # Command
         list_opts="--group-directories-first --color=always"
 
 		{ [ -f "$CACHE_FZF_DIR/showhidden" ] && showhidden='-a'; } || showhidden=''
 
-        # Lista os conteúdos
+        # Lists the contents
         local file_list
         if command -v ls >/dev/null; then
             file_list=$(ls $showhidden $list_opts "${1:-$PWD}" 2>/dev/null | sed "s/\*$//g; s|/$||")
@@ -375,7 +479,7 @@ delete_file() {
 		local file_list=""
 		for file in "${marked_files[@]}"; do
 			local basename="${file##*/}"
-			file_list="$file_list $basename"
+			file_list+="\n'$basename'"
 		done
 
 		cmd_reply=$({ whiptail --yesno --scrolltext "Delete the following files? (y/N):\n\n$file_list" "$message_height" "$message_width" --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
@@ -457,7 +561,7 @@ copy_file() {
         for file in "${marked_files[@]}"; do
             local basename="${file##*/}"
             if [[ -e "$PWD/$basename" ]]; then
-                existing_files="$existing_files $basename"
+                existing_files+="\n'$basename'"
             fi
         done
 
@@ -479,7 +583,7 @@ copy_file() {
             fi
         else
             # Copy Without Sobrescript Necessary
-            if cp -r "${marked_files[@]}" "$PWD" >&2; then
+            if cp -rf "${marked_files[@]}" "$PWD" >&2; then
                 generate_mark_file
                 "${redraw[@]}"
                 messages "Success" "Copy completed successfully!"
@@ -682,6 +786,8 @@ fzf_binds() {
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
         --bind "ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
         --bind "ctrl-d:execute(echo \"Selected: {}\" > \"$TMP_FZF_DIR/selected.log\")+accept"
+		--bind "alt-x:execute(bash \"$SCRIPT_PATH\" --mark-all-only)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
+		--bind "ctrl-a:execute(bash \"$SCRIPT_PATH\" --mark-all-toggle)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
         --bind "alt-z:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/header\" ] && touch \"$CACHE_FZF_DIR/header\"; } || rm -f \"$CACHE_FZF_DIR/header\")+top+accept"
@@ -690,7 +796,7 @@ fzf_binds() {
         --bind "ctrl-p:toggle-preview+execute-silent({ [ ! -f \"$CACHE_FZF_DIR/hidepreview\" ] && touch \"$CACHE_FZF_DIR/hidepreview\"; } || rm -f \"$CACHE_FZF_DIR/hidepreview\")+top+accept"
         --bind "ctrl-l:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -gt 20 ]; then new=\$((current - 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
         --bind "ctrl-h:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -lt 150 ]; then new=\$((current + 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
-		--bind "alt-a:execute(bash \"$SCRIPT_PATH\" --mark-file {}; bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\"; echo {q} > \"$TMP_FZF_DIR/query\"; echo {} > \"$TMP_FZF_DIR/selected\"; echo \$(( {n} + 1 )) > \"$TMP_FZF_DIR/fzf_pos\")+reload(bash \"$SCRIPT_PATH\" --list-files {})+refresh-preview+pos($FZF_POS)"
+		--bind "alt-a:execute(bash \"$SCRIPT_PATH\" --mark-file {}; bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\"; echo {q} > \"$TMP_FZF_DIR/query\"; echo {} > \"$TMP_FZF_DIR/selected\"; echo \$(( {n} + 1 )) > \"$TMP_FZF_DIR/fzf_pos\")+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview+pos($FZF_POS)"
     )
 
     select="$(safe_ls "$path" | \
@@ -753,6 +859,12 @@ case "$1" in
 	--update-header)
         f_header_text
         ;;
+	--mark-all-only)
+    	mark_all_only
+		;;
+	--mark-all-toggle)
+    	mark_all_toggle
+    	;;
     --preview-file)
         shift
         preview_file "$1"
