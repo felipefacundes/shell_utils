@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Usage: ratio_size_dynamic -h <height> or ratio_size_dynamic -w <width>
+# Example: ratio_size_dynamic -h 1080 → Returns the width for 16:9 (1920)
+#          ratio_size_dynamic -w 1920 → Returns the height for 16:9 (1080)
+
+# Default aspect ratio (16:9)
+RATIO_W=16
+RATIO_H=9
+
+# Help message
+usage() {
+    echo "Usage: ${0##*/} [-h <height>] or [-w <width>]"
+    echo "Calculates ${RATIO_W}:${RATIO_H} screen ratio dynamically."
+    exit 1
+}
+
+# Check arguments
+if [ $# -ne 2 ]; then
+    usage
+fi
+
+# Process arguments
+while getopts ":h:w:" opt; do
+    case $opt in
+        h)
+            height=$OPTARG
+            width=$((("$height" * "$RATIO_W") / "$RATIO_H"))
+            echo "For height $height in ${RATIO_W}:${RATIO_H} ratio, the width is $width"
+            ;;
+        w)
+            width=$OPTARG
+            height=$((("$width" * "$RATIO_H") / "$RATIO_W"))
+            echo "For width $width in ${RATIO_W}:${RATIO_H} ratio, the height is $height"
+            ;;
+        \?)
+            echo "Invalid option: -$OPTARG"
+            usage
+            ;;
+        :)
+            echo "Option -$OPTARG requires an argument."
+            usage
+            ;;
+    esac
+done

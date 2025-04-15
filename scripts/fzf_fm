@@ -133,6 +133,500 @@ dialog_help() {
     rm -f "$helpfile"
 }
 
+setup_config() {
+    local config_file="$CONFIG_PATH/preview.conf"
+    
+    # If config file already exists, source it
+    if [[ -f "$config_file" ]]; then
+        source "$config_file"
+        return 0
+    fi
+    
+    # Create the configuration file with default values and explanations
+    cat > "$config_file" << 'EOF'
+# Preview configuration file
+
+# Default preview mode
+# Default: 1 (preview mode)
+# 0 for normal mode, 1 for preview mode
+#PREVIEW_MODE=""
+
+# Maximum items to show in preview mode
+# Default: 9
+# Number of items displayed in the file list when in preview mode
+#PREVIEW_MAX_ITEMS=""
+
+# Enable/disable hidden files view by default
+# Default: 0 (disabled)
+# Set to 1 to show hidden files when preview starts
+#PREVIEW_HIDDEN=""
+
+# Enable/disable using LS_COLORS for file coloring
+# Default: 1 (enabled)
+# Set to 1 to use colors defined in LS_COLORS environment variable
+#PREVIEW_LS_COLORS=""
+
+# File format string for displaying files
+# Default: "%f"
+# %f is replaced with the filename
+#PREVIEW_FILE_FORMAT=""
+
+# Default program to open files with
+# Default: "xdg-open"
+# Specify the command to open files
+#PREVIEW_OPENER=""
+
+# Change directory on exit
+# Default: 1 (enabled)
+# Set to 1 to change to the last directory viewed when the preview application exits
+#PREVIEW_CD_ON_EXIT=""
+
+# Path to file that stores the last directory
+# Default: "${XDG_CACHE_HOME:-$HOME/.cache}/preview/.preview_d"
+# Specify where to store the last visited directory
+#PREVIEW_CD_FILE=""
+
+# Color for directories
+# Default: "2" (blue)
+# ANSI color code for directory display
+#PREVIEW_COL_DIRECTORY=""
+
+# Color for status line background
+# Default: "48;5;128" (purple)
+# ANSI color code for status line background
+#PREVIEW_STATUS_BACKGROUND=""
+
+# Color for selected item highlight
+# Default: "6" (cyan)
+# ANSI color code for highlighting selected items
+#PREVIEW_SELECTED_HIGHLIGHT=""
+
+# Color for status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
+#PREVIEW_STATUS_FOREGROUND=""
+
+# Color for PWD PREVIOUS DIRECTORY in status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
+#PWD_PREVIOUS_DIRECTORY=""
+
+# Color for PWD LAST DIR in status line text
+# Default: "1;33" (yellow)
+# ANSI color code for status line text
+#PWD_LAST_DIR=""
+
+# Color for PWD BAR in status line text
+# Default: "1;96" (cyan)
+# ANSI color code for status line text
+#PWD_BAR=""
+
+# Key bindings for navigation and actions
+
+# Enter a directory or open a file (primary key binding)
+# Default: "l"
+# Key to enter directories or open files
+#PREVIEW_KEY_CHILD1=""
+
+# Navigate into directory or open file (second binding)
+# Default: "\e[C" (right arrow)
+# Alternative key to enter directories or open files
+#PREVIEW_KEY_CHILD2=""
+
+# Navigate into directory or open file (third binding)
+# Default: "\eOC" (right arrow in some terminals)
+# Alternative key to enter directories or open files
+#PREVIEW_KEY_CHILD3=""
+
+# Navigate into directory or open file (fourth binding)
+# Default: "" (none)
+# Additional key to enter directories or open files
+#PREVIEW_KEY_CHILD4=""
+
+# Navigate to parent directory (first binding)
+# Default: "h"
+# Key to go to parent directory
+#PREVIEW_KEY_PARENT1=""
+
+# Navigate to parent directory (second binding)
+# Default: "\e[D" (left arrow)
+# Alternative key to go to parent directory
+#PREVIEW_KEY_PARENT2=""
+
+# Navigate to parent directory (third binding)
+# Default: "\177" (backspace)
+# Alternative key to go to parent directory
+#PREVIEW_KEY_PARENT3=""
+
+# Navigate to parent directory (fourth binding)
+# Default: "\b" (backspace)
+# Alternative key to go to parent directory
+#PREVIEW_KEY_PARENT4=""
+
+# Navigate to parent directory (fifth binding)
+# Default: "\eOD" (left arrow in some terminals)
+# Additional key to go to parent directory
+#PREVIEW_KEY_PARENT5=""
+
+# Scroll down (primary key binding)
+# Default: "j"
+# Key to scroll down file list
+#PREVIEW_KEY_SCROLL_DOWN1=""
+
+# Scroll down (second binding)
+# Default: "\e[B" (down arrow)
+# Alternative key to scroll down the file list
+#PREVIEW_KEY_SCROLL_DOWN2=""
+
+# Scroll down (third binding)
+# Default: "\eOB" (down arrow in some terminals)
+# Additional key to scroll down the file list
+#PREVIEW_KEY_SCROLL_DOWN3=""
+
+# Scroll up (first binding)
+# Default: "k"
+# Key to scroll up the file list
+#PREVIEW_KEY_SCROLL_UP1=""
+
+# Scroll up (second binding)
+# Default: "\e[A" (up arrow)
+# Alternative key to scroll up the file list
+#PREVIEW_KEY_SCROLL_UP2=""
+
+# Scroll up (third binding)
+# Default: "\eOA" (up arrow in some terminals)
+# Additional key to scroll up the file list
+#PREVIEW_KEY_SCROLL_UP3=""
+
+# Go to top of file list
+# Default: "g"
+# Key to jump to the top of the file list
+#PREVIEW_KEY_TO_TOP=""
+
+# Go to bottom of file list
+# Default: "G"
+# Key to jump to the bottom of the file list
+#PREVIEW_KEY_TO_BOTTOM=""
+
+# Toggle visibility of hidden files
+# Default: "."
+# Key to toggle visibility of hidden files
+#PREVIEW_KEY_HIDDEN=""
+
+# Search for files
+# Default: "/"
+# Key to start file search
+#PREVIEW_KEY_SEARCH=""
+
+# Exit search mode (primary key binding)
+# Default: "'"
+# Key to exit search mode while preserving the current selection
+#PREVIEW_KEY_EXIT_CLEAR_SEARCH1=""
+
+# Exit search mode (second binding)
+# Default: "\""
+# Alternative key to exit search mode while keeping selection
+#PREVIEW_KEY_EXIT_CLEAR_SEARCH2=""
+
+# Open shell in current directory
+# Default: "!"
+# Key to open a shell in the current directory
+#PREVIEW_KEY_SHELL=""
+
+# Rename file
+# Default: "R"
+# Key to rename a file or directory
+#PREVIEW_KEY_RENAME=""
+
+# Create directory
+# Default: "m"
+# Key to create a new directory
+#PREVIEW_KEY_MKDIR=""
+
+# Create file
+# Default: "F"
+# Key to create a new file
+#PREVIEW_KEY_MKFILE=""
+
+# Go to specific directory
+# Default: "\x07" (Ctrl+G)
+# Key to navigate to a specific directory
+#PREVIEW_KEY_GO_DIR=""
+
+# Go to home directory (first binding)
+# Default: "~"
+# Key to go to the home directory
+#PREVIEW_KEY_GO_HOME1=""
+
+# Go to home directory (second binding)
+# Default: "H"
+# Alternative key to go to the home directory
+#PREVIEW_KEY_GO_HOME2=""
+
+# Go to previous directory
+# Default: "-"
+# Key to go to the previous directory
+#PREVIEW_KEY_PREVIOUS=""
+
+# Refresh current directory
+# Default: "r"
+# Key to refresh the file list
+#PREVIEW_KEY_REFRESH=""
+
+# Copy file
+# Default: "C"
+# Key to copy a file or directory
+#PREVIEW_KEY_COPY=""
+
+# Copy to clipboard
+# Default: "Z"
+# Key to copy a file to clipboard
+#PREVIEW_KEY_CLIPBOARD=""
+
+# Key binding to create symlinks
+# Default: "S"
+# Key to create symbolic links for selected files or directories
+#PREVIEW_KEY_SYMLINK=""
+
+# Toggle preview mode (first binding)
+# Default: "P"
+# Key to toggle between normal and preview modes
+#PREVIEW_KEY_PREVIEW1=""
+
+# Toggle preview mode (second binding)
+# Default: "\x10" (Ctrl+P)
+# Alternative key to toggle between normal and preview modes
+#PREVIEW_KEY_PREVIEW2=""
+
+# Quit program (first binding)
+# Default: "\x04" (Ctrl+D)
+# Key to exit the program
+#PREVIEW_KEY_QUIT1=""
+
+# Quit program (second binding)
+# Default: "="
+# Alternative key to exit the program
+#PREVIEW_KEY_QUIT2=""
+
+# Quit program (third binding)
+# Default: "Q"
+# Alternative key to exit the program
+#PREVIEW_KEY_QUIT3=""
+
+# Quit program (fourth binding)
+# Default: "q"
+# Alternative key to exit the program
+#PREVIEW_KEY_QUIT4=""
+
+# Show file attributes
+# Default: "x"
+# Key to display file attributes
+#PREVIEW_KEY_ATTRIBUTES=""
+
+# Toggle executable flag
+# Default: "X"
+# Key to toggle the executable permission of a file
+#PREVIEW_KEY_EXECUTABLE=""
+
+# Extract archive
+# Default: "e"
+# Key to extract an archive file to folder
+#PREVIEW_KEY_EXTRACT=""
+
+# Delete file/directory
+# Default: "E"
+# Key to delete a file or directory
+#PREVIEW_KEY_ERASE=""
+
+# Move file/directory
+# Default: "M"
+# Key to move a file or directory
+#PREVIEW_KEY_MOVE=""
+
+# Mark file/directory
+# Default: "y"
+# Key to mark a file or directory
+#PREVIEW_KEY_MARK=""
+
+# Key to mark all files in the current directory
+# Default: "Y"
+#PREVIEW_KEY_MARK_ALL=""
+
+# Clear all marked files and directories
+# Default: "c"
+# Key to clear all marked files and directories
+#PREVIEW_KEY_CLEAR_MARK=""
+
+# Format for marked files
+# Default: "" (none)
+# %f is replaced with the filename
+#PREVIEW_MARK_FORMAT=""
+
+# Color for marked files
+# Default: "1" (red)
+# ANSI color code for marked file display
+#PREVIEW_COL_MARKED=""
+
+# Show image and info in terminal
+# Default: "i"
+# Key to display an image and info in the terminal
+#PREVIEW_KEY_INFO=""
+
+# Markdown preview settings
+# Preferred markdown preview tool
+# Default: "5" (markdown_reader.sh)
+# 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown_reader.sh
+#PREVIEW_MARKDOWN=""
+
+# Key binding to open file with xdg-open
+# Default: "" (none)
+# Key to open files using xdg-open or specified opener
+#PREVIEW_KEY_XDG_OPEN=""
+
+# Image preview settings
+# Preferred image preview tool
+# Default: "1" (img2sixel)
+# 1: img2sixel, 2: viu, 3: catimg, 4: chafa
+#PREVIEW_IMG=""
+
+# Width of full-size img2sixel preview
+# Default: "540"
+# Width in pixels for full-size image preview with img2sixel
+#PREVIEW_SIXEL_W=""
+
+# Height for img2sixel full-size preview
+# Default: "420"
+# Height in pixels for full-size image preview with img2sixel
+#PREVIEW_SIXEL_H=""
+
+# Width for viu full-size preview
+# Default: "90"
+# Width in characters for full-size image preview with viu
+#PREVIEW_VIU_W=""
+
+# Height for viu full-size preview
+# Default: "35"
+# Height in characters for full-size image preview with viu
+#PREVIEW_VIU_H=""
+
+# Width for catimg full-size preview
+# Default: "100"
+# Width in characters for full-size image preview with catimg
+#PREVIEW_CATIMG_W=""
+
+# Size for chafa full-size preview
+# Default: "50"
+# Size specification for full-size image preview with chafa
+#PREVIEW_CHAFA_S=""
+
+# Width for img2sixel thumbnail preview
+# Default: "300"
+# Width in pixels for thumbnail preview with img2sixel
+#PREVIEW_THUMB_SIXEL_W=""
+
+# Height for img2sixel thumbnail preview
+# Default: "200"
+# Height in pixels for thumbnail preview with img2sixel
+#PREVIEW_THUMB_SIXEL_H=""
+
+# Width for viu thumbnail preview
+# Default: "50"
+# Width in characters for thumbnail preview with viu
+#PREVIEW_THUMB_VIU_W=""
+
+# Height for viu thumbnail preview
+# Default: "16"
+# Height in characters for thumbnail preview with viu
+#PREVIEW_THUMB_VIU_H=""
+
+# Width for catimg thumbnail preview
+# Default: "60"
+# Width in characters for thumbnail preview with catimg
+#PREVIEW_THUMB_CATIMG_W=""
+
+# Size for chafa thumbnail preview
+# Default: "25"
+# Size specification for thumbnail preview with chafa
+#PREVIEW_THUMB_CHAFA_S=""
+
+# Scroll behavior
+# Default: "1" (loop)
+# 0: no loop (stops at ends), 1: loop (wraps around)
+#PREVIEW_LOOP_SCROLL=""
+
+# Favorite directory for key 0-9
+# Example: PREVIEW_FAV_0=~/Documents PREVIEW_FAV_1=~/Pictures
+# Default: "" (none)
+# Path to a favorite directory accessed with key 0-9
+#PREVIEW_FAV_0=""
+#PREVIEW_FAV_1=""
+#PREVIEW_FAV_2=""
+#PREVIEW_FAV_3=""
+#PREVIEW_FAV_4=""
+#PREVIEW_FAV_5=""
+#PREVIEW_FAV_6=""
+#PREVIEW_FAV_7=""
+#PREVIEW_FAV_8=""
+#PREVIEW_FAV_9=""
+
+# Command to show file attributes
+# Default: "stat"
+# Command used to display file attributes
+#PREVIEW_STAT_CMD=""
+
+# Shell nesting level
+# Default: "" (starts unset, incremented when opening shells)
+# Tracks the nesting level of shell instances
+#PREVIEW_LEVEL=""
+
+# Resolution for image and video previews
+# Default: "854x480"
+# Resolution used for resizing images and videos (format: WIDTHxHEIGHT)
+#RESOLUTION=""
+
+# Width for text folding in preview
+# Default: "5"
+# Maximum line width for text wrapping with fold command
+#PREVIEW_MARGIN=""
+
+# Maximum lines for file content preview
+# Default: "30" (non-Android) or "20" (Android)
+# Number of lines to display in file content previews
+#sizeline=""
+
+# Maximum width for text preview
+# Default: "200" (non-Android) or "50" (Android)
+# Width in characters for text formatting in previews
+#width=""
+
+# Tab width for code highlighting
+# Default: "8"
+# Number of spaces to replace tabs with when highlighting code
+#HIGHLIGHT_TABWIDTH=""
+
+# Style for code highlighting
+# Default: "pablo"
+# Highlight style to use with the highlight command
+#HIGHLIGHT_STYLE=""
+
+# Additional options for code highlighting
+# Default: ""
+# Extra options to pass to the highlight command
+#HIGHLIGHT_OPTIONS=""
+
+# Style for pygmentize code highlighting
+# Default: "autumn"
+# Pygmentize style to use for syntax highlighting
+#PYGMENTIZE_STYLE=""
+EOF
+
+    # Make the config file user-executable
+    chmod u+x "$config_file"
+    
+    # Source the newly created config file
+    source "$config_file"
+}
+
 messages() {
 	whiptail --title "$1" --msgbox "$2" "$message_height" "$message_width" >/dev/null 2>&1 >/dev/tty
 }
@@ -650,6 +1144,121 @@ copy_file() {
     fi
 }
 
+extract_to_folder() {
+    local path="$1"
+	file="$(clean_path "$path")"
+    
+    # Check if the file exists
+    if [ ! -f "$file" ]; then
+        messages "Error" "Error: File '$file' not found"
+        return 1
+    fi
+    
+    # Convert to lowercase for better matching
+    local file_lower="${file,,}"
+    local file_extension="${file%.*}"          # Remove the file extension
+    local folder_name="${file_extension%.*}"   # Remove the file extension
+    local only_file="${file##*/}" 
+    
+    # Create the destination directory
+    if [[ -d "$folder_name" ]]; then
+        messages "Error" "Error: The '${folder_name##*/}' directory exists"
+        return 1
+    elif ! mkdir -p "$folder_name"; then
+        messages "Error" "Error: Could not create directory '$folder_name'"
+        return 1
+    fi
+    
+    # Function to check if a command is available
+    check_command() {
+        if ! command -v "$1" >/dev/null 2>&1; then
+        	messages "Error" "Error: '$2' is not installed. Please install it to extract this format."
+            return 1
+        fi
+        return 0
+    }
+
+    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extracting '$file' to '$folder_name'..."
+    
+    case "$file_lower" in
+        *.tar.bz2|*.tbz2)
+            check_command tar tar && tar -xjf "$file" -C "$folder_name" ;;
+        *.tar.gz|*.tgz)
+            check_command tar tar && tar -xzf "$file" -C "$folder_name" ;;
+        *.tar.xz)
+            check_command tar tar && tar -xJf "$file" -C "$folder_name" ;;
+        *.tar.zst)
+            check_command tar tar && tar --zstd -xvf "$file" -C "$folder_name" ;;
+        *.tar.lzma)
+            check_command tar tar && tar --lzma -xvf "$file" -C "$folder_name" ;;
+        *.tar)
+            check_command tar tar && tar -xvf "$file" -C "$folder_name" ;;
+        *.bz2)
+            { check_command bunzip2 bzip2 && bunzip2 -c "$file" > "$folder_name/${only_file%.bz2}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.gz)
+            { check_command gunzip gzip && gunzip -c "$file" > "$folder_name/${only_file%.gz}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.xz)
+            { check_command unxz xz && unxz -c "$file" > "$folder_name/${only_file%.xz}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.zst)
+            { check_command unzstd zstd && unzstd "$file" -o "$folder_name/${only_file%.zst}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.zip|*.zipx|*.apk|*.xapk|*.apk+)
+            { check_command unzip unzip && unzip -q "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.rar)
+            { check_command unrar unrar && unrar x -inul "$file" "$folder_name/"; } || 
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg|*.cbz|*.cbr)
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *.iso)
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *.cab)
+            { check_command cabextract cabextract && cabextract "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.arj)
+            { check_command unarj unarj && unarj x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.lzh|*.lha)
+            { check_command lha lhasa && lha -x "$file" -w "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.rpm)
+            { check_command rpm2cpio rpm-tools && rpm2cpio "$file" | cpio -idmv -D "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.deb)
+            { check_command dpkg-deb dpkg && dpkg-deb -x "$file" "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.z)
+            { check_command uncompress gzip && uncompress -c "$file" > "$folder_name/${only_file%.z}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.ace)
+            { check_command unace unace && unace x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.exe)
+            # Might be a self-extracting archive
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *)
+            printf '\e[%sH\e[K\e8' "$LINES" # Clear lines
+			messages "Warn" "Unsupported format: $file"
+            rmdir "$folder_name" 2>/dev/null  # Remove directory if empty
+            return 1 ;;
+    esac
+    
+    # Check if extraction was successful
+    if [ $? -eq 0 ]; then
+        "${redraw[@]}"
+		messages "Success" "Extraction completed successfully!"
+        return 0
+    else
+        rmdir "$folder_name"
+        "${redraw[@]}"
+		messages "Error" "Error: Error during extraction of '$file'"
+        return 1
+    fi
+}
+
 # Function for dealing with selected files
 handle_selected_files() {
     local path="$1"
@@ -670,18 +1279,40 @@ handle_selected_files() {
     esac
 }
 
+reverse_directory() {
+	while IFS= read -r line; do
+		if [[ "$line" == */ ]]; then
+			echo "2_$line"
+		else
+			echo "1_$line"
+		fi
+	done | \
+	sort -t'_' -k1,1 -k2,2 | \
+	while IFS= read -r line; do
+		echo "${line#*_}"
+	done  | sed 's|/$||'
+}
+
 directory_view() {
-	local file="$1"
-	{ [ -f "$CACHE_FZF_DIR/longfilemanager" ] && longfilemanager='-l'; } || longfilemanager=''
-	if command -v exa >/dev/null; then
-		exa -1 "$longfilemanager" --icons --classify \
-		--group-directories-first --colour=always \
-		"$file" 2>/dev/null | sed 's|/$||'
-	else
-		ls -1 "$longfilemanager" --classify \
-		--group-directories-first --color=always \
-		-F "$file" 2>/dev/null | sed 's|/$||'
-	fi
+    local file="$1"
+    { [ ! -f "$CACHE_FZF_DIR/list_files" ] && list_files='-1'; } || list_files=''
+    { [ -f "$CACHE_FZF_DIR/longfilemanager" ] && longfilemanager='-l'; } || longfilemanager=''
+    { [ -f "$CACHE_FZF_DIR/reverse_directory" ] && reverse_dir="reverse_directory"; } || reverse_dir=
+	
+	local ls_args=(
+		"$list_files" "$longfilemanager" --classify
+        --group-directories-first --color=always
+	)
+    if command -v eza >/dev/null; then
+		eza "${ls_args[@]}" --icons \
+        "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
+    elif command -v exa >/dev/null; then
+		exa "${ls_args[@]}" --icons \
+        "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
+    else
+        ls "${ls_args[@]}" -F \
+        "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
+    fi
 }
 
 preview_file() {
@@ -815,6 +1446,7 @@ fzf_binds() {
 }
 
 main() {
+	setup_config
     # Starts in the initial directory
     builtin cd "$initial_dir" || exit 1
     

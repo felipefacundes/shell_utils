@@ -29,9 +29,11 @@ SCRIPT="${0##*/}"
 TMPDIR="${TMPDIR:-/tmp}"
 TMP_FZF_DIR="${TMPDIR}/${SCRIPT%.*}"
 CACHE_FZF_DIR="${XDG_CACHE_HOME:=${HOME}/.cache}/${SCRIPT%.*}"
+CONFIG_FZF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/${SCRIPT%.*}"
 MARGIN_PREVIEW="${CACHE_FZF_DIR}/margin_preview"
 [[ ! -d "$TMP_FZF_DIR" ]] && mkdir -p "$TMP_FZF_DIR"
 [[ ! -d "$CACHE_FZF_DIR" ]] && mkdir -p "$CACHE_FZF_DIR"
+[[ ! -d "$CONFIG_FZF_DIR" ]] && mkdir -p "$CONFIG_FZF_DIR"
 [[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
 exec 2>"${TMPDIR}/${SCRIPT%.*}-debug.log"
 MARKED_FILES_FILE="${TMP_FZF_DIR}/marked_files"
@@ -52,7 +54,8 @@ else
 fi
 
 sync_marked_files() {
-    printf "%s\n" "${marked_files[@]}" > "$MARKED_FILES_FILE"
+    { [ ${#marked_files[@]} -gt 0 ] && printf "%s\n" "${marked_files[@]}" > "$MARKED_FILES_FILE"; } || 
+	{ [[ -f "$MARKED_FILES_FILE" ]] && rm -f "$MARKED_FILES_FILE"; }
 }
 
 generate_mark_file() {
@@ -123,11 +126,508 @@ dialog_help() {
     rm -f "$helpfile"
 }
 
+setup_config() {
+    local config_file="$CONFIG_PATH/fzffm.conf"
+    
+    # If config file already exists, source it
+    if [[ -f "$config_file" ]]; then
+        source "$config_file"
+        return 0
+    fi
+    
+    # Create the configuration file with default values and explanations
+    cat > "$config_file" << 'EOF'
+# Preview configuration file
+
+# Default preview mode
+# Default: 1 (preview mode)
+# 0 for normal mode, 1 for preview mode
+#PREVIEW_MODE=""
+
+# Maximum items to show in preview mode
+# Default: 9
+# Number of items displayed in the file list when in preview mode
+#PREVIEW_MAX_ITEMS=""
+
+# Enable/disable hidden files view by default
+# Default: 0 (disabled)
+# Set to 1 to show hidden files when preview starts
+#PREVIEW_HIDDEN=""
+
+# Enable/disable using LS_COLORS for file coloring
+# Default: 1 (enabled)
+# Set to 1 to use colors defined in LS_COLORS environment variable
+#PREVIEW_LS_COLORS=""
+
+# File format string for displaying files
+# Default: "%f"
+# %f is replaced with the filename
+#PREVIEW_FILE_FORMAT=""
+
+# Default program to open files with
+# Default: "xdg-open"
+# Specify the command to open files
+#PREVIEW_OPENER=""
+
+# Change directory on exit
+# Default: 1 (enabled)
+# Set to 1 to change to the last directory viewed when the preview application exits
+#PREVIEW_CD_ON_EXIT=""
+
+# Path to file that stores the last directory
+# Default: "${XDG_CACHE_HOME:-$HOME/.cache}/preview/.preview_d"
+# Specify where to store the last visited directory
+#PREVIEW_CD_FILE=""
+
+# Color for directories
+# Default: "2" (blue)
+# ANSI color code for directory display
+#PREVIEW_COL_DIRECTORY=""
+
+# Color for status line background
+# Default: "48;5;128" (purple)
+# ANSI color code for status line background
+#PREVIEW_STATUS_BACKGROUND=""
+
+# Color for selected item highlight
+# Default: "6" (cyan)
+# ANSI color code for highlighting selected items
+#PREVIEW_SELECTED_HIGHLIGHT=""
+
+# Color for status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
+#PREVIEW_STATUS_FOREGROUND=""
+
+# Color for PWD PREVIOUS DIRECTORY in status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
+#PWD_PREVIOUS_DIRECTORY=""
+
+# Color for PWD LAST DIR in status line text
+# Default: "1;33" (yellow)
+# ANSI color code for status line text
+#PWD_LAST_DIR=""
+
+# Color for PWD BAR in status line text
+# Default: "1;96" (cyan)
+# ANSI color code for status line text
+#PWD_BAR=""
+
+# Key bindings for navigation and actions
+
+# Enter a directory or open a file (primary key binding)
+# Default: "l"
+# Key to enter directories or open files
+#PREVIEW_KEY_CHILD1=""
+
+# Navigate into directory or open file (second binding)
+# Default: "\e[C" (right arrow)
+# Alternative key to enter directories or open files
+#PREVIEW_KEY_CHILD2=""
+
+# Navigate into directory or open file (third binding)
+# Default: "\eOC" (right arrow in some terminals)
+# Alternative key to enter directories or open files
+#PREVIEW_KEY_CHILD3=""
+
+# Navigate into directory or open file (fourth binding)
+# Default: "" (none)
+# Additional key to enter directories or open files
+#PREVIEW_KEY_CHILD4=""
+
+# Navigate to parent directory (first binding)
+# Default: "h"
+# Key to go to parent directory
+#PREVIEW_KEY_PARENT1=""
+
+# Navigate to parent directory (second binding)
+# Default: "\e[D" (left arrow)
+# Alternative key to go to parent directory
+#PREVIEW_KEY_PARENT2=""
+
+# Navigate to parent directory (third binding)
+# Default: "\177" (backspace)
+# Alternative key to go to parent directory
+#PREVIEW_KEY_PARENT3=""
+
+# Navigate to parent directory (fourth binding)
+# Default: "\b" (backspace)
+# Alternative key to go to parent directory
+#PREVIEW_KEY_PARENT4=""
+
+# Navigate to parent directory (fifth binding)
+# Default: "\eOD" (left arrow in some terminals)
+# Additional key to go to parent directory
+#PREVIEW_KEY_PARENT5=""
+
+# Scroll down (primary key binding)
+# Default: "j"
+# Key to scroll down file list
+#PREVIEW_KEY_SCROLL_DOWN1=""
+
+# Scroll down (second binding)
+# Default: "\e[B" (down arrow)
+# Alternative key to scroll down the file list
+#PREVIEW_KEY_SCROLL_DOWN2=""
+
+# Scroll down (third binding)
+# Default: "\eOB" (down arrow in some terminals)
+# Additional key to scroll down the file list
+#PREVIEW_KEY_SCROLL_DOWN3=""
+
+# Scroll up (first binding)
+# Default: "k"
+# Key to scroll up the file list
+#PREVIEW_KEY_SCROLL_UP1=""
+
+# Scroll up (second binding)
+# Default: "\e[A" (up arrow)
+# Alternative key to scroll up the file list
+#PREVIEW_KEY_SCROLL_UP2=""
+
+# Scroll up (third binding)
+# Default: "\eOA" (up arrow in some terminals)
+# Additional key to scroll up the file list
+#PREVIEW_KEY_SCROLL_UP3=""
+
+# Go to top of file list
+# Default: "g"
+# Key to jump to the top of the file list
+#PREVIEW_KEY_TO_TOP=""
+
+# Go to bottom of file list
+# Default: "G"
+# Key to jump to the bottom of the file list
+#PREVIEW_KEY_TO_BOTTOM=""
+
+# Toggle visibility of hidden files
+# Default: "."
+# Key to toggle visibility of hidden files
+#PREVIEW_KEY_HIDDEN=""
+
+# Search for files
+# Default: "/"
+# Key to start file search
+#PREVIEW_KEY_SEARCH=""
+
+# Exit search mode (primary key binding)
+# Default: "'"
+# Key to exit search mode while preserving the current selection
+#PREVIEW_KEY_EXIT_CLEAR_SEARCH1=""
+
+# Exit search mode (second binding)
+# Default: "\""
+# Alternative key to exit search mode while keeping selection
+#PREVIEW_KEY_EXIT_CLEAR_SEARCH2=""
+
+# Open shell in current directory
+# Default: "!"
+# Key to open a shell in the current directory
+#PREVIEW_KEY_SHELL=""
+
+# Rename file
+# Default: "R"
+# Key to rename a file or directory
+#PREVIEW_KEY_RENAME=""
+
+# Create directory
+# Default: "m"
+# Key to create a new directory
+#PREVIEW_KEY_MKDIR=""
+
+# Create file
+# Default: "F"
+# Key to create a new file
+#PREVIEW_KEY_MKFILE=""
+
+# Go to specific directory
+# Default: "\x07" (Ctrl+G)
+# Key to navigate to a specific directory
+#PREVIEW_KEY_GO_DIR=""
+
+# Go to home directory (first binding)
+# Default: "~"
+# Key to go to the home directory
+#PREVIEW_KEY_GO_HOME1=""
+
+# Go to home directory (second binding)
+# Default: "H"
+# Alternative key to go to the home directory
+#PREVIEW_KEY_GO_HOME2=""
+
+# Go to previous directory
+# Default: "-"
+# Key to go to the previous directory
+#PREVIEW_KEY_PREVIOUS=""
+
+# Refresh current directory
+# Default: "r"
+# Key to refresh the file list
+#PREVIEW_KEY_REFRESH=""
+
+# Copy file
+# Default: "C"
+# Key to copy a file or directory
+#PREVIEW_KEY_COPY=""
+
+# Copy to clipboard
+# Default: "Z"
+# Key to copy a file to clipboard
+#PREVIEW_KEY_CLIPBOARD=""
+
+# Key binding to create symlinks
+# Default: "S"
+# Key to create symbolic links for selected files or directories
+#PREVIEW_KEY_SYMLINK=""
+
+# Toggle preview mode (first binding)
+# Default: "P"
+# Key to toggle between normal and preview modes
+#PREVIEW_KEY_PREVIEW1=""
+
+# Toggle preview mode (second binding)
+# Default: "\x10" (Ctrl+P)
+# Alternative key to toggle between normal and preview modes
+#PREVIEW_KEY_PREVIEW2=""
+
+# Quit program (first binding)
+# Default: "\x04" (Ctrl+D)
+# Key to exit the program
+#PREVIEW_KEY_QUIT1=""
+
+# Quit program (second binding)
+# Default: "="
+# Alternative key to exit the program
+#PREVIEW_KEY_QUIT2=""
+
+# Quit program (third binding)
+# Default: "Q"
+# Alternative key to exit the program
+#PREVIEW_KEY_QUIT3=""
+
+# Quit program (fourth binding)
+# Default: "q"
+# Alternative key to exit the program
+#PREVIEW_KEY_QUIT4=""
+
+# Show file attributes
+# Default: "x"
+# Key to display file attributes
+#PREVIEW_KEY_ATTRIBUTES=""
+
+# Toggle executable flag
+# Default: "X"
+# Key to toggle the executable permission of a file
+#PREVIEW_KEY_EXECUTABLE=""
+
+# Extract archive
+# Default: "e"
+# Key to extract an archive file to folder
+#PREVIEW_KEY_EXTRACT=""
+
+# Delete file/directory
+# Default: "E"
+# Key to delete a file or directory
+#PREVIEW_KEY_ERASE=""
+
+# Move file/directory
+# Default: "M"
+# Key to move a file or directory
+#PREVIEW_KEY_MOVE=""
+
+# Mark file/directory
+# Default: "y"
+# Key to mark a file or directory
+#PREVIEW_KEY_MARK=""
+
+# Key to mark all files in the current directory
+# Default: "Y"
+#PREVIEW_KEY_MARK_ALL=""
+
+# Clear all marked files and directories
+# Default: "c"
+# Key to clear all marked files and directories
+#PREVIEW_KEY_CLEAR_MARK=""
+
+# Format for marked files
+# Default: "" (none)
+# %f is replaced with the filename
+#PREVIEW_MARK_FORMAT=""
+
+# Color for marked files
+# Default: "1" (red)
+# ANSI color code for marked file display
+#PREVIEW_COL_MARKED=""
+
+# Show image and info in terminal
+# Default: "i"
+# Key to display an image and info in the terminal
+#PREVIEW_KEY_INFO=""
+
+# Markdown preview settings
+# Preferred markdown preview tool
+# Default: "5" (markdown_reader.sh)
+# 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown_reader.sh
+#PREVIEW_MARKDOWN=""
+
+# Key binding to open file with xdg-open
+# Default: "" (none)
+# Key to open files using xdg-open or specified opener
+#PREVIEW_KEY_XDG_OPEN=""
+
+# Image preview settings
+# Preferred image preview tool
+# Default: "1" (img2sixel)
+# 1: img2sixel, 2: viu, 3: catimg, 4: chafa
+#PREVIEW_IMG=""
+
+# Width of full-size img2sixel preview
+# Default: "540"
+# Width in pixels for full-size image preview with img2sixel
+#PREVIEW_SIXEL_W=""
+
+# Height for img2sixel full-size preview
+# Default: "420"
+# Height in pixels for full-size image preview with img2sixel
+#PREVIEW_SIXEL_H=""
+
+# Width for viu full-size preview
+# Default: "90"
+# Width in characters for full-size image preview with viu
+#PREVIEW_VIU_W=""
+
+# Height for viu full-size preview
+# Default: "35"
+# Height in characters for full-size image preview with viu
+#PREVIEW_VIU_H=""
+
+# Width for catimg full-size preview
+# Default: "100"
+# Width in characters for full-size image preview with catimg
+#PREVIEW_CATIMG_W=""
+
+# Size for chafa full-size preview
+# Default: "50"
+# Size specification for full-size image preview with chafa
+#PREVIEW_CHAFA_S=""
+
+# Width for img2sixel thumbnail preview
+# Default: "300"
+# Width in pixels for thumbnail preview with img2sixel
+#PREVIEW_THUMB_SIXEL_W=""
+
+# Height for img2sixel thumbnail preview
+# Default: "200"
+# Height in pixels for thumbnail preview with img2sixel
+#PREVIEW_THUMB_SIXEL_H=""
+
+# Width for viu thumbnail preview
+# Default: "50"
+# Width in characters for thumbnail preview with viu
+#PREVIEW_THUMB_VIU_W=""
+
+# Height for viu thumbnail preview
+# Default: "16"
+# Height in characters for thumbnail preview with viu
+#PREVIEW_THUMB_VIU_H=""
+
+# Width for catimg thumbnail preview
+# Default: "60"
+# Width in characters for thumbnail preview with catimg
+#PREVIEW_THUMB_CATIMG_W=""
+
+# Size for chafa thumbnail preview
+# Default: "25"
+# Size specification for thumbnail preview with chafa
+#PREVIEW_THUMB_CHAFA_S=""
+
+# Scroll behavior
+# Default: "1" (loop)
+# 0: no loop (stops at ends), 1: loop (wraps around)
+#PREVIEW_LOOP_SCROLL=""
+
+# Favorite directory for key 0-9
+# Example: PREVIEW_FAV_0=~/Documents PREVIEW_FAV_1=~/Pictures
+# Default: "" (none)
+# Path to a favorite directory accessed with key 0-9
+#PREVIEW_FAV_0=""
+#PREVIEW_FAV_1=""
+#PREVIEW_FAV_2=""
+#PREVIEW_FAV_3=""
+#PREVIEW_FAV_4=""
+#PREVIEW_FAV_5=""
+#PREVIEW_FAV_6=""
+#PREVIEW_FAV_7=""
+#PREVIEW_FAV_8=""
+#PREVIEW_FAV_9=""
+
+# Command to show file attributes
+# Default: "stat"
+# Command used to display file attributes
+#PREVIEW_STAT_CMD=""
+
+# Shell nesting level
+# Default: "" (starts unset, incremented when opening shells)
+# Tracks the nesting level of shell instances
+#PREVIEW_LEVEL=""
+
+# Resolution for image and video previews
+# Default: "960x540"
+# Resolution used for resizing images and videos (format: WIDTHxHEIGHT)
+#RESOLUTION=""
+
+# Width for text folding in preview
+# Default: "5"
+# Maximum line width for text wrapping with fold command
+#PREVIEW_MARGIN=""
+
+# Maximum lines for file content preview
+# Default: "50" (non-Android) or "20" (Android)
+# Number of lines to display in file content previews
+#sizeline=""
+
+# Maximum width for text preview
+# Default: "200" (non-Android) or "50" (Android)
+# Width in characters for text formatting in previews
+#width=""
+
+# Tab width for code highlighting
+# Default: "8"
+# Number of spaces to replace tabs with when highlighting code
+#HIGHLIGHT_TABWIDTH=""
+
+# Style for code highlighting
+# Default: "pablo"
+# Highlight style to use with the highlight command
+#HIGHLIGHT_STYLE=""
+
+# Additional options for code highlighting
+# Default: ""
+# Extra options to pass to the highlight command
+#HIGHLIGHT_OPTIONS=""
+
+# Style for pygmentize code highlighting
+# Default: "autumn"
+# Pygmentize style to use for syntax highlighting
+#PYGMENTIZE_STYLE=""
+EOF
+
+    # Make the config file user-executable
+    chmod u+x "$config_file"
+    
+    # Source the newly created config file
+    source "$config_file"
+}
+
 messages() {
     whiptail --title "$1" --msgbox "$2" "$message_height" "$message_width" >/dev/null 2>&1 >/dev/tty
 }
 
 ########################## PREVIEW FILE MANAGER
+RESOLUTION="${RESOLUTION:-960x540}"
+RESOLUTION="${RESOLUTION/X/x}"
+
 cmd_check() {
     { [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
     {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}'); } || msg="${no_cmd[*]}"
@@ -136,10 +636,19 @@ cmd_check() {
     ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
 }
 
+get_mime_type() {
+    mime_type=$(file "-${file_flags:-biL}" "$1" 2>/dev/null | awk '{print $1}')
+    mime_type2=$(file --dereference --brief --mime-type -- "$1" 2>/dev/null)
+    mime_type_full=$(file "$1" | sed -n 's/.*:\s*\(.*\)/\1/p')
+    mime_type="${mime_type,,}"
+    mime_type2="${mime_type,,}"
+    mime_type_full="${mime_type_full,,}"
+}
+
 margin() {
     local file="$1"
     { cmd_check fold coreutils &&
-    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-5})) "$file" && return 0; } ||
+    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-50})) "$file" && return 0; } ||
     cmd_check -msg && return 1
 }
 
@@ -147,6 +656,751 @@ any_file() {
     file="$1"
     margin <(file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p') && echo &&
     margin <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+}
+
+xdg_open() {
+	local path="$1"
+    file=$(clean_path "$path")
+    nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$file" &>/dev/null &
+    disown
+}
+
+_exiftool() {
+    local file="$1"
+    timeout -k 1 1 exiftool "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_identify() {
+    local file="$1"
+    timeout -k 1 1 identify -verbose "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_pandoc() {
+    local file="$1"
+    timeout -k 1 1 pandoc -s -t plain -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_libreoffice() {
+    local file="$1"
+    local dir="$2"
+    timeout -k 1 1 libreoffice --headless --convert-to txt --outdir "$dir" "$file" >/dev/null 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_glow() {
+    local file="$1"
+    timeout -k 1 .6 env COLORTERM=8bit glow -s dark -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_glow_no_kill() {
+    local file="$1"
+    env COLORTERM=8bit glow -s dark -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_bsdtar() {
+    local file="$1"
+    cmd_check bsdtar libarchive && {
+        if ! bsdtar --list --file "$file" &>/dev/null; then
+            return 1
+        else
+            bsdtar --list --file "$file" | head -n "${sizeline}"
+            return 0
+        fi
+    }
+    return 1
+}
+
+archive() {
+    local file="$1"
+    local file_lower="${1,,}"
+
+    case "$file_lower" in
+        *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.tar.lzma|*.tar.lz|*.tar.lz4|*.tar.br|*.tar.z|*.tar)
+            { bsdtar --list --file "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.tar.zst|*.zst|*.zstd)
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check zstdcat zstd && zstd -lv "${file}" | head -n "${sizeline}" && return 0; } ||
+            { _bsdtar "$file" && return 0; } ;;
+        *.bz2)
+            { cmd_check bzcat bzip2 && bzcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.gz|*.z)
+            { cmd_check zcat gzip && zcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.xz)
+            { cmd_check xzcat xz && xzcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.zip|*.zipx|*.apk|*.xapk|*.apk+|*.jar|*.oxt|*.xpi|*.vsix)
+            { _bsdtar "$file" && return 0; } ||
+            { cmd_check unzip unzip && unzip -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.rar)
+            { cmd_check unrar unrar && unrar lt -p- -- "${file}" | head -n "${sizeline}" && return 0; } || 
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg)
+            cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0 ;;
+        *.iso)
+            { _bsdtar "$file" && return 0; } ||
+            { cmd_check isoinfo cdrtools && isoinfo -i "${file}" -l | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.cab)
+            { cmd_check cabextract cabextract && cabextract -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.arj)
+            { cmd_check arj arj && arj l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.lzh|*.lha)
+            { cmd_check lha lhasa && lha -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.rpm)
+            { cmd_check rpm rpm-tools && rpm -qpl "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.deb)
+            { cmd_check dpkg dpkg && dpkg -c "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;            
+        *.ace)
+            { cmd_check unace unace && unace l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.zlib|*.zz)
+            cmd_check zlib-flate qpdf && 
+            zlib-flate -uncompress < "${file}" | head -n "${sizeline}" && return 0 ;;
+        *.exe)
+            # Might be a self-extracting archive
+            cmd_check 7z 7zip && file "${file}" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
+            7z l -p -- "$file" | head -n "${sizeline}" && return 0 ;;
+        esac
+
+    { cmd_check atool atool && atool --list -- "${file}" | head -n "${sizeline}" && return 0; } ||
+    { _bsdtar "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+office_convert() {
+    local file="$1"
+    local temp_dir="${TMP_FZF_DIR}/temp_book"
+    local temp_file="${TMP_FZF_DIR}/temp_file.md"
+    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
+    [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
+
+    case "${file_ext}" in
+        csv)
+            { cmd_check csvtable csvtable && (csvtable "$file" | head -n "${sizeline}") && return 0; } ||
+            { cmd_check csvlook csvlook && (csvlook -S "$file" | head -n "${sizeline}") && return 0; } ||
+            { awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0; } ||
+            { column -t -s, "$file" | head -n "${sizeline}" && return 0; } ;;
+        xlsx)
+            { cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0; } ||
+            { cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0; } ;;
+        rtf)
+            { cmd_check catdoc catdoc && margin <(catdoc -- "$file") && return 0; } ||
+            { cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0; } ;;
+        doc)
+            cmd_check antiword antiword && margin <(antiword "$file") && return 0
+            ;;
+        docx)
+            cmd_check docx2txt docx2txt && margin <(docx2txt "$file" - 2>/dev/null) && return 0
+            ;;
+        odt|ods|odp|sxw)
+            { cmd_check odt2txt odt2txt && margin <(odt2txt "$file") && return 0; } ||
+            { [[ "${file_ext}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0; } ;;
+        pptx)
+            cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
+            markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
+            ;;
+        epub)
+            cmd_check epr epr && margin <(epr -d "$file" 2>/dev/null | sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g') && return 0
+            ;;
+    esac
+
+    { cmd_check pandoc pandoc && margin <(_pandoc "$file") && return 0; } ||
+    { cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 &&
+    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+markdown_reader() {
+    local file="$1"
+    local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
+    "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
+    markdown_reader.sh -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 1 ]] && cmd_check glow glow &&
+    _glow_no_kill "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 2 ]] && cmd_check bat bat &&
+    env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
+    mdless -P -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
+    mdcat -- "$file" | head -n "${sizeline}" && return 0; }
+}
+
+test_books() {
+    local file="$1"
+    local books="$HOME/.shell_utils/scripts/books"
+    { [[ -f "$books" ]] && "$books" "$file" && return 0; } ||
+    { command -v books &>/dev/null && books "$file" && return 0; }
+}
+
+_books() {
+    local file="$1"
+    test_books "$file"
+    "${redraw[@]}"
+}
+
+_picinfo() {
+    local file="$1"
+    { cmd_check mediainfo mediainfo && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
+    echo && mediainfo "$file" | sed 's/               //; s|\(.*:\)\s*.*/|\1 |' && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_identify "${file}" | head -n "${sizeline}") && return 0; }
+}
+
+imgview() {
+    local file="$1"
+    local thumbnail="$2"
+	local sixel_size="${PREVIEW_SIXEL_W:-800}x${PREVIEW_SIXEL_H:-600}!"
+	local sixel_thumb_size="${PREVIEW_THUMB_SIXEL_W:-300}x${PREVIEW_THUMB_SIXEL_H:-200}!"
+    
+    [[ "$thumbnail" =~ ^-?[0-9]+$ ]] && {
+		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_thumb_size}" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_thumb_size}" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
+        img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        viu -w "${PREVIEW_THUMB_VIU_W:-50}" -h "${PREVIEW_THUMB_VIU_H:-16}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_THUMB_CATIMG_W:-60}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0; }
+    }
+    [[ -z "$thumbnail" ]] && {
+		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+        img2sixel -w "${PREVIEW_SIXEL_W:-800}" -h "${PREVIEW_SIXEL_H:-600}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check viu viu && viu -w "${PREVIEW_VIU_W:-63}" -h "${PREVIEW_VIU_H:-24}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        viu -w "${PREVIEW_VIU_W:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check catimg catimg && catimg -w "${PREVIEW_CATIMG_W:-33}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check chafa chafa && chafa -s "${PREVIEW_CHAFA_S:-17}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_CHAFA_S:-50}" "${file}" 2>/dev/null && return 0; }
+    }
+    { _picinfo "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+fontview() {
+    local file="$1"
+    temp_file="${TMP_FZF_DIR}/temp_file.png"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+    { cmd_check fontimage fontforge && fontimage -o "${temp_file}" \
+                    --pixelsize "120" \
+                    --fontname \
+                    --pixelsize "80" \
+                    --text "  ABCDEFGHIJKLMNOPQRSTUVWXYZ  " \
+                    --text "  abcdefghijklmnopqrstuvwxyz  " \
+                    --text "  0123456789.:,;(*!?') ff fl fi ffi ffl  " \
+                    --text "  A white sheep peacefully grazes on the green pasture.  " \
+                    "${file}" </dev/null 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && 
+    [[ "${file_ext}" =~ ^(ttf|ttc|otf|pfa|pfb|ps|bdf|gbdf|pcf|snf|nfnt|fon|fnt|woff|woff2|svg|sfnt|sfd)$ ]] && 
+    echo && cmd_check -msg && return 1; }
+}
+
+img2info() {
+    local file="$1"
+    temp_file="${TMP_FZF_DIR}/temp_file.jpg"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+
+	{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" sixel:- 2>/dev/null && return 0; } ||
+    { cmd_check magick imagemagick && ls "${TMP_FZF_DIR}" && 
+    magick -- "${file}[0]" -auto-orient -filter Box -resize "${RESOLUTION}!" -quality 85 "$temp_file" 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { _picinfo "$file" && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1; }
+}
+
+video2static() {
+    local file="$1"
+    local info="${TMP_FZF_DIR}/info.txt"
+    local resolution="${RESOLUTION/x/:}"
+    local temp_file="${TMP_FZF_DIR}/temp_file.jpg"
+    [[ -n "$TERMUX_VERSION" ]] && local sizeline=11
+
+    function if_ff_extract {
+        [[ -f "$temp_file" ]] && {
+            imgview "$temp_file" 1
+            media_info "$file"
+        } && return 0
+    }
+
+    [[ -f "$info" ]] && rm -f "$info"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+    { cmd_check ffmpeg ffmpeg && 
+    ffmpeg -i "${file}" -vf "select=eq(n\,30),scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
+    if_ff_extract && return 0; } ||
+    { ffmpeg -i "${file}" -vf "scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
+    if_ff_extract && return 0; } ||
+    { media_info "${file}" && return 0; } ||
+    return 1
+}
+
+media_info() {
+    local file="$1"
+    { cmd_check mediainfo mediainfo && mediainfo "${file}" |\
+    sed '/General/d; /Complete name/d; /^Video/d; /^Audio/d; /^$/d; s/                   //; s|\(.*:\)\s*.*/|\1 |' |\
+    head -n "${sizeline}" && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+pdfview() {
+    local file="$1"
+    temp_file="${TMP_FZF_DIR}/temp_file.jpg"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+
+    { cmd_check pdftotext poppler && 
+    pdf_lines=$(pdftotext -l 1 -nopgbrk -q -- "${file}" - | wc -l) &&
+    [[ "$pdf_lines" -gt 0 ]] &&
+    pdftotext -l 1 -nopgbrk -q -- "${file}" - | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" 1-10 | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
+	{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" sixel:- 2>/dev/null && return 0; } ||
+    { cmd_check magick imagemagick && 
+    magick -quiet -- "${file}[0]" -auto-orient -filter Box -resize "${RESOLUTION}!" -quality 85 "$temp_file" 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { cmd_check pdfinfo poppler && pdfinfo "$file" && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_identify "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+torrentview() {
+    local file="$1"
+    { cmd_check transmission-show transmission-cli && transmission-show -- "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+djvuview() {
+    local file="$1"
+    { cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check exiftool exiftool &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+podview() {
+    local file="$1"
+    { cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+psview() {
+    local file="$1"
+    { cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+classview() {
+    local file="$1"
+    { cmd_check procyon-decompiler procyon-decompiler && margin <(procyon-decompiler "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check procyon procyon && margin <(procyon "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+dviview() {
+    local file="$1"
+    { cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+pgpview() {
+    local file="$1"
+    { cmd_check gpg gnupg && gpg --decrypt --quiet --no-tty --batch --yes "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+opensslview() {
+    local file="$1"
+    { [[ "${file_ext}" =~ ^([Cc][Ss][Rr])$ ]] && 
+    cmd_check openssl openssl && openssl req -text -noout -in "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check openssl openssl && openssl storeutl -text -noout "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+jsonview() {
+    local file="$1"
+    { cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+nexttmp () {
+	declare new="${TMP_FZF_DIR}/preview.$RANDOM"
+	echo "$new"
+}
+
+nodash() {
+	prog="$1"
+	shift
+	[[ "$1" == - ]] && shift
+	$prog "$@"
+}
+
+handle_w3m() {
+	if [[ "$1" == *\?* ]]; then
+		t=$(nexttmp)
+		ln -s "$1" "$t"
+		set "$t" "$1"
+	fi
+	nodash "w3m -dump -T text/html" "$1"
+}
+
+_html2text() {
+    nodash html2text "$1" "$2"
+    return 0
+}
+
+ishtml() {
+	[[ "$1" == - ]] && arg1=-stdin || arg1="$1"
+	htmlopt=--unicode-snob
+	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
+	# 3 lines following can easily be reshuffled according to the preferred tool
+	{ cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0; } ||
+	# different versions of html2text existingi, force unicode
+	{ [[ "$1" == https://* ]] && return 0; } ||
+	{ cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1; }
+}
+
+highlight_code() {
+    local file="$1"
+    COLOR_RESET='\033[0m' 
+    COLOR_CODE='\033[38;5;155;48;5;241m'
+    HIGHLIGHT_OPTIONS="--replace-tabs=${HIGHLIGHT_TABWIDTH:-8} --style=${HIGHLIGHT_STYLE:-pablo} ${HIGHLIGHT_OPTIONS:-}"
+
+    ## Syntax highlight
+    if [[ "$( tput colors )" -ge 256 ]]; then
+        local pygmentize_format='terminal256'
+        local highlight_format='xterm256'
+    else
+        local pygmentize_format='terminal'
+        local highlight_format='ansi'
+    fi
+    if [ -z "$lang" ]; then
+        lang="$file_ext"  # Default language
+    fi
+
+    # Attempt syntax highlighting with specified language
+    { cmd_check bat bat && env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "${file}" && return 0; } ||
+    { cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
+        --out-format="${highlight_format}" \
+        --force -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check source-highlight source-highlight &&
+    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0; } ||
+    { cmd_check pygmentize python-pygments && 
+    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}" -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check glow glow && _glow "${file}" && return 0; } ||
+    { cmd_check mdless mdless && mdless -P -- "${file}" && return 0; } ||
+    { cmd_check mdcat mdcat && mdcat -- "${file}" && return 0; } ||
+	{ while IFS= read -r line; do
+        printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$line"
+    done < "$file"; }
+}
+
+_mime_files() {
+	local file="$1"
+    get_mime_type "$file"
+    if [[ "$mime_type" == *"font"* ]]; then
+        if ! fontview "$file"; then
+            printf '\n\e[33mFont file: %s\e[m\n' "${file##*/}"
+            any_file "$file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" == *"image"* || "$mime_type" =~ "image" ]]; then
+        if ! img2info "$file"; then
+            printf '\n\e[33mImage file: %s\e[m\n' "${file##*/}"
+            any_file "$file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" == *"text"* || "$mime_type" == *"xml"* || "$mime_type" == *"empty"* || "$mime_type2" =~ ^text/.+|application/xml$ ]]; then
+        highlight_code "$file" | head -n "${sizeline}" 2>/dev/null && return 0
+        any_file "$file"
+        return 1
+    elif [[ "$mime_type_full" =~ (audio|sound|video|media|stream) || "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]]; then
+        if ! media_info "$file"; then
+            printf '\n\e[33mMedia file: %s\e[m\n' "${file##*/}"
+            any_file "$file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" =~ (text|xml|python|css|htm|html|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        highlight_code "$file" | head -n "${sizeline}" 2>/dev/null && return 0
+        any_file "$file"
+        return 1
+    fi
+    return 1
+}
+
+reverse_directory() {
+	while IFS= read -r line; do
+		if [[ "$line" == */ ]]; then
+			echo "2_$line"
+		else
+			echo "1_$line"
+		fi
+	done | \
+	sort -t'_' -k1,1 -k2,2 | \
+	while IFS= read -r line; do
+		echo "${line#*_}"
+	done  | sed 's|/$||'
+}
+
+directory_view() {
+    local file="$1"
+    { [ ! -f "$CACHE_FZF_DIR/list_files" ] && list_files='-1'; } || list_files=''
+    { [ -f "$CACHE_FZF_DIR/longfilemanager" ] && longfilemanager='-l'; } || longfilemanager=''
+    { [ -f "$CACHE_FZF_DIR/reverse_directory" ] && reverse_dir="reverse_directory"; } || reverse_dir=
+	
+	local ls_args=(
+		"$list_files" "$longfilemanager" --classify
+        --group-directories-first --color=always
+	)
+    if command -v eza >/dev/null; then
+		eza "${ls_args[@]}" --icons \
+        "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
+    elif command -v exa >/dev/null; then
+		exa "${ls_args[@]}" --icons \
+        "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
+    else
+        ls "${ls_args[@]}" -F \
+        "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
+    fi
+}
+
+draw_file_preview() {
+	local path="$1"
+    file=$(clean_path "$path")
+
+    [[ -z "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-50}"
+    [[ -n "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-20}"
+    [[ -z "$TERMUX_VERSION" ]] && local width="${width:-200}"
+    [[ -n "$TERMUX_VERSION" ]] && local width="${width:-50}"
+
+    if [[ -d "$file" ]]; then
+        leng=$(ls -1A "$file" | wc -l)
+        printf '\e[36mDirectory: %s\e[m\n' "${file##*/}"
+        [[ "$leng" == 0 ]] && printf '\e[36mEmpty folder\e[m\n\n'
+        [[ "$leng" -gt 0 ]] && printf '\e[36mTotal Files: %s\e[m\n\n' "$leng"
+        ls -lha --group-directories-first --color=always "$file" | head -n 2
+        printf '%s\n' "----------------------------------------------------"
+        # Count the number of items returned by LS
+        directory_view "$file"
+		return
+        
+    elif [[ -f "$file" ]]; then
+        local file_ext="${file##*.}"
+        file_ext="${file_ext,,}" # lowercase
+        
+        # Displays the current file name in the preview area
+        printf '\e[36mFile: %s\e[m\n\n' "${file##*/}"
+
+        case "$file_ext" in
+            a|apk|apk+|xapk|ace|alz|arc|arj|br|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lz4|lzh|lzma|lzo|rar|exe|rpm|\
+            7z|7zz|7za|7zr|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tz|tzo|war|xpi|xz|z|zip|zst|zstd|iso|vsix|zlib|zz)
+                [[ "${file}" =~ \.img(\.[^.]+)?$ ]] && any_file "$file" && return 0
+                if ! archive "$file"; then
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            txt)
+                margin "$file" && return 0
+            ;;
+            img|rom)
+                any_file "$file" && return 0
+            ;;
+            md|markdown)
+                if ! markdown_reader "$file"; then
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            class)
+                if ! classview "$file"; then
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pod)
+                if ! podview "$file"; then
+                    printf '\n\e[33mPOD file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pdf)
+                if ! pdfview "$file"; then
+                    printf '\n\e[33mPDF file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            torrent)
+                if ! torrentview "$file"; then
+                    printf '\n\e[33mTorrent file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            mp4|m4v|mov|avi|wmv|flv|webm|mkv|mpg|mpeg|3gp|3g2|ogv|asf|rm|rmvb|vob|ts|m2ts|mts|f4v|divx)
+                if ! video2static "$file"; then
+                    printf '\n\e[33mVideo file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            mp3|wav|aac|m4a|flac|ogg|oga|opus|wma|alac|aiff|aif|au|snd|amr|ac3|dts|caf|mka|dff|dsf|wv|wvc)
+                if ! media_info "$file"; then
+                    printf '\n\e[33mAudio file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            png|jpg|jpeg)
+                if ! imgview "$file"; then
+                    printf '\n\e[33mImage file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+                if ! office_convert "$file"; then
+                    printf '\n\e[33mOffice file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            djvu)
+                if ! djvuview "$file"; then
+                    printf '\n\e[33mDjvu file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            postscript|ps)
+                if ! psview "$file"; then
+                    printf '\n\e[33mPS file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            x509|crl|csr)
+                if ! opensslview "$file"; then
+                    printf '\n\e[33mx509/CRL/CSR/CA file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pgp)
+                if ! pgpview "$file"; then
+                    printf '\n\e[33mPGP file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            dvi)
+                if ! dviview "$file"; then
+                    printf '\n\e[33mDVI file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            htm|html|xhtml)
+                if ! ishtml "$file" |\
+                fmt -w "${width}" | head -n "${sizeline}"; then
+                    printf '\n\e[33mWeb file: %s\e[m\n' "${file##*/}" 
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            json)
+                if ! jsonview "$file"; then
+                    printf '\n\e[33mJSON file: %s\e[m\n' "${file##*/}"
+                    any_file "$file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            *)
+                _mime_files "$file" && return 0
+                any_file "$file" && return 1
+            ;;
+        esac
+    fi
+    _mime_files "$file" && return 0
+    any_file "$file" && return 1
 }
 
 ########################## FZF FILE MANAGER
@@ -439,7 +1693,6 @@ delete_file() {
 copy_file() {
     local path="$1"
 	file="$(clean_path "$path")"
-	file="${file% "[<]"}"
 
     copy_marked() {
         [[ ${#marked_files[@]} -le 0 ]] &&
@@ -538,36 +1791,279 @@ copy_file() {
     fi
 }
 
+move_file() {
+    local path="$1"
+	file="$(clean_path "$path")"
+
+    move_marked() {
+        [[ ${#marked_files[@]} -le 0 ]] &&
+        messages "Warn" "warn: no files were marked" && return
+        # Check if any files already exist at destination
+        local existing_files=""
+        for file in "${marked_files[@]}"; do
+            local basename="${file##*/}"
+            if [[ -e "$PWD/$basename" ]]; then
+                existing_files="$existing_files $basename"
+            fi
+        done
+
+        if [[ -n "$existing_files" ]]; then
+            cmd_reply=$({ whiptail --yesno --scrolltext "Already exist in $PWD. Overwrite? (y/N):\n\nSome files:\n\n($existing_files)" "$message_height" "$message_width" --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
+            if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                # Move with overwrite
+                if mv -f "${marked_files[@]}" "$PWD" >&2; then
+                    generate_mark_file
+                    "${redraw[@]}"
+                    messages "Success" "Move completed successfully!"
+                else
+                    generate_mark_file
+                    "${redraw[@]}"
+                    messages "Warn" "Failed to move files."
+                fi
+            else
+                messages "Canceled" "Move operation canceled."
+            fi
+        else
+            # Move without overwrite necessary
+            if mv "${marked_files[@]}" "$PWD" >&2; then
+                generate_mark_file
+                "${redraw[@]}"
+                messages "Success" "Move completed successfully!"
+            else
+                generate_mark_file
+                "${redraw[@]}"
+                messages "Warn" "Failed to move files."
+            fi
+        fi
+    }
+
+	[[ "${file}" =~ ^"" ]] && 
+        move_marked && return
+    [[ ! -w "$PWD" ]] && 
+        messages "Warn" "No write permission in the current directory ($PWD)." && 
+        return
+	[[ ! -e "${file}" ]] && [[ ${#marked_files[@]} -le 0 ]] &&
+        messages "Warn" "No file or directory has been selected!" &&
+        return
+    if [[ ${#marked_files[@]} -le 0 ]]; then
+        # Generate suggested name for the move (with _move suffix)
+        local filename="${file##*/}"
+        local basename="${filename%.*}"
+        local extension="${filename##*.}"
+        
+        # Handle files without extension
+        if [[ "$basename" == "$extension" ]]; then
+            suggested_name="${basename}_move"
+        else
+            suggested_name="${basename}_move.${extension}"
+        fi
+        
+        cmd_reply=$(whiptail --title "New name" --inputbox "move ${filename} to: " 10 60 "$suggested_name" 3>&1 1>&2 2>&3 >/dev/tty)
+        
+        [[ "$cmd_reply" ]] &&
+            if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                cmd_reply=$({ whiptail --yesno "warn: '${cmd_reply}' already exists. Overwrite? (y/N): " "$message_height" "$message_width" --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
+                
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    if mv -f "${file}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        "${redraw[@]}"
+                        messages "Success" "Move completed successfully!"
+                    else
+                        messages "Warn" "warn: Failed to move the file."
+                    fi
+                fi
+            elif [[ -r "${file}" ]]; then
+                if mv "${file}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                    "${redraw[@]}"
+                    messages "Success" "Move completed successfully!"
+                else
+                    messages "Warn" "warn: Failed to move the file."
+                fi
+            else
+                messages "Warn" "warn: Cannot read the file/directory."
+            fi
+    # Move files marked to the current directory
+    else
+        # Checks writing permission in the current directory
+        if [[ ! -w "$PWD" ]]; then
+            return
+        else
+            move_marked
+        fi
+    fi
+}
+
+extract_to_folder() {
+    local path="$1"
+	file="$(clean_path "$path")"
+    
+    # Check if the file exists
+    if [ ! -f "$file" ]; then
+        messages "Error" "Error: File '$file' not found"
+        return 1
+    fi
+    
+    # Convert to lowercase for better matching
+    local file_lower="${file,,}"
+    local file_extension="${file%.*}"          # Remove the file extension
+    local folder_name="${file_extension%.*}"   # Remove the file extension
+    local only_file="${file##*/}" 
+    
+    # Create the destination directory
+    if [[ -d "$folder_name" ]]; then
+        messages "Error" "Error: The '${folder_name##*/}' directory exists"
+        return 1
+    elif ! mkdir -p "$folder_name"; then
+        messages "Error" "Error: Could not create directory '$folder_name'"
+        return 1
+    fi
+    
+    # Function to check if a command is available
+    check_command() {
+        if ! command -v "$1" >/dev/null 2>&1; then
+        	messages "Error" "Error: '$2' is not installed. Please install it to extract this format."
+            return 1
+        fi
+        return 0
+    }
+
+    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extracting '$file' to '$folder_name'..."
+    
+    case "$file_lower" in
+        *.tar.bz2|*.tbz2)
+            check_command tar tar && tar -xjf "$file" -C "$folder_name" ;;
+        *.tar.gz|*.tgz)
+            check_command tar tar && tar -xzf "$file" -C "$folder_name" ;;
+        *.tar.xz)
+            check_command tar tar && tar -xJf "$file" -C "$folder_name" ;;
+        *.tar.zst)
+            check_command tar tar && tar --zstd -xvf "$file" -C "$folder_name" ;;
+        *.tar.lzma)
+            check_command tar tar && tar --lzma -xvf "$file" -C "$folder_name" ;;
+        *.tar)
+            check_command tar tar && tar -xvf "$file" -C "$folder_name" ;;
+        *.bz2)
+            { check_command bunzip2 bzip2 && bunzip2 -c "$file" > "$folder_name/${only_file%.bz2}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.gz)
+            { check_command gunzip gzip && gunzip -c "$file" > "$folder_name/${only_file%.gz}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.xz)
+            { check_command unxz xz && unxz -c "$file" > "$folder_name/${only_file%.xz}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.zst)
+            { check_command unzstd zstd && unzstd "$file" -o "$folder_name/${only_file%.zst}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.zip|*.zipx|*.apk|*.xapk|*.apk+)
+            { check_command unzip unzip && unzip -q "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.rar)
+            { check_command unrar unrar && unrar x -inul "$file" "$folder_name/"; } || 
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg|*.cbz|*.cbr)
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *.iso)
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *.cab)
+            { check_command cabextract cabextract && cabextract "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.arj)
+            { check_command unarj unarj && unarj x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.lzh|*.lha)
+            { check_command lha lhasa && lha -x "$file" -w "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.rpm)
+            { check_command rpm2cpio rpm-tools && rpm2cpio "$file" | cpio -idmv -D "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.deb)
+            { check_command dpkg-deb dpkg && dpkg-deb -x "$file" "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.z)
+            { check_command uncompress gzip && uncompress -c "$file" > "$folder_name/${only_file%.z}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.ace)
+            { check_command unace unace && unace x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.exe)
+            # Might be a self-extracting archive
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *)
+            printf '\e[%sH\e[K\e8' "$LINES" # Clear lines
+			messages "Warn" "Unsupported format: $file"
+            rmdir "$folder_name" 2>/dev/null  # Remove directory if empty
+            return 1 ;;
+    esac
+    
+    # Check if extraction was successful
+    if [ $? -eq 0 ]; then
+        "${redraw[@]}"
+		messages "Success" "Extraction completed successfully!"
+        return 0
+    else
+        rmdir "$folder_name"
+        "${redraw[@]}"
+		messages "Error" "Error: Error during extraction of '$file'"
+        return 1
+    fi
+}
+
 handle_selected_files() {
     local path="$1"
     file=$(clean_path "$path")
-    
-    case "$(file --mime-type -bL "$file")" in
-        */json|*/csv|*/xml|*script*|text/*) 
-            "$EDITOR" "$file" ;;
-        image/*) 
-            feh -Z -x -F -B black "$file" ;;
-        audio/*) 
-            ffplay -i "$file" -hide_banner -nodisp -autoexit ;;
-        video/*) 
-            mpv -fs "$file" ;;
-        *)
-            xdg-open "$file" &>/dev/null &  # Fallback to open with standard app
-            ;;
-    esac
-}
+    local file_ext="${file##*.}"
+    local file_lower="${file_ext,,}"
 
-directory_view() {
-    local file="$1"
-    { [ -f "$CACHE_FZF_DIR/longfilemanager" ] && longfilemanager='-l'; } || longfilemanager=''
-    if command -v exa >/dev/null; then
-        exa -1 "$longfilemanager" --icons --classify \
-        --group-directories-first --colour=always \
-        "$file" 2>/dev/null | sed 's|/$||'
-    else
-        ls -1 "$longfilemanager" --classify \
-        --group-directories-first --color=always \
-        -F "$file" 2>/dev/null | sed 's|/$||'
+    if [[ -e "$file" ]]; then
+        get_mime_type "$file"
+
+        case "$mime_type" in
+            */json|*/csv|*/xml|*script*|text/*) 
+                "${VISUAL:-${EDITOR:-vim}}" "$file"
+                return 0
+                ;;
+            image/*) 
+                feh -Z -x -F -B black "$file" ;;
+        esac
+        case "$file_lower" in
+			mp3|wav|aac|m4a|flac|ogg|oga|opus|wma|alac|aiff|aif|au|snd|amr|ac3|dts|caf|mka|dff|dsf|wv|wvc)
+				ffplay -i "$file" -autoexit
+			;;
+			mp4|m4v|mov|avi|wmv|flv|webm|mkv|mpg|mpeg|3gp|3g2|ogv|asf|rm|rmvb|vob|ts|m2ts|mts|f4v|divx)
+				mpv -fs "$file"
+			;;
+            md|markdown)
+                _books "$file" && return 0
+            ;;
+            pod)
+                _books "$file" && return 0
+            ;;
+            pdf)
+                _books "$file" && return 0
+            ;;
+            png|jpg|jpeg)
+                _books "$file" && return 0
+            ;;
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+                _books "$file" && return 0
+            ;;
+            djvu)
+                _books "$file" && return 0
+            ;;
+            postscript|ps)
+                _books "$file" && return 0
+            ;;
+            dvi)
+                _books "$file" && return 0
+            ;;
+            htm|html|xhtml|xml)
+                _books "$file" && return 0
+            ;;
+            *)
+                nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$1" &>/dev/null &
+                disown
+            ;;
+        esac
     fi
 }
 
@@ -585,49 +2081,8 @@ preview_file() {
         echo "File not found: $file"
         return 1
     fi
-    
-    mime_type=$(file --mime-type -b "$file" 2>/dev/null || echo "application/octet-stream")
-    sixel_size="${PREVIEW_SIXEL_W:-800}x${PREVIEW_SIXEL_H:-600}!"
-    
-    case "$mime_type" in
-        text/*|*/json|*/csv|*/xml|*script*)
-            if command -v bat >/dev/null; then
-                bat --color=always --style=plain --paging=never "$file" 2>/dev/null
-            elif command -v highlight >/dev/null; then
-                highlight -O ansi --force "$file" 2>/dev/null
-            else
-                head -n 100 "$file" 2>/dev/null
-            fi
-            ;;
-        image/*)
-            if command -v magick >/dev/null; then
-                magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" sixel:-
-            elif command -v viu >/dev/null; then
-                viu -t "$file" 2>/dev/null
-            elif command -v chafa >/dev/null; then
-                chafa --format=symbols -s 80x40 "$file" 2>/dev/null
-            else
-                echo "Image: $file"
-                file -b "$file"
-            fi
-            ;;
-        application/pdf)
-            if command -v pdftotext >/dev/null; then
-                pdftotext -l 10 -nopgbrk -q "$file" - 2>/dev/null
-            else
-                echo "PDF: $file"
-                file -b "$file"
-            fi
-            ;;
-        *)
-            if [ -d "$file" ]; then
-                directory_view "$file"
-            else
-                file -b "$file" 2>/dev/null
-                any_file "$file"
-            fi
-            ;;
-    esac
+
+	draw_file_preview "$file" 
 }
 
 fzf_pid() {
@@ -657,18 +2112,21 @@ fzf_binds() {
         "$header"
         --query="$query"
         --bind shift-tab:up
-        --bind 'enter:accept'
         --bind "right:accept"
+        --bind "enter:accept"
         --prompt="$prompt_text"
         --bind 'ctrl-space:jump'
         --preview="$preview_cmd"
         --bind 'left:top+up+accept'
         --bind "ctrl-r,f5:top+accept"
         --bind "f1,?:execute(bash \"$SCRIPT_PATH\" --show-help {})"
+        --bind "ctrl-o:execute(bash \"$SCRIPT_PATH\" --xdg-open {})"
         --preview-window="right:$margin_preview:noborder$hidepreview"
         --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+        --bind "ctrl-v:execute(bash \"$SCRIPT_PATH\" --move-file {})+top+accept"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
-        --bind "ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
+        --bind "ctrl-d:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
+        --bind "alt-e:execute(bash \"$SCRIPT_PATH\" --extract-to-folder {})+top+accept"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-a:toggle+execute-silent(bash \"$SCRIPT_PATH\" --mark-file {})+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
@@ -676,8 +2134,10 @@ fzf_binds() {
 		--bind "ctrl-a:toggle-all+execute-silent(bash \"$SCRIPT_PATH\" --mark-all-toggle)+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
 		--bind "alt-x:select-all+execute-silent(bash \"$SCRIPT_PATH\" --mark-all-only)+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
         --bind "alt-h:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/showhidden\" ] && touch \"$CACHE_FZF_DIR/showhidden\"; } || rm -f \"$CACHE_FZF_DIR/showhidden\")+top+accept"
+        --bind "alt-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/list_files\" ] && touch \"$CACHE_FZF_DIR/list_files\"; } || rm -f \"$CACHE_FZF_DIR/list_files\")+top+accept"
         --bind "alt-l:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/longfilemanager\" ] && touch \"$CACHE_FZF_DIR/longfilemanager\"; } || rm -f \"$CACHE_FZF_DIR/longfilemanager\")+top+accept"
         --bind "ctrl-p:toggle-preview+execute-silent({ [ ! -f \"$CACHE_FZF_DIR/hidepreview\" ] && touch \"$CACHE_FZF_DIR/hidepreview\"; } || rm -f \"$CACHE_FZF_DIR/hidepreview\")+top+accept"
+        --bind "alt-r:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/reverse_directory\" ] && touch \"$CACHE_FZF_DIR/reverse_directory\"; } || rm -f \"$CACHE_FZF_DIR/reverse_directory\")+top+accept"
         --bind "ctrl-l:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -gt 20 ]; then new=\$((current - 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
         --bind "ctrl-h:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -lt 150 ]; then new=\$((current + 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
     )
@@ -698,6 +2158,7 @@ fzf_binds() {
 }
 
 main() {
+	setup_config
     # Starts in the initial directory
     builtin cd "$initial_dir" || exit 1
     
@@ -747,6 +2208,10 @@ case "$1" in
 	--mark-all-toggle)
     	mark_all_toggle
     	;;
+    --xdg-open)
+        shift
+        xdg_open "$1"
+        ;;
     --preview-file)
         shift
         preview_file "$1"
@@ -755,9 +2220,17 @@ case "$1" in
         shift
         safe_ls "$PWD"
         ;;
+    --extract-to-folder)
+        shift
+        extract_to_folder "$1"
+        ;;
     --delete-file)
         shift
         delete_file "$1"
+        ;;
+    --move-file)
+        shift
+        move_file "$1"
         ;;
     --copy-file)
         shift
