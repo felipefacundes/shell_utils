@@ -34,7 +34,8 @@ MARGIN_PREVIEW="${CACHE_FZF_DIR}/margin_preview"
 [[ ! -d "$TMP_FZF_DIR" ]] && mkdir -p "$TMP_FZF_DIR"
 [[ ! -d "$CACHE_FZF_DIR" ]] && mkdir -p "$CACHE_FZF_DIR"
 [[ ! -d "$CONFIG_FZF_DIR" ]] && mkdir -p "$CONFIG_FZF_DIR"
-[[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
+[[ -n "$TERMUX_VERSION" ]] && [[ ! -f "$MARGIN_PREVIEW" ]] && echo 30 | tee "$MARGIN_PREVIEW" >/dev/null
+[[ -z "$TERMUX_VERSION" ]] && [[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
 exec 2>"${TMPDIR}/${SCRIPT%.*}-debug.log"
 MARKED_FILES_FILE="${TMP_FZF_DIR}/marked_files"
 touch "$MARKED_FILES_FILE"
@@ -127,7 +128,7 @@ dialog_help() {
 }
 
 setup_config() {
-    local config_file="$CONFIG_PATH/fzffm.conf"
+    local config_file="$CONFIG_FZF_DIR/fzffm.conf"
     
     # If config file already exists, source it
     if [[ -f "$config_file" ]]; then

@@ -29,10 +29,13 @@ SCRIPT="${0##*/}"
 TMPDIR="${TMPDIR:-/tmp}"
 TMP_FZF_DIR="${TMPDIR}/${SCRIPT%.*}"
 CACHE_FZF_DIR="${XDG_CACHE_HOME:=${HOME}/.cache}/${SCRIPT%.*}"
+CONFIG_FZF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/${SCRIPT%.*}"
 MARGIN_PREVIEW="${CACHE_FZF_DIR}/margin_preview"
 [[ ! -d "$TMP_FZF_DIR" ]] && mkdir -p "$TMP_FZF_DIR"
 [[ ! -d "$CACHE_FZF_DIR" ]] && mkdir -p "$CACHE_FZF_DIR"
-[[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
+[[ ! -d "$CONFIG_FZF_DIR" ]] && mkdir -p "$CONFIG_FZF_DIR"
+[[ -n "$TERMUX_VERSION" ]] && [[ ! -f "$MARGIN_PREVIEW" ]] && echo 30 | tee "$MARGIN_PREVIEW" >/dev/null
+[[ -z "$TERMUX_VERSION" ]] && [[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
 exec 2>"${TMPDIR}/${SCRIPT%.*}-debug.log"
 MARK_LOG="${TMP_FZF_DIR}/mark.log"
 touch "$MARK_LOG"  
@@ -134,7 +137,7 @@ dialog_help() {
 }
 
 setup_config() {
-    local config_file="$CONFIG_PATH/preview.conf"
+    local config_file="$CONFIG_FZF_DIR/fzf_fm.conf"
     
     # If config file already exists, source it
     if [[ -f "$config_file" ]]; then
