@@ -1792,6 +1792,115 @@ copy_file() {
     fi
 }
 
+create_symlink() {
+    local path="$1"
+	file="$(clean_path "$path")"
+
+    symlink_for_marked() {
+        [[ ${#marked_files[@]} -le 0 ]] &&
+        messages "Warn" "warn: no files were marked" && return
+        # Verifica se algum arquivo já existe no destino
+        local existing_files=""
+        for file in "${marked_files[@]}"; do
+            local basename="${file##*/}"
+            if [[ -e "$PWD/$basename" ]]; then
+                existing_files="$existing_files $basename"
+            fi
+        done
+
+        if [[ -n "$existing_files" ]]; then
+            cmd_reply=$({ whiptail --yesno --scrolltext "Already exist in $PWD. Overwrite? (y/N):\n\nSome files:\n\n($existing_files)" "$message_height" "$message_width" --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
+            if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                # Remove os arquivos/diretórios existentes antes de criar os symlinks
+                for file in "${marked_files[@]}"; do
+                    rm -rf "${PWD}/${file##*/}" 2>/dev/null
+                done
+                # Cria os symlinks
+                if ln -s "${marked_files[@]}" "$PWD" >&2; then
+                    generate_mark_file
+                    "${redraw[@]}"
+                    messages "Success" "Symlinks created successfully!"
+                else
+                    generate_mark_file
+                    "${redraw[@]}"
+                    messages "Warn" "Failed to create symlinks."
+                fi
+            else
+                messages "Canceled" "Symlink creation canceled."
+            fi
+        else
+            # Cria os symlinks sem necessidade de sobrescrever
+            if ln -s "${marked_files[@]}" "$PWD" >&2; then
+                generate_mark_file
+                "${redraw[@]}"
+                messages "Success" "Symlinks created successfully!"
+            else
+                generate_mark_file
+                "${redraw[@]}"
+                messages "Warn" "Failed to create symlinks."
+            fi
+        fi
+    }
+    # Verifica se nenhum arquivo/diretório está selecionado e se não há arquivos marcados
+	[[ "${file}" =~ ^"" ]] && 
+        symlink_for_marked && return
+    [[ ! -w "$PWD" ]] && 
+        messages "Warn" "No write permission in the current directory ($PWD)." && 
+        return
+	[[ ! -e "${file}" ]] && [[ ${#marked_files[@]} -le 0 ]] &&
+        messages "Warn" "No file or directory has been selected!" &&
+        return
+    if [[ ${#marked_files[@]} -le 0 ]]; then
+        # Gera um nome sugerido para o symlink com sufixo _link
+        local filename="${file##*/}"
+        local basename="${filename%.*}"
+        local extension="${filename##*.}"
+        
+        # Lida com arquivos sem extensão
+        if [[ "$basename" == "$extension" ]]; then
+            suggested_name="${basename}_link"
+        else
+            suggested_name="${basename}_link.${extension}"
+        fi
+        
+        # Solicita ao usuário o nome do symlink
+        cmd_reply=$(whiptail --title "Create symlink" --inputbox "create symlink for ${filename} to: " 10 60 "$suggested_name" 3>&1 1>&2 2>&3 >/dev/tty)
+        
+        [[ "$cmd_reply" ]] &&
+            if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                cmd_reply=$({ whiptail --yesno "warn: '${cmd_reply}' already exists. Overwrite? (y/N): " "$message_height" "$message_width" --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
+                
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    # Remove o arquivo/diretório existente antes de criar o symlink
+                    rm -rf "${PWD}/${cmd_reply}" 2>/dev/null
+                    if ln -s "${file}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        "${redraw[@]}"
+                        messages "Success" "Symlink created successfully!"
+                    else
+                        messages "Warn" "warn: Failed to create symlink."
+                    fi
+                fi
+            elif [[ -r "${file}" ]]; then
+                if ln -s "${file}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                    "${redraw[@]}"
+                    messages "Success" "Symlink created successfully!"
+                else
+                    messages "Warn" "warn: Failed to create symlink."
+                fi
+            else
+                messages "Warn" "warn: Cannot read the file/directory."
+            fi
+    # Cria symlinks para arquivos marcados no diretório atual
+    else
+        # Verifica permissão de escrita no diretório atual
+        if [[ ! -w "$PWD" ]]; then
+            return
+        else
+           symlink_for_marked
+        fi
+    fi
+}
+
 move_file() {
     local path="$1"
 	file="$(clean_path "$path")"
@@ -1839,13 +1948,13 @@ move_file() {
     }
 
 	[[ "${file}" =~ ^"" ]] && 
-        move_marked && return
-    [[ ! -w "$PWD" ]] && 
-        messages "Warn" "No write permission in the current directory ($PWD)." && 
-        return
+		move_marked && return
+	[[ ! -w "$PWD" ]] && 
+		messages "Warn" "No write permission in the current directory ($PWD)." && 
+		return
 	[[ ! -e "${file}" ]] && [[ ${#marked_files[@]} -le 0 ]] &&
-        messages "Warn" "No file or directory has been selected!" &&
-        return
+		messages "Warn" "No file or directory has been selected!" &&
+		return
     if [[ ${#marked_files[@]} -le 0 ]]; then
         # Generate suggested name for the move (with _move suffix)
         local filename="${file##*/}"
@@ -2127,6 +2236,7 @@ fzf_binds() {
         --bind "ctrl-v:execute(bash \"$SCRIPT_PATH\" --move-file {})+top+accept"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
         --bind "ctrl-d:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
+        --bind "ctrl-s:execute(bash \"$SCRIPT_PATH\" --create-symlink {})+top+accept"
         --bind "alt-e:execute(bash \"$SCRIPT_PATH\" --extract-to-folder {})+top+accept"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-a:toggle+execute-silent(bash \"$SCRIPT_PATH\" --mark-file {})+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
@@ -2236,6 +2346,10 @@ case "$1" in
     --copy-file)
         shift
         copy_file "$1"
+        ;;
+    --create-symlink)
+        shift
+        create_symlink "$1"
         ;;
     --mark-file)
         shift
