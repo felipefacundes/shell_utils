@@ -18,7 +18,7 @@ clear
 
 # Check and change to directory if provided
 if test -n "$1" && test -d "$1"; then
-    initial_dir=$(realpath "$1")
+    initial_dir="$(realpath "$1")"
 else
     initial_dir="$PWD"
 fi
@@ -36,7 +36,7 @@ MARGIN_PREVIEW="${CACHE_FZF_DIR}/margin_preview"
 [[ ! -d "$CONFIG_FZF_DIR" ]] && mkdir -p "$CONFIG_FZF_DIR"
 [[ -n "$TERMUX_VERSION" ]] && [[ ! -f "$MARGIN_PREVIEW" ]] && echo 30 | tee "$MARGIN_PREVIEW" >/dev/null
 [[ -z "$TERMUX_VERSION" ]] && [[ ! -f "$MARGIN_PREVIEW" ]] && echo 150 | tee "$MARGIN_PREVIEW" >/dev/null
-exec 2>"${TMPDIR}/${SCRIPT%.*}-debug.log"
+exec 2>"${TMP_FZF_DIR}/${SCRIPT%.*}-debug.log"
 MARKED_FILES_FILE="${TMP_FZF_DIR}/marked_files"
 touch "$MARKED_FILES_FILE"
 
@@ -125,7 +125,7 @@ Preview Features:
 Configuration:
   - Preview margin:     Persisted in $MARGIN_PREVIEW
   - UI Preferences:     Stored in $CACHE_FZF_DIR (recursive, hidden files, cycle)
-  - Debug logs:         Written to ${TMPDIR}/${SCRIPT%.*}-debug.log
+  - Debug logs:         Written to ${TMP_FZF_DIR}/${SCRIPT%.*}-debug.log
   - Marked files:       Persisted in $MARKED_FILES_FILE
 
 New Features:
@@ -2072,8 +2072,60 @@ move_file() {
     fi
 }
 
-extract_to_folder() {
+copy_to_clipboard() {
+    [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && [[ -z "$TERMUX_VERSION" ]] && ! type -p wl-copy >/dev/null && messages "Error" "Error: Install wl-clipboard." && return 1
+    [[ -z "$TERMUX_VERSION" ]] && ! type -p xclip >/dev/null && messages "Error" "Error: Install xclip." && return 1
+    [[ -n "$TERMUX_VERSION" ]] && ! type -p termux-clipboard-set >/dev/null && messages "Error" "Error: Install termux-api." && return 1
     local path="$1"
+	file="$(clean_path "$path" | sed 's|^\./||g')"
+	file="$(realpath "$file")"
+    local file_base="${file##*/}"
+    local file_ext="${file_base##*.}"
+    local ext_lower="${file_ext,,}"
+
+    if [ ! -f "$1" ]; then
+        messages "Error" "Error: File '${file_base}' does not exist."
+        return 1
+    fi
+
+    local file_size=$(ls -l "$1" | awk '{print $5}')
+    local max_size=$((10 * 1024 * 1024))
+    get_mime_type "$file"
+
+    if [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/jpg -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        messages "Success"  "File:\n\n'${file_base}'\n\nCopied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/png -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        messages "Success"  "File:\n\n'${file_base}'\n\nCopied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(bmp)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/bmp -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        messages "Success"  "File:\n\n'${file_base}'\n\nCopied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(ico)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/ico -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        messages "Success"  "File:\n\n'${file_base}'\n\nCopied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/gif -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        messages "Success"  "File:\n\n'${file_base}'\n\nCopied to clipboard successfully."
+    elif [ "$file_size" -le "$max_size" ] && 
+        [[ "$mime_type" == *"text"* || "$mime_type" =~ (text|xml|python|css|htm|html|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        [[ -z "$TERMUX_VERSION" ]] && [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard
+        [[ -z "$TERMUX_VERSION" ]] && [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        [[ -n "$TERMUX_VERSION" ]] && cat "$file" | termux-clipboard-set
+        messages "Success"  "File:\n\n'${file_base}'\n\nCopied to clipboard successfully."
+    else
+        messages "Error" "Error: File:\n\n'${file_base}'\n\nIs too large (>10 MB) or has an unsupported format and cannot be copied to the clipboard."
+    fi
+
+}
+
+extract_to_folder() {
+	local path="$1"
 	file="$(clean_path "$path" | sed 's|^\./||g')"
     
     # Check if the file exists
@@ -2308,6 +2360,7 @@ fzf_binds() {
         --bind "ctrl-s:execute(bash \"$SCRIPT_PATH\" --create-symlink {})+top+accept"
         --bind "ctrl-n:execute(bash \"$SCRIPT_PATH\" --create-directory {})+top+accept"
         --bind "alt-e:execute(bash \"$SCRIPT_PATH\" --extract-to-folder {})+top+accept"
+        --bind "ctrl-z:execute(bash \"$SCRIPT_PATH\" --copy-to-clipboad {})+top+accept"
         --bind "ctrl-d,ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-a:toggle+execute-silent(bash \"$SCRIPT_PATH\" --mark-file {})+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
@@ -2407,6 +2460,10 @@ case "$1" in
     --list-files)
         shift
         safe_ls "$PWD"
+        ;;
+    --copy-to-clipboad)
+        shift
+        copy_to_clipboard "$1"
         ;;
     --extract-to-folder)
         shift
