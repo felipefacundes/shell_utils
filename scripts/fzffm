@@ -1217,10 +1217,10 @@ directory_view() {
 		"$list_files" "$longfilemanager" --classify
         --group-directories-first --color=always
 	)
-    if command -v eza >/dev/null; then
+    if [[ -z "$TERMUX_VERSION" ]] && command -v eza >/dev/null; then
 		eza "${ls_args[@]}" --icons \
         "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
-    elif command -v exa >/dev/null; then
+    elif [[ -z "$TERMUX_VERSION" ]] && command -v exa >/dev/null; then
 		exa "${ls_args[@]}" --icons \
         "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
     else
