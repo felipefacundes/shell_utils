@@ -54,6 +54,11 @@ else
     touch "$MARKED_FILES_FILE"
 fi
 
+clean_path() {
+    local path="$1"
+    echo "$path" | awk '{gsub(/^[[:space:]]+|[[:space:]]+$/, ""); gsub(/^'\''|'\''$/, ""); gsub(/'\''/, ""); gsub(/\\+/, ""); print}'
+}
+
 sync_marked_files() {
     { [ ${#marked_files[@]} -gt 0 ] && printf "%s\n" "${marked_files[@]}" > "$MARKED_FILES_FILE"; } || 
 	{ [[ -f "$MARKED_FILES_FILE" ]] && rm -f "$MARKED_FILES_FILE"; }
@@ -1405,11 +1410,6 @@ draw_file_preview() {
 }
 
 ########################## FZF FILE MANAGER
-clean_path() {
-    local path="$1"
-    echo "$path" | awk '{gsub(/^[[:space:]]+|[[:space:]]+$/, ""); gsub(/^'\''|'\''$/, ""); gsub(/'\''/, ""); gsub(/\\+/, ""); print}'
-}
-
 f_header_text() {
 	find_status=$([ -f "$CACHE_FZF_DIR/find" ] && echo "on" || echo "off")
 	cycle_status=$([ -f "$CACHE_FZF_DIR/cycle" ] && echo "on" || echo "off")
@@ -1443,7 +1443,8 @@ f_header_text() {
 }
 
 mark() {
-    local file="$1"
+    local path="$1"
+	file="$(clean_path "$path")"
     # Get the absolute path of the file
     local real_path
     real_path=$(realpath "$file" 2>/dev/null) || return 1
@@ -1451,6 +1452,7 @@ mark() {
     # Check if file is already marked
     local found=0
     for i in "${!marked_files[@]}"; do
+		[[ -h "${marked_files[i]}" ]] && real_path="${PWD}/${file}"
         if [[ "${marked_files[i]}" == "$real_path" ]]; then
             # Remove from array
             unset 'marked_files[i]'
@@ -1461,11 +1463,33 @@ mark() {
 
     if [[ $found -eq 0 ]]; then
         # Add to array
-        marked_files+=("$real_path")
+		[[ -h "$file" ]] && real_path="${PWD}/${file}"
+		marked_files+=("$real_path")
     fi
 
     # Sync with file
     sync_marked_files
+}
+
+real_file() {
+	local file="$1"
+	file="$(clean_path "$file" | sed 's|^\./||g' )"
+	[[ -h "${file}" ]] && new_file=("${PWD}/${file}")
+	[[ ! -h "${file}" ]] && new_file=("$(realpath "$file")")
+	[[ -e "$file" ]] && all_files+=("$new_file")
+}
+
+mark_all_files() {
+    all_files=()
+    if [[ -f "$CACHE_FZF_DIR/showhidden" ]]; then
+        while IFS= read -r -d $'\0' file; do
+			real_file "$file"
+        done < <(find . -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
+    else
+        while IFS= read -r -d $'\0' file; do
+			real_file "$file"
+        done < <(find . -mindepth 1 -maxdepth 1 -not -name '.*' -print0 2>/dev/null)
+    fi
 }
 
 mark_all_only() {
@@ -1473,18 +1497,7 @@ mark_all_only() {
     marked_files=()
     
     # Get all visible files/directories (except. E ..)
-    local all_files=()
-    if [[ -f "$CACHE_FZF_DIR/showhidden" ]]; then
-        # Includes hidden files
-        while IFS= read -r -d $'\0' file; do
-            [[ -e "$file" ]] && all_files+=("$(realpath "$file")")
-        done < <(find . -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
-    else
-        # Delete Hidden Files
-        while IFS= read -r -d $'\0' file; do
-            [[ -e "$file" ]] && all_files+=("$(realpath "$file")")
-        done < <(find . -mindepth 1 -maxdepth 1 -not -name '.*' -print0 2>/dev/null)
-    fi
+    mark_all_files
     
     # Add only valid files/directories to the marked_files array
     for file in "${all_files[@]}"; do
@@ -1499,16 +1512,7 @@ mark_all_only() {
 
 mark_all_toggle() {
     # Get all visible files in current directory
-    local all_files=()
-    if [[ -f "$CACHE_FZF_DIR/showhidden" ]]; then
-        while IFS= read -r -d $'\0' file; do
-            [[ -e "$file" ]] && all_files+=("$(realpath "$file")")
-        done < <(find . -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
-    else
-        while IFS= read -r -d $'\0' file; do
-            [[ -e "$file" ]] && all_files+=("$(realpath "$file")")
-        done < <(find . -mindepth 1 -maxdepth 1 -not -name '.*' -print0 2>/dev/null)
-    fi
+	mark_all_files
 
     # Invert the selection
     local new_marked_files=()
@@ -2235,9 +2239,9 @@ fzf_binds() {
         --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
         --bind "ctrl-v:execute(bash \"$SCRIPT_PATH\" --move-file {})+top+accept"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
-        --bind "ctrl-d:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
         --bind "ctrl-s:execute(bash \"$SCRIPT_PATH\" --create-symlink {})+top+accept"
         --bind "alt-e:execute(bash \"$SCRIPT_PATH\" --extract-to-folder {})+top+accept"
+        --bind "ctrl-d,ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-a:toggle+execute-silent(bash \"$SCRIPT_PATH\" --mark-file {})+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
