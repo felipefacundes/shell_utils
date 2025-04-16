@@ -93,6 +93,10 @@ View Modes:
   Ctrl-r/F5             - Refresh current view
   Alt-h                 - Toggle hidden files visibility
   Alt-c                 - Toggle cyclic scrolling
+  Alt-z                 - Toggle header visibility
+  Alt-l                 - Toggle long listing format
+  Alt-f                 - Toggle folder listing mode
+  Alt-r                 - Reverse directory order
 
 Search Modes:
   Ctrl-f                - Toggle recursive search
@@ -100,13 +104,20 @@ Search Modes:
 
 File Operations:
   Alt-a                 - Toggle mark/unmark selected file (multi-select)
-  Ctrl-e                - Delete selected or marked files
+  Ctrl-a                - Toggle mark all files
+  Alt-x                 - Mark all files in current directory
+  Ctrl-e/Ctrl-d         - Delete selected or marked files
+  Ctrl-v                - Move selected or marked files
+  Ctrl-y                - Copy selected or marked files
+  Ctrl-s                - Create symlink for selected/marked files
+  Alt-e                 - Extract archive to folder
   Right/Enter           - Open file with appropriate handler
+  Ctrl-o                - Open file with xdg-open
 
 Preview Features:
   - Text files:         Syntax highlighting (bat/highlight/fallback to head)
   - Images:             Thumbnail preview (magick/viu/chafa/fallback to file info)
-  - PDFs:              Text extraction (pdftotext/fallback to file info)
+  - PDFs:               Text extraction (pdftotext/fallback to file info)
   - Directories:        List contents (exa/ls)
   - Other files:        File type information and strings extraction
   - Adjustable margin:  Dynamic resizing (20-150) with Ctrl-h/Ctrl-l
@@ -119,7 +130,9 @@ Configuration:
 
 New Features:
   - Native multi-select using fzf's --multi and toggle functionality
-  - Simplified marking system without visual indicators ([<])
+  - Simplified marking system with toggle-all support (Ctrl-a)
+  - Bulk operations for marked files (move, copy, delete, symlink)
+  - Archive extraction to folder (Alt-e)
   - More efficient file selection handling
   - Version $VERSION
 EOF
