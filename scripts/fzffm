@@ -104,15 +104,17 @@ Search Modes:
 
 File Operations:
   Alt-a                 - Toggle mark/unmark selected file (multi-select)
-  Ctrl-a                - Toggle mark all files
+  Ctrl-a                - Toggle mark all files (select/deselect all)
   Alt-x                 - Mark all files in current directory
   Ctrl-e/Ctrl-d         - Delete selected or marked files
   Ctrl-v                - Move selected or marked files
   Ctrl-y                - Copy selected or marked files
   Ctrl-s                - Create symlink for selected/marked files
   Alt-e                 - Extract archive to folder
-  Right/Enter           - Open file with appropriate handler
-  Ctrl-o                - Open file with xdg-open
+  Ctrl-o                - Open file with default handler
+  Ctrl-z                - Copy file to clipboard (images/text)
+  Alt-n                 - Create new file
+  Ctrl-n                - Create new directory
 
 Preview Features:
   - Text files:         Syntax highlighting (bat/highlight/fallback to head)
@@ -133,6 +135,8 @@ New Features:
   - Simplified marking system with toggle-all support (Ctrl-a)
   - Bulk operations for marked files (move, copy, delete, symlink)
   - Archive extraction to folder (Alt-e)
+  - File/directory creation shortcuts (Alt-n/Ctrl-n)
+  - Clipboard support for images and text (Ctrl-z)
   - More efficient file selection handling
   - Version $VERSION
 EOF
@@ -2366,8 +2370,8 @@ fzf_binds() {
         --bind "alt-a:toggle+execute-silent(bash \"$SCRIPT_PATH\" --mark-file {})+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
         --bind "alt-z:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/header\" ] && touch \"$CACHE_FZF_DIR/header\"; } || rm -f \"$CACHE_FZF_DIR/header\")+top+accept"
-		--bind "ctrl-a:toggle-all+execute-silent(bash \"$SCRIPT_PATH\" --mark-all-toggle)+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
 		--bind "alt-x:select-all+execute-silent(bash \"$SCRIPT_PATH\" --mark-all-only)+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
+		--bind "ctrl-a:toggle-all+execute-silent(bash \"$SCRIPT_PATH\" --mark-all-toggle)+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
         --bind "alt-h:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/showhidden\" ] && touch \"$CACHE_FZF_DIR/showhidden\"; } || rm -f \"$CACHE_FZF_DIR/showhidden\")+top+accept"
         --bind "alt-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/list_files\" ] && touch \"$CACHE_FZF_DIR/list_files\"; } || rm -f \"$CACHE_FZF_DIR/list_files\")+top+accept"
         --bind "alt-l:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/longfilemanager\" ] && touch \"$CACHE_FZF_DIR/longfilemanager\"; } || rm -f \"$CACHE_FZF_DIR/longfilemanager\")+top+accept"
