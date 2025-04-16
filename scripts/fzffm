@@ -679,7 +679,7 @@ any_file() {
 
 xdg_open() {
 	local path="$1"
-    file=$(clean_path "$path")
+    file=$(clean_path "$path" | sed 's|^\./||g')
     nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$file" &>/dev/null &
     disown
 }
@@ -1244,7 +1244,7 @@ directory_view() {
 
 draw_file_preview() {
 	local path="$1"
-    file=$(clean_path "$path")
+    file=$(clean_path "$path" | sed 's|^\./||g')
 
     [[ -z "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-50}"
     [[ -n "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-20}"
@@ -1457,7 +1457,7 @@ f_header_text() {
 
 mark() {
     local path="$1"
-	file="$(clean_path "$path")"
+	file="$(clean_path "$path" | sed 's|^\./||g')"
     # Get the absolute path of the file
     local real_path
     real_path=$(realpath "$file" 2>/dev/null) || return 1
@@ -1485,8 +1485,8 @@ mark() {
 }
 
 real_file() {
-	local file="$1"
-	file="$(clean_path "$file" | sed 's|^\./||g' )"
+	local path="$1"
+	file="$(clean_path "$path" | sed 's|^\./||g' )"
 	[[ -h "${file}" ]] && new_file=("${PWD}/${file}")
 	[[ ! -h "${file}" ]] && new_file=("$(realpath "$file")")
 	[[ -e "$file" ]] && all_files+=("$new_file")
@@ -1629,9 +1629,17 @@ safe_ls() {
     fi
 }
 
+delete() {
+	local file="$1"
+	[[ -w "$file" ]] && [[ -h "$file" ]] && rm -f "$file" 2>/dev/null && return 0
+	[[ -w "$file" ]] && [[ -e "$file" ]] && rm -f "$file" 2>/dev/null && return 0
+	[[ -w "$file" ]] && [[ -e "$file" ]] && rm -rf "$file" 2>/dev/null && return 0
+	{ { rm -f "$file" 2>/dev/null && return 0; } || { rm -rf "$file" 2>/dev/null && return 0; }; } || return 1
+}
+
 delete_file() {
 	local path="$1"
-	file="$(clean_path "$path")"
+	file="$(clean_path "$path" | sed 's|^\./||g')"
 
 	delete_marked() {
 		[[ ${#marked_files[@]} -le 0 ]] && messages "Warn" "warn: no files were marked" && return
@@ -1648,7 +1656,7 @@ delete_file() {
 			local failed=false
 			for file in "${marked_files[@]}"; do
 				if [[ -w "$file" ]]; then
-					if ! rm -rf "$file" 2>/dev/null; then
+					if ! delete "$file" 2>/dev/null; then
 						failed=true
 					fi
 				else
@@ -1663,7 +1671,7 @@ delete_file() {
 				messages "Success" "Files deleted successfully!"
 			else
 				generate_mark_file
-				[[ -f "$MARKED_FILES_FILE" ]] && rm -f "$MARKED_FILES_FILE" && touch "$MARKED_FILES_FILE"
+				[[ -f "$MARKED_FILES_FILE" ]] && delete "$MARKED_FILES_FILE" && touch "$MARKED_FILES_FILE"
 				"${redraw[@]}"
 				messages "Warn" "warn: some deletions failed."
 			fi
@@ -1685,7 +1693,7 @@ delete_file() {
 
         if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
             if [[ -w "${file}" ]]; then
-                if rm -rf "${file}" 2>/dev/null; then
+                if delete "${file}" 2>/dev/null; then
                     "${redraw[@]}"
 					messages "Success" "File: \"$filename\" deleted successfully!"
                 else
@@ -1708,9 +1716,53 @@ delete_file() {
     fi
 }
 
+create_directory() {
+	[[ ! -w "$PWD" ]] &&
+		messages "Warn" "No write permission in the current directory ($PWD)." && return 1
+	cmd_reply=$(whiptail --title "New folder" --inputbox "New folder name: " 10 60 3>&1 1>&2 2>&3 >/dev/tty)
+	file="$(clean_path "$cmd_reply" | sed 's|^\./||g')"
+
+	[[ "$cmd_reply" ]] &&
+	if [[ -e "${PWD}/${file}" ]]; then
+		messages "Error" "Error: The '${file##*/}' directory exists"
+		return 1
+	elif mkdir -p "${file}"; then
+		"${redraw[@]}"
+		messages "Success" "Directory created successfully!"
+		return 0
+	else
+		messages "Warn" "warn: Failed to create directory." 
+	fi
+}
+
+create_file() {
+	[[ ! -w "$PWD" ]] &&
+		messages "Warn" "No write permission in the current directory ($PWD)." && return 1
+	cmd_reply=$(whiptail --title "New file" --inputbox "New file name: " 10 60 3>&1 1>&2 2>&3 >/dev/tty)
+	file="$(clean_path "$cmd_reply" | sed 's|^\./||g')"
+	local create_file=false
+
+	[[ "$cmd_reply" ]] &&
+	if [[ -e "${PWD}/${file}" ]]; then
+		messages "Error" "Error: The '${file##*/}' directory exists"
+		return 1
+	elif touch "${file}"; then
+		"${redraw[@]}"
+		messages "Success" "File created successfully!" && create_file=true
+	else
+		messages "Warn" "warn: Failed to create file." 
+	fi
+
+	if [[ "$create_file" == true ]]; then
+		cmd_reply=$({ whiptail --yesno "Do you want to edit the file: '${file}'?" "$message_height" "$message_width" --yes-button "Yes" --no-button "No" >/dev/null 2>&1 >/dev/tty && echo "y"; } || echo "n")
+		[[ "$cmd_reply" =~ ^[Yy]$ ]] && "${VISUAL:-${EDITOR:-vim}}" "$file" && return 0
+		return
+	fi
+}
+
 copy_file() {
     local path="$1"
-	file="$(clean_path "$path")"
+	file="$(clean_path "$path" | sed 's|^\./||g')"
 
     copy_marked() {
         [[ ${#marked_files[@]} -le 0 ]] &&
@@ -1811,7 +1863,7 @@ copy_file() {
 
 create_symlink() {
     local path="$1"
-	file="$(clean_path "$path")"
+	file="$(clean_path "$path" | sed 's|^\./||g')"
 
     symlink_for_marked() {
         [[ ${#marked_files[@]} -le 0 ]] &&
@@ -1920,7 +1972,7 @@ create_symlink() {
 
 move_file() {
     local path="$1"
-	file="$(clean_path "$path")"
+	file="$(clean_path "$path" | sed 's|^\./||g')"
 
     move_marked() {
         [[ ${#marked_files[@]} -le 0 ]] &&
@@ -2022,7 +2074,7 @@ move_file() {
 
 extract_to_folder() {
     local path="$1"
-	file="$(clean_path "$path")"
+	file="$(clean_path "$path" | sed 's|^\./||g')"
     
     # Check if the file exists
     if [ ! -f "$file" ]; then
@@ -2054,7 +2106,7 @@ extract_to_folder() {
         return 0
     }
 
-    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extracting '$file' to '$folder_name'..."
+    printf '\e7\e[%sH\e[K%s\e8' 1000 "Extracting '$file' to '$folder_name'..." && sleep 1
     
     case "$file_lower" in
         *.tar.bz2|*.tbz2)
@@ -2137,7 +2189,7 @@ extract_to_folder() {
 
 handle_selected_files() {
     local path="$1"
-    file=$(clean_path "$path")
+    file=$(clean_path "$path" | sed 's|^\./||g')
     local file_ext="${file##*.}"
     local file_lower="${file_ext,,}"
 
@@ -2196,7 +2248,7 @@ handle_selected_files() {
 
 preview_file() {
     local path="$1"
-    file=$(clean_path "$path")
+    file=$(clean_path "$path" | sed 's|^\./||g')
 
     if [[ "$file" == " .." ]]; then
         directory_view ".."
@@ -2222,7 +2274,7 @@ fzf_pid() {
 fzf_binds() {
     local path="$1"
     prompt_text="Search 🔍: "
-    path=$(clean_path "$path")
+    path=$(clean_path "$path" | sed 's|^\./||g')
     header_text=$(f_header_text)
     margin_preview=$(cat "$MARGIN_PREVIEW")
     query=$(cat "$TMP_FZF_DIR/query" || echo "")
@@ -2252,7 +2304,9 @@ fzf_binds() {
         --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
         --bind "ctrl-v:execute(bash \"$SCRIPT_PATH\" --move-file {})+top+accept"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
+        --bind "alt-n:execute(bash \"$SCRIPT_PATH\" --create-file {})+top+accept"
         --bind "ctrl-s:execute(bash \"$SCRIPT_PATH\" --create-symlink {})+top+accept"
+        --bind "ctrl-n:execute(bash \"$SCRIPT_PATH\" --create-directory {})+top+accept"
         --bind "alt-e:execute(bash \"$SCRIPT_PATH\" --extract-to-folder {})+top+accept"
         --bind "ctrl-d,ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
@@ -2274,7 +2328,7 @@ fzf_binds() {
     fzf_pid "${fzf_args[@]}" \
         --expect=enter,right 2>&1)"
 
-    selected=$(clean_path "$select")
+    selected=$(clean_path "$select" | sed 's|^\./||g')
 
     if [ -f "$TMP_FZF_DIR/signal" ]; then
         fzf_error=$(cat "$TMP_FZF_DIR/signal")
@@ -2300,7 +2354,7 @@ main() {
         # Determines the action based on the pressed key
         key="$(head -1 <<< "$selected")"
         selected="$(tail -n +2 <<< "$selected")"
-        selected=$(clean_path "$selected")
+        selected=$(clean_path "$selected" | sed 's|^\./||g')
         
         # Selection processing
         if [ -d "$selected" ]; then
@@ -2336,6 +2390,12 @@ case "$1" in
 	--mark-all-toggle)
     	mark_all_toggle
     	;;
+	--create-directory)
+		create_directory
+		;;
+	--create-file)
+		create_file
+		;;
     --xdg-open)
         shift
         xdg_open "$1"
