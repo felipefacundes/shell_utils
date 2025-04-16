@@ -95,11 +95,12 @@ View Modes:
   Alt-c                 - Toggle cyclic scrolling
   Alt-z                 - Toggle header visibility
   Alt-l                 - Toggle long listing format
-  Alt-f                 - Toggle folder listing mode
+  Alt-\                 - Toggle folder listing mode
   Alt-r                 - Reverse directory order
 
 Search Modes:
   Ctrl-f                - Toggle recursive search
+  Alt-f                 - Toggle limited search
   Type text             - Search/filter items
 
 File Operations:
@@ -1430,6 +1431,7 @@ draw_file_preview() {
 f_header_text() {
 	find_status=$([ -f "$CACHE_FZF_DIR/find" ] && echo "on" || echo "off")
 	cycle_status=$([ -f "$CACHE_FZF_DIR/cycle" ] && echo "on" || echo "off")
+	find_limited=$([ -f "$CACHE_FZF_DIR/find_limited" ] && echo "on" || echo "off")
 	preview_status=$([ ! -f "$CACHE_FZF_DIR/hidepreview" ] && echo "on" || echo "off")
 
 	# Builds header_text with marked Files
@@ -1453,6 +1455,7 @@ f_header_text() {
 	cat <<-EOF | echo -e "$(cat)"
 	╭─ STATUS ────────────────────────╮
 	 ? for help |
+	 Limited Search:$find_limited
 	 Preview:$preview_status | Cycle:$cycle_status | 🔍:$find_status
 	 $marked_files_status
 	╰─────────────────────────────────╯
@@ -1619,7 +1622,7 @@ safe_find_dirs() {
 safe_ls() {
     if [[ -f "$CACHE_FZF_DIR/find" ]]; then
         print_filemanager_header "$1"
-        safe_find_dirs
+        { [[ -f "$CACHE_FZF_DIR/find_limited" ]] && safe_find_dirs_limited; } || safe_find_dirs
     else
         print_filemanager_header "$1"
         list_opts="--group-directories-first --color=always"
@@ -2373,7 +2376,8 @@ fzf_binds() {
 		--bind "alt-x:select-all+execute-silent(bash \"$SCRIPT_PATH\" --mark-all-only)+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
 		--bind "ctrl-a:toggle-all+execute-silent(bash \"$SCRIPT_PATH\" --mark-all-toggle)+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
         --bind "alt-h:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/showhidden\" ] && touch \"$CACHE_FZF_DIR/showhidden\"; } || rm -f \"$CACHE_FZF_DIR/showhidden\")+top+accept"
-        --bind "alt-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/list_files\" ] && touch \"$CACHE_FZF_DIR/list_files\"; } || rm -f \"$CACHE_FZF_DIR/list_files\")+top+accept"
+        --bind "alt-\:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/list_files\" ] && touch \"$CACHE_FZF_DIR/list_files\"; } || rm -f \"$CACHE_FZF_DIR/list_files\")+top+accept"
+        --bind "alt-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find_limited\" ] && touch \"$CACHE_FZF_DIR/find_limited\"; } || rm -f \"$CACHE_FZF_DIR/find_limited\")+top+accept"
         --bind "alt-l:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/longfilemanager\" ] && touch \"$CACHE_FZF_DIR/longfilemanager\"; } || rm -f \"$CACHE_FZF_DIR/longfilemanager\")+top+accept"
         --bind "ctrl-p:toggle-preview+execute-silent({ [ ! -f \"$CACHE_FZF_DIR/hidepreview\" ] && touch \"$CACHE_FZF_DIR/hidepreview\"; } || rm -f \"$CACHE_FZF_DIR/hidepreview\")+top+accept"
         --bind "alt-r:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/reverse_directory\" ] && touch \"$CACHE_FZF_DIR/reverse_directory\"; } || rm -f \"$CACHE_FZF_DIR/reverse_directory\")+top+accept"
