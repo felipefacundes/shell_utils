@@ -65,6 +65,10 @@ fi
 { [[ -n "$XTERM_VERSION" ]] && message_width=$(($(tput cols) - 1)); } || message_width=$(($(tput cols) / 3))		# 1/3 of the terminal width
 { [[ -n "$XTERM_VERSION" ]] && message_height=$(($(tput lines) - 1)); } || message_height=$(($(tput lines) / 4))	# 1/4 of the terminal height
 
+# ANSI COLORS
+YELLOW="\033[1;33m"
+NC="\033[0m"
+
 cleanup() { [[ -d "$TMP_FZF_DIR" ]] && rm -rf "$TMP_FZF_DIR" 2>/dev/null; }
 
 clean_path() {
@@ -1433,14 +1437,17 @@ draw_file_preview() {
 ########################## FZF FILE MANAGER
 # Function for cleaning paths returned by the FZF
 f_header_text() {
-	find_status=$([ -f "$CACHE_FZF_DIR/find" ] && echo "on" || echo "off")
-	cycle_status=$([ -f "$CACHE_FZF_DIR/cycle" ] && echo "on" || echo "off")
-	find_limited=$([ -f "$CACHE_FZF_DIR/find_limited" ] && echo "on" || echo "off")
-	preview_status=$([ ! -f "$CACHE_FZF_DIR/hidepreview" ] && echo "on" || echo "off")
+	grep_status=$([ -f "$TMP_FZF_DIR/grep" ] && echo -e "${YELLOW}on${NC}" || echo "off")
+	find_status=$([ -f "$CACHE_FZF_DIR/find" ] && echo -e "${YELLOW}on${NC}" || echo "off")
+	cycle_status=$([ -f "$CACHE_FZF_DIR/cycle" ] && echo -e "${YELLOW}on${NC}" || echo "off")
+	find_limited=$([ -f "$CACHE_FZF_DIR/find_limited" ] && echo -e "${YELLOW}on${NC}" || echo "off")
+	preview_status=$([ ! -f "$CACHE_FZF_DIR/hidepreview" ] && echo "on" || echo -e "${YELLOW}off${NC}")
 
 	# Builds header_text with marked Files
 	marked_files_status=""
-	if [ ${#marked_files[@]} -gt 0 ]; then
+	if [ ${#marked_files[@]} -gt 2 ]; then
+		marked_files_status="Marked files: ${#marked_files[@]}"
+	elif [ ${#marked_files[@]} -gt 0 ]; then
 		marked_files_status="Marked files:\n"
 		for file in "${marked_files[@]}"; do
 			if [[ -n "$file" ]]; then
@@ -1458,8 +1465,8 @@ f_header_text() {
 
 	cat <<-EOF | echo -e "$(cat)"
 	╭─ STATUS ────────────────────────╮
-	 ? for help |
-	 Limited Search:$find_limited
+	 ?/F1 for help | F5 reload
+	 Limited Search:$find_limited | Grep:$grep_status
 	 Preview:$preview_status | Cycle:$cycle_status | 🔍:$find_status
 	 $marked_files_status
 	╰─────────────────────────────────╯
@@ -1687,9 +1694,39 @@ safe_find_dirs() {
     fi
 }
 
+search_term() {
+    if ! command -v rg >/dev/null; then
+		messages "Error" "Error: Install ripgrep for search terms."
+		return 1
+    fi
+
+    # Asks the user the search term
+    search_term="$(whiptail --title "Grep Search" --inputbox "Enter search term: " 10 60 3>&1 1>&2 2>&3 >/dev/tty)"
+    
+    if [[ -z "$search_term" ]]; then
+        return
+    fi
+
+	rg --files-with-matches --color=never -i "$search_term" 2>/dev/null > "$TMP_FZF_DIR/grep" &
+	rg_pid=$!
+	printf '\e7\e[%sH\e[K%s\e8' "$(tput lines)" "Searching for matches. Please wait 5 seconds..." 
+
+	# Wait a maximum of 5s, but leaves before if the RG is over
+	for _ in {1..50}; do  
+		if ! kill -0 "$rg_pid" 2>/dev/null; then  
+			break  # Process already ended
+		fi  
+		sleep 0.1  # Checked every 0.1s (maximum total: 5s)
+	done  
+	clear  
+}
+
 # Safe Function to List Directories
 safe_ls() {
-    if [[ -f "$CACHE_FZF_DIR/find" ]]; then
+	if [[ -f "$TMP_FZF_DIR/grep" ]]; then
+        print_filemanager_header "$1"
+		cat "$TMP_FZF_DIR/grep"
+    elif [[ -f "$CACHE_FZF_DIR/find" ]]; then
         print_filemanager_header "$1"
         { [[ -f "$CACHE_FZF_DIR/find_limited" ]] && safe_find_dirs_limited; } || safe_find_dirs
     else
@@ -2484,6 +2521,7 @@ fzf_binds() {
         --bind "ctrl-d,ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
 		--bind "alt-x:execute(bash \"$SCRIPT_PATH\" --mark-all-only)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
 		--bind "ctrl-a:execute(bash \"$SCRIPT_PATH\" --mark-all-toggle)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
+		--bind "ctrl-g:execute({ [ ! -f \"$TMP_FZF_DIR/grep\" ] && bash \"$SCRIPT_PATH\" --search-term; } || rm -f \"$TMP_FZF_DIR/grep\")+top+accept"
         --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
         --bind "alt-z:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/header\" ] && touch \"$CACHE_FZF_DIR/header\"; } || rm -f \"$CACHE_FZF_DIR/header\")+top+accept"
@@ -2567,6 +2605,9 @@ case "$1" in
     	;;
 	--create-directory)
 		create_directory
+		;;
+	--search-term)
+		search_term
 		;;
 	--create-file)
 		create_file
