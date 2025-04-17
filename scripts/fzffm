@@ -107,6 +107,7 @@ View Modes:
 Search Modes:
   Ctrl-f                - Toggle recursive search
   Alt-f                 - Toggle limited search
+  Ctrl-g                - Search for text pattern (grep)
   Type text             - Search/filter items
 
 File Operations:
@@ -144,6 +145,7 @@ New Features:
   - Archive extraction to folder (Alt-e)
   - File/directory creation shortcuts (Alt-n/Ctrl-n)
   - Clipboard support for images and text (Ctrl-z)
+  - Text pattern search (Ctrl-g)
   - More efficient file selection handling
   - Version $VERSION
 EOF
