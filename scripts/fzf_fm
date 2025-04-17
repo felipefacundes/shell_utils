@@ -1674,7 +1674,7 @@ print_filemanager_header() {
 safe_find_dirs_limited() {
     if command -v fd >/dev/null; then
         fd \
-            --max-results 1000 --type d --absolute-path --max-depth 8 \
+            --max-results 15000 --type d --absolute-path --max-depth 8 \
             --hidden --exclude "__pycache__" --exclude "*.default*" \
             --exclude ".git" --exclude ".subversion" --exclude ".mednafen" --exclude "*OpenWith*" 2>/dev/null
     else
@@ -1684,13 +1684,21 @@ safe_find_dirs_limited() {
 }
 
 safe_find_dirs() {
-	if command -v fd >/dev/null; then
-        fd \
+    if command -v fd >/dev/null; then
+        timeout -k 1 3 fd \
             --hidden --exclude "__pycache__" --exclude "*.default*" \
-            --exclude ".git" --exclude ".subversion" --exclude ".mednafen" --exclude "*OpenWith*" 2>/dev/null
+            --exclude ".git" --exclude ".subversion" --exclude ".mednafen" --exclude "*OpenWith*" 2>/dev/null &
+			find_pid=$!
+			sleep 0.1
+			export find_pid
+			wait $find_pid 2>/dev/null
     else
-        find . ! -path '*/\.*' ! -path '*__pycache__*' ! -path '*.subversion*' \
-            ! -path '*OpenWith*' ! -path '*mednafen*' 2>/dev/null | sed 's|^\./||'
+        timeout -k 1 3 find . ! -path '*/\.*' ! -path '*__pycache__*' ! -path '*.subversion*' \
+            ! -path '*OpenWith*' ! -path '*mednafen*' 2>/dev/null | sed 's|^\./||' &
+			find_pid=$!
+			sleep 0.1
+			export find_pid
+			wait $find_pid 2>/dev/null
     fi
 }
 
@@ -2522,7 +2530,6 @@ fzf_binds() {
 		--bind "alt-x:execute(bash \"$SCRIPT_PATH\" --mark-all-only)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
 		--bind "ctrl-a:execute(bash \"$SCRIPT_PATH\" --mark-all-toggle)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
 		--bind "ctrl-g:execute({ [ ! -f \"$TMP_FZF_DIR/grep\" ] && bash \"$SCRIPT_PATH\" --search-term; } || rm -f \"$TMP_FZF_DIR/grep\")+top+accept"
-        --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || rm -f \"$CACHE_FZF_DIR/find\")+top+accept"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
         --bind "alt-z:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/header\" ] && touch \"$CACHE_FZF_DIR/header\"; } || rm -f \"$CACHE_FZF_DIR/header\")+top+accept"
         --bind "alt-h:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/showhidden\" ] && touch \"$CACHE_FZF_DIR/showhidden\"; } || rm -f \"$CACHE_FZF_DIR/showhidden\")+top+accept"
@@ -2533,6 +2540,7 @@ fzf_binds() {
         --bind "alt-r:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/reverse_directory\" ] && touch \"$CACHE_FZF_DIR/reverse_directory\"; } || rm -f \"$CACHE_FZF_DIR/reverse_directory\")+top+accept"
         --bind "ctrl-l:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -gt 20 ]; then new=\$((current - 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
         --bind "ctrl-h:execute-silent(current=\$(cat \"$MARGIN_PREVIEW\"); if [ \$current -lt 150 ]; then new=\$((current + 5)); echo \$new > \"$MARGIN_PREVIEW\"; fi)+reload(bash \"$SCRIPT_PATH\" --list-files {})+top+accept"
+        --bind "ctrl-f:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/find\" ] && touch \"$CACHE_FZF_DIR/find\"; } || { if kill -0 \"$find_pid\" 2>/dev/null; then kill -9 \"$find_pid\"; fi; rm -f \"$CACHE_FZF_DIR/find\"; })+top+accept"
         --bind "alt-a:execute(bash \"$SCRIPT_PATH\" --mark-file {}; bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\"; echo {q} > \"$TMP_FZF_DIR/query\"; echo {} > \"$TMP_FZF_DIR/selected\"; echo \$(( {n} + 1 )) > \"$TMP_FZF_DIR/fzf_pos\")+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview+pos($FZF_POS)"
     )
 
