@@ -2515,7 +2515,8 @@ fzf_binds() {
         --preview="$preview_cmd"
         --bind 'left:top+up+accept'
         --bind "ctrl-r,f5:top+accept"
-        --bind "f1,?:execute(bash \"$SCRIPT_PATH\" --show-help {})"
+		--bind "?:preview(echo \"$(help)\")"
+        --bind "f1:execute(bash \"$SCRIPT_PATH\" --show-help {})"
         --bind "ctrl-o:execute(bash \"$SCRIPT_PATH\" --xdg-open {})"
         --preview-window="right:$margin_preview:noborder$hidepreview"
         --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
