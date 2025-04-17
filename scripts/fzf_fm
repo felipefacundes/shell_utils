@@ -12,6 +12,10 @@ Persistent settings in ~/.cache including preview margins and UI preferences
 ANSI colors/icons support with bat/highlight for syntax highlighting
 Debug logging and temporary file cleanup system for stability
 Uses fzf for fuzzy finding and is based on ranger and lesspipe for file previews
+
+Note: This version implements a custom file marking and multi-selection system, 
+specifically designed to maintain marked files across directory navigation, 
+enabling seamless batch operations throughout the entire filesystem hierarchy.
 DOCUMENTATION
 
 clear
@@ -1234,10 +1238,10 @@ directory_view() {
 		"$list_files" "$longfilemanager" --classify
         --group-directories-first --color=always
 	)
-    if [[ -z "$TERMUX_VERSION" ]] && command -v eza >/dev/null; then
+    if [[ -z "$TERMUX_VERSION" ]] && [[ ${XDG_SESSION_TYPE,,} != tty ]] && command -v eza >/dev/null; then
 		eza "${ls_args[@]}" --icons \
         "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
-    elif [[ -z "$TERMUX_VERSION" ]] && command -v exa >/dev/null; then
+    elif [[ -z "$TERMUX_VERSION" ]] && [[ ${XDG_SESSION_TYPE,,} != tty ]] && command -v exa >/dev/null; then
 		exa "${ls_args[@]}" --icons \
         "$file" 2>/dev/null | { { [[ -n "${reverse_dir}" ]] && "${reverse_dir}"; } || sed 's|/$||'; }
     else
