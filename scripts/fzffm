@@ -124,6 +124,7 @@ File Operations:
   Ctrl-z                - Copy file to clipboard (images/text)
   Alt-n                 - Create new file
   Ctrl-n                - Create new directory
+  !                     - Open terminal in current directory
 
 Preview Features:
   - Text files:         Syntax highlighting (bat/highlight/fallback to head)
@@ -141,12 +142,13 @@ Configuration:
 
 New Features:
   - Native multi-select using fzf's --multi and toggle functionality
-  - Simplified marking system with toggle-all support (Ctrl-a)
+  - Simplified marking system with toggle-all support (Ctrl-a/Alt-x)
   - Bulk operations for marked files (move, copy, delete, symlink)
   - Archive extraction to folder (Alt-e)
   - File/directory creation shortcuts (Alt-n/Ctrl-n)
   - Clipboard support for images and text (Ctrl-z)
   - Text pattern search (Ctrl-g)
+  - Terminal integration (! key)
   - More efficient file selection handling
   - Version $VERSION
 EOF
