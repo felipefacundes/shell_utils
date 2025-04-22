@@ -45,7 +45,33 @@ touch "$MARKED_FILES_FILE"
 # Main configuration
 SCRIPT_PATH="$(realpath "$0")"
 preview_cmd="bash \"$SCRIPT_PATH\" --preview-file {}"
-current_terminal=$(ps -o cmd= -p $(ps -o ppid= -p $$))
+
+get_terminal() {
+    local pid=$$
+    local terminal=""
+
+    # Suba na hierarquia de processos até encontrar um terminal conhecido
+    while [[ -z "$terminal" && "$pid" -ne 1 ]]; do
+        cmd=$(ps -o cmd= -p "$pid")
+        case "$cmd" in
+            *gnome-terminal*|*konsole*|*alacritty*|*xterm*|*st*|*kitty*|*terminator*|*tilix*)
+                terminal=$(basename "$cmd")
+                break
+                ;;
+            *)
+                pid=$(ps -o ppid= -p "$pid")
+                ;;
+        esac
+    done
+
+    echo "${terminal:-unknown-terminal}"
+}
+
+current_terminal=$(get_terminal)
+[[ ! -f "$TMP_FZF_DIR/current_terminal" ]] && echo "$current_terminal" > "$TMP_FZF_DIR/current_terminal"
+term=$(cat "$TMP_FZF_DIR/current_terminal")
+MY_TERMINAL="${MY_TERMINAL:-$term}"
+
 read -ra redraw <<< "$preview_cmd"
 
 # Prepare the Archive Array
@@ -2375,149 +2401,32 @@ preview_file() {
 	draw_file_preview "$file" 
 }
 
-get_terminal() {
-    local pid=$$ 
-    local ppid cmd term
-    
-    # Verifica variáveis de ambiente primeiro
-    if [[ -n "$TERMINAL" ]]; then
-        term=$(basename "$TERMINAL")
-        echo "$term"
-        return
-    elif [[ -n "$XTERM" ]]; then
-        term="xterm"
-        echo "$term"
-        return
-    fi
-
-    # Rastreia a cadeia de processos até encontrar o terminal
-    while [[ "$pid" -ne 1 ]]; do
-        ppid=$(ps -o ppid= -p "$pid" 2>/dev/null)
-        cmd=$(ps -o comm= -p "$pid" 2>/dev/null)
-
-        # Ignora comandos que não são terminais
-        case "$cmd" in
-            fzf|bash|zsh|sh|dash|ash|fish) # Ignora fzf e shells
-                pid=$ppid
-                continue
-                ;;
-            gnome-terminal-server|gnome-terminal) term="gnome-terminal"; break ;;
-            konsole) term="konsole"; break ;;
-            xfce4-terminal) term="xfce4-terminal"; break ;;
-            xterm) term="xterm"; break ;;
-            st) term="st"; break ;;
-            terminator) term="terminator"; break ;;
-            tilix) term="tilix"; break ;;
-            urxvt|rxvt) term="urxvt"; break ;;
-            mate-terminal) term="mate-terminal"; break ;;
-            lxterminal) term="lxterminal"; break ;;
-            kitty) term="kitty"; break ;;
-            alacritty) term="alacritty"; break ;;
-            foot) term="foot"; break ;;
-            *)
-                pid=$ppid
-                ;;
-        esac
-    done
-
-    # Verificação adicional para evitar falsos positivos
-    if [[ -n "$term" ]]; then
-        if ! ps -p "$pid" -o comm= 2>/dev/null | grep -qi "$term"; then
-            term=""
-        fi
-    fi
-
-    # Se não encontrou, tenta fallback com TERM
-    if [[ -z "$term" && -n "$TERM" ]]; then
-        case "$TERM" in
-            xterm*) term="xterm" ;;
-            rxvt*) term="urxvt" ;;
-            st*) term="st" ;;
-            alacritty) term="alacritty" ;;
-            kitty) term="kitty" ;;
-            *) term="unknown" ;;
-        esac
-    fi
-
-    echo "${term:-unknown}"
-}
-
-get_shell() {
-    local pid=$$ 
-    local ppid cmd shell found_bash=false
-
-    # Método 1: Verificar variáveis de ambiente
-    if [[ -n "$ZSH_VERSION" ]]; then
-        shell="zsh"
-    elif [[ -n "$FISH_VERSION" ]]; then
-        shell="fish"
-    elif [[ -n "$BASH_VERSION" ]]; then
-        shell="bash"
-        found_bash=true
-    fi
-
-    # Se encontrou bash, mas queremos o shell original, continuamos subindo
-    if [[ "$found_bash" == "true" ]]; then
-        shell=""
-    fi
-
-    # Método 2: Rastrear a cadeia de processos
-    while [[ "$pid" -ne 1 && -z "$shell" ]]; do
-        ppid=$(ps -o ppid= -p "$pid" 2>/dev/null)
-        cmd=$(ps -o comm= -p "$pid" 2>/dev/null)
-
-        # Ignora fzf, bash (temporário) e outros comandos não-shell
-        case "$cmd" in
-            fzf|bash|script|tmux|screen)
-                pid=$ppid
-                continue
-                ;;
-            zsh) shell="zsh"; break ;;
-            fish) shell="fish"; break ;;
-            sh|dash|ash) shell="sh"; break ;;
-            *)
-                pid=$ppid
-                ;;
-        esac
-    done
-
-    # Se não encontrou um shell diferente, usa bash como fallback
-    if [[ -z "$shell" && "$found_bash" == "true" ]]; then
-        shell="bash"
-    fi
-
-    # Fallback final
-    echo "${shell:-unknown}"
-}
-
 my_terminal() {
-    term=$(get_terminal)
-	shell=$(get_shell)
-	echo "Terminal: $term, Shell: $shell" > "$TMP_FZF_DIR/terminal"
+	local term="$MY_TERMINAL"
     
     case "$term" in
 		alacritty) alacritty --working-directory "$PWD" ;;
         gnome-terminal) gnome-terminal --working-directory="$PWD" ;;
         konsole) konsole --workdir "$PWD" ;;
         xfce4-terminal) xfce4-terminal --default-working-directory="$PWD" ;;
-        xterm) xterm -e bash -c "cd \"$PWD\" && exec $shell" ;;
+        xterm) xterm -e bash -c "cd \"$PWD\" && exec $SHELL" ;;
         terminator) terminator --working-directory="$PWD" ;;
         tilix) tilix --working-directory="$PWD" ;;
-        rxvt|urxvt) urxvt -cd "$PWD" -e "$shell" ;;
+        rxvt|urxvt) urxvt -cd "$PWD" -e "$SHELL" ;;
         mate-terminal) mate-terminal --working-directory="$PWD" ;;
         lxterminal) lxterminal --working-directory="$PWD" ;;
         kitty) kitty --directory="$PWD" ;;
         foot) foot --working-directory "$PWD" ;;
-		"$term") "$term" -e bash -c "cd \"$PWD\" && exec $shell" ;;
-        st) st -e bash -c "cd \"$PWD\" && exec $shell" ;;
+		"$term") "$term" -e bash -c "cd \"$PWD\" && exec $SHELL" ;;
+        st) st -e bash -c "cd \"$PWD\" && exec $SHELL" ;;
         *) 
-			{ "$term" -e bash -c "cd $PWD && exec $shell"; } || 
+			{ "$term" -e bash -c "cd $PWD && exec $SHELL"; } || 
 			{ alacritty --working-directory "$PWD"; } || 
 			{ gnome-terminal --working-directory="$PWD"; } || 
 			{ konsole --workdir "$PWD"; } || 
 			{ xfce4-terminal --default-working-directory="$PWD"; } || 
-			{ xterm -e bash -c "cd $PWD && exec $shell"; } || 
-			{ st -e bash -c "cd $PWD && exec $shell"; }
+			{ xterm -e bash -c "cd $PWD && exec $SHELL"; } || 
+			{ st -e bash -c "cd $PWD && exec $SHELL"; }
             ;;
     esac
 }
@@ -2561,7 +2470,9 @@ fzf_binds() {
 		--bind "!:execute(bash \"$SCRIPT_PATH\" --my-terminal {})"
         --bind "ctrl-o:execute(bash \"$SCRIPT_PATH\" --xdg-open {})"
         --preview-window="right:$margin_preview:noborder$hidepreview"
+        --bind "esc:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
         --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+        --bind "ctrl-c:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
         --bind "ctrl-v:execute(bash \"$SCRIPT_PATH\" --move-file {})+top+accept"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
         --bind "alt-n:execute(bash \"$SCRIPT_PATH\" --create-file {})+top+accept"
@@ -2588,7 +2499,7 @@ fzf_binds() {
     )
 
     select="$(safe_ls "$path" | \
-    fzf_pid "${fzf_args[@]}" \
+    fzf "${fzf_args[@]}" \
         --expect=enter,right 2>&1)"
 
     selected=$(clean_path "$select" | sed 's|^\./||g')
@@ -2663,6 +2574,7 @@ case "$1" in
 		create_file
 		;;
 	--my-terminal)
+        shift
 		my_terminal
 		;;
     --xdg-open)
