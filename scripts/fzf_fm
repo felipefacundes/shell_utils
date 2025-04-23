@@ -45,6 +45,9 @@ MARK_LOG="${TMP_FZF_DIR}/mark.log"
 touch "$MARK_LOG"  
 MARKED_FILES_FILE="${TMP_FZF_DIR}/marked_files"
 touch "$MARKED_FILES_FILE"
+
+HISTORY_FILE="$CACHE_FZF_DIR/dir_history"
+
 # Main configuration
 SCRIPT_PATH="$(realpath "$0")"
 preview_cmd="bash \"$SCRIPT_PATH\" --preview-file {}"
@@ -2513,6 +2516,57 @@ preview_file() {
 	draw_file_preview "$file" 
 }
 
+add_to_history() {
+    local dir="$1"
+    # Evita adicionar o mesmo diretório consecutivamente
+    if [[ -s "$HISTORY_FILE" ]]; then
+        local last_dir=$(tail -n 1 "$HISTORY_FILE")
+        [[ "$last_dir" == "$dir" ]] && return
+    fi
+    # Adiciona o diretório ao final do arquivo
+    echo "$dir" >> "$HISTORY_FILE"
+}
+
+history_folder() {
+    if [[ -s "$HISTORY_FILE" ]]; then
+        # Lê todas as linhas do histórico
+        readarray -t history < "$HISTORY_FILE"
+        local history_size=${#history[@]}
+        
+        if [[ $history_size -ge 2 ]]; then
+            # O penúltimo diretório é o "último visitado" antes do atual
+            local target_dir="${history[$((history_size - 2))]}"
+            if [[ -d "$target_dir" ]]; then
+                # Remove a última entrada (diretório atual) do histórico
+                sed -i '$d' "$HISTORY_FILE"
+                cd "$target_dir" || {
+                    messages "Error" "Failed to change to directory: $target_dir"
+                    return 1
+                }
+                echo "$target_dir" > "$TMP_FZF_DIR/last_dir"
+                return 0
+            else
+                messages "Error" "Directory not found: $target_dir"
+                # Remove a entrada inválida
+                sed -i '$d' "$HISTORY_FILE"
+                return 1
+            fi
+        else
+            messages "Error" "No previous directory in history"
+            return 1
+        fi
+    else
+        messages "Error" "No directory history found"
+        return 1
+    fi
+}
+
+last_folder() {
+	[ -f "$CACHE_FZF_DIR/last_folder" ] &&
+		{ { [ ! -f "$TMP_FZF_DIR/last_folder" ] && touch "$TMP_FZF_DIR/last_folder"; } || 
+		rm -f "$TMP_FZF_DIR/last_folder"; }
+}
+
 my_terminal() {
 	local term="$MY_TERMINAL"
     
@@ -2583,9 +2637,8 @@ fzf_binds() {
 		--bind "!:execute(bash \"$SCRIPT_PATH\" --my-terminal {})"
         --bind "ctrl-o:execute(bash \"$SCRIPT_PATH\" --xdg-open {})"
         --preview-window="right:$margin_preview:noborder$hidepreview"
-        --bind "esc:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
-        --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
-        --bind "ctrl-c:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+		--bind "f2:execute(bash \"$SCRIPT_PATH\" --last-folder)+top+accept"
+		--bind "f3:execute(bash \"$SCRIPT_PATH\" --history-folder)+top+accept"
         --bind "ctrl-v:execute(bash \"$SCRIPT_PATH\" --move-file {})+top+accept"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
         --bind "alt-n:execute(bash \"$SCRIPT_PATH\" --create-file {})+top+accept"
@@ -2594,6 +2647,9 @@ fzf_binds() {
         --bind "alt-e:execute(bash \"$SCRIPT_PATH\" --extract-to-folder {})+top+accept"
         --bind "ctrl-z:execute(bash \"$SCRIPT_PATH\" --copy-to-clipboad {})+top+accept"
         --bind "ctrl-d,ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
+		--bind "esc:execute(echo \"$PWD\" > \"$CACHE_FZF_DIR/last_folder\"; echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+		--bind "ctrl-q:execute(echo \"$PWD\" > \"$CACHE_FZF_DIR/last_folder\"; echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+		--bind "ctrl-c:execute(echo \"$PWD\" > \"$CACHE_FZF_DIR/last_folder\"; echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
 		--bind "alt-x:execute(bash \"$SCRIPT_PATH\" --mark-all-only)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
 		--bind "ctrl-a:execute(bash \"$SCRIPT_PATH\" --mark-all-toggle)+reload(bash \"$SCRIPT_PATH\" --list-files {q})+refresh-preview"
 		--bind "ctrl-g:execute({ [ ! -f \"$TMP_FZF_DIR/grep\" ] && bash \"$SCRIPT_PATH\" --search-term; } || rm -f \"$TMP_FZF_DIR/grep\")+top+accept"
@@ -2631,6 +2687,8 @@ main() {
     # Starts in the initial directory
     builtin cd "$initial_dir" || exit 1
     
+	add_to_history "$PWD"
+
     while true; do 
         # Loads marked_files from the file
         readarray -t marked_files < <(cat "$MARKED_FILES_FILE" 2>/dev/null || true)
@@ -2645,10 +2703,22 @@ main() {
 		selected=${selected% "[<]"}
         
         # Selection processing
-        if [ -d "$selected" ]; then
+		if [ -f "$TMP_FZF_DIR/last_folder" ]; then
+			dir=$(cat "$CACHE_FZF_DIR/last_folder")
+			builtin cd "$dir" || true
+			add_to_history "$PWD"
+			rm -f "$TMP_FZF_DIR/last_folder"
+		elif [ -f "$TMP_FZF_DIR/last_dir" ]; then
+			hdir=$(cat "$TMP_FZF_DIR/last_dir")
+			builtin cd "$hdir" || true
+			rm -f "$TMP_FZF_DIR/last_dir"
+        elif [ -d "$selected" ]; then
             builtin cd "$selected" || continue
+			add_to_history "$PWD"
         elif [[ "$selected" == " .." ]]; then
+			local old_pwd="$PWD"
             builtin cd .. || true
+            [[ "$PWD" != "$old_pwd" ]] && add_to_history "$PWD"
         else
             file_path=$(realpath "$PWD/$selected" 2>/dev/null || echo "$PWD/$selected")
             # If it was pressed right or enter
@@ -2686,6 +2756,12 @@ case "$1" in
 		;;
 	--create-file)
 		create_file
+		;;
+	--last-folder)
+		last_folder
+		;;
+	--history-folder)
+		history_folder
 		;;
 	--my-terminal)
 		my_terminal
