@@ -2401,6 +2401,12 @@ preview_file() {
 	draw_file_preview "$file" 
 }
 
+last_folder() {
+	[ -f "$CACHE_FZF_DIR/last_folder" ] &&
+		{ { [ ! -f "$TMP_FZF_DIR/last_folder" ] && touch "$TMP_FZF_DIR/last_folder"; } || 
+		rm -f "$TMP_FZF_DIR/last_folder"; }
+}
+
 my_terminal() {
 	local term="$MY_TERMINAL"
     
@@ -2470,9 +2476,7 @@ fzf_binds() {
 		--bind "!:execute(bash \"$SCRIPT_PATH\" --my-terminal {})"
         --bind "ctrl-o:execute(bash \"$SCRIPT_PATH\" --xdg-open {})"
         --preview-window="right:$margin_preview:noborder$hidepreview"
-        --bind "esc:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
-        --bind "ctrl-q:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
-        --bind "ctrl-c:execute(echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+		--bind "f2:execute(bash \"$SCRIPT_PATH\" --last-folder {})+top+accept"
         --bind "ctrl-v:execute(bash \"$SCRIPT_PATH\" --move-file {})+top+accept"
         --bind "ctrl-y:execute(bash \"$SCRIPT_PATH\" --copy-file {})+top+accept"
         --bind "alt-n:execute(bash \"$SCRIPT_PATH\" --create-file {})+top+accept"
@@ -2481,6 +2485,9 @@ fzf_binds() {
         --bind "alt-e:execute(bash \"$SCRIPT_PATH\" --extract-to-folder {})+top+accept"
         --bind "ctrl-z:execute(bash \"$SCRIPT_PATH\" --copy-to-clipboad {})+top+accept"
         --bind "ctrl-d,ctrl-e:execute(bash \"$SCRIPT_PATH\" --delete-file {})+top+accept"
+		--bind "esc:execute(echo \"$PWD\" > \"$CACHE_FZF_DIR/last_folder\"; echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+		--bind "ctrl-q:execute(echo \"$PWD\" > \"$CACHE_FZF_DIR/last_folder\"; echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
+		--bind "ctrl-c:execute(echo \"$PWD\" > \"$CACHE_FZF_DIR/last_folder\"; echo 130 > \"$TMP_FZF_DIR/signal\")+abort"
         --bind "ctrl-g:execute({ [ ! -f \"$TMP_FZF_DIR/grep\" ] && bash \"$SCRIPT_PATH\" --search-term; } || rm -f \"$TMP_FZF_DIR/grep\")+top+accept"
         --bind "alt-a:toggle+execute-silent(bash \"$SCRIPT_PATH\" --mark-file {})+execute(bash \"$SCRIPT_PATH\" --update-header > \"$TMP_FZF_DIR/header\")"
         --bind "alt-c:execute-silent({ [ ! -f \"$CACHE_FZF_DIR/cycle\" ] && touch \"$CACHE_FZF_DIR/cycle\"; } || rm -f \"$CACHE_FZF_DIR/cycle\")+top+accept"
@@ -2531,7 +2538,11 @@ main() {
         selected=$(clean_path "$selected" | sed 's|^\./||g')
         
         # Selection processing
-        if [ -d "$selected" ]; then
+		if [ -f "$TMP_FZF_DIR/last_folder" ]; then
+			dir=$(cat "$CACHE_FZF_DIR/last_folder")
+			builtin cd "$dir" || true
+			rm -f "$TMP_FZF_DIR/last_folder"
+        elif [ -d "$selected" ]; then
             builtin cd "$selected" || continue
         elif [[ "$selected" == " .." ]]; then
             builtin cd .. || true
@@ -2573,8 +2584,10 @@ case "$1" in
 	--create-file)
 		create_file
 		;;
+	--last-folder)
+		last_folder
+		;;
 	--my-terminal)
-        shift
 		my_terminal
 		;;
     --xdg-open)
