@@ -70,9 +70,11 @@ get_terminal() {
     echo "${terminal:-unknown-terminal}"
 }
 
-current_terminal=$(get_terminal)
-[[ ! -f "$TMP_FZF_DIR/current_terminal" ]] && echo "$current_terminal" > "$TMP_FZF_DIR/current_terminal"
-term=$(cat "$TMP_FZF_DIR/current_terminal")
+# Fix sequence to detect terminal
+[[ ! -f "$CACHE_FZF_DIR/current_terminal" ]] && 
+current_terminal=$(timeout -k 1 2 get_terminal) && 
+echo "$current_terminal" > "$CACHE_FZF_DIR/current_terminal" 
+term=$(cat "$CACHE_FZF_DIR/current_terminal" || echo xterm)
 MY_TERMINAL="${MY_TERMINAL:-$term}"
 
 read -ra redraw <<< "$preview_cmd"
