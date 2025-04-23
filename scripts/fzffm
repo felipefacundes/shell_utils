@@ -122,6 +122,8 @@ Navigation:
   Left                  - Go up one level
   Ctrl-q/Ctrl-c/Esc     - Exit file manager
   F1 or ?               - Show this help menu
+  F2                    - Go to last visited directory
+  F3                    - Go to previous directory in history
 
 View Modes:
   Ctrl-p                - Toggle preview panel
@@ -159,16 +161,16 @@ File Operations:
 Preview Features:
   - Text files:         Syntax highlighting (bat/highlight/fallback to head)
   - Images:             Thumbnail preview (magick/viu/chafa/fallback to file info)
-  - PDFs:               Text extraction (pdftotext/fallback to file info)
-  - Directories:        List contents (exa/ls)
-  - Other files:        File type information and strings extraction
-  - Adjustable margin:  Dynamic resizing (20-150) with Ctrl-h/Ctrl-l
+  - PDFs:              Text extraction (pdftotext/fallback to file info)
+  - Directories:       List contents (exa/ls)
+  - Other files:       File type information and strings extraction
+  - Adjustable margin: Dynamic resizing (20-150) with Ctrl-h/Ctrl-l
 
 Configuration:
-  - Preview margin:     Persisted in $MARGIN_PREVIEW
-  - UI Preferences:     Stored in $CACHE_FZF_DIR (recursive, hidden files, cycle)
-  - Debug logs:         Written to ${TMP_FZF_DIR}/${SCRIPT%.*}-debug.log
-  - Marked files:       Persisted in $MARKED_FILES_FILE
+  - Preview margin:    Persisted in $MARGIN_PREVIEW
+  - UI Preferences:    Stored in $CACHE_FZF_DIR (recursive, hidden files, cycle)
+  - Debug logs:        Written to ${TMP_FZF_DIR}/${SCRIPT%.*}-debug.log
+  - Marked files:      Persisted in $MARKED_FILES_FILE
 
 New Features:
   - Native multi-select using fzf's --multi and toggle functionality
@@ -179,6 +181,7 @@ New Features:
   - Clipboard support for images and text (Ctrl-z)
   - Text pattern search (Ctrl-g)
   - Terminal integration (! key)
+  - Directory history navigation (F2/F3)
   - More efficient file selection handling
   - Version $VERSION
 EOF
