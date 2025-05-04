@@ -17,6 +17,9 @@ apps=(
     com.asus.ia.asusapp
     com.asus.weathertime
     com.asus.filemanager
+	com.opera.max.oem
+	com.samsung.android.scloud
+	com.sec.android.app.samsungapps
     com.facebook.orca
     com.facebook.katana
     com.facebook.system
