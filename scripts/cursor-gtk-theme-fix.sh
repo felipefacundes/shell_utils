@@ -162,7 +162,8 @@ update_themes() {
 seq_fix() {
 	for ((i=1; i<="$1"; i++))
 	do
-		"$2"
+		"$2" & disown
+		{ sleep "$delay" && "$2"; } & disown
 	done
 }
 
@@ -196,8 +197,8 @@ cursor_theme_fix() {
 		md5sum_base=$(md5sum "$GTK_RC_BASE")
 
 		if [ "${MD5SUM_BASE}" != "${md5sum_base}" ] || { [ "${xresources_xcursor_theme}" != "${XCURSOR_THEME}" ] || [ "${xresources_xcursor_size}" != "${XCURSOR_SIZE}" ]; }; then
-			update_themes
-			exec_reload_wm
+			seq_fix 1 update_themes
+			seq_fix 1 exec_reload_wm
 			MD5SUM_BASE="$md5sum_base"
 		fi
 
