@@ -9,106 +9,220 @@ This script is to fix the mouse cursor theme.
 DOCUMENTATION
 
 # Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
+trap '(kill -- -$$) &>/dev/null' INT TERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
+
+XRESOURCES=~/.Xresources
+XSETTINGSD=~/.config/xsettingsd/xsettingsd.conf
+GTK_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/settings.ini"
+GTK4_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0/settings.ini"
+GTK2_RC_FILES="${HOME}/.gtkrc-2.0" #"${HOME}/.gtkrc-2.0:${XDG_CONFIG_HOME}/gtk-2.0/gtkrc:/etc/gtk-2.0/gtkrc"
+
+GTK_RC_BASE="$GTK2_RC_FILES"
+MD5SUM_BASE=$(md5sum "$GTK_RC_BASE")
 
 doc() {
-    less -FX "$0" | head -n8 | tail -n3
-    echo
+	less -FX "$0" | head -n8 | tail -n3
+	echo
 }
 
 help() {
-    doc
-    echo "Usage: ${0##*/} [args]
+	doc
+	echo "Usage: ${0##*/} [args]
 
-    -o,
-        Only xrdb fix loop
+	-o,
+		Only xrdb fix loop
 
-    -t,
-        Cursor theme e GTK theme fix loop"
+	-t,
+		Cursor theme and GTK theme fix loop"
 }
 
-delay=5
+delay=2.5
 xsetroot -cursor_name left_ptr >/dev/null 2>&1
-xrdb -merge ~/.Xresources >/dev/null 2>&1
+xrdb -merge "${XRESOURCES}" >/dev/null 2>&1
 
 only_xrdb() {
-    while true
-    do 
-        xrdb ~/.Xresources > /dev/null 2>&1
-        xrdb -I"${HOME}" ~/.Xresources > /dev/null 2>&1
-        xrdb -merge -I"${HOME}" ~/.Xresources > /dev/null 2>&1
-        xrdb -merge ~/.Xresources > /dev/null 2>&1
-        xsetroot -cursor_name left_ptr > /dev/null 2>&1
+	while true
+	do 
+		xrdb "${XRESOURCES}" > /dev/null 2>&1
+		#xrdb -I"${HOME}" "${XRESOURCES}" > /dev/null 2>&1
+		#xrdb -merge -I"${HOME}" "${XRESOURCES}" > /dev/null 2>&1
+		xrdb -merge "${XRESOURCES}" > /dev/null 2>&1
+		xsetroot -cursor_name left_ptr > /dev/null 2>&1
 
-        sleep "$delay"
-    done
+		sleep "$delay"
+	done
 }
 
-cursor_theme_fix()
-{
+nodiff_gtk3_gtk4() {
+	if ! cmp -s "$GTK_RC_FILES" "$GTK4_RC_FILES"; then
+		[[ -d ~/.config/gtk-4.0/ ]] && cp -f "$GTK_RC_FILES" "$GTK4_RC_FILES"
+	fi
+}
 
-    [[ ! -s ~/.Xresources ]] && rm ~/.Xresources
-    [[ ! -f ~/.Xresources ]] && wget -nc https://raw.githubusercontent.com/felipefacundes/dotfiles/master/config/.Xresources -O ~/.Xresources
-    
-    [[ ! -d ~/.config/gtk-4.0/ ]] && mkdir -p ~/.config/gtk-4.0/
-    [[ -d ~/.config/gtk-4.0/ ]] && cp -f ~/.config/gtk-3.0/settings.ini ~/.config/gtk-4.0/settings.ini
+reload_wm() {
+	if pgrep -x "awesome" >/dev/null; then
+		awesome-client 'awesome.restart()'
+	elif pgrep -x "openbox" >/dev/null; then
+		openbox --reconfigure
+	elif pgrep -x "sway" >/dev/null; then
+		swaymsg reload
+	fi
+}
 
-    while true; 
-    do 
-        export GTK_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/settings.ini"
-        export GTK2_RC_FILES="${HOME}/.gtkrc-2.0" #"${HOME}/.gtkrc-2.0:${XDG_CONFIG_HOME}/gtk-2.0/gtkrc:/etc/gtk-2.0/gtkrc"
-        export GTK_THEME="$(grep 'gtk-theme-name' ${GTK_RC_FILES} | cut -d'=' -f2)"
-        # ICON ...
-        export XCURSOR_THEME="$(grep 'gtk-cursor-theme-name' ${GTK_RC_FILES} | cut -d'=' -f2)"
-        export XCURSOR_SIZE="$(grep 'gtk-cursor-theme-size' ${GTK_RC_FILES} | cut -d'=' -f2)"
+kill_wm() {
+	if pgrep -x "awesome" >/dev/null; then
+		awesome-client 'awesome.restart()'
+	elif pgrep -x "openbox" >/dev/null; then
+		openbox --reconfigure
+	elif pgrep -x "sway" >/dev/null; then
+		swaymsg reload
+	fi
+}
 
-        export xresources_xcursor_theme="$(grep -i 'Xcursor.theme:' ~/.Xresources | cut -f2 -d':')"
-        export xresources_xcursor_size="$(grep -i 'Xcursor.size:' ~/.Xresources | cut -f2 -d':' | sed '/^$/d')"
+exec_reload_wm() {
+	reload_wm &
+	rwm_pid=$!
+	wait "$rwm_pid"
+}
 
-        if [ "${xresources_xcursor_theme}" != "${XCURSOR_THEME}" ] || [ "${xresources_xcursor_size}" != "${XCURSOR_SIZE}" ]; then
-            sed -i "2 s#${xresources_xcursor_theme}# ${XCURSOR_THEME}#g" ~/.Xresources
-            sed -i "3 s#${xresources_xcursor_size}# ${XCURSOR_SIZE}#g" ~/.Xresources
-            xrdb ~/.Xresources > /dev/null 2>&1
-            #xrdb -I$HOME ~/.Xresources > /dev/null 2>&1
-            #xrdb -merge -I$HOME ~/.Xresources > /dev/null 2>&1
-            xrdb -merge ~/.Xresources > /dev/null 2>&1
-            xsetroot -cursor_name left_ptr > /dev/null 2>&1
-        fi
+reload_gtk() {
+	# Try to recharge the gnome shell via d-bus (useful in gnome environments)
+	if dbus-send --session --type=method_call --dest=org.gnome.Shell /org/gnome/Shell org.gnome.Shell.Eval string:'global.reexec_self()' >/dev/null 2>&1; then
+		echo "Gnome shell recharged via d-bus."
+	else
+		# Fallback: Sends Sighup to GTK processes (useful in WMS like Awesome/OpenBox/Sway)
+		echo "Recharging GTK processes via SIGHUP ..."
+		pkill -HUP -f "gtk"
+		pkill -HUP -f "gtk3" 
+		pkill -HUP -f "gtk4" 
+		pkill -HUP -f gtk3-nocsd
+		pkill -9 -f rofi
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-theme-name
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-icon-theme-name
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-cursor-theme-name
+	fi
+}
 
-        export gnome_schema="org.gnome.desktop.interface"
-        export icon_theme="$(grep 'gtk-icon-theme-name' ${GTK_RC_FILES} | cut -d'=' -f2)"
-        export font_name="$(grep 'gtk-font-name' ${GTK_RC_FILES} | cut -d'=' -f2)"
-        gsettings set "${gnome_schema}" gtk-theme "${GTK_THEME}"
-        gsettings set "${gnome_schema}" icon-theme "${icon_theme}"
-        gsettings set "${gnome_schema}" cursor-theme "${XCURSOR_THEME}"
-        gsettings set "${gnome_schema}" font-name "${font_name}"
+if_xsettingsd() {
+	if command -v xsettingsd >/dev/null; then
+		pkill -9 xsettingsd 2>/dev/null
+		xsettingsd & disown
+	else
+		notify-send "Install xsettingsd"
+	fi
+}
 
-        sleep "$delay"
-    done
+qt_themes() {
+	export QT_STYLE_OVERRIDE=gtk2  
+	export QT_QPA_PLATFORMTHEME=gtk2 
+	export XCURSOR_THEME="$XCURSOR_THEME"
+	export XCURSOR_SIZE="$XCURSOR_SIZE"
+	qt5ct --apply 2>/dev/null
+	qt6ct --apply 2>/dev/null
+}
+
+update_themes() {
+	nodiff_gtk3_gtk4
+	sed -i "/^Xcursor\.theme/c\Xcursor.theme: ${XCURSOR_THEME}" "${XRESOURCES}"
+	sed -i "/gtk-cursor-theme-name/c\gtk-cursor-theme-name=${XCURSOR_THEME}" "${GTK_RC_FILES}"
+	sed -i "/Gtk\/CursorThemeName/c\Gtk\/CursorThemeName \"${XCURSOR_THEME}\"" "${XSETTINGSD}"
+	sed -i "/^Xcursor\.size/c\Xcursor.size: ${XCURSOR_SIZE}" "${XRESOURCES}"
+	sed -i "/gtk-cursor-theme-size/c\gtk-cursor-theme-size=${XCURSOR_SIZE}" "${GTK_RC_FILES}"
+	sed -i "/Gtk\/CursorThemeSize/c\Gtk\/CursorThemeSize ${XCURSOR_SIZE}" "${XSETTINGSD}"
+	sed -i "/gtk-icon-theme-name/c\gtk-icon-theme-name=${icon_theme}" "${GTK_RC_FILES}"
+	sed -i "/Net\/IconThemeName/c\Net\/IconThemeName \"${icon_theme}\"" "${XSETTINGSD}"
+	sed -i "/gtk-font-name/c\gtk-font-name=${font_name}" "${GTK_RC_FILES}"
+	sed -i "/Gtk\/FontName/c\Gtk\/FontName \"${font_name}\"" "${XSETTINGSD}"
+	sed -i "/gtk-xft-hintstyle/c\gtk-xft-hintstyle=${hintstyle}" "${GTK_RC_FILES}"
+	sed -i "/gtk-xft-antialias/c\gtk-xft-antialias=${antialias}" "${GTK_RC_FILES}"
+	sed -i "/gtk-xft-hinting/c\gtk-xft-hinting=${hinting}" "${GTK_RC_FILES}"
+	sed -i "/gtk-xft-rgba/c\gtk-xft-rgba=${rgba}" "${GTK_RC_FILES}"
+	xrdb "${XRESOURCES}" > /dev/null 2>&1
+	#xrdb -I"$HOME" "${XRESOURCES}" > /dev/null 2>&1
+	#xrdb -merge -I"$HOME" "${XRESOURCES}" > /dev/null 2>&1
+	xrdb -merge "${XRESOURCES}"> /dev/null 2>&1
+	xsetroot -cursor_name left_ptr > /dev/null 2>&1
+	gsettings set "${gnome_schema}" gtk-theme "${GTK_THEME}"
+	gsettings set "${gnome_schema}" icon-theme "${icon_theme}"
+	gsettings set "${gnome_schema}" cursor-theme "${XCURSOR_THEME}"
+	gsettings set "${gnome_schema}" font-name "${font_name}"
+	gsettings reset org.gnome.desktop.interface gtk-theme
+	gsettings set org.gnome.desktop.interface gtk-theme "${GTK_THEME}"
+	gsettings set org.gnome.desktop.interface cursor-theme "${XCURSOR_THEME}"
+	nodiff_gtk3_gtk4
+	export GTK_THEME="$GTK_THEME"
+	if_xsettingsd
+	reload_gtk
+	qt_themes
+	xrefresh
+}
+
+seq_fix() {
+	for ((i=1; i<="$1"; i++))
+	do
+		"$2"
+	done
+}
+
+cursor_theme_fix() {
+	[[ ! -s "${XRESOURCES}" ]] && rm "${XRESOURCES}"
+	[[ ! -f "${XRESOURCES}" ]] && wget -nc https://raw.githubusercontent.com/felipefacundes/dotfiles/master/config/.Xresources -O "${XRESOURCES}"
+	[[ ! -d ~/.config/gtk-4.0/ ]] && mkdir -p ~/.config/gtk-4.0/
+
+	[[ "${XDG_SESSION_TYPE,,}" == x11 ]] && ! pgrep -f xsettingsd >/dev/null && xsettingsd & disown
+
+	while true
+	do 
+		GTK_THEME="$(awk -F'=' '/gtk-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		# ICON ...
+		XCURSOR_SIZE="$(awk -F'=' '/gtk-cursor-theme-size/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export XCURSOR_SIZE
+		XCURSOR_THEME="$(awk -F'=' '/gtk-cursor-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export XCURSOR_THEME
+
+		xresources_xcursor_theme="$(grep -i 'Xcursor.theme:' "${XRESOURCES}" | sed -n 's/.*:\s*\(.*\)/\1/p')"
+		xresources_xcursor_size="$(awk -F':' '/Xcursor.size:/ {print $2}' "${XRESOURCES}" | xargs)"
+
+		icon_theme="$(awk -F'=' '/gtk-icon-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		hintstyle="$(awk -F'=' '/gtk-xft-hintstyle/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		antialias="$(awk -F'=' '/gtk-xft-antialias/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		hinting="$(awk -F'=' '/gtk-xft-hinting/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		font_name="$(awk -F'=' '/gtk-font-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		rgba="$(awk -F'=' '/gtk-xft-rgba/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		gnome_schema="org.gnome.desktop.interface"
+
+		md5sum_base=$(md5sum "$GTK_RC_BASE")
+
+		if [ "${MD5SUM_BASE}" != "${md5sum_base}" ] || { [ "${xresources_xcursor_theme}" != "${XCURSOR_THEME}" ] || [ "${xresources_xcursor_size}" != "${XCURSOR_SIZE}" ]; }; then
+			update_themes
+			exec_reload_wm
+			MD5SUM_BASE="$md5sum_base"
+		fi
+
+		sleep "$delay"
+	done
 }
 
 if [[ -z "${1}" ]]; then
-    help
-    exit 0
+	help
+	exit 0
 fi
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        -o)
-            only_xrdb
-            shift
-            continue
-            ;;
-        -t)
-            cursor_theme_fix
-            shift
-            continue
-            ;;
-        *)
-            help
-            break
-            ;;
-    esac
+	case $1 in
+		-o)
+			only_xrdb
+			shift
+			continue
+			;;
+		-t)
+			cursor_theme_fix
+			shift
+			continue
+			;;
+		*)
+			help
+			break
+			;;
+	esac
 done
 
 # Wait for all child processes to finish

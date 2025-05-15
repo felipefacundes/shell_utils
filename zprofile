@@ -56,13 +56,6 @@ cursor_theme_fix()
 }
 cursor_theme_fix &
 
-GTK_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/settings.ini"
-GTK2_RC_FILES="${HOME}/.gtkrc-2.0" #"${HOME}/.gtkrc-2.0:${XDG_CONFIG_HOME}/gtk-2.0/gtkrc:/etc/gtk-2.0/gtkrc"
-export GTK_THEME="$(grep 'gtk-theme-name' ${GTK_RC_FILES} | cut -d'=' -f2)"
-# ICON ...
-export XCURSOR_THEME="$(grep 'gtk-cursor-theme-name' ${GTK_RC_FILES} | cut -d'=' -f2)"
-export XCURSOR_SIZE="$(grep 'gtk-cursor-theme-size' ${GTK_RC_FILES} | cut -d'=' -f2)"
-
 wm_wayland() {
     export __GLX_VENDOR_LIBRARY_NAME=intel
     export GTK_IM_MODULE=uim 
