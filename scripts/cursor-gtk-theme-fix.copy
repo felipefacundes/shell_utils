@@ -137,8 +137,6 @@ update_themes() {
 	sed -i "/gtk-xft-antialias/c\gtk-xft-antialias=${antialias}" "${GTK_RC_FILES}"
 	sed -i "/gtk-xft-hinting/c\gtk-xft-hinting=${hinting}" "${GTK_RC_FILES}"
 	sed -i "/gtk-xft-rgba/c\gtk-xft-rgba=${rgba}" "${GTK_RC_FILES}"
-	sed -i "/gtk-button-images/c\gtk-button-images=${button_images}" "${GTK_RC_FILES}"
-	sed -i "/gtk-menu-images/c\gtk-menu-images=${menu_images}" "${GTK_RC_FILES}"
 	xrdb "${XRESOURCES}" > /dev/null 2>&1
 	#xrdb -I"$HOME" "${XRESOURCES}" > /dev/null 2>&1
 	#xrdb -merge -I"$HOME" "${XRESOURCES}" > /dev/null 2>&1
@@ -183,11 +181,9 @@ cursor_theme_fix() {
 		xresources_xcursor_theme="$(grep -i 'Xcursor.theme:' "${XRESOURCES}" | sed -n 's/.*:\s*\(.*\)/\1/p')"
 		xresources_xcursor_size="$(awk -F':' '/Xcursor.size:/ {print $2}' "${XRESOURCES}" | xargs)"
 
-		button_images="$(awk -F'=' '/gtk-button-images/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		icon_theme="$(awk -F'=' '/gtk-icon-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		hintstyle="$(awk -F'=' '/gtk-xft-hintstyle/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		antialias="$(awk -F'=' '/gtk-xft-antialias/ {print $2}' "${GTK_RC_BASE}" | xargs)"
-		menu_images="$(awk -F'=' '/gtk-menu-images/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		hinting="$(awk -F'=' '/gtk-xft-hinting/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		font_name="$(awk -F'=' '/gtk-font-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		rgba="$(awk -F'=' '/gtk-xft-rgba/ {print $2}' "${GTK_RC_BASE}" | xargs)"
