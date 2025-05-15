@@ -4,6 +4,11 @@
 if [[ ! $DISPLAY && ${XDG_VTNR} != 0 ]]; then
 if [[ "${XDG_SESSION_TYPE}" = [Tt][Tt][Yy] ]]; then
 #
+### THEMES
+GTK_THEME="$GTK_THEME"; export GTK_THEME
+GTK_MODULES="$GTK_MODULES"; export GTK_MODULES
+XCURSOR_SIZE="$XCURSOR_SIZE"; export XCURSOR_SIZE
+XCURSOR_THEME="$XCURSOR_THEME"; export XCURSOR_THEME
 ### KEYBOARD
 export XKB_DEFAULT_LAYOUT=br
 export XKB_DEFAULT_OPTIONS=grp:alt_shift_toggle

@@ -2,8 +2,13 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 if [[ ! $DISPLAY && ${XDG_VTNR} != 0 ]]; then
-if [[ "${XDG_SESSION_TYPE}" = [Tt][Tt][Yy] ]]; then
+if [[ "${XDG_SESSION_TYPE,,}" == tty ]]; then
 #
+### THEMES
+GTK_THEME="$GTK_THEME"; export GTK_THEME
+GTK_MODULES="$GTK_MODULES"; export GTK_MODULES
+XCURSOR_SIZE="$XCURSOR_SIZE"; export XCURSOR_SIZE
+XCURSOR_THEME="$XCURSOR_THEME"; export XCURSOR_THEME
 ### KEYBOARD
 export XKB_DEFAULT_LAYOUT=br
 export XKB_DEFAULT_OPTIONS=grp:alt_shift_toggle
@@ -13,7 +18,7 @@ export XKB_DEFAULT_OPTIONS=grp:alt_shift_toggle
 #export __GL_SYNC_TO_VBLANK=0
 
 export SSH_AUTH_SOCK
-file=~/.zprofile
+file=~/.bash_profile
 export wms_logs_dir="${HOME}/.WMs_logs_dir"
 wms_logs_dir_size=$(du "${wms_logs_dir}" | awk '{print $1}')
 scripts=~/.shell_utils/scripts

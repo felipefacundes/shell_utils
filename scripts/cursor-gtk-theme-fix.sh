@@ -61,20 +61,45 @@ nodiff_gtk3_gtk4() {
 reload_wm() {
 	if pgrep -x "awesome" >/dev/null; then
 		awesome-client 'awesome.restart()'
+	elif pgrep -x "bspwm" >/dev/null; then
+		bspc wm -r
+	elif pgrep -x "dwm" >/dev/null; then
+		pkill -USR1 -x dwm
+	elif pgrep -x "fluxbox" >/dev/null; then
+		fluxbox-remote restart
+	elif pgrep -x "herbstluftwm" >/dev/null; then
+		herbstclient reload
+	elif pgrep -x "i3" >/dev/null; then
+		i3-msg restart
 	elif pgrep -x "openbox" >/dev/null; then
 		openbox --reconfigure
+	elif pgrep -x "qtile" >/dev/null; then
+		qtile cmd-obj -o cmd -f restart
 	elif pgrep -x "sway" >/dev/null; then
 		swaymsg reload
-	fi
-}
-
-kill_wm() {
-	if pgrep -x "awesome" >/dev/null; then
-		awesome-client 'awesome.restart()'
-	elif pgrep -x "openbox" >/dev/null; then
-		openbox --reconfigure
+	elif pgrep -x "xmonad" >/dev/null; then
+		pkill -USR1 -x xmonad
+	elif pgrep -x "spectrwm" >/dev/null; then
+		spectrwm -r
+	elif pgrep -x "fvwm" >/dev/null; then
+		fvwm -r
+	elif pgrep -x "icewm" >/dev/null; then
+		icewm -r
+	elif pgrep -x "pekwm" >/dev/null; then
+		pekwm --replace
 	elif pgrep -x "sway" >/dev/null; then
 		swaymsg reload
+	elif pgrep -x "wayfire" >/dev/null; then
+		wayfire -r
+	elif pgrep -x "hyprland" >/dev/null; then
+		hyprctl reload
+	elif pgrep -x "labwc" >/dev/null; then
+		labwc -r
+	elif pgrep -x "wmutils" >/dev/null; then
+		notify-send "WM Utils" "Necessary manual restart"
+	else
+		notify-send "WM Restart" "WM's necessary manual restart"
+		return 1
 	fi
 }
 
@@ -134,39 +159,50 @@ qt_themes() {
 }
 
 update_themes() {
-	nodiff_gtk3_gtk4
 	# GTK Theme
 	sed -i "/gtk-theme-name/c\gtk-theme-name=${GTK_THEME}" "${GTK_RC_FILES}"
+	sed -i "/gtk-theme-name/c\gtk-theme-name=${GTK_THEME}" "${GTK4_RC_FILES}"
 	sed -i "/Net\/ThemeName/c\Net\/ThemeName \"${GTK_THEME}\"" "${XSETTINGSD}"
 	# Cursor Theme
 	sed -i "/^Xcursor\.theme/c\Xcursor.theme: ${XCURSOR_THEME}" "${XRESOURCES}"
-	sed -i "/gtk-cursor-theme-name/c\gtk-cursor-theme-name=${XCURSOR_THEME}" "${GTK_RC_FILES}"
 	sed -i "/Gtk\/CursorThemeName/c\Gtk\/CursorThemeName \"${XCURSOR_THEME}\"" "${XSETTINGSD}"
+	sed -i "/gtk-cursor-theme-name/c\gtk-cursor-theme-name=${XCURSOR_THEME}" "${GTK_RC_FILES}"
+	sed -i "/gtk-cursor-theme-name/c\gtk-cursor-theme-name=${XCURSOR_THEME}" "${GTK4_RC_FILES}"
 	# Cursor size
 	sed -i "/^Xcursor\.size/c\Xcursor.size: ${XCURSOR_SIZE}" "${XRESOURCES}"
 	sed -i "/Gtk\/CursorThemeSize/c\Gtk\/CursorThemeSize ${XCURSOR_SIZE}" "${XSETTINGSD}"
 	sed -i "/gtk-cursor-theme-size/c\gtk-cursor-theme-size=${XCURSOR_SIZE}" "${GTK_RC_FILES}"
+	sed -i "/gtk-cursor-theme-size/c\gtk-cursor-theme-size=${XCURSOR_SIZE}" "${GTK4_RC_FILES}"
 	# Icon theme
-	sed -i "/gtk-icon-theme-name/c\gtk-icon-theme-name=${icon_theme}" "${GTK_RC_FILES}"
 	sed -i "/Net\/IconThemeName/c\Net\/IconThemeName \"${icon_theme}\"" "${XSETTINGSD}"
+	sed -i "/gtk-icon-theme-name/c\gtk-icon-theme-name=${icon_theme}" "${GTK_RC_FILES}"
+	sed -i "/gtk-icon-theme-name/c\gtk-icon-theme-name=${icon_theme}" "${GTK4_RC_FILES}"
 	# GTK Font 
 	sed -i "/gtk-font-name/c\gtk-font-name=${font_name}" "${GTK_RC_FILES}"
+	sed -i "/gtk-font-name/c\gtk-font-name=${font_name}" "${GTK4_RC_FILES}"
 	sed -i "/Gtk\/FontName/c\Gtk\/FontName \"${font_name}\"" "${XSETTINGSD}"
 	sed -i "/Xft\/Hinting/c\Xft\/Hinting \"${hinting}\"" "${XSETTINGSD}"
 	sed -i "/gtk-xft-hinting/c\gtk-xft-hinting=${hinting}" "${GTK_RC_FILES}"
+	sed -i "/gtk-xft-hinting/c\gtk-xft-hinting=${hinting}" "${GTK4_RC_FILES}"
 	sed -i "/Xft\/HintStyle/c\Xft\/HintStyle \"${hintstyle}\"" "${XSETTINGSD}"
 	sed -i "/gtk-xft-hintstyle/c\gtk-xft-hintstyle=${hintstyle}" "${GTK_RC_FILES}"
+	sed -i "/gtk-xft-hintstyle/c\gtk-xft-hintstyle=${hintstyle}" "${GTK4_RC_FILES}"
 	sed -i "/Xft\/Antialias/c\Xft\/Antialias \"${antialias}\"" "${XSETTINGSD}"
 	sed -i "/gtk-xft-antialias/c\gtk-xft-antialias=${antialias}" "${GTK_RC_FILES}"
+	sed -i "/gtk-xft-antialias/c\gtk-xft-antialias=${antialias}" "${GTK4_RC_FILES}"
 	sed -i "/Xft\/RGBA/c\Xft\/RGBA \"${rgba}\"" "${XSETTINGSD}"
 	sed -i "/gtk-xft-rgba/c\gtk-xft-rgba=${rgba}" "${GTK_RC_FILES}"
+	sed -i "/gtk-xft-rgba/c\gtk-xft-rgba=${rgba}" "${GTK4_RC_FILES}"
 	# GTK Others
+	sed -i "/gtk-modules/c\gtk-modules=${GTK_MODULES}" "${GTK_RC_FILES}"
 	sed -i "/gtk-menu-images/c\gtk-menu-images=${menu_images}" "${GTK_RC_FILES}"
 	sed -i "/gtk-button-images/c\gtk-button-images=${button_images}" "${GTK_RC_FILES}"
 	sed -i "/gtk-toolbar-style/c\gtk-toolbar-style=${toolbar_style}" "${GTK_RC_FILES}"
 	sed -i "/gtk-toolbar-icon-size/c\gtk-toolbar-icon-size=${toolbar_icon_size}" "${GTK_RC_FILES}"
 	sed -i "/gtk-enable-event-sounds/c\gtk-enable-event-sounds=${feedback_sounds}" "${GTK_RC_FILES}"
+	sed -i "/gtk-enable-event-sounds/c\gtk-enable-event-sounds=${feedback_sounds}" "${GTK4_RC_FILES}"
 	sed -i "/gtk-enable-input-feedback-sounds/c\gtk-enable-input-feedback-sounds=${event_sounds}" "${GTK_RC_FILES}"
+	sed -i "/gtk-enable-input-feedback-sounds/c\gtk-enable-input-feedback-sounds=${event_sounds}" "${GTK4_RC_FILES}"
 
 	xrdb "${XRESOURCES}" > /dev/null 2>&1
 	xrdb -merge "${XRESOURCES}"> /dev/null 2>&1
@@ -178,7 +214,6 @@ update_themes() {
 	gsettings reset org.gnome.desktop.interface gtk-theme
 	gsettings set org.gnome.desktop.interface gtk-theme "${GTK_THEME}"
 	gsettings set org.gnome.desktop.interface cursor-theme "${XCURSOR_THEME}"
-	nodiff_gtk3_gtk4
 	export GTK_THEME="$GTK_THEME"
 	if_xsettingsd
 	reload_gtk
@@ -203,8 +238,8 @@ cursor_theme_fix() {
 
 	while true
 	do 
-		GTK_THEME="$(awk -F'=' '/gtk-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"
-		# ICON ...
+		GTK_THEME="$(awk -F'=' '/gtk-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export GTK_THEME
+		GTK_MODULES="$(awk -F'=' '/gtk-modules/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export GTK_MODULES
 		XCURSOR_SIZE="$(awk -F'=' '/gtk-cursor-theme-size/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export XCURSOR_SIZE
 		XCURSOR_THEME="$(awk -F'=' '/gtk-cursor-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export XCURSOR_THEME
 
