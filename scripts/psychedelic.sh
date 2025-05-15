@@ -105,7 +105,7 @@ _restore_original_settings() {
 _flash_screen() {
     trap 'cleanup' EXIT  # Restore settings on exit
 
-    if [[ ${XDG_SESSION_TYPE,,} == [xX]11 ]]; then
+    if [[ "${XDG_SESSION_TYPE,,}" == x11 ]]; then
         _capture_original_settings  # Capture original settings before changing
         while :; do
             for gamma_config in "${gamma_configs_psychedelic[@]}"; do

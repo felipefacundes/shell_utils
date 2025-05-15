@@ -20,7 +20,7 @@ GTK2_RC_FILES="${HOME}/.gtkrc-2.0" #"${HOME}/.gtkrc-2.0:${XDG_CONFIG_HOME}/gtk-2
 GTK_RC_BASE="$GTK2_RC_FILES"
 MD5SUM_BASE=$(md5sum "$GTK_RC_BASE")
 
-delay=1.5
+delay=2.0
 
 doc() {
 	less -FX "$0" | head -n8 | tail -n3
@@ -96,9 +96,22 @@ reload_gtk() {
 		pkill -HUP -f "gtk4" 
 		pkill -HUP -f gtk3-nocsd
 		pkill -9 -f rofi
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-modules
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-xft-rgba
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-font-name
 		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-theme-name
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-menu-images
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-xft-hinting
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-xft-hintstyle
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-toolbar-style
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-button-images
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-xft-antialias
 		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-icon-theme-name
 		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-cursor-theme-name
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-cursor-theme-size
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-toolbar-icon-size
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-enable-event-sounds
+		dbus-send --session --type=signal / org.gtk.SettingsChanged string:gtk-enable-input-feedback-sounds
 	fi
 }
 
@@ -122,29 +135,46 @@ qt_themes() {
 
 update_themes() {
 	nodiff_gtk3_gtk4
+	# GTK Theme
+	sed -i "/gtk-theme-name/c\gtk-theme-name=${GTK_THEME}" "${GTK_RC_FILES}"
+	sed -i "/Net\/ThemeName/c\Net\/ThemeName \"${GTK_THEME}\"" "${XSETTINGSD}"
+	# Cursor Theme
 	sed -i "/^Xcursor\.theme/c\Xcursor.theme: ${XCURSOR_THEME}" "${XRESOURCES}"
 	sed -i "/gtk-cursor-theme-name/c\gtk-cursor-theme-name=${XCURSOR_THEME}" "${GTK_RC_FILES}"
 	sed -i "/Gtk\/CursorThemeName/c\Gtk\/CursorThemeName \"${XCURSOR_THEME}\"" "${XSETTINGSD}"
+	# Cursor size
 	sed -i "/^Xcursor\.size/c\Xcursor.size: ${XCURSOR_SIZE}" "${XRESOURCES}"
-	sed -i "/gtk-cursor-theme-size/c\gtk-cursor-theme-size=${XCURSOR_SIZE}" "${GTK_RC_FILES}"
 	sed -i "/Gtk\/CursorThemeSize/c\Gtk\/CursorThemeSize ${XCURSOR_SIZE}" "${XSETTINGSD}"
+	sed -i "/gtk-cursor-theme-size/c\gtk-cursor-theme-size=${XCURSOR_SIZE}" "${GTK_RC_FILES}"
+	# Icon theme
 	sed -i "/gtk-icon-theme-name/c\gtk-icon-theme-name=${icon_theme}" "${GTK_RC_FILES}"
 	sed -i "/Net\/IconThemeName/c\Net\/IconThemeName \"${icon_theme}\"" "${XSETTINGSD}"
+	# GTK Font 
 	sed -i "/gtk-font-name/c\gtk-font-name=${font_name}" "${GTK_RC_FILES}"
 	sed -i "/Gtk\/FontName/c\Gtk\/FontName \"${font_name}\"" "${XSETTINGSD}"
-	sed -i "/gtk-xft-hintstyle/c\gtk-xft-hintstyle=${hintstyle}" "${GTK_RC_FILES}"
-	sed -i "/gtk-xft-antialias/c\gtk-xft-antialias=${antialias}" "${GTK_RC_FILES}"
+	sed -i "/Xft\/Hinting/c\Xft\/Hinting \"${hinting}\"" "${XSETTINGSD}"
 	sed -i "/gtk-xft-hinting/c\gtk-xft-hinting=${hinting}" "${GTK_RC_FILES}"
+	sed -i "/Xft\/HintStyle/c\Xft\/HintStyle \"${hintstyle}\"" "${XSETTINGSD}"
+	sed -i "/gtk-xft-hintstyle/c\gtk-xft-hintstyle=${hintstyle}" "${GTK_RC_FILES}"
+	sed -i "/Xft\/Antialias/c\Xft\/Antialias \"${antialias}\"" "${XSETTINGSD}"
+	sed -i "/gtk-xft-antialias/c\gtk-xft-antialias=${antialias}" "${GTK_RC_FILES}"
+	sed -i "/Xft\/RGBA/c\Xft\/RGBA \"${rgba}\"" "${XSETTINGSD}"
 	sed -i "/gtk-xft-rgba/c\gtk-xft-rgba=${rgba}" "${GTK_RC_FILES}"
-	sed -i "/gtk-button-images/c\gtk-button-images=${button_images}" "${GTK_RC_FILES}"
+	# GTK Others
 	sed -i "/gtk-menu-images/c\gtk-menu-images=${menu_images}" "${GTK_RC_FILES}"
+	sed -i "/gtk-button-images/c\gtk-button-images=${button_images}" "${GTK_RC_FILES}"
+	sed -i "/gtk-toolbar-style/c\gtk-toolbar-style=${toolbar_style}" "${GTK_RC_FILES}"
+	sed -i "/gtk-toolbar-icon-size/c\gtk-toolbar-icon-size=${toolbar_icon_size}" "${GTK_RC_FILES}"
+	sed -i "/gtk-enable-event-sounds/c\gtk-enable-event-sounds=${feedback_sounds}" "${GTK_RC_FILES}"
+	sed -i "/gtk-enable-input-feedback-sounds/c\gtk-enable-input-feedback-sounds=${event_sounds}" "${GTK_RC_FILES}"
+
 	xrdb "${XRESOURCES}" > /dev/null 2>&1
 	xrdb -merge "${XRESOURCES}"> /dev/null 2>&1
 	xsetroot -cursor_name left_ptr > /dev/null 2>&1
 	gsettings set "${gnome_schema}" gtk-theme "${GTK_THEME}"
+	gsettings set "${gnome_schema}" font-name "${font_name}"
 	gsettings set "${gnome_schema}" icon-theme "${icon_theme}"
 	gsettings set "${gnome_schema}" cursor-theme "${XCURSOR_THEME}"
-	gsettings set "${gnome_schema}" font-name "${font_name}"
 	gsettings reset org.gnome.desktop.interface gtk-theme
 	gsettings set org.gnome.desktop.interface gtk-theme "${GTK_THEME}"
 	gsettings set org.gnome.desktop.interface cursor-theme "${XCURSOR_THEME}"
@@ -181,7 +211,11 @@ cursor_theme_fix() {
 		xresources_xcursor_theme="$(grep -i 'Xcursor.theme:' "${XRESOURCES}" | sed -n 's/.*:\s*\(.*\)/\1/p')"
 		xresources_xcursor_size="$(awk -F':' '/Xcursor.size:/ {print $2}' "${XRESOURCES}" | xargs)"
 
+		feedback_sounds="$(awk -F'=' '/gtk-enable-input-feedback-sounds/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		toolbar_icon_size="$(awk -F'=' '/gtk-toolbar-icon-size/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		event_sounds="$(awk -F'=' '/gtk-enable-event-sounds/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		button_images="$(awk -F'=' '/gtk-button-images/ {print $2}' "${GTK_RC_BASE}" | xargs)"
+		toolbar_style="$(awk -F'=' '/gtk-toolbar-style/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		icon_theme="$(awk -F'=' '/gtk-icon-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		hintstyle="$(awk -F'=' '/gtk-xft-hintstyle/ {print $2}' "${GTK_RC_BASE}" | xargs)"
 		antialias="$(awk -F'=' '/gtk-xft-antialias/ {print $2}' "${GTK_RC_BASE}" | xargs)"

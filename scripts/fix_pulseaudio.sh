@@ -8,7 +8,7 @@ failures by restarting PulseAudio if it becomes unresponsive.
 DOCUMENTATION
 
 # Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
+trap '(kill -- -$$) &>/dev/null' INT TERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
 
 delay=10
 loop=2
@@ -35,7 +35,7 @@ pactl load-module module-dbus-protocol
 
 # FIX PULSEAUDIO
 while true;
-do sleep "$delay"
+do
     if ! pactl stat; then
         systemctl --user stop pulseaudio.service pulseaudio.socket;
         sleep "$loop";
@@ -49,6 +49,7 @@ do sleep "$delay"
             systemctl --user reset-failed pulseaudio.service
         fi
     fi
+	sleep "$delay"
 done
 
 # Wait for all child processes to finish
