@@ -19,7 +19,7 @@ controle é avaliada como falsa. Se você suspeita que while e until são muito 
 
 1.1 Para amostra for:
 
-        #!/bin/bash
+        #!/usr/bin/env bash
         for i in $( ls ); do
             echo item: $i
         done

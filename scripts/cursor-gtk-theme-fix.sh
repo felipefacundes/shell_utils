@@ -20,6 +20,8 @@ GTK2_RC_FILES="${HOME}/.gtkrc-2.0" #"${HOME}/.gtkrc-2.0:${XDG_CONFIG_HOME}/gtk-2
 GTK_RC_BASE="$GTK2_RC_FILES"
 MD5SUM_BASE=$(md5sum "$GTK_RC_BASE")
 
+delay=1.5
+
 doc() {
 	less -FX "$0" | head -n8 | tail -n3
 	echo
@@ -36,7 +38,6 @@ help() {
 		Cursor theme and GTK theme fix loop"
 }
 
-delay=2.5
 xsetroot -cursor_name left_ptr >/dev/null 2>&1
 xrdb -merge "${XRESOURCES}" >/dev/null 2>&1
 
@@ -44,8 +45,6 @@ only_xrdb() {
 	while true
 	do 
 		xrdb "${XRESOURCES}" > /dev/null 2>&1
-		#xrdb -I"${HOME}" "${XRESOURCES}" > /dev/null 2>&1
-		#xrdb -merge -I"${HOME}" "${XRESOURCES}" > /dev/null 2>&1
 		xrdb -merge "${XRESOURCES}" > /dev/null 2>&1
 		xsetroot -cursor_name left_ptr > /dev/null 2>&1
 
@@ -140,8 +139,6 @@ update_themes() {
 	sed -i "/gtk-button-images/c\gtk-button-images=${button_images}" "${GTK_RC_FILES}"
 	sed -i "/gtk-menu-images/c\gtk-menu-images=${menu_images}" "${GTK_RC_FILES}"
 	xrdb "${XRESOURCES}" > /dev/null 2>&1
-	#xrdb -I"$HOME" "${XRESOURCES}" > /dev/null 2>&1
-	#xrdb -merge -I"$HOME" "${XRESOURCES}" > /dev/null 2>&1
 	xrdb -merge "${XRESOURCES}"> /dev/null 2>&1
 	xsetroot -cursor_name left_ptr > /dev/null 2>&1
 	gsettings set "${gnome_schema}" gtk-theme "${GTK_THEME}"
