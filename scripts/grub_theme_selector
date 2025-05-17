@@ -20,6 +20,8 @@ and requires administrative authentication to apply changes to the system.
 - Requires administrative privileges to apply changes.
 DOCUMENTATION
 
+clear
+
 # Enable recursive directory expansion
 shopt -s globstar
 
@@ -27,6 +29,7 @@ theme_dirs=("/usr/share/grub/themes" "/boot/grub/themes")
 theme_list=()
 
 declare -A theme_paths
+declare -A theme_previews
 
 # Search theme.txt files in subfolders of specified directories
 for dir in "${theme_dirs[@]}"; do
@@ -35,6 +38,26 @@ for dir in "${theme_dirs[@]}"; do
             theme_name="$(basename "$(dirname "$theme_file")")"
             theme_list+=("$theme_name")
             theme_paths["$theme_name"]="$theme_file"
+            
+            # Find preview image for the theme
+            theme_dir=$(dirname "$theme_file")
+            preview_file=""
+            
+            # Check for possible preview image files
+            for file in "Preview.png" "preview.png" "PREVIEW.png" \
+                        "Preview.jpg" "preview.jpg" "PREVIEW.jpg"; do
+                if [[ -f "$theme_dir/$file" ]]; then
+                    preview_file="$theme_dir/$file"
+                    break
+                fi
+            done
+            
+            # Fallback to background.png if no preview found
+            if [[ -z "$preview_file" && -f "$theme_dir/background.png" ]]; then
+                preview_file="$theme_dir/background.png"
+            fi
+            
+            theme_previews["$theme_name"]="$preview_file"
         fi
     done
 done
@@ -45,31 +68,94 @@ if [[ ${#theme_list[@]} -eq 0 ]]; then
     exit 1
 fi
 
-# Create a list of options for Whiptail
-whiptail_options=()
-for theme in "${theme_list[@]}"; do
-    # Extract only the main directory where the theme was found
-    theme_dir=$(dirname "${theme_paths[$theme]}")
-    if [[ "$theme_dir" == /usr/share/grub/themes/* ]]; then
-        location="/usr/share/grub/themes"
-    elif [[ "$theme_dir" == /boot/grub/themes/* ]]; then
-        location="/boot/grub/themes"
+# Function to check sixel support
+check_sixel_support() {
+    hassixel=""
+    IFS=";?c" read -ra REPLY -s -t 1 -d "c" -p $'\e[c' >&2
+    for code in "${REPLY[@]}"; do
+        if [[ $code == "4" ]]; then
+            hassixel=yup
+            break
+        fi
+    done
+
+    # YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then hassixel=yeah; fi
+
+    if [[ -z "$hassixel" && -z "$LSIX_FORCE_SIXEL_SUPPORT" ]]; then
+        return 1
     else
-        location="Unknown directory"
+        return 0
     fi
-    whiptail_options+=("$theme" "$location")
-done
+}
 
-# Display the menu using Whiptail
-selected_theme=$(whiptail --title "GRUB Theme Selection" \
-                          --menu "Choose a theme for GRUB:" 20 78 10 \
-                          "${whiptail_options[@]}" \
-                          3>&1 1>&2 2>&3)
+# Use FZF if available
+if command -v fzf >/dev/null; then
+    # Prepare the preview command
+    if check_sixel_support; then
+        preview_cmd="magick '{1}' -resize 800x600 sixel:- 2>/dev/null || echo 'No preview available'"
+    elif command -v viu >/dev/null; then
+        preview_cmd="viu '{1}' 2>/dev/null || echo 'No preview available'"
+    elif command -v feh >/dev/null; then
+        preview_cmd="feh '{1}' 2>/dev/null || echo 'No preview available'"
+    else
+        preview_cmd="echo 'No image viewer available'"
+    fi
 
-# Checks if the user has canceled the selection
-if [[ $? -ne 0 ]]; then
-    echo "Operation canceled by user."
-    exit 1
+    # Generate data for fzf in the format: preview_file|theme_name
+    fzf_data=()
+    for theme in "${theme_list[@]}"; do
+        preview_file="${theme_previews[$theme]}"
+        if [[ -f "$preview_file" ]]; then
+            fzf_data+=("$preview_file|$theme")
+        else
+            fzf_data+=("|$theme (no preview)")
+        fi
+    done
+
+    # Display FZF interface
+    selected_item=$(printf "%s\n" "${fzf_data[@]}" | \
+        fzf --delimiter='|' --with-nth=2 \
+		--prompt="🔍 Select a Grub Theme: " \
+        --height=90% --info=inline \
+        --preview "$preview_cmd" \
+        --preview-window=right:70%:wrap)
+
+    # Extract the selected theme name
+    if [[ -n "$selected_item" ]]; then
+        selected_theme=$(echo "$selected_item" | cut -d'|' -f2 | sed 's/ (no preview)//')
+    else
+        echo "Operation canceled by user."
+        exit 1
+    fi
+else
+    # Fallback to Whiptail
+    # Create a list of options for Whiptail
+    whiptail_options=()
+    for theme in "${theme_list[@]}"; do
+        # Extract only the main directory where the theme was found
+        theme_dir=$(dirname "${theme_paths[$theme]}")
+        if [[ "$theme_dir" == /usr/share/grub/themes/* ]]; then
+            location="/usr/share/grub/themes"
+        elif [[ "$theme_dir" == /boot/grub/themes/* ]]; then
+            location="/boot/grub/themes"
+        else
+            location="Unknown directory"
+        fi
+        whiptail_options+=("$theme" "$location")
+    done
+
+    # Display the menu using Whiptail
+    selected_theme=$(whiptail --title "GRUB Theme Selection" \
+                              --menu "Choose a theme for GRUB:" 20 78 10 \
+                              "${whiptail_options[@]}" \
+                              3>&1 1>&2 2>&3)
+
+    # Checks if the user has canceled the selection
+    if [[ $? -ne 0 ]]; then
+        echo "Operation canceled by user."
+        exit 1
+    fi
 fi
 
 # Gets the full path of the selected theme
@@ -77,7 +163,6 @@ selected_theme_path="${theme_paths[$selected_theme]}"
 
 # Sets the new value of GRUB_THEME
 new_grub_theme="GRUB_THEME=\"$selected_theme_path\""
-
 
 # Replace the theme in /etc/default/grub file (requires sudo)
 echo -e "\nProvide admin password for sudo.\n"
@@ -91,9 +176,9 @@ sudo sed -i \
     -e "s|^[[:space:]]*#\{0,1\}[[:space:]]*GRUB_THEME=.*|$new_grub_theme|" \
     /etc/default/grub
 
- if sudo grub-mkconfig -o /boot/grub/grub.cfg; then
+if sudo grub-mkconfig -o /boot/grub/grub.cfg; then
     echo -e "\n\033[1;32mGRUB theme successfully updated to $selected_theme."
-    echo -e "\033[1;33mLocated in $(cat /etc/default/grub | grep GRUB_THEME=)"
+    echo -e "\033[1;33mLocated in $(grep GRUB_THEME= /etc/default/grub)"
     echo -e "\033[1;32mRun 'update-grub' to apply the changes. If it has not been applied.\033[0m"
 else
     echo -e "\033[1;31mError updating file /etc/default/grub."

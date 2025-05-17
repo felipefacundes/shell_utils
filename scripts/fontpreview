@@ -326,7 +326,7 @@ elif [[ -z "$output_file" ]]; then
 		--prompt="🔍 Select a font: " \
 		--preview="magick -size \"$SIZE\" -background \"$BG_COLOR\" -fill \"$FG_COLOR\" -font '{}' \
 		-pointsize \"$FONT_SIZE\" label:\"$PREVIEW_TEXT\" -geometry \"$SIZE\" ${cmd[*]}" \
-		--preview-window="right:${FZF_MARGIN_R}%:border-left" \
+		--preview-window="right:${FZF_MARGIN_R}%:wrap" \
 		--height="${FZF_MARGIN_H}"%)
 	# If a font was selected, show confirmation
 	if [[ -n "$selected_font" ]]; then
