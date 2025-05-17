@@ -42,16 +42,21 @@ for dir in "${theme_dirs[@]}"; do
             # Find preview image for the theme
             theme_dir=$(dirname "$theme_file")
             preview_file=""
-            
+			files=(
+				"Preview.png" "preview.png" "PREVIEW.png" 
+				"Preview.jpg" "preview.jpg" "PREVIEW.jpg" 
+				"background.png" "background.jpg"
+				"${theme_name}.png" "${theme_name}.jpg"
+			)
+
             # Check for possible preview image files
-            for file in "Preview.png" "preview.png" "PREVIEW.png" \
-                        "Preview.jpg" "preview.jpg" "PREVIEW.jpg"; do
+            for file in "${files[@]}"; do
                 if [[ -f "$theme_dir/$file" ]]; then
                     preview_file="$theme_dir/$file"
                     break
                 fi
             done
-            
+
             # Fallback to background.png if no preview found
             if [[ -z "$preview_file" && -f "$theme_dir/background.png" ]]; then
                 preview_file="$theme_dir/background.png"
