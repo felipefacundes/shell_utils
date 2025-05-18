@@ -3,24 +3,41 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-This Bash script aims to manage GRUB themes in an automated and interactive way. 
-It searches for 'theme.txt' files in predefined directories such as 
-'/usr/share/grub/themes' and '/boot/grub/themes', 
-using the recursive directory expansion enabled by 'shopt -s globstar'. 
-After identifying the available themes, it presents a friendly selection interface via Whiptail, 
-allowing the user to choose a theme. The script safely updates the '/etc/default/grub' file, 
-setting the new 'GRUB_THEME' variable and regenerating the GRUB configuration file with 'grub-mkconfig'. 
-It includes robust checks to ensure the integrity of operations 
-and requires administrative authentication to apply changes to the system.
+# GRUB Theme Manager
 
-## Features
-- Automatically detects available GRUB themes in common directories.
-- Presents an interactive menu using Whiptail.
-- Updates the GRUB configuration securely.
-- Requires administrative privileges to apply changes.
+This Bash script provides an interactive, feature-rich interface for managing GRUB bootloader themes. 
+It automatically detects installed themes and offers a visual selection process with multiple preview 
+options before applying changes system-wide.
+
+# Core Functionality
+- Recursively scans '/usr/share/grub/themes' and '/boot/grub/themes' for valid themes
+- Dynamically detects theme preview images using multiple fallback patterns:
+  - Standard preview files (Preview.png/jpg, preview.png/jpg)
+  - Theme-specific files (theme-name.png/jpg)
+  - Common alternatives (background.png/jpg, *logo.png/jpg)
+- Offers two interactive selection interfaces:
+  1. FZF with rich previews (when available):
+     - Supports sixel graphics for terminal image rendering
+     - Falls back to viu or feh for image previews
+     - Displays theme information alongside previews
+  2. Whiptail fallback (basic terminal interface)
+- Safely modifies system GRUB configuration with sudo validation
+- Automatically regenerates GRUB configuration after changes
+
+# Preview System
+The script implements a sophisticated preview pipeline:
+
+1. Sixel Support Detection:
+   - Auto-detects terminal sixel capability
+   - Uses ImageMagick for sixel conversion when available
+2. Alternative Preview Methods:
+   - `viu` for terminal image rendering
+   - `feh` for X11-based previews
+   - Falls back to text-only when no visual tools available
+3. Multi-pattern Preview Discovery:
+   "Preview.png" "preview.png" "background.png"
+   "${theme_name}.png" "*logo.png" "logo.png"
 DOCUMENTATION
-
-clear
 
 # Enable recursive directory expansion
 shopt -s globstar
@@ -31,6 +48,7 @@ theme_list=()
 declare -A theme_paths
 declare -A theme_previews
 
+clear && echo "Searching for theme thumbnails/previews"
 # Search theme.txt files in subfolders of specified directories
 for dir in "${theme_dirs[@]}"; do
     for theme_file in "$dir"/**/theme.txt; do
@@ -42,20 +60,31 @@ for dir in "${theme_dirs[@]}"; do
             # Find preview image for the theme
             theme_dir=$(dirname "$theme_file")
             preview_file=""
-			files=(
-				"Preview.png" "preview.png" "PREVIEW.png" 
-				"Preview.jpg" "preview.jpg" "PREVIEW.jpg" 
-				"background.png" "background.jpg"
-				"${theme_name}.png" "${theme_name}.jpg"
-			)
-
-            # Check for possible preview image files
-            for file in "${files[@]}"; do
-                if [[ -f "$theme_dir/$file" ]]; then
-                    preview_file="$theme_dir/$file"
-                    break
-                fi
-            done
+			short_name=$(echo "$theme_name" | cut -c 1-4)
+			# Inside the loop where you are looking for preview_file:
+			for pattern in "Preview.png" "preview.png" "PREVIEW.png" \
+						"Preview.jpg" "preview.jpg" "PREVIEW.jpg" \
+						"background.png" "background.jpg" \
+						"background*.png" "background*.jpg" \
+						"images/background.png" "images/background.jpg" \
+						"${theme_name}.png" "${theme_name}.jpg" \
+						"${theme_name,,}.png" "${theme_name,,}.jpg" \
+						"${theme_name^}.png" "${theme_name^}.jpg" \
+						"${theme_name^^}.png" "${theme_name^^}.jpg" \
+						"${short_name}*.jpg" "${short_name}*.png" \
+						"${short_name,,}*.jpg" "${short_name,,}*.png" \
+						"${short_name^}*.jpg" "${short_name^}*.png" \
+						"${short_name^^}*.jpg" "${short_name^^}*.png" \
+						"*logo.jpg" "*logo.png" "Logo.png" "Logo.jpg" \
+						"logo.jpg" "logo.png"; do
+				# Uses Compgen to expand the standard only in the theme directory
+				for file in $(compgen -G "$theme_dir/$pattern"); do
+					if [[ -f "$file" ]]; then
+						preview_file="$file"
+						break 2  # Break out of both loops
+					fi
+				done
+			done
 
             # Fallback to background.png if no preview found
             if [[ -z "$preview_file" && -f "$theme_dir/background.png" ]]; then
@@ -66,6 +95,7 @@ for dir in "${theme_dirs[@]}"; do
         fi
     done
 done
+clear
 
 # Check if themes were found
 if [[ ${#theme_list[@]} -eq 0 ]]; then
