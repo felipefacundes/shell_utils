@@ -681,7 +681,8 @@ mostrar_versiculos() {
     while IFS= read -r linha; do
 		linha=$(echo "$linha" | sed -e 's/^[[:digit:]]\{1,\}/&./' \
 								-e 's|<i>\([^<]*\)</i>|\\e[3m\1\\e[23m|g' \
-								-e 's|<small>\([^<]*\)</small>|\L\1|g')
+								-e 's|<small>\([^<]*\)</small>|\L\1|g' \
+								-e 's/<[^>]*>//g')
         formatted_text+="$linha"$'\n'
     done <<< "$VERSICULOS"
 
