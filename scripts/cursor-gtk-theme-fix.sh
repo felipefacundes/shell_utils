@@ -18,9 +18,6 @@ Key Features:
 • Window Manager compatibility
 DOCUMENTATION
 
-# Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill -TERM -- -$$' INT #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
-
 XRESOURCES=~/.Xresources
 XSETTINGSD=~/.config/xsettingsd/xsettingsd.conf
 GTK3_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/settings.ini"
@@ -30,7 +27,7 @@ GTK_RC_BASE="$GTK2_RC_FILES"
 
 lock_file=/tmp/cursor-gtk-theme-fix.lock
 [[ -f "$lock_file" ]] && rm "$lock_file"
-trap '[[ -f "$lock_file" ]] && rm "$lock_file"' EXIT
+trap '[[ -f "$lock_file" ]] && rm "$lock_file"; kill -TERM -- -$$' SIGINT SIGQUIT SIGHUP SIGABRT EXIT
 
 delay=2.0
 
@@ -281,7 +278,7 @@ seq_fix() {
 gtk_rc_base() {
 	md5sum_gtk2=$(md5sum "$GTK2_RC_FILES")
 	md5sum_gtk3=$(md5sum "$GTK3_RC_FILES")
-	md5sum_gtk4=$(md5sum "$GTK4_RC_FILES")
+	# md5sum_gtk4=$(md5sum "$GTK4_RC_FILES")
 
 	[[ -f "$lock_file" ]] && return
 
@@ -293,10 +290,10 @@ gtk_rc_base() {
 		GTK_RC_BASE="$GTK3_RC_FILES"
 		MD5SUM_GTK3="$md5sum_gtk3"
 		echo gtk3 > "$lock_file"
-	elif [[ "$MD5SUM_GTK4" != "$md5sum_gtk4" ]]; then
-		GTK_RC_BASE="$GTK4_RC_FILES"
-		MD5SUM_GTK4="$md5sum_gtk4"
-		echo gtk4 > "$lock_file"
+	# elif [[ "$MD5SUM_GTK4" != "$md5sum_gtk4" ]]; then
+	# 	GTK_RC_BASE="$GTK4_RC_FILES"
+	# 	MD5SUM_GTK4="$md5sum_gtk4"
+	# 	echo gtk4 > "$lock_file"
 	fi
 
 }
