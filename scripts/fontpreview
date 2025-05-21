@@ -15,6 +15,7 @@ SCRIPT="${0##*/}"
 TMPDIR="${TMPDIR:-/tmp}"
 FONTPREVIEWTEMPDIR="${TMPDIR}/${SCRIPT%.*}"
 TEMP_FILE="$FONTPREVIEWTEMPDIR/temp_prev.jpg"
+SCRIPT_PATH="$(realpath "$0")"
 
 [[ -d "${FONTPREVIEWTEMPDIR}" ]] && rm -rf "${FONTPREVIEWTEMPDIR}"
 [[ ! -d "${FONTPREVIEWTEMPDIR}" ]] && mkdir -p "${FONTPREVIEWTEMPDIR}"
@@ -295,6 +296,12 @@ while [[ $# -gt 0 ]]; do
 			shift
             PREVIEW_TEXT="$1"
             ;;
+		--copy-to-clipboad)
+			shift
+			setup_clipboard
+			clipboard_copy "$1"
+			break
+			;;
         --)
             shift
             break
@@ -324,10 +331,12 @@ elif [[ -z "$output_file" ]]; then
 	# Use fzf for interactive selection with Sixel preview
 	selected_font=$(echo "$font_list" | fzf \
 		--prompt="🔍 Select a font: " \
-		--preview="magick -size \"$SIZE\" -background \"$BG_COLOR\" -fill \"$FG_COLOR\" -font '{}' \
+		--preview="echo '{}' | tee \"$FONTPREVIEWTEMPDIR\"/fontpreview_current; magick -size \"$SIZE\" -background \"$BG_COLOR\" -fill \"$FG_COLOR\" -font '{}' \
 		-pointsize \"$FONT_SIZE\" label:\"$PREVIEW_TEXT\" -geometry \"$SIZE\" ${cmd[*]}" \
+		--bind "ctrl-z:execute(bash \"$SCRIPT_PATH\" --copy-to-clipboad '{}')" \
 		--preview-window="right:${FZF_MARGIN_R}%:wrap" \
 		--height="${FZF_MARGIN_H}"%)
+		
 	# If a font was selected, show confirmation
 	if [[ -n "$selected_font" ]]; then
 		echo "✅ Selected font: $selected_font"
