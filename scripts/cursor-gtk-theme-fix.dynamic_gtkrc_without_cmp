@@ -39,14 +39,6 @@ start_file="${TMP_DIR}/start"
 { date | tee "$start_file"; } >/dev/null
 trap '[[ -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"; kill -TERM -- -$$' SIGINT SIGQUIT SIGHUP SIGABRT EXIT
 
-TMP_GTK2="${TMP_DIR}/gtk2rc.ini"
-TMP_GTK3="${TMP_DIR}/gtk3rc.ini"
-TMP_GTK4="${TMP_DIR}/gtk4rc.ini"
-
-cp -f "$GTK2_RC_FILES" "$TMP_GTK2"
-cp -f "$GTK3_RC_FILES" "$TMP_GTK3"
-cp -f "$GTK4_RC_FILES" "$TMP_GTK4"
-
 delay=2.0
 
 doc() {
@@ -308,21 +300,18 @@ gtk_rc_base() {
 
 	[[ -f "$lock_file" ]] && return
 
-	if [[ "$MD5SUM_GTK2" != "$md5sum_gtk2" ]] && gtk_positive && ! cmp -s "$GTK2_RC_FILES" "$TMP_GTK2"; then
+	if [[ "$MD5SUM_GTK2" != "$md5sum_gtk2" ]] && gtk_positive; then
 		GTK_RC_BASE="$GTK2_RC_FILES"
 		MD5SUM_GTK2="$md5sum_gtk2"
 		echo gtk2 > "$lock_file"
-		cp -f "$GTK2_RC_FILES" "$TMP_GTK2"
-	elif [[ "$MD5SUM_GTK3" != "$md5sum_gtk3" ]] && gtk_positive && ! cmp -s "$GTK3_RC_FILES" "$TMP_GTK3"; then
+	elif [[ "$MD5SUM_GTK3" != "$md5sum_gtk3" ]] && gtk_positive; then
 		GTK_RC_BASE="$GTK3_RC_FILES"
 		MD5SUM_GTK3="$md5sum_gtk3"
 		echo gtk3 > "$lock_file"
-		cp -f "$GTK3_RC_FILES" "$TMP_GTK3"
-	elif [[ "$MD5SUM_GTK4" != "$md5sum_gtk4" ]] && gtk_positive && ! cmp -s "$GTK4_RC_FILES" "$TMP_GTK4"; then
+	elif [[ "$MD5SUM_GTK4" != "$md5sum_gtk4" ]] && gtk_positive; then
 		GTK_RC_BASE="$GTK4_RC_FILES"
 		MD5SUM_GTK4="$md5sum_gtk4"
 		echo gtk4 > "$lock_file"
-		cp -f "$GTK4_RC_FILES" "$TMP_GTK4"
 	fi
 }
 
