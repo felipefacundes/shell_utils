@@ -18,16 +18,26 @@ Key Features:
 • Window Manager compatibility
 DOCUMENTATION
 
+while ! lsof 2>/dev/null | grep -m 1 -qi libgtk; do
+	sleep 1
+done
+
+SCRIPT="${0##*/}"
 XRESOURCES=~/.Xresources
+TMPDIR="${TMPDIR:-/tmp}"
+TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
 XSETTINGSD=~/.config/xsettingsd/xsettingsd.conf
 GTK3_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/settings.ini"
 GTK4_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0/settings.ini"
 GTK2_RC_FILES="${HOME}/.gtkrc-2.0" #"${HOME}/.gtkrc-2.0:${XDG_CONFIG_HOME}/gtk-2.0/gtkrc:/etc/gtk-2.0/gtkrc"
 GTK_RC_BASE="$GTK2_RC_FILES"
 
-lock_file=/tmp/cursor-gtk-theme-fix.lock
-[[ -f "$lock_file" ]] && rm "$lock_file"
-trap '[[ -f "$lock_file" ]] && rm "$lock_file"; kill -TERM -- -$$' SIGINT SIGQUIT SIGHUP SIGABRT EXIT
+[[ -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"
+[[ ! -d "$TMP_DIR" ]] && mkdir -p "$TMP_DIR"
+lock_file="${TMP_DIR}/lock"
+start_file="${TMP_DIR}/start"
+{ date | tee "$start_file"; } >/dev/null
+trap '[[ -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"; kill -TERM -- -$$' SIGINT SIGQUIT SIGHUP SIGABRT EXIT
 
 delay=2.0
 
@@ -67,7 +77,7 @@ help() {
 	• xsettingsd: ~/.config/xsettingsd/xsettingsd.conf
 
 	\033[1mLOCK MECHANISM:\033[0m
-	Uses /tmp/cursor-gtk-theme-fix.lock to:
+	Uses /tmp/cursor-gtk-theme-fix/lock to:
 	• Prevent multiple simultaneous updates
 	• Track which GTK version was modified last
 	• Ensure clean termination (lock file removed on exit)
@@ -173,7 +183,7 @@ reload_gtk() {
 if_xsettingsd() {
 	if command -v xsettingsd >/dev/null; then
 		pkill -9 xsettingsd 2>/dev/null || true
-		xsettingsd 2>/dev/null >/dev/null & disown
+		xsettingsd 2>/dev/null & disown
 	else
 		notify-send "Install xsettingsd" "For proper theme application in some WMs"
 	fi
@@ -275,35 +285,40 @@ seq_fix() {
 	done
 }
 
+gtk_positive() {
+	[[ ! -f "$lock_file" ]] &&
+	pgrep -f gvfs >/dev/null &&
+	{ [[ -n "$GTK2_RC_FILES" ]] || [[ -n "$GTK_RC_FILES" ]]; } &&
+	return 0
+	return 1
+}
+
 gtk_rc_base() {
 	md5sum_gtk2=$(md5sum "$GTK2_RC_FILES")
 	md5sum_gtk3=$(md5sum "$GTK3_RC_FILES")
-	# md5sum_gtk4=$(md5sum "$GTK4_RC_FILES")
+	md5sum_gtk4=$(md5sum "$GTK4_RC_FILES")
 
 	[[ -f "$lock_file" ]] && return
 
-	if [[ "$MD5SUM_GTK2" != "$md5sum_gtk2" ]]; then
+	if [[ "$MD5SUM_GTK2" != "$md5sum_gtk2" ]] && gtk_positive; then
 		GTK_RC_BASE="$GTK2_RC_FILES"
 		MD5SUM_GTK2="$md5sum_gtk2"
 		echo gtk2 > "$lock_file"
-	elif [[ "$MD5SUM_GTK3" != "$md5sum_gtk3" ]]; then
+	elif [[ "$MD5SUM_GTK3" != "$md5sum_gtk3" ]] && gtk_positive; then
 		GTK_RC_BASE="$GTK3_RC_FILES"
 		MD5SUM_GTK3="$md5sum_gtk3"
 		echo gtk3 > "$lock_file"
-	# elif [[ "$MD5SUM_GTK4" != "$md5sum_gtk4" ]]; then
-	# 	GTK_RC_BASE="$GTK4_RC_FILES"
-	# 	MD5SUM_GTK4="$md5sum_gtk4"
-	# 	echo gtk4 > "$lock_file"
+	elif [[ "$MD5SUM_GTK4" != "$md5sum_gtk4" ]] && gtk_positive; then
+		GTK_RC_BASE="$GTK4_RC_FILES"
+		MD5SUM_GTK4="$md5sum_gtk4"
+		echo gtk4 > "$lock_file"
 	fi
-
 }
 
 cursor_theme_fix() {
 	[[ ! -s "${XRESOURCES}" ]] && rm "${XRESOURCES}"
 	[[ ! -f "${XRESOURCES}" ]] && wget -nc https://raw.githubusercontent.com/felipefacundes/dotfiles/master/config/.Xresources -O "${XRESOURCES}"
 	[[ ! -d ~/.config/gtk-4.0/ ]] && mkdir -p ~/.config/gtk-4.0/
-
-	[[ "${XDG_SESSION_TYPE,,}" == x11 ]] && ! pgrep -f xsettingsd >/dev/null && xsettingsd & disown
 
 	MD5SUM_BASE=$(md5sum "$GTK_RC_BASE")
 	MD5SUM_GTK2=$(md5sum "$GTK2_RC_FILES")
@@ -312,6 +327,7 @@ cursor_theme_fix() {
 
 	while true
 	do 
+		! pgrep -f xsettingsd 2>/dev/null && xsettingsd & disown 2>/dev/null
 		gtk_rc_base
 		GTK_THEME="$(awk -F'=' '/gtk-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export GTK_THEME
 		GTK_MODULES="$(awk -F'=' '/gtk-modules/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export GTK_MODULES
