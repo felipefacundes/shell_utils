@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+script="${0##*/}"
+lock_file="/tmp/${script}.lock"
+touch "$lock_file"
+
+_check() {
+	if [[ -f "$lock_file" ]]; then
+		optipng -o7 -nc "$1"
+	fi
+}
+
+export -f _check
+export lock_file
+
+find . -type f -iname "*.png" -exec bash -c '_check "{}"' \;
+
+rm "$lock_file"

@@ -99,11 +99,11 @@ main() {
         echo -e "${GREEN}Copying clipboard content to $temp_file${NC}"
         
         # Tries different clipboard methods
-        if command -v xclip &> /dev/null; then
+        if command -v xclip &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" != "wayland" ]]; then
             xclip -o -selection clipboard > "$temp_file"
-        elif command -v xsel &> /dev/null; then
+        elif command -v xsel &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" != "wayland" ]]; then
             xsel --clipboard --output > "$temp_file"
-        elif command -v wl-copy &> /dev/null; then
+        elif command -v wl-copy &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]]; then
             wl-paste > "$temp_file"
         else
             echo -e "${RED}Error: No clipboard utility found (xclip, xsel or wl-clipboard)${NC}"
