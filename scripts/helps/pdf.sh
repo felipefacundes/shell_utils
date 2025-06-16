@@ -77,7 +77,21 @@ ghostscript_vectorDevices() {
 /default seleciona a saída destinada a ser útil em uma ampla variedade de usos, possivelmente às custas de um arquivo de saída maior.
 
 # Usage | Exemplo de uso:
-$ gs -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite -dPDFSETTINGS=/screen -sOutputFile=output.pdf input.pdf
+$ gs -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -sOutputFile=output.pdf input.pdf
+
+# Or
+$ gs -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dColorImageResolution=150 -dGrayImageResolution=150 -dColorConversionStrategy=/RGB -dProcessColorModel=/DeviceRGB -dDownsampleColorImages=true -dDownsampleGrayImages=true -dDownsampleMonoImages=true -sOutputFile=output.pdf input.pdf
+
+# With title:
+$ i=input o=output; gs -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -sOutputFile="$o" -c "[/Title ($i) /DOCINFO pdfmark" -f "$i"
+
+# Rotation/Orientation
+
+    Orientation 1 → 90 ° counterclockwise.
+    Orientation 2 → 180 ° (reverses, but not exactly a vertical flip).
+    Orientation 3 → 270 ° counterclockwise (or 90th time).
+
+$ i=input.pdf o=output.pdf; gs -o "$o" -sDEVICE=pdfwrite -c "<</Orientation 2>> setpagedevice" -f "$i"
 EOF
 }
 
