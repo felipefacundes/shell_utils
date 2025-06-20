@@ -73,7 +73,7 @@ alias ex='export'
 
 alias bkp='~/.shell_utils/scripts/faqs/bkp.sh'
 alias wine_list='bash <(curl -s https://raw.githubusercontent.com/felipefacundes/PS/master/other_scripts/wine_list.sh)'
-alias vpn_wgcf_warp_cloudflare='~/.shell_utils/scripts/faqs/vpn_wgcf_warp_cloudflare.sh'
+alias vpn_wgcf_warp_cloudflare='~/.shell_utils/scripts/vpn_wgcf_warp_cloudflare.sh'
 alias warp_vpn_cloudflare='vpn_wgcf_warp_cloudflare'
 alias udisksctl_mount='echo "udisksctl mount -b /dev/sdX"'
 alias udisksctl_unmount='echo "udisksctl unmount -b /dev/sdX"'
