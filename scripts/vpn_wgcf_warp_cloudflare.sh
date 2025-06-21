@@ -48,17 +48,28 @@ if ! sudo test -f /etc/wireguard/wgcf-profile.conf; then
 	cd - || true
 fi
 
+success() {
+	# Verification
+	echo -e "\n${BLUE}Verifying connection! Wait 25 seconds...${NC}"
+	curl -s --connect-timeout 20 https://www.cloudflare.com/cdn-cgi/trace/ | grep warp || {
+		echo -e "${YELLOW}Warning: Could not verify WARP connection${NC}"
+	}
+
+	echo -e "\n${YELLOW}To disconnect run:${NC}"
+	echo -e "${SUDO_COLOR}sudo${NC} ${GREEN}wg-quick down wgcf-profile${NC}"
+}
+
+error_warp_message() { echo -e "${RED}Error: Failed to activate WireGuard interface${NC}"; }
+
 # Activate connection
 echo -e "${YELLOW}Activating WGCF connection...${NC}"
 sudo wg-quick up wgcf-profile || {
-    echo -e "${RED}Error: Failed to activate WireGuard interface${NC}"; exit 1
+    error_warp_message
+	sudo wg-quick down wgcf-profile >/dev/null 2>&1 || exit 1
+	echo -e "\n${YELLOW}Reconnecting...${NC}\n"
+	sudo wg-quick up wgcf-profile || { error_warp_message && exit 1; }
+	success
+	exit 1
 }
 
-# Verification
-echo -e "\n${BLUE}Verifying connection! Wait 25 seconds...${NC}"
-curl -s --connect-timeout 20 https://www.cloudflare.com/cdn-cgi/trace/ | grep warp || {
-    echo -e "${YELLOW}Warning: Could not verify WARP connection${NC}"
-}
-
-echo -e "\n${YELLOW}To disconnect run:${NC}"
-echo -e "${SUDO_COLOR}sudo${NC} ${GREEN}wg-quick down wgcf-profile${NC}"
+success
