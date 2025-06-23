@@ -1,17 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
 
-# Ativa globstar (para ** funcionar no Bash)
+# Enable globstar (for ** to work in Bash)
 shopt -s globstar
 
-# Processa todos os PNGs recursivamente
+# Process all PNGs recursively
 for file in **/*.png; do
     if [[ -f "$file" ]]; then
-        echo "Otimizando: $file"
+        echo "Optimizing: $file"
         
-        # Cria um arquivo temporário
+        # Create a temporary file
         temp_file="${file%.*}.temp.png"
         
-        # Aplica otimização com magick
+        # Apply optimization with magick
         magick "$file" \
             -strip \
             -define png:compression-level=9 \
@@ -19,16 +21,16 @@ for file in **/*.png; do
             -colors 1000 \
             "$temp_file"
         
-        # Substitui o original pelo otimizado (se o magick funcionou)
+        # Replace original with optimized version (if magick succeeded)
         if [[ -f "$temp_file" ]]; then
-			rm "$file"
+            rm "$file"
             mv "$temp_file" "$file"
-			optipng -o7 -nc "$file"
-            echo "✅ $file otimizado com sucesso."
+            optipng -o7 -nc "$file"
+            echo "✅ $file successfully optimized."
         else
-            echo "❌ Falha ao otimizar $file."
+            echo "❌ Failed to optimize $file."
         fi
     fi
 done
 
-echo "Concluído!"
+echo "Done!"
