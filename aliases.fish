@@ -14,7 +14,6 @@
 . $HOME/.shell_utils/aliases/freds_aliases.fish
 . $HOME/.shell_utils/aliases/game.fish
 . $HOME/.shell_utils/aliases/git.fish
-. $HOME/.shell_utils/aliases/helps.fish
 . $HOME/.shell_utils/aliases/image_magick.fish
 . $HOME/.shell_utils/aliases/inch.fish
 . $HOME/.shell_utils/aliases/ls.fish
@@ -45,3 +44,4 @@
 . $HOME/.shell_utils/aliases/vnc_ssh_telnet_servers.fish
 . $HOME/.shell_utils/aliases/waydroid.fish
 . $HOME/.shell_utils/aliases/webcam.fish
+. $HOME/.shell_utils/aliases/helps.fish

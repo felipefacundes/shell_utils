@@ -70,7 +70,9 @@ display_xosd() {
     # Fonts:
     #'lucidasanstypewriter-bold-24'
     #'-*-helvetica-bold-*-*-*-44-*-*-*-*-*-*'
-
+	if ! test -f /usr/share/fonts/TTF/GohaTibebZemen.ttf; then
+		notify-send "Install Xorg-Misc Fonts and Xorg Fonts"
+	fi
     osd_cat -d 1 -s 4 -S cyan -A center -l 1 -O 2 -p middle -o 0 -c green -f '-adobe-utopia-bold-*-*-*-64-*-*-*-*-*-*'
 }
 
