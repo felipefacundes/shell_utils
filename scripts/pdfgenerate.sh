@@ -12,6 +12,8 @@ DOCUMENTATION
 # Help function
 show_help() {
     cat <<EOF
+This script creates PDF images with random content based on the RANDOM variable.
+
 Usage: ${0##*/} [NUMBER_OF_PDFS] [NUMBER_OF_PAGES] [NUMBER_OF_CHARACTERS] [OPTIONS]
 
 Arguments:
