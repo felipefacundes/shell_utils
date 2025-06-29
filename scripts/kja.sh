@@ -113,7 +113,7 @@ help() {
         Busca:
         /                   Buscar termos nos versículos
         n/N                 Navegar entre resultados da busca
-        I                   Alternar busca sensível a maiúsculas
+        F                   Alternar busca sensível a maiúsculas
 
         Histórico e cópia:
         S                   Salvar capítulo no histórico
@@ -848,6 +848,14 @@ mostrar_versiculos() {
 				'z'|'Z') # Tecla Z - copiar capítulo para área de transferência
 					prepare_clipboard
 					;;
+				'i'|'I') # Tecla I - para gerar imagem do versículo na área de transferência
+					prepare_clipboard
+					~/.shell_utils/scripts/cliptext2image.sh >/dev/null 2>&1
+					;;
+				'p'|'P') # Tecla P - para gerar PDF do capítulo na área de transferência
+					prepare_clipboard
+					~/.shell_utils/scripts/cliptext2pdf.sh >/dev/null 2>&1
+					;;
 				'l'|'L')
 					next_chapter
 					#return
@@ -856,7 +864,7 @@ mostrar_versiculos() {
 					prev_chapter
 					#return
 					;;
-				'i'|'I') # Alternar case-sensitive
+				'f'|'F') # Alternar case-sensitive
 					((case_insensitive = !case_insensitive))
 					if [[ -n "$search_pattern" ]]; then
 						find_matches

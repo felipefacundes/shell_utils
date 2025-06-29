@@ -13,7 +13,7 @@ DOCUMENTATION
 
 # Check if the user asked for help
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    echo "Usage: $0 [destination_directory]"
+    echo "Usage: ${0##*/} [destination_directory]"
     echo "Creates a 1920x1080 JPG image with text from clipboard."
     echo "If no directory is provided, uses /tmp as default."
     exit 0
@@ -123,7 +123,7 @@ fi
 
 # Try to open with feh or show path
 if command -v feh >/dev/null; then
-    feh "$filepath" &
+    feh "$filepath" & disown
 else
     echo "Image created at: $filepath"
 fi
