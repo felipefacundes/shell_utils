@@ -116,13 +116,13 @@ for input_file in "$@"; do
     # Check if file exists
     if [ ! -f "$input_file" ]; then
         echo "Warning: File '$input_file' not found. Skipping..." >&2
-        continue
+        exit 1
     fi
 
     # Check if it's a valid image
     if ! identify "$input_file" &> /dev/null; then
         echo "Warning: '$input_file' is not a valid image or unsupported format. Skipping..." >&2
-        continue
+        exit 1
     fi
 
     # Extract filename without extension
