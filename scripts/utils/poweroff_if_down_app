@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+clear
+pid="$1"
+
+if ! pgrep -x "$pid" >/dev/null || test -z "$pid"; then 
+	echo "No active $pid process."
+	echo "Usage: ${0##*/} program"
+	exit 1
+fi
+
+while true; do 
+	if ! pgrep -x "$pid" >/dev/null; then 
+		systemctl poweroff
+	fi
+	echo "When the $pid process is completed, the system will be turned off."
+	sleep 5
+done
