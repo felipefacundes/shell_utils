@@ -1,3 +1,6 @@
+alias doc2pdf='~/.shell_utils/scripts/utils/odt2pdf'
+alias docx2pdf='~/.shell_utils/scripts/utils/odt2pdf'
+
 alias fff='PREVIEW_MODE=0 ~/.shell_utils/scripts/preview'
 alias juros_compostos='~/.shell_utils/scripts/compound_interest'
 
