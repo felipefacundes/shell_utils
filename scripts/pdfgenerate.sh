@@ -49,7 +49,7 @@ num_characters=170
 dest_dir="."
 
 if [[ -n "$TERMUX_VERSION" ]]; then
-	font="Roboto-Regular"
+	font="Roboto Regular"
 else
 	font="Liberation-Sans"
 fi
