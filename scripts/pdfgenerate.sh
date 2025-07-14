@@ -48,6 +48,12 @@ num_pages=2
 num_characters=170
 dest_dir="."
 
+if [[ -n "$TERMUX_VERSION" ]]; then
+	font="Roboto-Regular"
+else
+	font="Liberation-Sans"
+fi
+
 # Process positional arguments
 if [[ "$1" =~ ^[0-9]+$ ]]; then
     num_pdfs=$1
@@ -143,7 +149,7 @@ generate_page() {
     magick -size 2480x3508 xc:"#$bg_color" \
             -pointsize 24 \
             -fill "#$text_color" \
-            -font "Liberation-Sans" \
+            -font "$font" \
             -annotate +100+100 "@$temp_txt" \
             -density 300 \
             -units PixelsPerInch \
