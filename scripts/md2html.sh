@@ -5,7 +5,7 @@
 : <<'DOCUMENTATION'
 Converts Markdown to ODT/DOCX/HTML via pandoc
 Can use clipboard content as input
-Usage: md2odt.sh [OPTIONS] [INPUT.md] [OUTPUT.odt/.docx/.html]
+Usage: md2html.sh [OPTIONS] [INPUT.md] [OUTPUT.odt/.docx/.html]
 DOCUMENTATION
 
 # Colors for messages
@@ -37,8 +37,8 @@ show_help() {
     echo "  -c, --clipboard Use clipboard content as input"
     echo ""
     echo -e "${GREEN}Examples:${NC}"
-    echo "  ${0##*/} document.md document.odt"
-    echo "  ${0##*/} -c /path/to/document.docx"
+    echo "  ${0##*/} document.md document.html"
+    echo "  ${0##*/} -c /path/to/document.html"
     echo "  ${0##*/} --clipboard"
     exit 0
 }
@@ -71,7 +71,7 @@ process_args() {
 
     # If output file not specified in clipboard mode
     if [[ "$use_clipboard" == true ]] && [[ -z "$output_file" ]]; then
-        output_file="output_$(date +%Y%m%d_%H%M%S).odt"
+        output_file="output_$(date +%Y%m%d_%H%M%S).html"
         echo -e "${YELLOW}Using default output name: $output_file${NC}"
     fi
 
@@ -79,7 +79,7 @@ process_args() {
     if [[ -n "$output_file" ]]; then
         output_ext="${output_file##*.}"
         if [[ "$output_ext" != "odt" ]] && [[ "$output_ext" != "docx" ]] && [[ "$output_ext" != "html" ]]; then
-            echo -e "${RED}Error: Output extension must be .odt or .docx or .html${NC}"
+            echo -e "${RED}Error: Output extension must be .html or .odt or .docx${NC}"
             exit 1
         fi
     fi

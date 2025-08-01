@@ -7,6 +7,7 @@ YELLOW='\e[1;33m'
 GREEN='\e[1;32m'
 RED='\e[1;31m'
 NC='\e[0m' # No Color
+temp_log="/tmp/${0##*/}.disable_wireguard.log"
 
 # Check if the script is being run as root
 if [ "$(id -u)" -ne 0 ]; then
@@ -48,7 +49,7 @@ CONF_NAME="${SELECTED_CONF%.*}"
 
 deactivate_interface() {
 	echo -e "${YELLOW}To deactivate the connection, run:${NC}"
-	echo -e "${GREEN}  sudo wg-quick down $1${NC}"
+	echo -e "${GREEN}  sudo wg-quick down $1${NC}" | tee -a "$temp_log"
 }
 
 # Activate WireGuard connection

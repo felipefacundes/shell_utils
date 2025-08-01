@@ -9,6 +9,7 @@ GREEN='\033[1;32m'
 BLUE='\033[1;34m'
 NC='\033[0m' # No Color
 SUDO_COLOR='\033[1;31m'
+temp_log="/tmp/${0##*/}.disable_wireguard.log"
 
 # Check if wgcf is installed
 if ! command -v wgcf >/dev/null; then
@@ -56,7 +57,7 @@ success() {
 	}
 
 	echo -e "\n${YELLOW}To disconnect run:${NC}"
-	echo -e "${SUDO_COLOR}sudo${NC} ${GREEN}wg-quick down wgcf-profile${NC}"
+	echo -e "${SUDO_COLOR}sudo${NC} ${GREEN}wg-quick down wgcf-profile${NC}" | tee -a "$temp_log"
 }
 
 error_warp_message() { echo -e "${RED}Error: Failed to activate WireGuard interface${NC}"; }

@@ -25,6 +25,18 @@ if [[ -z "$1" ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
     exit 0
 fi
 
+if [[ ! -d ~/.python/google_tts ]]; then
+    python -m venv ~/.python/google_tts
+    source ~/.python/google_tts/bin/activate
+    export VIRTUAL_ENV="${HOME}/.python/google_tts"
+	pip install google-cloud-speech google-cloud-core SpeechRecognition
+fi
+
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    export VIRTUAL_ENV="${HOME}/.python/google_tts"
+    source "${VIRTUAL_ENV}/bin/activate"
+fi
+
 # Input directory passed as an argument
 input_dir="$1"
 
