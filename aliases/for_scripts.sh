@@ -44,4 +44,6 @@ alias numero_primo='prime'
 alias xrdb_settings='~/.shell_utils/scripts/xresources_settings'
 
 alias kja='~/.shell_utils/scripts/kja.sh'
+alias acf='~/.shell_utils/scripts/acf.sh'
 alias biblia_kja='kja'
+alias biblia_acf='acf'

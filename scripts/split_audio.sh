@@ -9,7 +9,7 @@ FFmpeg for the audio segmentation process.
 
 Strengths:
 1. Input Validation: Checks if the correct number of arguments is provided and verifies the existence of the input audio file.
-2. Dynamic Duration: Allows for a default duration of 180 seconds, which can be easily modified.
+2. Dynamic Duration: Allows for a default duration of 20 seconds, which can be easily modified.
 3. Output Management: Automatically creates an output directory to store the segmented audio files.
 4. FFmpeg Integration: Leverages FFmpeg's powerful capabilities for audio processing, ensuring high-quality output.
 5. User -Friendly Messaging: Provides clear feedback to the user regarding the process and results. 
@@ -27,7 +27,7 @@ fi
 
 input_audio="$1"
 output_prefix="output"
-duration="${duration:-180}"  # 3 minutes in seconds
+duration="${duration:-20}"  # 180 is 3 minutes in seconds
 
 # Check if the input audio file exists
 if [ ! -f "$input_audio" ]; then
