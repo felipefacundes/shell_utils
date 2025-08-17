@@ -88,7 +88,7 @@ case "$mode" in
         audio_bitrate="128k"
         ;;
     720)
-        scale="scale='if(gt(iw,ih),min(720,iw),-1)':'if(gt(iw,ih),-1,min(720,ih))'"
+        scale="scale='if(gt(iw,ih),min(1280,iw),-1)':'if(gt(iw,ih),-1,min(1280,ih))'"
         crf=26
         preset="medium"
         audio_bitrate="96k"
@@ -108,7 +108,7 @@ esac
 echo "Converting using mode $mode (resolution: ${mode}p, audio: $audio_bitrate)"
 
 # Execute conversion
-ffmpeg -i "$input_file" \
+if ! ffmpeg -i "$input_file" \
     -c:v libx264 \
     -crf "$crf" \
     -preset "$preset" \
@@ -116,6 +116,10 @@ ffmpeg -i "$input_file" \
     -b:a "$audio_bitrate" \
     -movflags +faststart \
     -vf "$scale" \
-    "$output_file"
+    "$output_file"; then
+	echo "Conversion failed"
+	[[ -f "$output_file" ]] && rm "$output_file"
+	exit 1
+fi
 
 echo "Conversion complete: $output_file"
