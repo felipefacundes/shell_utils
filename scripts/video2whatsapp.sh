@@ -5,19 +5,28 @@
 : <<DOCUMENTATION
 Script to convert videos to WhatsApp-compatible format using ffmpeg.
 
+Available modes:
+- 1280: Original mode (max resolution 1280px, best quality)
+- 720: Medium resolution (max 720px, balanced quality/size)
+- 480: Low resolution (max 480px, smallest file size)
+
+All modes include:
+- H.264 video codec (libx264)
+- AAC audio
+- movflags +faststart for streaming
+
 ffmpeg parameters explained:
 -i input.mp4          - Input video file
 -c:v libx264          - H.264 video encoder (widely compatible)
--crf 23               - Video quality (0=lossless, 51=worst; 23 is a good balance)
--preset fast          - Faster encoding with slightly larger file size
+-crf                  - Video quality (lower=better quality)
+-preset               - Encoding speed/file size tradeoff
 -c:a aac              - AAC audio encoder (WhatsApp compatible)
--b:a 128k             - 128kbps audio bitrate (good quality)
+-b:a                  - Audio bitrate (lower=smaller file size)
 -movflags +faststart  - Enables streaming (playback before full download)
--vf "scale=..."       - Smart scaling that:
-   - if(gt(iw,ih),min(1280,iw),-1) - For landscape: max width 1280px
-   - if(gt(iw,ih),-1,min(1280,ih)) - For portrait: max height 1280px
+-vf "scale=..."       - Smart scaling to target resolution
 
-Usage: video2whatsapp.sh input_video.mp4 output_video.mp4
+Usage: video2whatsapp.sh [mode] input_video.mp4 output_video.mp4
+Modes: 1280 (default), 720, 480
 DOCUMENTATION
 
 # Help function
@@ -31,10 +40,20 @@ if [[ "$1" == "-h" || "$1" == "--help" ]]; then
     help
 fi
 
+# Default mode is 1280
+mode="1280"
+
+# Check if first argument is a mode specification
+if [[ "$1" =~ ^(1280|720|480)$ ]]; then
+    mode="$1"
+    shift
+fi
+
 # Validate argument count
 if [ "$#" -ne 2 ]; then
     echo -e "\033[1;31mError: Invalid number of arguments.\033[0m"
-    echo -e "\033[1;32mUsage: ${0##*/} input_video.mp4 output_video.mp4\033[0m\n"
+    echo -e "\033[1;32mUsage: ${0##*/} [mode] input_video.mp4 output_video.mp4\033[0m"
+    echo -e "\033[1;33mAvailable modes: 1280 (default), 720, 480\033[0m\n"
     help
 fi
 
@@ -60,15 +79,43 @@ if [[ "$output_file" != *.mp4 ]]; then
     exit 1
 fi
 
+# Set parameters based on mode
+case "$mode" in
+    1280)
+        scale="scale='if(gt(iw,ih),min(1280,iw),-1)':'if(gt(iw,ih),-1,min(1280,ih))'"
+        crf=23
+        preset="fast"
+        audio_bitrate="128k"
+        ;;
+    720)
+        scale="scale='if(gt(iw,ih),min(720,iw),-1)':'if(gt(iw,ih),-1,min(720,ih))'"
+        crf=26
+        preset="medium"
+        audio_bitrate="96k"
+        ;;
+    480)
+        scale="scale='if(gt(iw,ih),min(480,iw),-1)':'if(gt(iw,ih),-1,min(480,ih))'"
+        crf=28
+        preset="medium"
+        audio_bitrate="64k"
+        ;;
+    *)
+        echo "Error: Invalid mode selected."
+        exit 1
+        ;;
+esac
+
+echo "Converting using mode $mode (resolution: ${mode}p, audio: $audio_bitrate)"
+
 # Execute conversion
 ffmpeg -i "$input_file" \
     -c:v libx264 \
-    -crf 23 \
-    -preset fast \
+    -crf "$crf" \
+    -preset "$preset" \
     -c:a aac \
-    -b:a 128k \
+    -b:a "$audio_bitrate" \
     -movflags +faststart \
-    -vf "scale='if(gt(iw,ih),min(1280,iw),-1)':'if(gt(iw,ih),-1,min(1280,ih))'" \
+    -vf "$scale" \
     "$output_file"
 
 echo "Conversion complete: $output_file"
