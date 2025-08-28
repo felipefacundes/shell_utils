@@ -171,3 +171,6 @@ echo "   ffmpeg -i \"$VIDEO_FILE\" -c:v copy -c:a aac -b:a 96k output_audio96k.m
 echo ""
 echo "6. Combinação de otimizações:"
 echo "   ffmpeg -i \"$VIDEO_FILE\" -c:v libx265 -crf 28 -vf \"scale=1280:720\" -r 30 -c:a aac -b:a 96k output_optimized.mp4"
+echo ""
+echo "7. Ultra compactado:"
+echo "   ffmpeg -i \"$VIDEO_FILE\" -c:v libx264 -crf 35 -vf \"scale=640:360\" -r 12 -c:a aac -b:a 15k -preset slow -movflags +faststart output_optimized.mp4"
