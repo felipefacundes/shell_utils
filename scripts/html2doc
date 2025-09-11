@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Script: html2doc
+# Descrição: Baixa uma URL, remove anúncios, armazena em cache e converte para ODT
+# Uso: html2doc URL [--no-cache] [--force]
+
+# Configurações
+CACHE_BASE="${HOME}/.cache/html2doc"
+USER_AGENT="Mozilla/5.0 (Android 13; Mobile; rv:109.0) Gecko/117.0 Firefox/117.0"
+TEMP_DIR=$(mktemp -d)
+PANDOC_OPTIONS="--standalone --embed-resources"
+
+# Verificar dependências
+check_dependencies() {
+    local deps=("wget" "pandoc")
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            echo "Erro: $dep não está instalado." >&2
+            exit 1
+        fi
+    done
+}
+
+# Verificar e criar diretório de cache
+setup_cache() {
+    local url="$1"
+    local url_hash=$(echo -n "$url" | md5sum | cut -d' ' -f1)
+    local cache_dir="${CACHE_BASE}/${url_hash}"
+    
+    mkdir -p "$cache_dir"
+    echo "$cache_dir"
+}
+
+# Baixar página web com filtros e cabeçalhos melhorados
+download_page() {
+    local url="$1"
+    local output_dir="$2"
+    
+    echo "Baixando página: $url"
+    
+    # Usar cabeçalhos adicionais para simular um navegador real
+    wget --user-agent="$USER_AGENT" \
+         --recursive --level=1 \
+         --page-requisites \
+         --adjust-extension --convert-links \
+         --span-hosts --trust-server-names \
+         --directory-prefix="$output_dir" \
+         --no-parent --timeout=30 \
+         --tries=2 \
+         --wait=2 \
+         --random-wait \
+         --no-verbose \
+         --header="Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" \
+         --header="Accept-Language: pt-BR,pt;q=0.8,en-US;q=0.5,en;q=0.3" \
+         --header="Accept-Encoding: identity" \
+         --header="Connection: keep-alive" \
+         --header="Upgrade-Insecure-Requests: 1" \
+         --execute robots=off \
+         --reject-regex='.*(ads|advertisement|tracker|analytics|doubleclick|googleadservices).*' \
+         "$url"
+    
+    local wget_exit_code=$?
+    if [ $wget_exit_code -ne 0 ]; then
+        echo "Aviso: wget retornou código de saída $wget_exit_code. O download pode estar incompleto." >&2
+        # Não sair imediatamente; talvez tenhamos conteúdo suficiente para conversão
+    fi
+}
+
+# Processar página baixada - encontrar arquivo HTML real
+process_page() {
+    local input_dir="$1"
+    
+    # Encontrar o arquivo principal HTML (ignorando extensões adicionais como .br)
+    local main_file=$(find "$input_dir" -name "*.html" -o -name "*.htm" | head -n1)
+    
+    if [[ -z "$main_file" ]]; then
+        # Se não encontrou arquivos HTML/HTML, procurar por arquivos com outras extensões
+        main_file=$(find "$input_dir" -type f \( -name "*.html.*" -o -name "*.htm.*" \) | head -n1)
+        
+        if [[ -z "$main_file" ]]; then
+            echo "Erro: Não foi possível encontrar o arquivo HTML principal em $input_dir." >&2
+            echo "Conteúdo do diretório:" >&2
+            find "$input_dir" -type f | head -n10 >&2
+            return 1
+        fi
+    fi
+    
+    # Se o arquivo tiver extensão adicional (como .br), renomear para .html
+    if [[ "$main_file" == *.br ]]; then
+        local new_file="${main_file%.br}"
+        mv "$main_file" "$new_file"
+        main_file="$new_file"
+        echo "Arquivo renomeado: $new_file"
+    fi
+    
+    echo "$main_file"
+}
+
+# Converter para ODT
+convert_to_odt() {
+    local input_file="$1"
+    local output_file="$2"
+    
+    if [[ ! -f "$input_file" ]]; then
+        echo "Erro: Arquivo de entrada '$input_file' não existe para conversão." >&2
+        return 1
+    fi
+    
+    echo "Convertendo para ODT: $output_file"
+    
+    pandoc "$input_file" -t odt $PANDOC_OPTIONS -o "$output_file"
+    
+    local pandoc_exit_code=$?
+    if [[ $pandoc_exit_code -eq 0 ]]; then
+        echo "Conversão concluída: $output_file"
+    else
+        echo "Erro na conversão com Pandoc (código $pandoc_exit_code)." >&2
+        return 1
+    fi
+}
+
+# Limpar arquivos temporários
+cleanup() {
+    if [[ -d "$TEMP_DIR" ]]; then
+        rm -rf "$TEMP_DIR"
+    fi
+}
+
+# Main
+main() {
+    local url="$1"
+    local no_cache=false
+    local force=false
+    
+    # Verificar argumentos
+    if [[ $# -eq 0 ]]; then
+        echo "Uso: html2doc URL [--no-cache] [--force]" >&2
+        exit 1
+    fi
+    
+    # Processar opções
+    shift
+    for arg in "$@"; do
+        case "$arg" in
+            --no-cache) no_cache=true ;;
+            --force) force=true ;;
+        esac
+    done
+    
+    # Verificar dependências
+    check_dependencies
+    
+    # Configurar cache
+    local cache_dir
+    cache_dir=$(setup_cache "$url")
+    local odt_file="${cache_dir}/document.odt"
+    
+    # Verificar se já existe em cache
+    if [[ "$no_cache" = false && -f "$odt_file" && "$force" = false ]]; then
+        echo "Usando versão em cache: $odt_file"
+        cp "$odt_file" "./$(basename "$url" | sed 's/[^a-zA-Z0-9._-]/-/g').odt"
+        exit 0
+    fi
+    
+    # Baixar e processar
+    if [[ "$force" = true || "$no_cache" = true || ! -f "$odt_file" ]]; then
+        download_page "$url" "$TEMP_DIR"
+        local html_file
+        html_file=$(process_page "$TEMP_DIR")
+        
+        if [[ -n "$html_file" && -f "$html_file" ]]; then
+            convert_to_odt "$html_file" "$odt_file"
+            local convert_success=$?
+            if [[ $convert_success -eq 0 ]]; then
+                cp "$odt_file" "./$(basename "$url" | sed 's/[^a-zA-Z0-9._-]/-/g').odt"
+            else
+                echo "Falha na conversão. O arquivo ODT pode não ter sido criado." >&2
+                exit 1
+            fi
+        else
+            echo "Falha no download ou processamento do HTML. Verifique a URL e as permissões." >&2
+            exit 1
+        fi
+    fi
+    
+    # Limpar
+    cleanup
+}
+
+# Tratamento de sinais para limpeza
+trap cleanup EXIT INT TERM
+
+# Executar main
+main "$@"

@@ -26,7 +26,7 @@ ffmpeg parameters explained:
 -vf "scale=..."       - Smart scaling to target resolution
 
 Usage: video2whatsapp.sh [mode] input_video.mp4 output_video.mp4
-Modes: 1280 (default), 720, 480
+Modes: 1280 (default), 720, 480, 360
 DOCUMENTATION
 
 # Help function
@@ -44,7 +44,7 @@ fi
 mode="1280"
 
 # Check if first argument is a mode specification
-if [[ "$1" =~ ^(1280|720|480)$ ]]; then
+if [[ "$1" =~ ^(1280|720|480|360)$ ]]; then
     mode="$1"
     shift
 fi
@@ -53,7 +53,7 @@ fi
 if [ "$#" -ne 2 ]; then
     echo -e "\033[1;31mError: Invalid number of arguments.\033[0m"
     echo -e "\033[1;32mUsage: ${0##*/} [mode] input_video.mp4 output_video.mp4\033[0m"
-    echo -e "\033[1;33mAvailable modes: 1280 (default), 720, 480\033[0m\n"
+    echo -e "\033[1;33mAvailable modes: 1280 (default), 720, 480, 360\033[0m\n"
     help
 fi
 
@@ -84,20 +84,30 @@ case "$mode" in
     1280)
         scale="scale='if(gt(iw,ih),min(1280,iw),-1)':'if(gt(iw,ih),-1,min(1280,ih))'"
         crf=23
-        preset="fast"
+		fps=24
+        preset="medium"
         audio_bitrate="128k"
         ;;
     720)
         scale="scale='if(gt(iw,ih),min(1280,iw),-1)':'if(gt(iw,ih),-1,min(1280,ih))'"
         crf=26
+		fps=24
         preset="medium"
         audio_bitrate="96k"
         ;;
     480)
         scale="scale='if(gt(iw,ih),min(480,iw),-1)':'if(gt(iw,ih),-1,min(480,ih))'"
         crf=28
-        preset="medium"
+		fps=15
+        preset="slow"
         audio_bitrate="64k"
+        ;;
+	360)
+        scale="scale=640:360"
+        crf=35
+		fps=12
+        preset="slow"
+        audio_bitrate="56k"
         ;;
     *)
         echo "Error: Invalid mode selected."
@@ -111,6 +121,7 @@ echo "Converting using mode $mode (resolution: ${mode}p, audio: $audio_bitrate)"
 if ! ffmpeg -i "$input_file" \
     -c:v libx264 \
     -crf "$crf" \
+    -r "$fps" \
     -preset "$preset" \
     -c:a aac \
     -b:a "$audio_bitrate" \
