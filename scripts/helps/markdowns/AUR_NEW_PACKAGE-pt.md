@@ -32,6 +32,10 @@ Cada pacote no AUR tem seu próprio repositório Git. Como **seu_pacote** é nov
 
 ```bash
 git clone ssh://aur@aur.archlinux.org/seu_pacote.git
+
+Ou:
+
+git clone https://aur.archlinux.org/seu_pacote.git
 ```
 
 📌 **Nota:** Se o pacote ainda não existir, o AUR permitirá sua criação no primeiro `push`.

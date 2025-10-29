@@ -189,10 +189,10 @@ reload_gtk() {
 }
 
 if_xsettingsd() {
-	if command -v xsettingsd >/dev/null; then
-		pkill -9 xsettingsd 2>/dev/null || true
-		xsettingsd 2>/dev/null & disown
-	else
+	if command -v xsettingsd >/dev/null && [[ "${XDG_SESSION_TYPE,,}" == x11 ]]; then
+		pgrep -f xsettingsd 2>/dev/null && pkill -9 xsettingsd 2>/dev/null || true
+		! pgrep -f xsettingsd 2>/dev/null && xsettingsd >/dev/null 2>&1 & disown 2>/dev/null
+	elif ! command -v xsettingsd >/dev/null; then
 		notify-send "Install xsettingsd" "For proper theme application in some WMs"
 	fi
 }
@@ -338,7 +338,7 @@ cursor_theme_fix() {
 
 	while true
 	do 
-		! pgrep -f xsettingsd 2>/dev/null && xsettingsd & disown 2>/dev/null
+		if_xsettingsd
 		gtk_rc_base
 		GTK_THEME="$(awk -F'=' '/gtk-theme-name/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export GTK_THEME
 		GTK_MODULES="$(awk -F'=' '/gtk-modules/ {print $2}' "${GTK_RC_BASE}" | xargs)"; export GTK_MODULES

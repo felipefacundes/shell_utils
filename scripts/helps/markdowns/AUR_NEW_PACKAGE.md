@@ -32,6 +32,10 @@ Each package in AUR has its own Git repository. Since **your_package** is new, y
 
 ```bash
 git clone ssh://aur@aur.archlinux.org/your_package.git
+
+Or:
+
+git clone https://aur.archlinux.org/your_package.git
 ```
 
 📌 **Note:** If the package does not exist yet, AUR will allow its creation on the first `push`.
