@@ -3,10 +3,37 @@
 
 gif2sprite() {
     cat <<'EOF'
-# Create animated sprites with ffmpeg of a gif
+# 1 frame per second (ideal for sprites)
+$ ffmpeg -i sprite.gif -vf "fps=1" -vsync 0 %08d.png
 
+# Custom rate (ex: 15 FPS)
 $ ffmpeg -i sprite.gif -r 15 %08d.png
+
+# Frame every N seconds (ex: 1 frame every 3 seconds)
+$ ffmpeg -i sprite.gif -r 1/3 %08d.png
+
+# Specific number of frames
+$ ffmpeg -i animation.gif -frames:v 10 %08d.png
 EOF
+}
+
+video2sprite() {
+    cat <<'EOF'
+# Video for Sprites - A Comprehensive Guide
+EOF
+    clear
+    echo -e "1) English tutorial\n2) Portuguese tutorial\n"
+    read -r option
+    [[ ! "$option" =~ ^[1-3]$ ]] && echo "Only number 1-3" && exit 1
+    case $option in
+        1)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video2sprite.md
+        ;;
+        2)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video2sprite-pt.md
+        ;;
+    esac
+    clear
 }
 
 ffmpeg_video_enhancer() {

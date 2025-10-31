@@ -1,6 +1,6 @@
 aur_new_package() {
     cat <<'EOF'
-# Trap Signals - A Comprehensive Guide
+# AUR - A Comprehensive Guide
 EOF
     clear
     echo -e "1) English tutorial\n2) Portuguese tutorial\n3) Espanhol tutorial\n"
