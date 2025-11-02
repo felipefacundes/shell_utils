@@ -1,0 +1,361 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Image upscale script with ImageMagick
+# Usage: ./upscale.sh -m <mode> [options] input_file
+
+# Default settings
+DEFAULT_FACTOR=200
+DEFAULT_MODE=1
+INPUT_FILE=""
+OUTPUT_FORMAT=""
+MODE=1
+FACTOR=$DEFAULT_FACTOR
+
+# Help function
+show_help() {
+    cat << EOF
+Usage: ${0##*/} -m <mode> [options] input_file
+
+OPTIONS:
+    -m MODE      Processing mode (1-33, required)
+    -up FACTOR   Upscale factor in % (default: 200)
+    -f FORMAT    Output format (jpg, png, etc. - default: same as input)
+
+AVAILABLE MODES:
+
+BASIC MODES (1-5):
+1.  point + unsharp           - Point filter with sharpening for maximum sharpness
+2.  box + unsharp             - Box filter with sharpening
+3.  triangle + unsharp        - Triangle filter with sharpening  
+4.  hermite + unsharp         - Hermite filter with sharpening
+5.  lanczos + unsharp         - Lanczos filter with sharpening (good for photos)
+
+LAGRANGE MODES (6-13):
+6.  lagrange                  - Standard lagrange filter
+7.  lagrange + unsharp        - Lagrange with sharpening
+8.  lagrange support=2.25     - Lagrange with support 2.25
+9.  lagrange support=2.25 + unsharp
+10. lagrange support=2.5      - Lagrange with support 2.5
+11. lagrange support=2.5 + unsharp
+12. lagrange support=3.0      - Lagrange with support 3.0
+13. lagrange support=3.0 + unsharp
+
+ADVANCED MODES (14-33):
+14. catrom                    - Catrom filter
+15. catrom + unsharp          - Catrom with sharpening
+16. cubic                     - Cubic filter
+17. cubic + unsharp           - Cubic with sharpening
+18. quadratic                 - Quadratic filter
+19. quadratic + unsharp       - Quadratic with sharpening
+20. mitchell                  - Mitchell filter
+21. mitchell + unsharp        - Mitchell with sharpening
+22. gaussian                  - Gaussian filter
+23. gaussian + unsharp        - Gaussian with sharpening
+24. gaussian support=1.25     - Gaussian with support 1.25
+25. gaussian support=1.25 + unsharp
+26. gaussian blur=0.75        - Gaussian with blur 0.75
+27. gaussian blur=0.75 + unsharp
+28. gaussian sigma=0.25       - Gaussian with sigma 0.25
+29. gaussian sigma=0.25 + unsharp
+30. sinc                      - Sinc filter
+31. sinc + unsharp            - Sinc with sharpening
+32. sinc support=5            - Sinc with support 5
+33. sinc support=5 + unsharp  - Sinc with support 5 and sharpening
+
+SPECIALIZED MODES FOR CLEANING:
+
+34. 🎯 ADVANCED PROCESSING - Professional combination for cleaning and quality:
+    • Adaptive-resize for intelligent resizing
+    • Contrast-stretch to improve dynamic range
+    • Modulate for fine brightness/saturation adjustment
+    • sRGB colorspace for consistent colors
+    • Adaptive-blur for controlled smoothing
+    • Adaptive-sharpen for advanced sharpness
+
+35. 🎯 ARTIFACT REMOVAL - Advanced combination for maximum cleaning
+36. 🎨 COLOR ENHANCEMENT + SHARPNESS - Equalization + intelligent sharpening
+37. 🖼️ SMOOTHING + DETAIL - Removes noise while preserving details
+38. 🔍 SUPER RESOLUTION - Advanced upscale techniques
+39. 🧹 HEAVY CLEANING - For heavily compromised images
+
+BASIC MODES (1-33) - [These are only for simple resizing]
+
+EXAMPLES:
+    ${0##*/} -m 1 image.png
+    ${0##*/} -m 5 -up 300 image.jpg
+    ${0##*/} -m 10 -f png image.tiff
+EOF
+}
+
+# Check if ImageMagick is installed
+if ! command -v magick &> /dev/null; then
+    echo "Error: ImageMagick not found. Install with: sudo pacman -S imagemagick"
+    exit 1
+fi
+
+# Process arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -m)
+            MODE="$2"
+            shift 2
+            ;;
+        -up)
+            FACTOR="$2"
+            shift 2
+            ;;
+        -f)
+            OUTPUT_FORMAT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+        *)
+            INPUT_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+# Validations
+if [[ -z "$INPUT_FILE" ]]; then
+    echo "Error: No input file specified"
+    show_help
+    exit 1
+fi
+
+if [[ ! -f "$INPUT_FILE" ]]; then
+    echo "Error: File '$INPUT_FILE' not found"
+    exit 1
+fi
+
+if [[ "$MODE" -lt 1 || "$MODE" -gt 39 ]]; then
+    echo "Error: Mode must be between 1 and 39"
+    show_help
+    exit 1
+fi
+
+# Get base filename and extension
+filename=$(basename -- "$INPUT_FILE")
+extension="${filename##*.}"
+filename="${filename%.*}"
+
+# Set output format
+if [[ -n "$OUTPUT_FORMAT" ]]; then
+    output_ext="$OUTPUT_FORMAT"
+else
+    output_ext="$extension"
+fi
+
+output_file="${filename}_mode${MODE}.${output_ext}"
+
+# Function to apply unsharp
+apply_unsharp() {
+    local input="$1"
+    local output="$2"
+    magick "$input" -unsharp 0x1 "$output"
+}
+
+echo "Processing: $INPUT_FILE"
+echo "Mode: $MODE"
+echo "Factor: ${FACTOR}%"
+echo "Output: $output_file"
+
+# Execute the selected mode
+case $MODE in
+    1)
+        magick "$INPUT_FILE" -filter point -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    2)
+        magick "$INPUT_FILE" -filter box -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    3)
+        magick "$INPUT_FILE" -filter triangle -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    4)
+        magick "$INPUT_FILE" -filter hermite -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    5)
+        magick "$INPUT_FILE" -filter lanczos -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    6)
+        magick "$INPUT_FILE" -filter lagrange -resize "${FACTOR}%" "$output_file"
+        ;;
+    7)
+        magick "$INPUT_FILE" -filter lagrange -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    8)
+        magick "$INPUT_FILE" -filter lagrange -define filter:support=2.25 -resize "${FACTOR}%" "$output_file"
+        ;;
+    9)
+        magick "$INPUT_FILE" -filter lagrange -define filter:support=2.25 -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    10)
+        magick "$INPUT_FILE" -filter lagrange -define filter:support=2.5 -resize "${FACTOR}%" "$output_file"
+        ;;
+    11)
+        magick "$INPUT_FILE" -filter lagrange -define filter:support=2.5 -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    12)
+        magick "$INPUT_FILE" -filter lagrange -define filter:support=3 -resize "${FACTOR}%" "$output_file"
+        ;;
+    13)
+        magick "$INPUT_FILE" -filter lagrange -define filter:support=3 -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    14)
+        magick "$INPUT_FILE" -filter catrom -resize "${FACTOR}%" "$output_file"
+        ;;
+    15)
+        magick "$INPUT_FILE" -filter catrom -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    16)
+        magick "$INPUT_FILE" -filter cubic -resize "${FACTOR}%" "$output_file"
+        ;;
+    17)
+        magick "$INPUT_FILE" -filter cubic -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    18)
+        magick "$INPUT_FILE" -filter quadratic -resize "${FACTOR}%" "$output_file"
+        ;;
+    19)
+        magick "$INPUT_FILE" -filter quadratic -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    20)
+        magick "$INPUT_FILE" -filter mitchell -resize "${FACTOR}%" "$output_file"
+        ;;
+    21)
+        magick "$INPUT_FILE" -filter mitchell -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    22)
+        magick "$INPUT_FILE" -filter gaussian -resize "${FACTOR}%" "$output_file"
+        ;;
+    23)
+        magick "$INPUT_FILE" -filter gaussian -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    24)
+        magick "$INPUT_FILE" -filter gaussian -define filter:support=1.25 -resize "${FACTOR}%" "$output_file"
+        ;;
+    25)
+        magick "$INPUT_FILE" -filter gaussian -define filter:support=1.25 -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    26)
+        magick "$INPUT_FILE" -filter gaussian -define filter:blur=.75 -resize "${FACTOR}%" "$output_file"
+        ;;
+    27)
+        magick "$INPUT_FILE" -filter gaussian -define filter:blur=.75 -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    28)
+        magick "$INPUT_FILE" -filter gaussian -define filter:sigma=.25 -resize "${FACTOR}%" "$output_file"
+        ;;
+    29)
+        magick "$INPUT_FILE" -filter gaussian -define filter:sigma=.25 -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    30)
+        magick "$INPUT_FILE" -filter sinc -resize "${FACTOR}%" "$output_file"
+        ;;
+    31)
+        magick "$INPUT_FILE" -filter sinc -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+    32)
+        magick "$INPUT_FILE" -filter sinc -define filter:support=5 -resize "${FACTOR}%" "$output_file"
+        ;;
+    33)
+        magick "$INPUT_FILE" -filter sinc -define filter:support=5 -resize "${FACTOR}%" -unsharp 0x1 "$output_file"
+        ;;
+	# 🎯 ARTIFACT REMOVAL
+	34)  
+		magick "$INPUT_FILE" \
+			-resize "${FACTOR}%" \
+			-contrast-stretch 0,3% \
+			-strip \
+			-modulate 99,99 \
+			-colorspace sRGB \
+			-depth 16 \
+			-channel rgba \
+			-adaptive-blur 0.05 \
+			-density 400 \
+			+repage \
+			-fuzz 50% \
+			-quality 100% \
+			-adaptive-sharpen 2x2.5+2.7+0.1 \
+			"$output_file"
+        ;;
+
+	# 🎯 ARTIFACT REMOVAL
+	35)  
+	echo "Applying mode 35: Advanced Artifact Removal..."
+	magick "$INPUT_FILE" \
+		-despeckle \
+		-median 3x3 \
+		-filter lanczos -resize "${FACTOR}%" \
+		-unsharp 0.5x0.5+0.7+0.02 \
+		-colorspace RGB \
+		"$output_file"
+		;;
+    
+	# 🎨 COLOR ENHANCEMENT + SHARPNESS
+    36) 
+        echo "Applying mode 36: Color Enhancement and Sharpness..."
+        magick "$INPUT_FILE" \
+            -auto-gamma \
+            -auto-level \
+            -brightness-contrast 5x10 \
+            -filter lanczos -resize "${FACTOR}%" \
+            -unsharp 0.3x0.3+0.7+0.05 \
+            -sigmoidal-contrast 3,50% \
+            "$output_file"
+        ;;
+
+    # 🖼️ SMOOTHING + DETAIL
+    37)
+        echo "Applying mode 37: Smoothing with Detail Preservation..."
+        magick "$INPUT_FILE" \
+            -selective-blur 2x2+0.3 \
+            -filter mitchell -resize "${FACTOR}%" \
+            -unsharp 0.2x0.2+0.7+0.01 \
+            -noise 2 \
+            "$output_file"
+        ;;
+    
+	# 🔍 SUPER RESOLUTION
+    38)
+        echo "Applying mode 38: Super Resolution Techniques..."
+        magick "$INPUT_FILE" \
+            -colorspace RGB \
+            -filter lanczos -resize "${FACTOR}%" \
+            -set option:filter:blur 0.7 \
+            -unsharp 0x0.75+0.75+0.008 \
+            -equalize \
+            -normalize \
+            "$output_file"
+        ;;
+    
+	# 🧹 HEAVY CLEANING
+    39) 
+        echo "Applying mode 39: Heavy Artifact Cleaning..."
+        magick "$INPUT_FILE" \
+            -despeckle \
+            -statistic Median 5x5 \
+            -selective-blur 3x3+0.5 \
+            -filter lanczos -resize "${FACTOR}%" \
+            -unsharp 0.5x0.5+0.8+0.03 \
+            -contrast-stretch 1% \
+            "$output_file"
+        ;;
+esac
+
+if [[ $? -eq 0 ]]; then
+    echo "✅ Processing completed: $output_file"
+else
+    echo "❌ Error in processing"
+    exit 1
+fi
