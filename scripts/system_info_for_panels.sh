@@ -111,14 +111,12 @@ capslock_status() {
 }
 
 nvidia_or_intel() {
-    NVIDIA="$(glxinfo -B | grep -i 'NVIDIA')"
-
     #🌀🏧💠🆙🆒🆓💎🏁☑️®️
     #"👁️🖥️" #  👁️‍🗨️
     #"\xf0\x9f\x92\xbb" # 
 
     echo " $( 
-        if [ "$NVIDIA" ]; then 
+        if glxinfo -B | grep -i 'NVIDIA' >/dev/null; then 
             echo -e "🏁"
         else 
             echo -e "🖥️"

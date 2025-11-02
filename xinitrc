@@ -17,6 +17,7 @@ export XDG_CURRENT_DESKTOP="${start_wm}"
 export XDG_SESSION_DESKTOP="${start_wm}"
 export XDG_MENU_PREFIX="${start_wm}-"
 export XDG_SESSION_TYPE=x11
+#export GDK_BACKEND=x11
 
 # clean DM influence
 export DESKTOP_SESSION="${start_wm}"
@@ -90,9 +91,14 @@ monitor_mode() {
 
     # xrandr --output HDMI-0 --mode 1920x1080 --pos 0x0 --rotate inverted \
     # --output eDP-1-1 --primary --mode 1920x1080 --pos 0x0 --rotate normal    
-    
-    xrandr --output HDMI-0 --mode 1920x1080 --pos 0x0 --rotate inverted \
-    --output eDP-1-1 --off
+
+    if glxinfo -B | grep -i 'NVIDIA' >/dev/null; then
+        xrandr --output HDMI-0 --mode 1920x1080 --pos 0x0 --rotate inverted \
+        --output eDP-1-1 --off
+	else
+	    xrandr --output eDP-1 --off --output HDMI-1-0 --primary --mode 1920x1080 \
+		--pos 0x0 --rotate inverted
+	fi
 
     ##sleep 2
     #cvt 1920 1080
