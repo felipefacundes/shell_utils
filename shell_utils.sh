@@ -106,3 +106,7 @@ unset shell_utils
 unset source_file
 unset source_path
 unset sourced
+
+if [[ -n "$BASH_VERSION" ]]; then
+	source ~/.shell_utils/scripts/utils/install_bash_smartcd.sh
+fi

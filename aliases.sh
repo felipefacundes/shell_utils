@@ -1,5 +1,6 @@
 . "${HOME}"/.shell_utils/aliases/adb.sh
 . "${HOME}"/.shell_utils/aliases/beep.sh
+. "${HOME}"/.shell_utils/aliases/cd.sh
 . "${HOME}"/.shell_utils/aliases/chatgpt_aliases.sh
 . "${HOME}"/.shell_utils/aliases/check_for_alias.sh
 . "${HOME}"/.shell_utils/aliases/coin.sh
