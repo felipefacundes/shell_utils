@@ -1,6 +1,16 @@
 # ffmpeg full flags
 . ~/.shell_utils/scripts/helps/ffmpeg_full_flags.sh
 
+video2whatsapp() {
+    cat <<'EOF'
+$ ffmpeg -i input.mp4 -c:v libx264 -crf 32 -vf "scale=1920:1080" -r 24 -c:a aac -b:a 96k -preset slow -movflags +faststart output_whatsapp.mp4
+
+# With filter
+
+$ ffmpeg -i input.mp4 -c:v libx264 -crf 32 -vf "scale=1920:1080:flags=lanczos" -r 24 -c:a aac -b:a 96k -preset slow -movflags +faststart output_whatsapp.mp4
+EOF
+}
+
 gif2sprite() {
     cat <<'EOF'
 # 1 frame per second (ideal for sprites)
