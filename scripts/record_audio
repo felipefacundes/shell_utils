@@ -98,8 +98,9 @@ EOF
 
 # record this damn audio
 record_audio() {
-    ar="${ar:-22050}"
-    volume="${volume:-20}"
+    #ar="${ar:-22050}"
+    ar="${ar:-48000}"
+    volume="${volume:-0}"
     file="audio_$(date +'%Y-%m-%d_%H:%M:%S').ogg"
     output="${output:-"${record_dir}/${file}"}"
     ffmpeg -f pulse -ac 2 -i default -af "volume=${volume}dB" -ar "${ar}" "${output}"

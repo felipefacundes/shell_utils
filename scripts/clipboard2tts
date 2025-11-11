@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Script: clipboard2tts.sh
+# Description: Captures clipboard content (X11 or Wayland)
+# and narrates text using spd-say.
+
+# Colors for professional output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Colored logging functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1" >&2
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1" >&2
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1" >&2
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" >&2
+}
+
+log_debug() {
+    echo -e "${PURPLE}[DEBUG]${NC} $1" >&2
+}
+
+log_action() {
+    echo -e "${CYAN}[ACTION]${NC} $1" >&2
+}
+
+# Function to clean ANSI codes from text
+clean_ansi_codes() {
+    echo "$1" | sed -E 's/\x1B\[[0-9;]*[mGK]//g'
+}
+
+# Determine display session type (X11 or Wayland)
+get_clipboard_text() {
+    local clipboard_text=""
+    
+    if [[ $XDG_SESSION_TYPE == "wayland" ]] || [[ $WAYLAND_DISPLAY ]]; then
+        # Try using wl-copy (part of wl-clipboard) for Wayland
+        if command -v wl-paste &> /dev/null && [[ $(wl-paste --list-types 2>/dev/null) ]]; then
+            # Check if content is text
+            if wl-paste --list-types 2>/dev/null | grep -q "text/"; then
+                log_success "Wayland clipboard detected. Getting text..."
+                clipboard_text=$(wl-paste --no-newline --type text/plain 2>/dev/null)
+                if [[ $? -eq 0 && -n "$clipboard_text" ]]; then
+                    echo "$clipboard_text"
+                    return
+                fi
+            else
+                log_error "No text found in Wayland clipboard."
+                exit 1
+            fi
+        fi
+    fi
+
+    # Fallback to X11
+    # Try using xclip
+    if command -v xclip &> /dev/null; then
+        log_success "X11 clipboard detected. Getting text..."
+        clipboard_text=$(xclip -selection clipboard -o 2>/dev/null)
+        if [[ $? -eq 0 && -n "$clipboard_text" ]]; then
+            echo "$clipboard_text"
+            return
+        fi
+    fi
+
+    # Try using xsel as last resort
+    if command -v xsel &> /dev/null; then
+        log_success "X11 clipboard detected. Getting text..."
+        clipboard_text=$(xsel --clipboard --output 2>/dev/null)
+        if [[ $? -eq 0 && -n "$clipboard_text" ]]; then
+            echo "$clipboard_text"
+            return
+        fi
+    fi
+
+    log_error "Could not access clipboard."
+    echo -e "${YELLOW}Check if you are in an X11 or Wayland environment and if clipboard tools are installed.\n• For Wayland: install wl-clipboard\n• For X11: install xclip or xsel${NC}" >&2
+    exit 1
+}
+
+# Function to check dependencies
+check_dependencies() {
+    local missing_deps=()
+    
+    # Check spd-say
+    if ! command -v spd-say &> /dev/null; then
+        log_error "spd-say not found!"
+        log_info "Install with: sudo apt install speech-dispatcher (Debian/Ubuntu) or sudo pacman -S speech-dispatcher (Arch)"
+        missing_deps+=("spd-say")
+    fi
+    
+    # Check at least one clipboard tool
+    if ! command -v wl-paste &> /dev/null && ! command -v xclip &> /dev/null && ! command -v xsel &> /dev/null; then
+        log_error "No clipboard tool found!"
+        log_info "Install:"
+        log_info "  For Wayland: wl-clipboard"
+        log_info "  For X11: xclip or xsel"
+        missing_deps+=("clipboard-tool")
+    fi
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        log_error "Missing dependencies: ${missing_deps[*]}"
+        exit 1
+    fi
+    
+    log_success "All dependencies verified!"
+}
+
+# Main function
+main() {
+    log_action "Starting ${0##*/}..."
+    
+    # Check dependencies
+    check_dependencies
+    
+    log_info "Getting text from clipboard..."
+
+    # Capture text WITHOUT mixing with logs
+    text=$(get_clipboard_text)
+
+    if [[ -n "$text" ]]; then
+        # Clean ANSI codes from text
+        clean_text=$(clean_ansi_codes "$text")
+        
+        # Show text preview (first 10 words) - this goes to stderr
+        local word_count; word_count=$(echo "$clean_text" | wc -w)
+        local preview; preview=$(echo "$clean_text" | head -c 100)  # Show only first 100 characters
+        
+        log_success "Text captured successfully!"
+        log_info "Preview: $preview..."
+        log_info "Total words: $word_count"
+        
+        log_action "Starting narration with spd-say..."
+        
+        # Narrate only the clean text
+        spd-say "$clean_text"
+        
+        if [[ $? -eq 0 ]]; then
+            log_success "Narration completed!"
+        else
+            log_error "Error in narration with spd-say"
+            exit 1
+        fi
+    else
+        log_error "Clipboard is empty or contains no text."
+        exit 1
+    fi
+}
+
+# Colored header
+echo -e "${CYAN}"
+echo "╔════════════════════════════════════════════════╗"
+echo "║           CLIPBOARD TO TTS SCRIPT              ║"
+echo "║               Smart Narration                  ║"
+echo "╚════════════════════════════════════════════════╝"
+echo -e "${NC}"
+
+main "$@"

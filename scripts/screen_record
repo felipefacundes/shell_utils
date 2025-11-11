@@ -67,7 +67,8 @@ EOF
 mon=${mon:-$(resolution_current_monitor)}
 framerate=${framerate:-15}
 muxing=${muxing:-9999}
-arate=${arate:-22050}
+#arate=${arate:-22050}
+arate=${arate:-44100}
 codec=${codec:-"libx264"}
 default_folder="${HOME}/Videos/Capture"
 
