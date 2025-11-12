@@ -4,7 +4,7 @@ markdown_terminal_reader() {
 
     clear
     
-    cat <<EOF | echo -e "$(cat)"
+	cat <<EOF | { echo -e "$(cat)"; }
 # MARKDOWN READER FOR TERMINAL
 
 1. bat (with markdown support)

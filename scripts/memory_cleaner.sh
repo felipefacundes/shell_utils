@@ -96,7 +96,7 @@ clean() {
 
 # Display help menu
 help_menu() {
-    cat <<EOF
+    cat <<EOF | { echo -e "$(cat)"; }
 ${MESSAGES["usage"]}
 ${MESSAGES["options"]}
   --cleanswap       ${MESSAGES["cleanswap_desc"]}
