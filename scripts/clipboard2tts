@@ -2,9 +2,11 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# Script: clipboard2tts.sh
-# Description: Captures clipboard content (X11 or Wayland)
-# and narrates text using spd-say.
+: <<'DOCUMENTATION'
+Script: clipboard2tts.sh
+Description: Captures clipboard content (X11 or Wayland)
+and narrates text using spd-say.
+DOCUMENTATION
 
 # Colors for professional output
 RED='\033[0;31m'

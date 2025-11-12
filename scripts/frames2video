@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Script: frames2video.sh
+Description: Converts image sequence to video
+Usage: ./frames2video.sh [options] output_file
+Options:
+         -seq PATTERN    Image sequence pattern (default: frame_%08d.png)
+DOCUMENTATION
+
+script_name="${0##*/}"
+frame_pattern="frame_%08d.png"
+framerate=24
+
+# Function to show usage
+show_usage() {
+    echo "Usage: $script_name [OPTIONS] output_file"
+    echo ""
+    echo "Options:"
+    echo "  -seq PATTERN    Image sequence pattern (default: $frame_pattern)"
+    echo "  -fps RATE       Frame rate (default: $framerate)"
+    echo ""
+    echo "Examples:"
+    echo "  $script_name video.mp4"
+    echo "  $script_name -seq frame_%03d.png \"my video.mkv\""
+    echo "  $script_name -seq %04d.jpg -fps 30 output.mp4"
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -seq)
+            frame_pattern="$2"
+            shift 2
+            ;;
+        -fps)
+            framerate="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        -*)
+            echo "Error: Unknown option $1"
+            show_usage
+            exit 1
+            ;;
+        *)
+            output_file="$1"
+            shift
+            ;;
+    esac
+done
+
+# Check if output file was provided
+if [ -z "$output_file" ]; then
+    echo "Error: Output file not specified."
+    show_usage
+    exit 1
+fi
+
+# Convert image sequence to video
+echo "Converting image sequence to video..."
+echo "Pattern: $frame_pattern"
+echo "Frame rate: $framerate fps"
+echo "Output: $output_file"
+
+ffmpeg -framerate "$framerate" -i "$frame_pattern" -c:v libx264 -pix_fmt yuv420p "$output_file"
+
+# Check if conversion was successful
+if [ $? -eq 0 ]; then
+    echo "Conversion completed successfully!"
+    echo "Video saved as: $output_file"
+else
+    echo "Error during video conversion."
+    exit 1
+fi

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Script: video_to_pngs.sh
+Description: Converts video to PNG image sequence
+Usage: ./video_to_pngs.sh video.mp4
+DOCUMENTATION
+
+script_name="${0##*/}"
+
+# Check if argument was provided
+if [ $# -eq 0 ]; then
+    echo "Error: No video file specified."
+    echo "Usage: $script_name <video_file>"
+    exit 1
+fi
+
+# Check if file exists
+if [ ! -f "$1" ]; then
+    echo "Error: File '$1' not found."
+    exit 1
+fi
+
+# Get filename without extension
+filename=$(basename "$1")
+filename_no_ext="${filename%.*}"
+
+# Create output directory name
+output_dir="${filename_no_ext}_pngs"
+
+# Create output directory if it doesn't exist
+if [ ! -d "$output_dir" ]; then
+    mkdir "$output_dir"
+    echo "Directory '$output_dir' created."
+fi
+
+# Convert video to PNG images
+echo "Converting '$1' to PNG images in '$output_dir/'..."
+ffmpeg -i "$1" "${output_dir}/frame_%08d.png"
+
+# Check if conversion was successful
+if [ $? -eq 0 ]; then
+    echo "Conversion completed successfully!"
+    echo "Images saved in: $output_dir/"
+else
+    echo "Error during video conversion."
+    exit 1
+fi

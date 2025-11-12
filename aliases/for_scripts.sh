@@ -43,6 +43,12 @@ alias numero_primo='prime'
 
 alias xrdb_settings='~/.shell_utils/scripts/xresources_settings'
 
+alias video2images='~/.shell_utils/scripts/video2frames'
+alias video2pngs='video2images'
+
+alias images2video='~/.shell_utils/scripts/frames2video'
+alias pngs2video='images2video'
+
 alias kja='~/.shell_utils/scripts/kja.sh'
 alias acf='~/.shell_utils/scripts/acf.sh'
 alias biblia_kja='kja'
