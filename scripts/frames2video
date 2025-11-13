@@ -7,19 +7,88 @@ Script: frames2video.sh
 Description: Converts image sequence to video
 Usage: ./frames2video.sh [options] output_file
 Options:
-         -seq PATTERN    Image sequence pattern (default: frame_%08d.png)
+         -seq PATTERN    Image sequence pattern (default: auto-detected)
+         -fps RATE       Frame rate (default: 24)
 DOCUMENTATION
 
 script_name="${0##*/}"
-frame_pattern="frame_%08d.png"
+frame_pattern=""
 framerate=24
+detected_pattern=""
+
+# Function to detect image sequence pattern
+detect_frame_pattern() {
+    local image_files=()
+    local patterns=()
+    
+    # Find all image files (png, jpg, jpeg)
+    while IFS= read -r -d $'\0' file; do
+        image_files+=("$file")
+    done < <(find . -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | sort -z)
+    
+    # Check if there are any image files
+    if [ ${#image_files[@]} -eq 0 ]; then
+        echo "Error: No PNG or JPG images found in current directory."
+        return 1
+    fi
+    
+    echo "Found ${#image_files[@]} image files"
+    
+    # Analyze filenames to detect pattern
+    for file in "${image_files[@]}"; do
+        filename=$(basename "$file")
+        
+        # Remove extension
+        name_no_ext="${filename%.*}"
+        
+        # Try to find numeric sequence at the end
+        if [[ "$name_no_ext" =~ ([^0-9]*)([0-9]+)$ ]]; then
+            prefix="${BASH_REMATCH[1]}"
+            number="${BASH_REMATCH[2]}"
+            zero_padding=${#number}
+            
+            # Create pattern
+            pattern="${prefix}%0${zero_padding}d.${file##*.}"
+            patterns+=("$pattern")
+        elif [[ "$name_no_ext" =~ ^([0-9]+)$ ]]; then
+            # File is just numbers
+            number="${BASH_REMATCH[1]}"
+            zero_padding=${#number}
+            pattern="%0${zero_padding}d.${file##*.}"
+            patterns+=("$pattern")
+        fi
+    done
+    
+    # Find the most common pattern
+    if [ ${#patterns[@]} -gt 0 ]; then
+        detected_pattern=$(printf "%s\n" "${patterns[@]}" | sort | uniq -c | sort -nr | head -1 | awk '{$1=""; print $0}' | sed 's/^ //')
+        echo "Detected pattern: $detected_pattern"
+        return 0
+    else
+        echo "Error: Could not detect frame pattern automatically."
+        return 1
+    fi
+}
+
+# Function to validate if detected pattern works
+validate_pattern() {
+    local pattern="$1"
+    local test_output
+    test_output=$(ffmpeg -framerate 1 -i "$pattern" -c copy -f null - -y 2>&1)
+    
+    if echo "$test_output" | grep -q "Input #0"; then
+        return 0
+    else
+        return 1
+    fi
+}
 
 # Function to show usage
 show_usage() {
     echo "Usage: $script_name [OPTIONS] output_file"
     echo ""
     echo "Options:"
-    echo "  -seq PATTERN    Image sequence pattern (default: $frame_pattern)"
+    echo "  -seq PATTERN    Image sequence pattern (default: auto-detected)"
     echo "  -fps RATE       Frame rate (default: $framerate)"
     echo ""
     echo "Examples:"
@@ -60,6 +129,36 @@ if [ -z "$output_file" ]; then
     echo "Error: Output file not specified."
     show_usage
     exit 1
+fi
+
+# Auto-detect frame pattern if not provided
+if [ -z "$frame_pattern" ]; then
+    echo "Auto-detecting frame pattern..."
+    if ! detect_frame_pattern; then
+        echo "Trying fallback pattern: frame_%08d.png"
+        frame_pattern="frame_%08d.png"
+        
+        # Test if fallback pattern works
+        if ! validate_pattern "$frame_pattern"; then
+            echo "Error: No valid image sequence found and fallback pattern doesn't work."
+            echo "Please specify the pattern manually with -seq option."
+            exit 1
+        fi
+    else
+        frame_pattern="$detected_pattern"
+        
+        # Validate detected pattern
+        if ! validate_pattern "$frame_pattern"; then
+            echo "Warning: Detected pattern might not be correct. Trying anyway..."
+        fi
+    fi
+else
+    echo "Using user-specified pattern: $frame_pattern"
+    
+    # Validate user-specified pattern
+    if ! validate_pattern "$frame_pattern"; then
+        echo "Warning: Specified pattern might not match any files. Trying anyway..."
+    fi
 fi
 
 # Convert image sequence to video
