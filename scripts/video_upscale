@@ -1,0 +1,422 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+SCRIPT_NAME="${0##*/}"
+CONFIG_DIR="$HOME/.config/${SCRIPT_NAME%.*}"
+CONFIG_FILE="$CONFIG_DIR/config.conf"
+SHADERS_DIR="$HOME/.config/mpv/shaders"
+
+# Default values
+MODE="standard"
+UPSCALE_FACTOR=2
+CODEC="libx265"
+CUSTOM_SIZE=""
+INPUT_FILE=""
+OUTPUT_FILE=""
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to log messages
+log() {
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Create config directory if it doesn't exist
+mkdir -p "$CONFIG_DIR"
+
+# Load configuration
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        source "$CONFIG_FILE"
+    else
+        # Default shader if not configured
+        SHADER_PATH=""
+    fi
+}
+
+# Save configuration
+save_config() {
+    echo "SHADER_PATH=\"$SHADER_PATH\"" > "$CONFIG_FILE"
+    log "Configuration saved to $CONFIG_FILE"
+}
+
+# Find all .glsl shader files with their relative paths
+find_shaders() {
+    local shaders=()
+    if [[ -d "$SHADERS_DIR" ]]; then
+        while IFS= read -r -d '' file; do
+            # Get relative path from SHADERS_DIR
+            local relative_path="${file#$SHADERS_DIR/}"
+            # Create display name (show relative path)
+            local display_name="$relative_path"
+            shaders+=("$display_name" "$file")
+        done < <(find "$SHADERS_DIR" -name "*.glsl" -type f -print0 2>/dev/null)
+    fi
+    printf '%s\n' "${shaders[@]}"
+}
+
+# Select shader using whiptail
+select_shader() {
+    local shaders
+    shaders=($(find_shaders))
+    
+    if [[ ${#shaders[@]} -eq 0 ]]; then
+        error "No .glsl shader files found in $SHADERS_DIR"
+        exit 1
+    fi
+
+    local selected_display
+    selected_display=$(whiptail --title "Select Shader" --menu "Choose a shader:" 25 80 15 "${shaders[@]}" 3>&1 1>&2 2>&3)
+
+    if [[ -n "$selected_display" ]]; then
+        # Find the full path that corresponds to the selected display name
+        for ((i=0; i<${#shaders[@]}; i+=2)); do
+            if [[ "${shaders[i]}" == "$selected_display" ]]; then
+                SHADER_PATH="${shaders[i+1]}"
+                save_config
+                log "Shader selected: $SHADER_PATH"
+                return 0
+            fi
+        done
+        error "Could not find full path for selected shader: $selected_display"
+        return 1
+    else
+        error "No shader selected"
+        return 1
+    fi
+}
+
+# Check if file is video or image
+get_file_type() {
+    local file="$1"
+    local file_info
+    file_info=$(file -b --mime-type "$file" 2>/dev/null)
+    
+    case "$file_info" in
+        video/*)
+            echo "video"
+            ;;
+        image/*)
+            echo "image"
+            ;;
+        *)
+            echo "unknown"
+            ;;
+    esac
+}
+
+# Validate upscale factor based on file type
+validate_upscale_factor() {
+    local factor="$1"
+    local file_type="$2"
+    local input_file="$3"
+    
+    if [[ "$file_type" == "image" ]]; then
+        if [[ $factor -lt 1 || $factor -gt 10 ]]; then
+            error "Upscale factor for images must be between 1 and 10"
+            exit 1
+        fi
+    elif [[ "$file_type" == "video" ]]; then
+        if [[ $factor -lt 1 || $factor -gt 10 ]]; then
+            error "Upscale factor for videos must be between 1 and 10"
+            exit 1
+        fi
+        
+        # Get video dimensions
+        local dimensions
+        dimensions=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$input_file" 2>/dev/null)
+        if [[ -n "$dimensions" ]]; then
+            IFS='x' read -r width height <<< "$dimensions"
+            local new_width=$((width * factor))
+            local new_height=$((height * factor))
+            
+            if [[ $new_width -gt 7680 || $new_height -gt 4320 ]]; then
+                warn "Upscaled resolution ${new_width}x${new_height} exceeds maximum 7680x4320. Limiting to maximum."
+                # Calculate maximum possible factor
+                local max_factor_width=$((7680 / width))
+                local max_factor_height=$((4320 / height))
+                local max_factor=$((max_factor_width < max_factor_height ? max_factor_width : max_factor_height))
+                
+                if [[ $max_factor -lt 1 ]]; then
+                    max_factor=1
+                fi
+                
+                if [[ $factor -gt $max_factor ]]; then
+                    UPSCALE_FACTOR=$max_factor
+                    warn "Auto-adjusting upscale factor to $max_factor"
+                fi
+            fi
+        fi
+    fi
+}
+
+# Validate custom size
+validate_custom_size() {
+    local size="$1"
+    if ! [[ "$size" =~ ^[0-9]+x[0-9]+$ ]]; then
+        error "Invalid size format. Use WIDTHxHEIGHT (e.g., 3840x2160)"
+        exit 1
+    fi
+    
+    IFS='x' read -r width height <<< "$size"
+    if [[ $width -gt 7680 || $height -gt 4320 ]]; then
+        error "Maximum supported resolution is 7680x4320"
+        exit 1
+    fi
+    
+    if [[ $width -lt 1 || $height -lt 1 ]]; then
+        error "Invalid dimensions"
+        exit 1
+    fi
+}
+
+# Build FFmpeg filter chain
+build_filter_chain() {
+    local file_type="$1"
+    local filter_chain=""
+    
+    if [[ -n "$CUSTOM_SIZE" ]]; then
+        filter_chain="format=yuv420p10,hwupload,libplacebo=w=$width:h=$height:upscaler=ewa_lanczos:custom_shader_path=${SHADER_PATH},hwdownload,format=yuv420p10"
+    else
+        filter_chain="format=yuv420p10,hwupload,libplacebo=w=iw*${UPSCALE_FACTOR}:h=ih*${UPSCALE_FACTOR}:upscaler=ewa_lanczos:custom_shader_path=${SHADER_PATH},hwdownload,format=yuv420p10"
+    fi
+    
+    # Add mode-specific filters
+    case "$MODE" in
+        "experimental")
+            filter_chain="hqdn3d=4.0:3.0:6.0:4.5,unsharp=5:5:1.0,eq=saturation=1.3,${filter_chain}"
+            ;;
+        "premium")
+            filter_chain="${filter_chain},unsharp=3:3:0.5,eq=brightness=0.02:contrast=1.05:saturation=1.1"
+            ;;
+    esac
+    
+    echo "$filter_chain"
+}
+
+# Show professional help
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${GREEN}${SCRIPT_NAME} - Professional Video Upscaling Tool${NC}
+
+${BLUE}USAGE:${NC}
+    ${SCRIPT_NAME} [OPTIONS] INPUT_FILE OUTPUT_FILE
+
+${BLUE}DESCRIPTION:${NC}
+    Advanced video upscaling tool using MPV shaders and libplacebo.
+    Supports multiple processing modes and real-time shader selection.
+
+${BLUE}OPTIONS:${NC}
+    -m, --mode MODE          Set processing mode
+                             Available modes:
+                               standard    - Basic upscaling with shader
+                               experimental - Enhanced with noise reduction and sharpening
+                               premium     - Advanced processing with color enhancement
+                             Default: standard
+
+    -up, --upscale FACTOR    Set upscale factor (1-10)
+                             Default: 2
+                             For videos: automatically limits to 7680x4320 maximum
+
+    -c, --codec CODEC        Set output video codec
+                             Default: libx265
+                             Examples: libx264, libx265, libvpx-vp9
+
+    -s, --size WxH           Set custom output resolution
+                             Format: WIDTHxHEIGHT (e.g., 3840x2160)
+                             Overrides upscale factor
+
+    -sh, --select-shader     Interactive shader selection using whiptail
+                             Saves selection to configuration
+
+    -h, --help               Show this help message
+
+${BLUE}EXAMPLES:${NC}
+    ${SCRIPT_NAME} -m standard -up 2 input.mp4 output.mp4
+    ${SCRIPT_NAME} --mode experimental --upscale 3 -c libx264 input.mkv output.mkv
+    ${SCRIPT_NAME} -s 3840x2160 -m premium input.avi output.mp4
+    ${SCRIPT_NAME} --select-shader
+
+${BLUE}CONFIGURATION:${NC}
+    Configuration file: ${CONFIG_FILE}
+    Shaders directory: ${SHADERS_DIR}
+
+${YELLOW}NOTES:${NC}
+    - Requires FFmpeg with libplacebo and Vulkan support
+    - First run: use -sh to select a shader
+    - Maximum supported resolution: 7680x4320 (8K)
+    - Output uses 10-bit yuv420p format for better quality
+EOF
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -m|--mode)
+            MODE="$2"
+            shift 2
+            ;;
+        -up|--upscale)
+            UPSCALE_FACTOR="$2"
+            shift 2
+            ;;
+        -c|--codec)
+            CODEC="$2"
+            shift 2
+            ;;
+        -s|--size)
+            CUSTOM_SIZE="$2"
+            shift 2
+            ;;
+        -sh|--select-shader)
+            SELECT_SHADER=true
+            shift
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -*)
+            error "Unknown option $1"
+            show_help
+            exit 1
+            ;;
+        *)
+            if [[ -z "$INPUT_FILE" ]]; then
+                INPUT_FILE="$1"
+            elif [[ -z "$OUTPUT_FILE" ]]; then
+                OUTPUT_FILE="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Main execution
+main() {
+    load_config
+
+    # Handle shader selection mode
+    if [[ "$SELECT_SHADER" == true ]]; then
+        select_shader
+        exit 0
+    fi
+
+    # Validate input
+    if [[ -z "$INPUT_FILE" || -z "$OUTPUT_FILE" ]]; then
+        error "Input and output files are required"
+        show_help
+        exit 1
+    fi
+
+    if [[ ! -f "$INPUT_FILE" ]]; then
+        error "Input file not found: $INPUT_FILE"
+        exit 1
+    fi
+
+    # Check if shader is set and valid
+    if [[ -z "$SHADER_PATH" ]]; then
+        warn "No shader selected. Using interactive selection..."
+        if select_shader; then
+            log "Shader selected successfully"
+        else
+            error "Failed to select shader"
+            exit 1
+        fi
+    elif [[ ! -f "$SHADER_PATH" ]]; then
+        error "Shader file not found: $SHADER_PATH"
+        warn "Please select a new shader with -sh option"
+        if select_shader; then
+            log "Shader selected successfully"
+        else
+            error "Failed to select shader"
+            exit 1
+        fi
+    fi
+
+    # Get file type and validate
+    local file_type
+    file_type=$(get_file_type "$INPUT_FILE")
+    
+    if [[ "$file_type" == "unknown" ]]; then
+        error "Unsupported file type: $INPUT_FILE"
+        exit 1
+    fi
+
+    log "Processing $file_type: $INPUT_FILE"
+
+    # Validate upscale factor
+    if [[ -z "$CUSTOM_SIZE" ]]; then
+        validate_upscale_factor "$UPSCALE_FACTOR" "$file_type" "$INPUT_FILE"
+    else
+        validate_custom_size "$CUSTOM_SIZE"
+        IFS='x' read -r width height <<< "$CUSTOM_SIZE"
+    fi
+
+    # Build filter chain
+    local filter_chain
+    filter_chain=$(build_filter_chain "$file_type")
+
+    log "Mode: $MODE"
+    log "Shader: $SHADER_PATH"
+    log "Codec: $CODEC"
+    if [[ -n "$CUSTOM_SIZE" ]]; then
+        log "Target size: $CUSTOM_SIZE"
+    else
+        log "Upscale factor: $UPSCALE_FACTOR"
+    fi
+    log "Output: $OUTPUT_FILE"
+
+    # Show confirmation
+    if ! whiptail --title "Confirmation" --yesno "Proceed with processing?\n\nInput: $(basename "$INPUT_FILE")\nOutput: $(basename "$OUTPUT_FILE")\nMode: $MODE\nShader: $(basename "$SHADER_PATH")" 12 60; then
+        log "Processing cancelled by user"
+        exit 0
+    fi
+
+    # Execute FFmpeg command
+    log "Starting processing... This may take a while."
+
+    local ffmpeg_cmd=(
+        ffmpeg -i "$INPUT_FILE"
+        -init_hw_device vulkan
+        -vf "$filter_chain"
+        -c:v "$CODEC"
+        -cq 24 -bf 5 -refs 5 -preset slow
+        -y "$OUTPUT_FILE"
+    )
+
+    # Execute and measure time
+    local start_time
+    start_time=$(date +%s)
+    
+    if "${ffmpeg_cmd[@]}" 2>&1 | tee "$CONFIG_DIR/ffmpeg.log"; then
+        local end_time
+        end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+        log "Processing completed successfully in $((duration / 60))m $((duration % 60))s"
+        log "Output file: $OUTPUT_FILE"
+    else
+        error "Processing failed. Check log: $CONFIG_DIR/ffmpeg.log"
+        exit 1
+    fi
+}
+
+# Handle errors
+trap 'error "Script interrupted by user"; exit 1' INT TERM
+
+# Run main function
+main "$@"

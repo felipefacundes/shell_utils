@@ -1,4 +1,5 @@
 alias remove_extension='help remove_extension'
+alias recent_files='help recent_files'
 
 alias file_type='~/.shell_utils/scripts/test_file_type'
 alias test_file='file_type'

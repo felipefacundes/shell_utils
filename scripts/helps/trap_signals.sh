@@ -1,7 +1,7 @@
 trap_signals() {
-    cat <<'EOF'
-# Trap Signals - A Comprehensive Guide
-EOF
+    cat <<-'EOF'
+	# Trap Signals - A Comprehensive Guide
+	EOF
     clear
     echo -e "1) English tutorial\n2) Portuguese tutorial\n"
     read -r option

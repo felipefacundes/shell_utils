@@ -65,18 +65,14 @@ has_the_kernel_been_updated() {
         lock_file="${TMPDIR}/has_the_kernel_been_updated.lock_file"
         icon=~/.shell_utils/icons/exclamation.png
 
-        if [[ "$kernel_initiated" != "$installed_kernel" ]]; then
-            if [[ "$kernel_booted" != "$kernel_updated" ]]; then
-				if ! pidof pacman >/dev/null; then
-					[[ ! -f "${lock_file}.notification" ]] && notify-send -i "$icon" -u critical "Updated kernel" "Reboot system"
-					if [[ ! -f "$lock_file" ]]; then 
-						sleep 15; ~/.shell_utils/scripts/systray_icon.py -i "$icon" -t "Reboot System" -m "Updated kernel" -n "Reboot system" & #sleep 45
-						sleep 15; beep_reboot & ask_reboot & #sleep 60
-						touch "$lock_file"
-					fi
-				fi
-            fi
-        fi
+        if [[ "$kernel_initiated" != "$installed_kernel" ]] && [[ "$kernel_booted" != "$kernel_updated" ]] && ! pidof pacman >/dev/null; then
+			[[ ! -f "${lock_file}.notification" ]] && notify-send -i "$icon" -u critical "Updated kernel" "Reboot system"
+			if [[ ! -f "$lock_file" ]]; then 
+				sleep 15; ~/.shell_utils/scripts/systray_icon.py -i "$icon" -t "Reboot System" -m "Updated kernel" -n "Reboot system" & #sleep 45
+				sleep 15; beep_reboot & ask_reboot & #sleep 60
+				touch "$lock_file"
+			fi
+		fi
         sleep 15
     done
 }

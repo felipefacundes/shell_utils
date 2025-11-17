@@ -1,72 +1,32 @@
 remove_extension()
 {
-    echo "$(cat <<'EOF'
-# Remove extension tips
+	cat <<-'EOF'
+	# Remove extension tips - This guide presents professional techniques for file name manipulation in shell scripts, with special focus on removing file extensions. Each method includes practical examples with clearly demonstrated inputs and outputs.
+	EOF
+    clear
+	cat <<-'EOF'
+	# Remove extension
 
-$ filename=file.txt
-$ name="$(echo $filename | cut -f1 -d'.')"
-$ echo $name
+	Examples:
 
----------
+	SCRIPT_NAME="${0##*/}"
 
-$ echo 'info.tar.tbz2' | awk -F. '{print $NF}'
-tbz2
-$ echo 'info.tar.tbz2' | sed 's/.*\.//'
-tbz2
+	filename="arquivo.backup.tar.gz"
+	echo "${filename%.*}"     # Output: file.backup.tar
+	echo "${filename%%.*}"    # Output: file
+	echo "${filename##*.}"    # Output: gz
 
----------
-You can also use parameter expansion:
-
-$ filename=file.txt
-$ echo "${filename%.*}"
-file
-
----------
-$ basename base.wiki .wiki
-base
-
----------
-filename='file.txt'
-$ echo $filename |sed 's/\(.*\)..../\1/'
-
----------
-Usando apenas o built-in do POSIX:
-
-#!/usr/bin/env sh
-path=this.path/with.dots/in.path.name/filename.tar.gz
-
-# Obtenha o basedir sem comando externo
-# removendo a correspondência final mais curta de / seguida por qualquer coisa
-dirname=${path%/*}
-
-# Obtenha o nome base sem comando externo
-# removendo a correspondência inicial mais longa de qualquer coisa seguida por /
-basename=${path##*/}
-
-# Tira apenas a extensão final superior
-# removendo a correspondência final mais curta de ponto seguido por qualquer coisa
-oneextless=${basename%.*}; echo "$oneextless"
-
-# Tira todas as extensões
-# eliminando a correspondência mais longa de ponto seguido por qualquer coisa
-noext=${basename%%.*}; echo "$noext"
-
-# Demonstração de impressão
-printf %s\\n "$path" "$dirname" "$basename" "$oneextless" "$noext"
-
-Saída na tela:
-
-this.path/with.dots/in.path.name/filename.tar.gz
-this.path/with.dots/in.path.name
-filename.tar.gz
-filename.tar
-filename
-
-
-
-See more:
-https://stackoverflow.com/questions/12152626/how-can-i-remove-the-extension-of-a-filename-in-a-shell-script
-https://www.delftstack.com/howto/linux/remove-file-extension-using-shell/
-EOF
-)" | less
+	EOF
+    echo -e "1) English tutorial\n2) Portuguese tutorial\n"
+    read -r option
+    [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
+    case $option in
+        1)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove_extension.md
+        ;;
+        2)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove_extension_pt.md
+        ;;
+    esac
+    clear
 }
