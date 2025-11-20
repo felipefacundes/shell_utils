@@ -1,0 +1,306 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Windows 11 QEMU Script - with ALSA/PULSE (PA) audio, 
+TPM 2.0 and file sharing with virtiofsd
+Script QEMU Windows 11 - com áudio ALSA/PULSE (PA),
+TPM 2.0 e compartilhamento de arquivos com virtiofsd
+DOCUMENTATION
+
+# Colors for messages / Cores para mensagens
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color / Sem Cor
+
+# Colored message functions / Funções de mensagens coloridas
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+step() { echo -e "${PURPLE}[STEP]${NC} $1"; }
+debug() { echo -e "${CYAN}[DEBUG]${NC} $1"; }
+
+VM_NAME="win11"
+VM_UUID="99894bf5-2eaf-4a10-80e3-3b56179b476e"
+MEMORY="8G"
+CPUS="4"
+
+# Important paths / Caminhos importantes
+TPM=/tmp/mytpm1
+DISK_SIZE="80G"
+PUBLIC="$HOME/Public/QEMU"
+VMs_DIR="$HOME/Documents/VMs"
+ISOs="$VMs_DIR/ISOs"
+VIRTIO_WIN="$ISOs/virtio-win.iso"
+DISK_IMAGE="$VMs_DIR/Win11.qcow2"
+WINFSP="$PUBLIC/winfsp-2.0.23075.msi"
+MESA3D_WIN="$PUBLIC/mesa3d-25.2.6-release-msvc.7z"
+OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd"
+OVMF_VARS="$HOME/.shell_utils/scripts/utilities/nvram/win11_VARS.fd"
+
+clear
+
+find_win11_iso() {
+    local isos_dir="$1"
+    
+    # Check if directory exists / Verifica se o diretório existe
+    if [[ ! -d "$isos_dir" ]]; then
+        error "Directory $isos_dir not found"
+        return 1
+    fi
+    
+    # Search for Windows 11 ISO files (case insensitive) / Procura por arquivos ISO do Windows 11 (case insensitive)
+    local found_iso
+    found_iso=$(find "$isos_dir" -maxdepth 1 -type f \( -iname "win11*.iso" -o -iname "windows11*.iso" \) | head -n 1)
+    
+    if [[ -n "$found_iso" ]]; then
+        echo "$found_iso"
+        return 0
+    else
+        error "No Windows 11 ISO file found in $isos_dir"
+        return 1
+    fi
+}
+
+# Checks / Verificações
+[[ -d "$TPM" ]] && rm -rf "$TPM"
+[[ ! -d "$TPM" ]] && mkdir -p "$TPM"
+[[ ! -d "$ISOs" ]] && mkdir -p "$ISOs"
+[[ ! -d "$PUBLIC" ]] && mkdir -p "$PUBLIC"
+[[ ! -d "$VMs_DIR" ]] && mkdir -p "$VMs_DIR"
+
+ISO_IMAGE=$(find_win11_iso "$ISOs")
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["error_ovmf"]="Instale o pacote: edk2-ovmf"
+        ["error_qemu"]="Instale o pacote: qemu-system-x86"
+        ["error_swtpm"]="Instale o pacote: swtpm"
+        ["error_virtiofsd"]="Instale o pacote: virtiofsd"
+        ["error_kvm"]="KVM não disponível"
+        ["error_download_virtio"]="Não foi possível baixar os drivers VirtIO para Windows"
+        ["error_download_mesa"]="Não foi possível baixar os drivers Mesa3D para Windows"
+        ["error_download_winfsp"]="Não foi possível baixar WinFSP"
+        ["error_virtiofsd_socket"]="Socket do virtiofsd não foi criado"
+        ["step_search_iso"]="Procurando ISO do Windows 11 em $ISOs..."
+        ["step_download_virtio"]="Baixando ISO de drivers VirtIO para Windows em $ISOs..."
+        ["step_download_mesa"]="Baixando drivers Mesa3D para Windows em $PUBLIC..."
+        ["step_download_winfsp"]="Baixando WinFSP para Windows em $PUBLIC..."
+        ["step_starting_tpm"]="Iniciando TPM..."
+        ["step_starting_virtiofsd"]="Iniciando virtiofsd..."
+        ["step_starting_qemu"]="Iniciando QEMU..."
+        ["step_stopping_virtiofsd"]="Parando virtiofsd... Permissões necessárias para parar corretamente..."
+        ["info_starting"]="Iniciando Windows 11 com áudio ALSA..."
+        ["info_memory_cpus"]="Memória: $MEMORY | CPUs: $CPUS"
+        ["info_mesa_instructions"]="Após instalar o Windows, instale os drivers Mesa3D para melhor renderização, performance e OpenGL mais recente."
+        ["info_winfsp_instructions"]="Após instalar o Windows, instale WinFSP para ser capaz de compartilhar arquivos entre o sistema convidado e hospedeiro."
+        ["info_mesa_bat"]="Use o arquivo .bat para instalar o driver Mesa3D, basta extrair o arquivo $MESA3D_WIN"
+        ["success_iso_found"]="ISO encontrada: $ISO_IMAGE"
+        ["success_disk_created"]="Imagem de disco de boot do Windows 11 criada em:\n $DISK_IMAGE com $DISK_SIZE"
+        ["success_completed"]="Processo concluído!"
+    )
+else
+    MESSAGES=(
+        ["error_ovmf"]="Install package: edk2-ovmf"
+        ["error_qemu"]="Install package: qemu-system-x86"
+        ["error_swtpm"]="Install package: swtpm"
+        ["error_virtiofsd"]="Install package: virtiofsd"
+        ["error_kvm"]="KVM not available"
+        ["error_download_virtio"]="Could not download VirtIO drivers for Windows"
+        ["error_download_mesa"]="Could not download Mesa3D drivers for Windows"
+        ["error_download_winfsp"]="Could not download WinFSP"
+        ["error_virtiofsd_socket"]="virtiofsd socket was not created"
+        ["step_search_iso"]="Searching for Windows 11 ISO in $ISOs..."
+        ["step_download_virtio"]="Downloading VirtIO Driver ISO for Windows in $ISOs..."
+        ["step_download_mesa"]="Downloading Mesa3D Driver for Windows in $PUBLIC..."
+        ["step_download_winfsp"]="Downloading WinFSP for Windows in $PUBLIC..."
+        ["step_starting_tpm"]="Starting TPM..."
+        ["step_starting_virtiofsd"]="Starting virtiofsd..."
+        ["step_starting_qemu"]="Starting QEMU..."
+        ["step_stopping_virtiofsd"]="Stopping virtiofsd... Permissions required to stop correctly..."
+        ["info_starting"]="Starting Windows 11 with ALSA audio..."
+        ["info_memory_cpus"]="Memory: $MEMORY | CPUs: $CPUS"
+        ["info_mesa_instructions"]="After installing Windows, install Mesa3D drivers for better rendering, performance and newer OpenGL."
+        ["info_winfsp_instructions"]="After installing Windows, install WinFSP to be able to share files between guest and host systems."
+        ["info_mesa_bat"]="Use the .bat file to install the Mesa3D driver, just extract the file $MESA3D_WIN"
+        ["success_iso_found"]="ISO found: $ISO_IMAGE"
+        ["success_disk_created"]="Windows 11 boot disk image created at:\n $DISK_IMAGE with $DISK_SIZE"
+        ["success_completed"]="Process completed!"
+    )
+fi
+
+if [[ ! -f "$OVMF_CODE" ]]; then
+	error "${MESSAGES[error_ovmf]}"
+	exit 1
+fi
+
+if ! command -v qemu-system-x86_64 >/dev/null; then
+	error "${MESSAGES[error_qemu]}"
+	exit 1
+fi
+
+if ! command -v swtpm >/dev/null; then
+	error "${MESSAGES[error_swtpm]}"
+	exit 1
+fi
+
+if ! command -v /usr/lib/virtiofsd >/dev/null; then
+	error "${MESSAGES[error_virtiofsd]}"
+	exit 1
+fi
+
+step "${MESSAGES[step_search_iso]}"
+
+if [[ -z "$ISO_IMAGE" ]] || [[ ! -f "$ISO_IMAGE" ]]; then
+    error "Could not find Windows 11 ISO in: $ISOs"
+    exit 1
+fi
+
+success "${MESSAGES[success_iso_found]}"
+echo
+
+if [[ ! -f "$VIRTIO_WIN" ]]; then
+	step "${MESSAGES[step_download_virtio]}"
+	echo
+	virtio_iso_url="https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso"
+	if ! wget --progress=bar:force "$virtio_iso_url" -O "$VIRTIO_WIN"; then
+		rm -f "$VIRTIO_WIN"
+		rm -f "$VIRTIO_WIN"*
+		error "${MESSAGES[error_download_virtio]}"
+		exit 1
+	fi
+fi
+
+if [[ ! -f "$MESA3D_WIN" ]]; then
+	step "${MESSAGES[step_download_mesa]}"
+	info "${MESSAGES[info_mesa_instructions]}"
+	info "${MESSAGES[info_mesa_bat]}"
+	echo
+	mesa_win_url="https://github.com/pal1000/mesa-dist-win/releases/download/25.2.6/mesa3d-25.2.6-release-msvc.7z"
+	if ! wget --progress=bar:force "$mesa_win_url" -O "$MESA3D_WIN"; then
+		rm -f "$MESA3D_WIN"
+		rm -f "$MESA3D_WIN"*
+		error "${MESSAGES[error_download_mesa]}"
+		exit 1
+	fi
+fi
+
+if [[ ! -f "$WINFSP" ]]; then
+	step "${MESSAGES[step_download_winfsp]}"
+	info "${MESSAGES[info_winfsp_instructions]}"
+	echo
+	winfsp_url="https://github.com/winfsp/winfsp/releases/download/v2.0/winfsp-2.0.23075.msi"
+	if ! wget --progress=bar:force "$winfsp_url" -O "$WINFSP"; then
+		rm -f "$WINFSP"
+		rm -f "$WINFSP"*
+		error "${MESSAGES[error_download_winfsp]}"
+		exit 1
+	fi
+fi
+
+# Checks / Verificações
+[[ ! -e /dev/kvm ]] && error "${MESSAGES[error_kvm]}" && exit 1
+[[ ! -f "$DISK_IMAGE" ]] && qemu-img create -f qcow2 "$DISK_IMAGE" "$DISK_SIZE" >/dev/null && success "${MESSAGES[success_disk_created]}"
+
+echo
+info "${MESSAGES[info_starting]}"
+info "${MESSAGES[info_memory_cpus]}"
+echo
+
+# Configurations / Configurações
+config_video="-device virtio-vga-gl,id=video0 -display gtk,gl=on"
+#config_video="-device vfio-pci,host=01:00.0,multifunction=on,x-vga=on -vga none -display gtk,gl=on"
+config_cpu="-cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time"
+config_net="-netdev user,id=net0 -device rtl8139,netdev=net0,id=net0,mac=52:54:00:93:86:90"
+config_disk_boot="-drive file="${DISK_IMAGE}",if=none,id=nvme0,format=qcow2 -device nvme,serial=nvme-001,drive=nvme0,bootindex=1"
+config_win11iso="-drive file="${ISO_IMAGE}",media=cdrom,if=none,id=win11iso -device ide-cd,drive=win11iso,bootindex=2"
+config_virtioiso="-drive file="${VIRTIO_WIN}",media=cdrom,if=none,id=virtio_cdrom -device virtio-scsi-pci,id=scsi -device scsi-cd,drive=virtio_cdrom,bootindex=3"
+config_tpm="-chardev socket,id=chrtpm,path=/tmp/mytpm1/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis,tpmdev=tpm0"
+config_tablet_and_pre_fix_mouse="-device usb-ehci,id=ehci -device qemu-xhci,id=xhci -device qemu-xhci,id=usb -device usb-tablet,bus=usb.0,port=1"
+#config_audio="-audiodev id=audio1,driver=alsa -device ich9-intel-hda -device hda-output,audiodev=audio1" # Simplified audio driver configuration
+config_audio="-device ich9-intel-hda -device hda-output,audiodev=hda -audiodev pa,id=hda,server=unix:/run/user/1000/pulse/native,out.buffer-length=8000,timer-period=1000,out.frequency=44100"
+config_share_foder="-object memory-backend-memfd,id=mem,size=8G,share=on -numa node,memdev=mem -chardev socket,id=char0,path=/tmp/virtiofs.sock -device vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=Public"
+config_monitor_and_fix_mouse="-monitor unix:/tmp/monitor.sock,server,nowait -device virtio-serial,packed=on,ioeventfd=on -device virtserialport,name=com.redhat.spice.0,chardev=vdagent0 -chardev qemu-vdagent,id=vdagent0,name=vdagent,clipboard=on,mouse=off"
+
+# Start TPM / Iniciar TPM
+step "${MESSAGES[step_starting_tpm]}"
+echo
+swtpm socket --tpmstate dir="$TPM" \
+  --ctrl type=unixio,path="$TPM/swtpm-sock" \
+  --tpm2 \
+  --log level=20 >/dev/null 2>&1 &
+
+# FIX: Start virtiofsd with sudo to avoid warnings / Iniciar virtiofsd com sudo para evitar avisos
+step "${MESSAGES[step_starting_virtiofsd]}"
+# Stop any previous virtiofsd / Parar qualquer virtiofsd anterior
+sudo pkill -f virtiofsd
+sudo rm -f /tmp/virtiofs.sock
+sudo rm -f /tmp/virtiofs.sock.pid
+sleep .3
+sudo /usr/lib/virtiofsd --socket-path=/tmp/virtiofs.sock --shared-dir="$PUBLIC" --cache=auto &
+VIRTIOFSD_PID=$!
+sleep 1
+
+# Check if socket was created / Verifica se o socket foi criado
+if [[ ! -S /tmp/virtiofs.sock ]]; then
+    error "${MESSAGES[error_virtiofsd_socket]}"
+    sudo kill $VIRTIOFSD_PID 2>/dev/null
+    exit 1
+fi
+
+# CRITICAL FIX: Adjust socket permissions / Ajuste crítico: permissões do socket
+sudo chmod 777 /tmp/virtiofs.sock
+
+step "${MESSAGES[step_starting_qemu]}"
+qemu-system-x86_64 \
+    -name "$VM_NAME" \
+    -uuid "$VM_UUID" \
+    -machine type=q35,accel=kvm \
+    $config_cpu \
+    -smp "$CPUS",cores="$CPUS" \
+    -m "$MEMORY" \
+    \
+    -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+    -drive if=pflash,format=raw,file="$OVMF_VARS" \
+    \
+    $config_disk_boot \
+    $config_win11iso \
+    $config_virtioiso \
+    $config_net \
+    $config_audio \
+    $config_video \
+    \
+    -device virtio-keyboard-pci \
+    -device virtio-mouse-pci \
+    \
+    $config_tablet_and_pre_fix_mouse \
+    \
+    $config_tpm \
+    \
+    -device virtio-balloon-pci,id=balloon0 \
+    \
+    -object rng-random,id=rng0,filename=/dev/urandom \
+    -device virtio-rng-pci,rng=rng0 \
+    \
+    $config_monitor_and_fix_mouse \
+    \
+    $config_share_foder \
+    \
+    -global kvm-pit.lost_tick_policy=delay \
+    -rtc base=localtime
+
+# Kill virtiofsd when VM finishes / Matar virtiofsd quando a VM terminar
+echo
+step "${MESSAGES[step_stopping_virtiofsd]}"
+sudo kill $VIRTIOFSD_PID 2>/dev/null
+sudo pkill -9 virtiofsd 2>/dev/null
+
+success "${MESSAGES[success_completed]}"

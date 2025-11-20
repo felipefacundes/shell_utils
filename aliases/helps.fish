@@ -4,6 +4,13 @@ alias sed_man='help sed_man'
 alias sed_info='help sed_info'
 alias sed_help='help sed_help'
 
+alias qemu_gpu_passthrough_help='help qemu_gpu_passthrough_help'
+alias gpu_passthrough_help='qemu_gpu_passthrough_help'
+
+alias qemu_mounting_help='help qemu_mounting_help'
+alias qcow2_mounting_help='qemu_mounting_help'
+alias mounting_qcow2_help='qemu_mounting_help'
+
 alias trap_signals='help trap_signals'
 alias trap_signals_a_help='trap_signals'
 alias trap_signals_a_comprehensive_guide='trap_signals'

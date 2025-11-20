@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 # https://www.youtube.com/watch?v=jc3PjDX-CGs&t=220s
+# https://wiki.archlinux.org/title/PCI_passthrough_via_OVMF
 # https://gitlab.com/risingprismtv/single-gpu-passthrough/-/wikis/3)-IOMMU-Groups
 # https://forum.proxmox.com/threads/pci-passthrough-issues-with-pve-8-0-3.129992/
 
@@ -10,7 +11,8 @@ It utilizes the lspci command to provide detailed information about the devices 
 DOCUMENTATION
 
 shopt -s nullglob
-for g in /sys/kernel/iommu_groups/*; do
+
+for g in $(find /sys/kernel/iommu_groups/* -maxdepth 0 -type d | sort -V); do
     echo "IOMMU Group ${g##*/}:"
     for d in $g/devices/*; do
         echo -e "\t$(lspci -nns ${d##*/})"
