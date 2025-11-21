@@ -280,8 +280,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;
@@ -295,8 +295,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;
@@ -310,8 +310,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;
@@ -329,8 +329,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;
@@ -342,8 +342,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;
@@ -355,8 +355,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;
@@ -376,8 +376,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;
@@ -389,8 +389,8 @@ execute_mode() {
                 echo "${MESSAGES[success]}"
                 return 0
             else
-				sudo wipefs --all "$device"
                 printf "${MESSAGES[failure]}\n" "$?"
+				sudo wipefs --all "$device"
                 return 1
             fi
             ;;

@@ -4,6 +4,9 @@ alias sed_man='help sed_man'
 alias sed_info='help sed_info'
 alias sed_help='help sed_help'
 
+alias multiboot_help='help multiboot'
+alias 40_custom_help='multiboot_help'
+
 alias qemu_gpu_passthrough_help='help qemu_gpu_passthrough'
 alias gpu_passthrough_help='qemu_gpu_passthrough_help'
 

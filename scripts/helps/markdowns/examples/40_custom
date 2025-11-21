@@ -1,0 +1,213 @@
+#!/bin/sh
+exec tail -n +3 $0
+# This file provides an easy way to add custom menu entries.  Simply type the
+# menu entries you want to add after this comment.  Be careful not to change
+# the 'exec tail' line above.
+
+submenu "Power Options ->" {
+        menuentry "Desligar" {
+            echo "Desligando o sistema..."
+            halt
+}
+        menuentry "Reiniciar" {
+            echo "Reiniciando o sistema..."
+            reboot
+        }
+}
+
+menuentry "Memtest 86+" --class=memtest --hotkey=m {
+        insmod part_gpt
+        #insmod part_msdos
+        #insmod f2fs
+        insmod search_fs_uuid
+        set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+        search --no-floppy --fs-uuid --set=root 79041a97-c74a-4ede-b0f8-6588a17e0b6f
+        linux16 /boot/memtest86+/memtest.bin root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+}
+
+submenu "MULTIBOOT (Distros and Tools) - ISO Images ->" {
+        menuentry "Archlabs-2020.05.04.iso" --hotkey=l --class dvd {
+            insmod part_gpt
+            #insmod part_msdos
+            #insmod f2fs
+            insmod search_fs_uuid
+            set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set isofile="/ISOs/archlabs-2020.05.04.iso" root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            #efi_bootfile="(loop)/EFI/boot/bootx64.efi"
+            linux (loop)/arch/boot/x86_64/vmlinuz img_dev=$pqr img_loop=$isofile driver=$dri
+            initrd (loop)/arch/boot/x86_64/archiso.img
+        }
+
+        menuentry "Artix-lxde-openrc-20200210-x86_64.iso" --hotkey=o --class=artix.x86_64 {
+            insmod part_gpt
+            #insmod part_msdos
+            #insmod f2fs
+            insmod search_fs_uuid
+            set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set isofile="/ISOs/artix-lxde-openrc-20200210-x86_64.iso" root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            efi_bootfile="(loop)/efi/boot/bootx64.efi"
+            linux (loop)/boot/vmlinuz-x86_64 img_dev=$pqr img_loop=$isofile
+            initrd (loop)/boot/intel-ucode.img (loop)/boot/amd-ucode.img (loop)/boot/initramfs-x86_64.img (loop)/boot/efi.img
+        }
+
+        submenu "Endeavouros-2020.09.20-x86_64.iso ->" {
+              menuentry "Endeavouros-2020.09.20-x86_64.iso Free" --hotkey=e --class dvd {
+                    insmod part_gpt
+                    #insmod part_msdos
+                    #insmod f2fs
+                    insmod search_fs_uuid
+                    set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    set isofile="/ISOs/endeavouros-2020.09.20-x86_64.iso" root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    set dri="free"
+                    search --no-floppy -f --set=root $isofile
+                    probe -u $root --set=abc
+                    set pqr="/dev/disk/by-uuid/$abc"
+                    loopback loop $isofile
+                    #efi_bootfile="(loop)/EFI/boot/bootx64.efi"
+                    linux (loop)/arch/boot/x86_64/vmlinuz-linux img_dev=$pqr img_loop=$isofile archisobasedir=arch cow_spacesize=10G archisolabel=ENDEAVOUROS earlymodules=loop modules-load=loop rd.modules-load=loop i915.modeset=1 radeon.modeset=1 nvidia.blacklist=yes modprobe.blacklist=nvidia nouveau.modeset=1 nouveau
+                    initrd (loop)/arch/boot/intel-ucode.img (loop)/arch/boot/amd-ucode.img (loop)/arch/boot/x86_64/archiso.img
+              }
+
+              menuentry "Endeavouros-2020.09.20-x86_64.iso NonFree (Proprietary driver)" --class dvd {
+                    insmod part_gpt
+                    #insmod part_msdos
+                    #insmod f2fs
+                    insmod search_fs_uuid
+                    set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    set isofile="/ISOs/endeavouros-2020.09.20-x86_64.iso" root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    set dri="free"
+                    search --no-floppy -f --set=root $isofile
+                    probe -u $root --set=abc
+                    set pqr="/dev/disk/by-uuid/$abc"
+                    loopback loop $isofile
+                    #efi_bootfile="(loop)/EFI/boot/bootx64.efi"
+                    linux (loop)/arch/boot/x86_64/vmlinuz-linux img_dev=$pqr img_loop=$isofile archisobasedir=arch cow_spacesize=10G archisolabel=ENDEAVOUROS earlymodules=loop modules-load=loop rd.modules-load=loop nvidia nouveau.modeset=0 nouveau.blacklist=yes modprobe.blacklist=nouveau i915.modeset=1 radeon.modeset=1
+                    initrd (loop)/arch/boot/intel-ucode.img (loop)/arch/boot/amd-ucode.img (loop)/arch/boot/x86_64/archiso.img
+              }
+        }
+
+        menuentry "AntivirusLiveCD-34.0-0.102.4.iso" --class dvd {
+            insmod part_gpt
+            #insmod part_msdos
+            #insmod f2fs
+            insmod search_fs_uuid
+            set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set isofile="/ISOs/AntivirusLiveCD-34.0-0.102.4.iso" root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/boot/bzImage img_dev=$pqr img_loop=$isofile driver=$dri root=/dev/ram0 vga=normal
+            initrd (loop)/boot/initrd.gz
+            # vga=ask
+        }
+
+        menuentry "Clonezilla x86_64 (Default settings, VGA 1024x768) - iso" --class dvd {
+            insmod part_gpt
+            #insmod part_msdos
+            #insmod f2fs
+            insmod search_fs_uuid
+            set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set isofile="/ISOs/clonezilla-live-20200703-focal-amd64.iso" root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/live/vmlinuz img_dev=$pqr img_loop=$isofile driver=$dri boot=live union=overlay username=user hostname=focal config quiet components noswap edd=on nomodeset enforcing=0 locales= keyboard-layouts= ocs_live_run="ocs-live-general" ocs_live_extra_param="" ocs_live_batch="no" vga=791 toram=filesystem.squashfs ip= net.ifnames=0 splash i915.blacklist=yes radeonhd.blacklist=yes nouveau.blacklist=yes vmwgfx.enable_fbdev=1
+            initrd (loop)/live/initrd.img
+        }
+
+}
+
+submenu "MULTIBOOT OSs (Windows/Linux/Android) and Tools - on Partition ->" {
+        menuentry "Tiny Core Plus - Partition" --class core --class gnu-linux --class gnu {
+            insmod part_gpt
+            insmod gzio
+            insmod search_fs_uuid
+            set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            search --no-floppy --fs-uuid --set=root 79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            linux /boot/vmlinuz
+            initrd /boot/core.gz cde showapps lst=xibase.lst base desktop=openbox
+        }
+
+        submenu "PrimeOS_mainline_0.4.5 Partition ->" {
+              menuentry "PrimeOS_mainline_0.4.5 Live Partition" --class android-x86 {
+                    insmod part_gpt
+                    #insmod part_msdos
+                    #insmod f2fs
+                    insmod search_fs_uuid
+                    set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    search --no-floppy --fs-uuid --set=root 79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    linux /PrimeOS/kernel root=/dev/ram0 root=/dev/ram0 androidboot.selinux=permissive buildvariant=userdebug
+                    initrd /PrimeOS/initrd.img
+              }
+
+              menuentry "PrimeOS_mainline_0.4.5 Installer Partition" --hotkey=a --class android-x86 {
+                    insmod part_gpt
+                    #insmod part_msdos
+                    #insmod f2fs
+                    insmod search_fs_uuid
+                    set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    search --no-floppy --fs-uuid --set=root 79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    linux /PrimeOS/kernel root=/dev/ram0 root=/dev/ram0 androidboot.selinux=permissive buildvariant=userdebug INSTALL=1 DEBUG=
+                    initrd /PrimeOS/initrd.img
+              }
+        }
+
+        submenu "Phoenix OS (Android_x86) ->" {
+              menuentry "Phoenix OS Live" --class android-x86 {
+                    insmod part_gpt
+                    insmod search_fs_uuid
+                    set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    search --file --no-floppy --set=root /PhoenixOS/system.sfs
+                    linux /PhoenixOS/kernel root=/dev/ram0 androidboot.hardware=android_x86 quiet SRC= DATA= vga=788
+                    initrd /PhoenixOS/initrd.img
+              }
+
+              menuentry "Phoenix OS Install" --class android-x86 {
+                    insmod part_gpt
+                    insmod search_fs_uuid
+                    set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+                    search --file --no-floppy --set=root /PhoenixOS/system.sfs
+                    linux /PhoenixOS/kernel root=/dev/ram0 quiet CMDLINE INSTALL=1 DEBUG=
+                    initrd /PhoenixOS/initrd.img
+              }
+        }
+
+        menuentry "Kaspersky Rescue Disk 18.0.11.0 Partition" --class dvd {
+            insmod part_gpt
+            #insmod part_msdos
+            #insmod f2fs
+            insmod search_fs_uuid
+            set root=UUID=79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            search --no-floppy --fs-uuid --set=root 79041a97-c74a-4ede-b0f8-6588a17e0b6f
+            set dri="free"
+            efi_bootfile="/efi/boot/bootx64.efi"
+            linux /boot/grub/k-x86_64 net.ifnames=0 lang=en dostartx driver=$dri
+            initrd /boot/grub/initrd.xz
+            #nomodeset xforcevesa
+        }
+
+        menuentry "Windows 8.1 Installer Partition" --hotkey=w --class windows --class os {
+            insmod part_gpt
+            #insmod part_msdos
+            insmod chain
+            insmod exfat
+            insmod fat
+            insmod search_fs_uuid
+            set root=UUID=4BCE-3A8F
+            search --no-floppy --fs-uuid --set=root 4BCE-3A8F
+            chainloader /efi/boot/bootx64.efi root=UUID=4BCE-3A8F
+        }
+}

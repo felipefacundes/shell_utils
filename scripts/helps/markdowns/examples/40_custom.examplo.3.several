@@ -1,0 +1,750 @@
+
+
+# Iniciar Windows pela partição:
+
+menuentry "Windows" {
+	insmod chain
+	insmod fat
+	set root=(hd0,1)
+	chainloader +1
+}
+
+menuentry "Windows" {
+	insmod chain
+	insmod ntfs
+	set root=(hd0,1)
+	chainloader +1
+}
+
+menuentry "Windows" {
+        insmod chain
+        insmod fat
+        set root=(hd0,1)
+        chainloader (hd0,1)+1
+}
+
+menuentry "Windows" {
+        insmod chain
+        insmod part_msdos
+        insmod fat
+        set root='(hd0,msdos1)'
+        search --no-floppy --label --set 'Partition label'
+        drivemap -s (hd0) $(root)
+        chainloader +1
+}
+
+menuentry "Windows (on /dev/sda1)"{
+  insmod part_msdos
+  insmod fat
+  set root='(hd0,msdos1)'
+  search --no-floppy --fs-uuid --set 4995-b12b
+  drivemap -s (hd0) ${root}
+  chainloader+1
+}
+
+menuentry "Windows" {
+        insmod chain
+        insmod part_msdos
+        insmod fat
+        set root='(hd0,msdos1)'
+        search --no-floppy --label --set 'CWIN'
+        drivemap -s (hd0) $(root)
+        chainloader +1
+}
+
+# Para Android x86
+
+menuentry “Android-x86″ {
+        set root=’(hd0,0)’
+        linux /android-4.0-RC1/kernel quiet root=/dev/ram0 androidboot.hardware=eeepc acpi_sleep=s3_bios,s3_mode SRC=/android-4.0-RC1 SDCARD=/data/sdcard.img
+        initrd /android-4.0-RC1/initrd.img
+}
+
+menuentry 'Android-x86' --class android-x86 {
+        insmod part_gpt
+        set root='1be1e135-2aa1-49fc-b185-1f99dcc80d1c'
+        set DIR=/home/android-x86
+        search --file --no-floppy --set=root $DIR/system.sfs
+        linux $DIR/kernel root=/dev/ram0 androidboot.selinux=permissive quiet DATA=
+        initrd $DIR/initrd.img
+}
+
+menuentry 'Android-x86' --class android-x86 {
+        insmod part_gpt
+        set root='1be1e135-2aa1-49fc-b185-1f99dcc80d1c'
+        set DIR=/android-x86
+        search --file --no-floppy --set=root $DIR/system.sfs
+        linux $DIR/kernel root=/dev/ram0 androidboot.selinux=permissive quiet DATA=
+        initrd $DIR/initrd.img
+}
+
+menuentry "Android-x86" {
+        set root='(hd0,0)'
+        linux /android-4.0-RC1/kernel quiet root=/dev/ram0 androidboot.hardware=eeepc acpi_sleep=s3_bios,s3_mode SRC=/android-4.0-RC1 SDCARD=/data/sdcard.img
+        initrd /android-4.0-RC1/initrd.img
+}
+
+menuentry "Android" {
+        set root='(hd0,3)'
+        search --no-floppy --fs-uuid --set=root 28D9FDF951298246
+        linux android-x86/kernel root=UUID=28D9FDF951298246 quiet androidboot.hardware=generic_x86 SRC=/android-x86 acpi_sleep=s3_bios,s3_mode
+        initrd Android-x86/android-4.4-r1/initrd.img
+}
+
+menuentry "Android-x86" {
+        set root='(hd0,3)'
+        linux /android-x86-4.4-r1/kernel quiet root=/dev/ram0 androidboot_hardware=eeepc acpi_sleep=s3_bios,s3_mode SRC=/android-x86-4.4-r1
+        initrd /android-x86-4.4-r1/initrd.img
+}
+
+
+menuentry “Android-x86 Asus_Laptop″ {
+        set root=’(hd0,6)’
+        linux /android-4.0-RC2/kernel quiet root=/dev/ram0 androidboot.hardware=asus_laptop acpi_sleep=s3_bios,s3_mode SRC=/android-4.0-RC2 SDCARD=/data/sdcard.img
+        initrd /android-4.0-RC2/initrd.img
+}
+
+#
+menuentry "Outro forma para Android" {
+        set root='(hd0,4)'
+        search --no-floppy --fs-uuid --set=root e1f9de05-8d18-48aa-8f08-f0377f663de3
+        linux androidx86/kernel root=UUID=e1f9de05-8d18-48aa-8f08-f0377f663de3 quiet androidboot.hardware=generic_x86 SRC=/androidx86 acpi_sleep=s3_bios,s3_mode
+        initrd androidx86/initrd.img
+}
+
+menuentry "Android x86 4.4 R2" --class android --class gnu-linux --class gnu --class os {
+        set root='(hd0,msdos2)'
+        search --no-floppy --fs-uuid --set=root a47b5fe5-8969-4774-be9c-72c32a3fd14b
+        linux /android-4.4-r2/kernel root=UUID=a47b5fe5-8969-4774-be9c-72c32a3fd14b quiet      androidboot.hardware=generic_x86 SRC=/android-4.4-r2 acpi_sleep=s3_bios,s3_mode
+        initrd /android-4.4-r2/initrd.img
+}
+
+menuentry "Android x86 5.0.2 UNOFFICIAL" --class android --class gnu-linux --class gnu --class os {
+        set root='(hd0,msdos4)'
+        search --no-floppy --fs-uuid --set=root d2edeae9-3dc8-41b1-b775-25d0a8028092
+        linux /android-2014-12-25/kernel root=UUID=d2edeae9-3dc8-41b1-b775-25d0a8028092 quiet      androidboot.hardware=generic_x86 SRC/android-2014-12-25 acpi_sleep=s3_bios,s3_mode
+        initrd /android-2014-12-25/initrd.img
+}
+
+ menuentry 'Phoenix OS' --class android-x86 {
+        insmod part_msdos
+        search --file --no-floppy --set=root /phoenix/system.sfs
+        linux /phoenix/kernel root=/dev/ram0 androidboot.hardware=phoenix_x86_x64
+        initrd /phoenix/initrd.img
+}
+
+menuentry 'Phoenix OS' --class android-x86 {
+        insmod part_gpt
+        set root='hd0,gptX'
+        search --file --no-floppy --set=root /phoenix/system.img
+        linux /phoenix/kernel root=/dev/ram0 androidboot.hardware=Android_x86 androidboot.selinux=permissive CMDLINE
+        initrd /phoenix/initrd.img
+}
+
+menuentry “PhoenixOS-ROC” {
+        linux /PhoenixOS-ROC/kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive quiet SRC=/PhoenixOS-ROC DATA=/data VGA=788
+        initrd /PhoenixOS-ROC/initrd.img
+}
+
+menuentry “PhoenixOS-ROC HDMI” {
+        linux /PhoenixOS-ROC/kernel root=/dev/ram0 androidboot.hardware=android_x86_64 androidboot.selinux=permissive quiet SRC=/PhoenixOS-ROC DATA=/data VGA=788 video=LVDS-1:d
+        initrd /PhoenixOS-ROC/initrd.img
+}
+
+#################################################################################################################
+#
+# Rodando Windows direto do arquivo ISO
+#
+menuentry "${filenamex} EFI" {
+  loopback loop (hd0,2)/images/Win10_1903_x64.iso
+  set pp=(loop)/sources/boot.wim
+
+#NOTE: ORDER IS IMPORTANT! May get 0xC000000f error if order is wrong!
+  wimboot \
+  @:startup.bat:(hd0,2)/wimboot/startup.bat \
+  @:winpeshl.ini:(hd0,2)/wimboot/winpeshl.ini \
+  @:$filename.tag:(loop)/efi/microsoft/boot/bcd \
+  @:boot.wim:(loop)/sources/boot.wim \
+  @:bootmgfw.efi:(loop)/efi/boot/bootx64.efi \
+  @:bcd:(loop)/efi/microsoft/boot/bcd  \
+  @:boot.sdi:(loop)/boot/boot.sdi
+  drivemap -s hd0 hd1
+  boot
+ }
+
+ ###################################################################
+
+ set installiso="${ip}/${isoname}"
+save_env -f /wimboot/null.cfg installiso
+  cat /wimboot/null.cfg
+  read
+#NOTE: ORDER IS IMPORTANT! May get 0xC000000f error if order is wrong or wrong bootmg!
+#use wimboot --pause to see any error ( also --rawbcd --rawwim --index=1 --gui )
+#enclose in "" if name\path contains spaces
+#allow wimboot to find bootmg file (usually works better)
+  wimboot --pause \
+  @:"startup.bat":"/wimboot/startup.bat" \
+  @:"winpeshl.ini":"/wimboot/winpeshl.ini" \
+  @:"null.cfg":"/wimboot/null.cfg" \
+  @:"boot.wim":"(loop)${pp}/sources/boot.wim" \
+#  @:"bootmgfw.efi":"(loop)${pp}/efi/boot/$bootmg" \
+  @:"bcd":"(loop)${pp}/efi/microsoft/boot/bcd"  \
+  @:"boot.sdi":"(loop)${pp}/boot/boot.sdi"
+  boot
+}
+
+###################################################################
+
+set installiso="(hd0,2)/images/win10_1903_x64.iso"
+save_env -f (hd0,2)/wimboot/null.cfg installiso
+  cat (hd0,2)/wimboot/null.cfg
+  read
+#NOTE: ORDER IS IMPORTANT! May get 0xC000000f error if order is wrong or wrong bootmg!
+#use wimboot --pause to see any error ( also --rawbcd --rawwim --index=1 --gui )
+#enclose in "" if name\path contains spaces
+#allow wimboot to find bootmg file (usually works better)
+  wimboot --pause \
+  @:"startup.bat":"(hd0,2)/wimboot/startup.bat" \
+  @:"winpeshl.ini":"(hd0,2)/wimboot/winpeshl.ini" \
+  @:"null.cfg":"(hd0,2)/wimboot/null.cfg" \
+  @:"boot.wim":"(loop)/sources/boot.wim" \
+#  @:"bootmgfw.efi":"(loop)/efi/boot/$bootmg" \
+  @:"bcd":"(loop)/efi/microsoft/boot/bcd"  \
+  @:"boot.sdi":"(loop)/boot/boot.sdi"
+  boot
+}
+
+###################################################################
+
+loopback loop (hd0,msdos2)/images/Win10_1903_x64.iso
+set installiso="(hd0,2)/images/win10_1903_x64.iso"
+set installiso="/images/win10_1903_x64.iso"
+
+###################################################################
+
+loopback loop (hd0,msdos2)/images/Win10_1903_x64.iso
+set installiso="(hd0,2)/images/win10_1903_x64.iso"
+save_env -f (hd0,2)/wimboot/null.cfg installiso
+cat (hd0,2)/wimboot/null.cfg
+read
+#NOTE: ORDER IS IMPORTANT! May get 0xC000000f error if order is wrong or wrong bootmg!
+#use wimboot --pause to see any error ( also --rawbcd --rawwim --index=1 --gui )
+#enclose in "" if name\path contains spaces
+#allow wimboot to find bootmg file (usually works better)
+wimboot --pause \
+@:"startup.bat":"(hd0,2)/wimboot/startup.bat" \
+@:"winpeshl.ini":"(hd0,2)/wimboot/winpeshl.ini" \
+@:"null.cfg":"(hd0,2)/wimboot/null.cfg" \
+@:"boot.wim":"(loop)/sources/boot.wim" \
+# @:"bootmgfw.efi":"(loop)/efi/boot/$bootmg" \
+@:"bcd":"(loop)/efi/microsoft/boot/bcd" \
+@:"boot.sdi":"(loop)/boot/boot.sdi"
+boot
+}
+
+menuentry "Windows 10 64 bits" {
+     insmod fat
+     insmod iso9660
+     set root=(hd0,gpt3)
+     loopback loop /winpe.iso
+     linux16 /wimboot
+     initrd16 \
+     newc:bcd:(loop)/Boot/BCD \
+     newc:boot.sdi:(loop)/Boot/boot.sdi \
+     newc:boot.wim:(loop)/sources/boot.wim
+}
+
+menuentry "wimboot DaRT70-x64.iso" {
+	set iso_path="/bootisos/DaRT70-x64.iso"
+	loopback loop $iso_path
+	linux16 /boot/grub/wimboot
+	initrd16 \
+		newc:bootmgr:(loop)/bootmgr \
+		newc:bcd:(loop)/boot/bcd \
+		newc:boot.sdi:(loop)/boot/boot.sdi \
+		newc:boot.wim:(loop)/sources/boot.wim
+}
+
+menuentry "wimboot en_windows_7_enterprise_n_with_sp1_x64_dvd_u_677704.iso" {
+	loopback loop /bootisos/en_windows_7_enterprise_n_with_sp1_x64_dvd_u_677704.iso
+	linux16 /boot/grub/wimboot
+	initrd16 \
+            newc:bootmgr:(loop)/bootmgr \
+            newc:bcd:(loop)/boot/bcd \
+            newc:boot.sdi:(loop)/boot/boot.sdi \
+	    newc:boot.wim:(loop)/sources/boot.wim \
+	    newc:install.wim:(loop)/sources/install.wim
+}
+
+menuentry 'Windows GPT bootmgr wimboot' {
+    linux16 /wimboot
+    initrd16 \
+        newc:bootmgr.exe:(hd0,gpt1)/bootmgr.exe \
+        newc:bcd:(hd0,gpt1)/Boot/BCD
+}
+
+menuentry "wimboot DaRT8.1.iso" {
+    insmod udf
+    set isofile="/dart/DaRT8.1.iso"
+    loopback loop $isofile
+    linux /syslinux/wimboot
+    initrd \
+        newc:bootx64.efi:(loop)/EFI/Boot/bootx64.efi \
+        newc:bcd:(loop)/EFI/Microsoft/Boot/BCD \
+        newc:boot.sdi:(loop)/Boot/boot.sdi \
+        newc:boot.wim:(loop)/sources/boot.wim
+}
+
+menuentry "Windows 10" {
+     insmod part_gpt
+     insmod chain
+     set root='(hd0,msdos2)'
+     chainloader +1
+}
+
+menuentry "Windows 10 (loader)"{
+    insmod part_gpt
+    search --no-floppy --set=root --fs-uuid 109C-D028
+    chainloader /EFI/Microsoft/Boot/bootmgfw.efi
+}
+
+
+menuentry "Microsoft Windows Vista/7/8/8.1/10 BIOS/MBR" {
+    insmod part_msdos
+    insmod ntfs
+    insmod search_fs_uuid
+    insmod ntldr
+    search --fs-uuid --set=root --hint-bios=hd0,msdos1 --hint-efi=hd0,msdos1 --hint-baremetal=ahci0,msdos1 XXXXXXXXXXXXXXXX
+    ntldr /bootmgr
+}
+
+menuentry "Windows 10 Installer" {
+    insmod ntfs
+    search --set=root --file /bootmgr
+    ntldr /bootmgr
+    boot
+}
+
+menuentry "Windows installer" {
+    set root='hd01'
+    insmod ntldr
+    ntldr /bootmgr
+}
+
+menuentry 'Windows 10' {
+    search --fs-uuid --no-floppy --set=root CC66-4B02
+    chainloader (${root})/EFI/Microsoft/Boot/bootmgfw.efi
+}
+
+
+menuentry "Windows 10" --class windows --class os {
+    # Insert modules needed in order to access the iso-file
+    insmod part_gpt
+    #insmod part_msdos
+    insmod ntfs
+    #insmod ext2
+    # Insert module needed in order to find partition
+    insmod search_fs_uuid
+    # Set UUID of partition with the iso-image
+    # and let grub2 find the partition
+    # (save it's identifier to the variable $root)
+    set uuid="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+    search --no-floppy --set=root --fs-uuid $uuid
+    # Mount the iso image by addressing it with (partition)/path
+    set iso=/images/Win10_English_x64.iso
+    loopback loop ($root)$iso
+    # boot (chain-load) the image using the cdboot.efi file located
+    # on the win10-image
+    chainloader (loop)/efi/microsoft/boot/cdboot.efi
+}
+
+menuentry "Windows" {
+	insmod chain
+	insmod ntfs
+	set root=(hd0,1)
+	chainloader +1
+}
+
+menuentry "ubuntustudio-19.04-dvd-amd64.iso" {
+    isofile="/boot/iso/ubuntustudio-19.04-dvd-amd64.iso"
+    loopback loop "${isofile}"
+    linux (loop)/casper/vmlinuz iso-scan/filename="${isofile}" file=/cdrom/preseed/ubuntustudio.seed boot=casper quiet splash ---
+    initrd (loop)/casper/initrd
+}
+
+menuentry "Win10_1903_V1_Czech_x64.iso" {
+    # Insert modules needed in order to access the iso-file
+    insmod part_gpt
+    #insmod part_msdos
+    insmod ntfs
+    insmod ext4
+    # Insert module needed in order to find partition
+    insmod search_fs_uuid
+    # Set UUID of partition with the iso-image
+    # and let grub2 find the partition
+    # (save it's identifier to the variable $root)
+    set uuid="8ff5d218-2b0c-471c-8356-98686a351111"
+    search --no-floppy --set=root --fs-uuid $uuid
+    # Mount the iso image by addressing it with (partition)/path
+    set iso=/boot/iso/Win10_1903_V1_Czech_x64.iso
+    loopback loop ($root)$iso
+    # boot (chain-load) the image using the cdboot.efi file located
+    # on the win10-image
+    chainloader (loop)/efi/microsoft/boot/cdboot.efi
+}
+
+menuentry "SYSRESCUECD" {
+	set iso=/systemrescuecd-x86-3.8.1.iso
+	loopback loop ${iso}
+	linux  (loop)/isolinux/rescue64 nomodeset vga=791 docache setkmap=fr isoloop=${iso}
+	initrd (loop)/isolinux/initram.igz
+}
+
+menuentry "SYSRESCUECD" {
+	set iso=/systemrescuecd-x86-3.8.1.iso
+	loopback loop ${iso}
+	linux  (loop)/isolinux/rescue64 nomodeset vga=791 docache setkmap=fr isoloop=${iso}
+	initrd (loop)/isolinux/initram.igz
+}
+
+menuentry "STG3-AMD64" {
+	set cmdline="dokeymap looptype=squashfs loop=/image.squashfs cdroot"
+	loopback loop /stg3-amd64-<DATE>.iso
+	linux  (loop)/isolinux/gentoo $cmdline root=/dev/ram0 init=/linuxrc initrd=gentoo.igz
+	initrd (loop)/isolinux/gentoo.igz
+}
+
+##################################################################################################
+##################################################################################################
+#
+###### Outros métodos de Inicialização de distribuições Linux ##
+
+insmod part_gpt
+insmod part_msdos
+insmod gzio
+insmod ext2
+insmod chain
+insmod search_fs_uuid
+insmod all_video
+insmod gfxterm
+insmod gettext
+insmod png
+insmod jpeg
+
+
+set default=1
+set timeout=100
+
+if [ "${grub_platform}" == "efi" ]; then
+    insmod efi_gop
+    insmod efi_uga
+    insmod video_bochs
+    insmod video_cirrus
+    set gfxpayload=keep
+fi
+#set gfxmode=auto
+
+#Set Fontes
+loadfont /boot/grub/fonts/unicode.pf2
+set locale_dir=/boot/grub/locale
+set lang=pt_BR
+
+#Load theme
+set theme=${prefix}/themes/starfield/theme.txt
+export theme   #para continuar em outros submenus
+
+terminal_output gfxterm    #carrega terminal grafico, necessario para mudar background
+
+##Changing root partition
+#set root=(hd0,2) || set root=(hd1,2)
+set uuid="6ebf7a3b-394c-4d47-ad1e-2fc76b383d8c" #uuid partition iso's
+export uuid
+search --no-floppy --fs-uuid --set=root $uuid   #troca particao root
+
+set color_normal=light-green/black
+set menu_color_normal=white/black
+set menu_color_highlight=light-blue/white
+background_image "/.default.png"
+
+
+if [ "${grub_platform}" == "efi" ]; then   #apenas para indicar o modo
+    menuentry 'Booting in UEFI Mode' {
+        fwsetup
+    }
+elif [ "${grub_platform}" == "pc"  ]; then
+    menuentry 'Booting in PC/Legacy Mode' {
+        reboot
+    }
+fi
+
+submenu 'Arch Based ->' {
+    menuentry 'Arch Linux 01/10/16 amd64' {
+        set imgdevpath="/dev/disk/by-uuid/$uuid"
+        set isofile="/distros/archlinux-2016.10.01-dual.iso"
+        echo 'Carregando Imagem ISO do sistema...'
+        loopback loop $isofile
+        echo   'Loading Kernel Image...'
+        linux (loop)/arch/boot/x86_64/vmlinuz root=UUID=$uuid archisodevice=/dev/loop0 img_dev=$imgdevpath img_loop=$isofile earlymodules=loop
+        echo   'Loading Initrd Image...'
+        initrd (loop)/arch/boot/x86_64/archiso.img
+
+    }
+
+    menuentry 'Manjaro Xfce 16.10.3 amd64' {
+        set uuid="1F0E-DB30" #a iso do manjaro esta em outra particao
+        search --no-floppy --fs-uuid --set=root $uuid #setando o root como a outra partição
+        set imgdevpath="/dev/disk/by-uuid/$uuid"
+        set isofile="/distros/manjaro-xfce-16.10.3-stable-x86_64.iso"
+        echo 'Carregando Imagem ISO do sistema...'
+        loopback loop $isofile
+        echo   'Loading Kernel Image...'
+        set options="misobasedir=manjaro misolabel=MJRO1610 nouveau.modeset=1 i915.modeset=1 radeon.modeset=1 logo.nologo overlay=free"
+        linux (loop)/manjaro/boot/x86_64/manjaro root=UUID=$uuid archisodevice=/dev/loop0 img_dev=$imgdevpath img_loop=$isofile earlymodules=loop $options quiet splash
+        echo   'Loading Initrd Image...'
+        initrd (loop)/manjaro/boot/intel_ucode.img
+        initrd (loop)/manjaro/boot/x86_64/manjaro.img
+
+    }
+    menuentry 'Manjaro KDE 16.10.3 amd64' {
+        set imgdevpath="/dev/disk/by-uuid/$uuid"
+        set isofile="/distros/manjaro-kde-16.10.3-stable-x86_64.iso"
+        echo 'Carregando Imagem ISO do sistema...'
+        loopback loop $isofile
+        echo   'Loading Kernel Image...'
+        set options="misobasedir=manjaro misolabel=MJRO1610 nouveau.modeset=1 i915.modeset=1 radeon.modeset=1 logo.nologo overlay=free"
+        linux (loop)/manjaro/boot/x86_64/manjaro root=UUID=$uuid archisodevice=/dev/loop0 img_dev=$imgdevpath img_loop=$isofile earlymodules=loop $options quiet splash
+        echo   'Loading Initrd Image...'
+        initrd (loop)/manjaro/boot/intel_ucode.img
+        initrd (loop)/manjaro/boot/x86_64/manjaro.img
+
+    }
+}
+
+submenu 'Ubuntu Based ->' {
+    menuentry 'Ubuntu 16.04.1 amd64' {
+        set uuid="1F0E-DB30" #iso em outra particao
+        search --no-floppy --fs-uuid --set=root $uuid #
+        set iso="/distros/ubuntu-16.04.1-desktop-amd64.iso"
+        echo 'Carregando Imagem ISO do sistema...'
+        loopback loop $iso
+        set bootoptions="boot=casper locale=pt_BR bootkbd=qwerty/br-abnt2 console-setup/layoutcode=br iso-scan/filename=$iso quiet splash"
+        echo   'Loading Kernel Image...'
+        linux (loop)/casper/vmlinuz.efi $bootoptions
+        echo   'Loading Initrd Image...'
+        initrd (loop)/casper/initrd.lz
+    }
+
+    menuentry 'Elementary OS 0.4 21/09/16 amd64' {
+        set iso="/distros/elementaryos-0.4-stable-amd64.20160921.iso"
+        echo 'Carregando Imagem ISO do sistema...'
+        loopback loop $iso
+        set bootoptions="boot=casper locale=pt_BR bootkbd=qwerty/br-abnt2 console-setup/layoutcode=br iso-scan/filename=$iso quiet splash"
+        echo   'Loading Kernel Image...'
+        linux (loop)/casper/vmlinuz $bootoptions
+        echo   'Loading Initrd Image...'
+        initrd (loop)/casper/initrd.lz
+    }
+}
+
+
+submenu 'Redes e Seguranca ->'{
+    menuentry 'Kali 2016.2 Xfce amd64'{
+        set iso="/distros/kali-linux-xfce-2016.2-amd64.iso"
+        loopback loop $iso
+        linux (loop)/live/vmlinuz boot=live findiso=$iso noconfig=sudo username=root hostname=kali
+        initrd (loop)/live/initrd.img
+    }
+
+    menuentry 'Tails i386' {
+        set iso="/distros/tails-i386-2.6.iso"
+        echo 'Carregando Imagem ISO do sistema...'
+        loopback loop $iso
+        set bootoptions="boot=live findiso=$iso components quiet splash"
+        echo   'Loading Kernel Image...'
+        linux (loop)/live/vmlinuz $bootoptions
+        echo   'Loading Initrd Image...'
+        initrd (loop)/live/initrd.img
+    }
+}
+
+menuentry 'Deepin 15.3 amd64' {
+    set iso="/distros/deepin-15.3-amd64.iso"
+    echo 'Carregando Imagem ISO do sistema...'
+    loopback loop $iso
+    set bootoptions="boot=live findiso=$iso components quiet splash"
+    echo   'Loading Kernel Image...'
+    linux (loop)/live/vmlinuz $bootoptions
+    echo   'Loading Initrd Image...'
+    initrd (loop)/live/initrd.lz
+}
+
+menuentry "Fedora 25 Mate Compiz x86_64" --class fedora {
+    set iso="/distros/Fedora-MATE_Compiz-Live-x86_64-25-1.3.iso"
+    search --set -f $iso
+    echo "Using ${iso}..."
+    loopback loop $iso
+    linux (loop)/isolinux/vmlinuz root=live:CDLABEL=Fedora-MATE-Live-25-1-3 rd.live.image iso-scan/filename=${iso} locale=pt_BR bootkbd=qwerty/br-abnt2 console-setup/layoutcode=br quiet splash
+    initrd (loop)/isolinux/initrd.img
+}
+
+menuentry 'openSUSE Live' {
+    set imgdevpath="/dev/disk/by-uuid/$uuid"
+    set iso="/distros/openSUSE_Krypton.x86_64-5.8.90-Build1.28.iso"
+    loopback loop $iso
+    linux (loop)/boot/x86_64/loader/linux isofrom_device=$imgdevpath isofrom_system=$iso LANG=pt_BR.UTF-8 console-setup/layoutcode=br quiet splash
+    echo Loading initrd...
+    initrd (loop)/boot/x86_64/loader/initrd
+
+}
+
+#######
+
+menuentry '[loopback]archlinux-2020.10.01-x86_64.iso' {
+	set isofile='/boot/iso/archlinux-2020.10.01-x86_64.iso'
+	loopback loop $isofile
+	linux (loop)/arch/boot/x86_64/vmlinuz-linux img_dev=$imgdevpath img_loop=$isofile earlymodules=loop
+	initrd (loop)/arch/boot/intel-ucode.img (loop)/arch/boot/amd-ucode.img (loop)/arch/boot/x86_64/initramfs-linux.img
+}
+
+menuentry '[loopback]archlinux-2014.11-1-archboot' {
+	set isofile='/boot/iso/archlinux-2014.11-1-archboot.iso'
+	loopback loop $isofile
+	linux (loop)/boot/vmlinuz_x86_64 iso_loop_dev=$imgdevpath iso_loop_path=$isofile
+	initrd (loop)/boot/initramfs_x86_64.img
+}
+
+######################################################################################################################################
+############### Método Cru
+
+menuentry 'Android-x86 7.1-rc0 USB boot' --class android-x86 {
+	search --file --no-floppy --set=root /system.sfs
+	linux /kernel root=/dev/ram0 androidboot.selinux=permissive buildvariant=userdebug quiet DATA=mmcblk0p5
+	initrd /initrd.img
+}
+
+menuentry 'Android-x86 7.1-rc0 Live' --class android-x86 {
+	search --file --no-floppy --set=root /system.sfs
+	linux /kernel root=/dev/ram0 androidboot.selinux=permissive buildvariant=userdebug quiet DATA=
+	initrd /initrd.img
+}
+
+menuentry 'Android-x86 7.1-rc0 DEBUG mode' --class android-x86 {
+	search --file --no-floppy --set=root /system.sfs
+	linux /kernel root=/dev/ram0 androidboot.selinux=permissive buildvariant=userdebug DATA= DEBUG=2
+	initrd /initrd.img
+}
+
+menuentry 'Android-x86 7.1-rc0 Installation' --class android-x86 {
+	search --file --no-floppy --set=root /system.sfs
+	linux /kernel root=/dev/ram0 androidboot.selinux=permissive buildvariant=userdebug DEBUG= INSTALL=1
+	initrd /initrd.img
+}
+
+menuentry 'Windows' {
+	search --file --no-floppy --set=root /EFI/Microsoft/Boot/bootmgfw.efi
+	chainloader (${root})/EFI/Microsoft/Boot/bootmgfw.efi
+}
+
+
+# RemixOS
+set prefix=/efi/RemixOS
+
+search --no-floppy -f /EFI/RemixOS/theme.cfg --set=efi --hint hd0,msdos1
+set prefix=(${efi})/EFI/RemixOS
+if [ -e ${prefix}/theme.cfg ]; then
+	source ${prefix}/theme.cfg
+else
+	set timeout=30
+fi
+
+terminal_output gfxterm
+set timeout=30
+
+set root=(hd1,gpt3)
+set prefix=/RemixOS/efi/RemixOS
+if [ -s $prefix/themes/Aurora-Penguinis/theme.cfg ]; then
+	source $prefix/themes/Aurora-Penguinis/theme.cfg
+elif [ -s /RemixOS/isolinux/remixos.png ]; then
+	background_image /RemixOS/isolinux/remixos.png
+elif [ -s /RemixOS/isolinux/android-x86.png ]; then
+	background_image /RemixOS/isolinux/android-x86.png
+fi
+
+menuentry 'Resident mode - All your data and apps are saved ' --class remixos  --class android-x86 --class gnu-linux --class os {
+	search --file --no-floppy --set=root /RemixOS/kernel
+	linux /RemixOS/kernel root=/dev/ram0 androidboot.selinux=permissive quiet SERIAL=random logo.showlogo=1 DATA= CREATE_DATA_IMG=1
+	initrd /RemixOS/initrd.img
+}
+
+menuentry 'Guest mode - No data will be saved after each session' --class remixos --class android-x86 --class gnu-linux --class os {
+	search --file --no-floppy --set=root /RemixOS/kernel
+	linux /RemixOS/kernel root=/dev/ram0 androidboot.selinux=permissive quiet SERIAL=random logo.showlogo=1 REMOUNT_RW=0 DATA= DATA_IN_MEM=1
+	initrd /RemixOS/initrd.img
+}
+######################################################################################################################################
+
+
+# Sessão MEMTEST
+
+submenu "> MemTest86+ 7.2" {
+    menuentry "MemTest86" {
+        set isofile="/Memtest86-7.2.iso"
+        echo "Mounting Memtest86-7.2.iso"
+        loopback loop $isofile
+        echo "Loading kernel"
+        linux16 (loop)/isolinux/memtest iso-scan/filename=$isofile
+        echo "Starting MemTest86+ 7.2"
+    }
+
+    menuentry "MemTest86 (one pass)" {
+        set isofile="/Memtest86-7.2.iso"
+        echo "Mounting Memtest86-7.2.iso"
+        loopback loop $isofile
+        echo "Loading kernel"
+        linux16 (loop)/isolinux/memtest iso-scan/filename=$isofile onepass
+        echo "Starting MemTest86+ 7.2"
+    }
+
+    menuentry "MemTest86 (btrace)" {
+        set isofile="/Memtest86-7.2.iso"
+        echo "Mounting Memtest86-7.2.iso"
+        loopback loop $isofile
+        echo "Loading kernel"
+        linux16 (loop)/isolinux/memtest iso-scan/filename=$isofile btrace
+        echo "Starting MemTest86+ 7.2"
+    }
+
+    menuentry "MemTest86 (single CPU)" {
+        set isofile="/Memtest86-7.2.iso"
+        echo "Mounting Memtest86-7.2.iso"
+        loopback loop $isofile
+        echo "Loading kernel"
+        linux16 (loop)/isolinux/memtest iso-scan/filename=$isofile maxcpus=1
+        echo "Starting MemTest86+ 7.2"
+    }
+
+    menuentry "MemTest86 (serial output)" {
+        set isofile="/Memtest86-7.2.iso"
+        echo "Mounting Memtest86-7.2.iso"
+        loopback loop $isofile
+        echo "Loading kernel"
+        linux16 (loop)/isolinux/memtest iso-scan/filename=$isofile console=ttyS0,9600
+        echo "Starting MemTest86+ 7.2"
+    }
+
+######################## Esse é das antigas Mageia
+
+ menuentry "Mageia 7 Network Install nonfree 32-bit iso" {
+         insmod gzio
+         insmod part_msdos
+         insmod ext2
+         insmod xfs
+         insmod loopback
+         insmod iso9660
+         insmod udf
+         set isofile="/Mageia-7-netinstall-nonfree-i586.iso"
+         set root="hd0,1"
+         loopback loop (hd0,1)\$isofile
+         linux (loop)/isolinux/i386/vmlinuz isofile=\$isofile
+         initrd (loop)/isolinux/i386/all.rdz
+ }

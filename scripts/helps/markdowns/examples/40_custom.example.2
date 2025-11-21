@@ -1,0 +1,123 @@
+#!/bin/sh
+exec tail -n +3 $0
+# This file provides an easy way to add custom menu entries.  Simply type the
+# menu entries you want to add after this comment.  Be careful not to change
+# the 'exec tail' line above.
+
+submenu 'ISO Images' {
+        set isodir="/boot-iso"
+        menuentry "Kali Linux 2018.1 (x86_64) -- RAM Disk" --class dvd {
+            set isofile="$isodir/kali-linux-2018.1-amd64.iso"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/live/vmlinuz-4.14.0-kali3-amd64 boot=live components splash username=root hostname=kali setkmap=uk findiso=$isofile noeject toram=filesystem.squashfs nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes
+            initrd (loop)/live/initrd.img
+        }
+        
+        menuentry "BlackArch Linux 2018.12.01 (x86-64)" --class dvd {
+            set isofile="$isodir/blackarch-linux-live-2018.12.01-x86_64.iso"
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/blackarch/boot/x86_64/vmlinuz  img_dev=$pqr img_loop=$isofile driver=$dri tz=Europe/London lang=en_GB keytable=uk nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes archisobasedir=blackarch cow_spacesize=60%
+            initrd (loop)/blackarch/boot/intel_ucode.img (loop)/blackarch/boot/x86_64/archiso.img
+        }
+
+        menuentry "Manjaro GNOME x86_64 (amd64)" --class dvd {
+            set isofile="$isodir/manjaro-gnome-18.0-stable-x86_64.iso"
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux  (loop)/boot/vmlinuz-x86_64  img_dev=$pqr img_loop=$isofile driver=$dri tz=Europe/London lang=en_GB keytable=uk nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes
+            initrd  (loop)/boot/intel_ucode.img (loop)/boot/initramfs-x86_64.img
+        }
+
+        menuentry "Manjaro KDE x86_64 (amd64)" --class dvd {
+            set isofile="$isodir/manjaro-kde-18.0-stable-x86_64.iso"
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux  (loop)/boot/vmlinuz-x86_64  img_dev=$pqr img_loop=$isofile driver=$dri tz=Europe/London lang=en_GB keytable=uk nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes
+            initrd  (loop)/boot/intel_ucode.img (loop)/boot/initramfs-x86_64.img
+        }
+
+        menuentry "Manjaro XFCE x86_64 (amd64)" --class dvd {
+            set isofile="$isodir/manjaro-xfce-18.0-stable-x86_64.iso"
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux  (loop)/boot/vmlinuz-x86_64  img_dev=$pqr img_loop=$isofile driver=$dri tz=Europe/London lang=en_GB keytable=uk nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes
+            initrd  (loop)/boot/intel_ucode.img (loop)/boot/initramfs-x86_64.img
+       }
+
+       menuentry "Manjaro XFCE minimal x86_64 (amd64)" --class dvd {
+            set isofile="$isodir/manjaro-xfce-18.0-stable-minimal-x86_64.iso"
+            set dri="free"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux  (loop)/boot/vmlinuz-x86_64  img_dev=$pqr img_loop=$isofile driver=$dri tz=Europe/London lang=en_GB keytable=uk nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes
+            initrd  (loop)/boot/intel_ucode.img (loop)/boot/initramfs-x86_64.img
+       }
+
+       menuentry "Linux Lite x86_64 (amd64)" --class dvd {
+            set isofile="$isodir/linux-lite-4.0-64bit.iso"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux  (loop)/casper/vmlinuz boot=casper findiso=$isofile iso-scan/filename=$isofile noeject nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes ---
+            initrd  (loop)/casper/initrd.gz
+        }
+
+        menuentry "Ubuntu 18.04.1 (x86_64)" --class dvd {
+            set isofile="$isodir/ubuntu-18.04.1-desktop-amd64.iso"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/casper/vmlinuz boot=casper findiso=$isofile iso-scan/filename=$isofile file=(loop)/preseed/ubuntu.seed noeject nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes ---
+            initrd (loop)/casper/initrd.lz
+        }
+
+        menuentry "Ubuntu 17.10.1 (x86_64)" --class dvd {
+            set isofile="$isodir/ubuntu-17.10.1-desktop-amd64.iso"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/casper/vmlinuz.efi boot=casper findiso=$isofile iso-scan/filename=$isofile file=(loop)/preseed/ubuntu.seed noeject nouveau.modeset=0 rd.driver.blacklist=nouveau nouveau.blacklist=yes ---
+            initrd (loop)/casper/initrd.lz
+        }
+
+        menuentry "Clonezilla Wily x86_64 (amd64) -- RAM Disk" --class dvd {
+            set isofile="$isodir/clonezilla-live-20160210-wily-amd64.iso"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/live/vmlinuz boot=live union=overlay username=user hostname=wily config components noswap edd=on nomodeset locales= keyboard-layouts=gb ocs_live_run="ocs-live-general" ocs_live_extra_param="" ocs_live_batch=no vga=788 net.ifnames=0 ip=frommedia i915.blacklist=yes radeonhd.blacklist=yes nouveau.blacklist=yes findiso=$isofile toram=filesystem.squashfs nouveau.modeset=0 rd.driver.blacklist=nouveau
+            initrd (loop)/live/initrd.img
+        }
+
+        menuentry "GParted x86_64 (amd64) -- RAM Disk" --class dvd {
+            set isofile="$isodir/gparted-live-0.30.0-1-amd64.iso"
+            search --no-floppy -f --set=root $isofile
+            probe -u $root --set=abc
+            set pqr="/dev/disk/by-uuid/$abc"
+            loopback loop $isofile
+            linux (loop)/live/vmlinuz boot=live union=overlay username=user config components noswap ip= net.ifnames=0 nosplash i915.blacklist=yes radeonhd.blacklist=yes nouveau.blacklist=yes findiso=$isofile toram=filesystem.squashfs
+            initrd (loop)/live/initrd.img
+        }
+}
