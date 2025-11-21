@@ -10,6 +10,10 @@ alias retrocede_um_diretorio_para_pasta_anterior='~/.shell_utils/scripts/return_
 
 alias rgb2ansi='~/.shell_utils/scripts/hex2ansi.sh'
 
+alias hd_zero='~/.shell_utils/scripts/pendrive_zero'
+alias ssd_zero='hd_zero'
+alias nvme_zero='hd_zero'
+
 alias scrolling-neon='~/.shell_utils/scripts/illuminated-hoarding.sh'
 alias illuminated-hoarding-baruch-hashem='scrolling-neon left-right ~/.shell_utils/ascii_arts_themes/Baruch\ Hashem\ 6.txt'
 alias baruch-hashem-scrolling-neon='illuminated-hoarding-baruch-hashem'

@@ -15,7 +15,7 @@ count=1 – Copy only 1 BLOCK input blocks."
 
 dd_help() {
 echo '
-# dd --help
+# dd --help - Zero fill Pendrive/HD/SSD - Delete MBR - Create Bootable OS USB Sticks: BSDs and Linux Distros
 '
     tput setaf 9
     echo -e "Attention!\n"

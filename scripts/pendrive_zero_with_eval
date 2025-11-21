@@ -1,0 +1,367 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+pendrive_zero - Script para zerar pendrives e dispositivos de armazenamento
+Versão: 1.0
+DOCUMENTATION
+
+# Configuração de mensagens multilíngue
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["title"]="pendrive_zero - Ferramenta de Limpeza de Dispositivos"
+        ["usage"]="Uso: $0 [OPÇÕES] /dev/sdX"
+        ["usage_options"]="OPÇÕES:"
+        ["option_bs"]="  -bs NUM        Define o tamanho do bloco (1-16) para comandos dd (padrão: 1)"
+        ["option_mode"]="  -m MODE        Modo de operação (1-10, padrão: 1)"
+        ["option_help"]="  -h, --help     Mostra esta ajuda"
+        ["option_list"]="  -l, --list     Lista todos os modos disponíveis"
+        ["bs_description"]="BS: Tamanho do bloco em MB (ex: 1 = 1M, 4 = 4M). Usado apenas nos modos dd."
+        ["modes_title"]="MODOS DE OPERAÇÃO:"
+        ["mode1"]="Modo 1: dd com sync completo (mais lento, mais seguro)"
+        ["mode2"]="Modo 2: dd com oflag direct"
+        ["mode3"]="Modo 3: dd básico (mais rápido)"
+        ["mode4"]="Modo 4: dd com dados aleatórios (segurança)"
+        ["mode5"]="Modo 5: blkdiscard normal (TRIM/DEALLOCATE)"
+        ["mode6"]="Modo 6: blkdiscard forçado"
+        ["mode7"]="Modo 7: ATA Secure Erase (para SSDs SATA)"
+        ["mode8"]="Modo 8: Definir senha + Secure Erase"
+        ["mode9"]="Modo 9: NVMe Sanitize (para SSDs NVMe)"
+        ["mode10"]="Modo 10: NVMe Format (para SSDs NVMe)"
+        ["commands_title"]="COMANDOS QUE SERÃO EXECUTADOS:"
+        ["cmd1"]="sudo dd if=/dev/zero of=DEVICE oflag=direct,dsync conv=fsync bs=BS status=progress"
+        ["cmd2"]="sudo dd if=/dev/zero of=DEVICE bs=BS status=progress oflag=direct"
+        ["cmd3"]="sudo dd if=/dev/zero of=DEVICE bs=BS status=progress"
+        ["cmd4"]="sudo dd if=/dev/urandom of=DEVICE bs=BS status=progress"
+        ["cmd5"]="sudo blkdiscard DEVICE"
+        ["cmd6"]="sudo blkdiscard -f DEVICE"
+        ["cmd7"]="sudo hdparm --user-master u --security-erase PASSOU DEVICE"
+        ["cmd8a"]="sudo hdparm --user-master u --security-set-pass PASSOU DEVICE"
+        ["cmd8b"]="sudo hdparm --user-master u --security-erase PASSOU DEVICE"
+        ["cmd9"]="sudo nvme sanitize DEVICE"
+        ["cmd10"]="sudo nvme format DEVICE --ses=1"
+        ["error_no_device"]="ERRO: Nenhum dispositivo especificado"
+        ["error_invalid_device"]="ERRO: Dispositivo inválido: %s"
+        ["error_invalid_bs"]="ERRO: BS deve ser entre 1 e 16"
+        ["error_invalid_mode"]="ERRO: Modo deve ser entre 1 e 10"
+        ["error_not_block_device"]="ERRO: %s não é um dispositivo de bloco"
+        ["warning_destructive"]="AVISO: Esta operação DESTRUIRÁ TODOS OS DADOS no dispositivo %s"
+        ["confirm_continue"]="Continuar? (s/N): "
+        ["checking_device"]="Verificando dispositivo: %s"
+        ["device_info"]="Informações do dispositivo:"
+        ["executing_mode"]="Executando Modo %d..."
+        ["executing_command"]="Comando: %s"
+        ["success"]="Operação concluída com sucesso!"
+        ["failure"]="Falha na operação. Código de saída: %d"
+        ["requires_root"]="Este comando requer privilégios de root"
+        ["ata_check"]="Verificando suporte ATA Security..."
+        ["ata_frozen"]="Dispositivo está FROZEN. Tente suspender o sistema."
+        ["ata_not_supported"]="ATA Security não suportado ou não habilitado"
+        ["bs_recommendation"]="Recomendação: Use bs=1M para melhor compatibilidade"
+    )
+else
+    MESSAGES=(
+        ["title"]="pendrive_zero - Device Cleaning Tool"
+        ["usage"]="Usage: $0 [OPTIONS] /dev/sdX"
+        ["usage_options"]="OPTIONS:"
+        ["option_bs"]="  -bs NUM        Set block size (1-16) for dd commands (default: 1)"
+        ["option_mode"]="  -m MODE        Operation mode (1-10, default: 1)"
+        ["option_help"]="  -h, --help     Show this help"
+        ["option_list"]="  -l, --list     List all available modes"
+        ["bs_description"]="BS: Block size in MB (ex: 1 = 1M, 4 = 4M). Used only in dd modes."
+        ["modes_title"]="OPERATION MODES:"
+        ["mode1"]="Mode 1: dd with full sync (slower, more secure)"
+        ["mode2"]="Mode 2: dd with oflag direct"
+        ["mode3"]="Mode 3: Basic dd (faster)"
+        ["mode4"]="Mode 4: dd with random data (security)"
+        ["mode5"]="Mode 5: Normal blkdiscard (TRIM/DEALLOCATE)"
+        ["mode6"]="Mode 6: Forced blkdiscard"
+        ["mode7"]="Mode 7: ATA Secure Erase (for SATA SSDs)"
+        ["mode8"]="Mode 8: Set password + Secure Erase"
+        ["mode9"]="Mode 9: NVMe Sanitize (for NVMe SSDs)"
+        ["mode10"]="Mode 10: NVMe Format (for NVMe SSDs)"
+        ["commands_title"]="COMMANDS THAT WILL BE EXECUTED:"
+        ["cmd1"]="sudo dd if=/dev/zero of=DEVICE oflag=direct,dsync conv=fsync bs=BS status=progress"
+        ["cmd2"]="sudo dd if=/dev/zero of=DEVICE bs=BS status=progress oflag=direct"
+        ["cmd3"]="sudo dd if=/dev/zero of=DEVICE bs=BS status=progress"
+        ["cmd4"]="sudo dd if=/dev/urandom of=DEVICE bs=BS status=progress"
+        ["cmd5"]="sudo blkdiscard DEVICE"
+        ["cmd6"]="sudo blkdiscard -f DEVICE"
+        ["cmd7"]="sudo hdparm --user-master u --security-erase PASSOU DEVICE"
+        ["cmd8a"]="sudo hdparm --user-master u --security-set-pass PASSOU DEVICE"
+        ["cmd8b"]="sudo hdparm --user-master u --security-erase PASSOU DEVICE"
+        ["cmd9"]="sudo nvme sanitize DEVICE"
+        ["cmd10"]="sudo nvme format DEVICE --ses=1"
+        ["error_no_device"]="ERROR: No device specified"
+        ["error_invalid_device"]="ERROR: Invalid device: %s"
+        ["error_invalid_bs"]="ERROR: BS must be between 1 and 16"
+        ["error_invalid_mode"]="ERROR: Mode must be between 1 and 10"
+        ["error_not_block_device"]="ERROR: %s is not a block device"
+        ["warning_destructive"]="WARNING: This operation will DESTROY ALL DATA on device %s"
+        ["confirm_continue"]="Continue? (y/N): "
+        ["checking_device"]="Checking device: %s"
+        ["device_info"]="Device information:"
+        ["executing_mode"]="Executing Mode %d..."
+        ["executing_command"]="Command: %s"
+        ["success"]="Operation completed successfully!"
+        ["failure"]="Operation failed. Exit code: %d"
+        ["requires_root"]="This command requires root privileges"
+        ["ata_check"]="Checking ATA Security support..."
+        ["ata_frozen"]="Device is FROZEN. Try suspending the system."
+        ["ata_not_supported"]="ATA Security not supported or not enabled"
+        ["bs_recommendation"]="Recommendation: Use bs=1M for better compatibility"
+    )
+fi
+
+# Variáveis padrão
+BS=1
+MODE=1
+DEVICE=""
+SHOW_LIST=false
+
+# Função para mostrar ajuda
+show_help() {
+    echo "${MESSAGES[title]}"
+    echo
+    echo "${MESSAGES[usage]}"
+    echo "${MESSAGES[usage_options]}"
+    echo "${MESSAGES[option_bs]}"
+    echo "${MESSAGES[option_mode]}"
+    echo "${MESSAGES[option_help]}"
+    echo "${MESSAGES[option_list]}"
+    echo
+    echo "${MESSAGES[bs_description]}"
+    exit 0
+}
+
+# Função para listar modos
+list_modes() {
+    echo "${MESSAGES[modes_title]}"
+    echo "1: ${MESSAGES[mode1]}"
+    echo "2: ${MESSAGES[mode2]}"
+    echo "3: ${MESSAGES[mode3]}"
+    echo "4: ${MESSAGES[mode4]}"
+    echo "5: ${MESSAGES[mode5]}"
+    echo "6: ${MESSAGES[mode6]}"
+    echo "7: ${MESSAGES[mode7]}"
+    echo "8: ${MESSAGES[mode8]}"
+    echo "9: ${MESSAGES[mode9]}"
+    echo "10: ${MESSAGES[mode10]}"
+    echo
+    echo "${MESSAGES[commands_title]}"
+    echo "1: ${MESSAGES[cmd1]}"
+    echo "2: ${MESSAGES[cmd2]}"
+    echo "3: ${MESSAGES[cmd3]}"
+    echo "4: ${MESSAGES[cmd4]}"
+    echo "5: ${MESSAGES[cmd5]}"
+    echo "6: ${MESSAGES[cmd6]}"
+    echo "7: ${MESSAGES[cmd7]}"
+    echo "8: ${MESSAGES[cmd8a]} + ${MESSAGES[cmd8b]}"
+    echo "9: ${MESSAGES[cmd9]}"
+    echo "10: ${MESSAGES[cmd10]}"
+    exit 0
+}
+
+# Função para verificar se é dispositivo de bloco válido
+check_device() {
+    local device=$1
+    
+    if [[ ! -b "$device" ]]; then
+        printf "${MESSAGES[error_not_block_device]}\n" "$device" >&2
+        exit 1
+    fi
+    
+    # Verificar se é um dispositivo /dev/sdX, /dev/nvmeXnY, etc
+    if [[ ! "$device" =~ ^/dev/(sd[a-z]|nvme[0-9]+n[0-9]+|vd[a-z])$ ]]; then
+        printf "${MESSAGES[error_invalid_device]}\n" "$device" >&2
+        exit 1
+    fi
+}
+
+# Função para mostrar informações do dispositivo
+show_device_info() {
+    local device=$1
+    echo "${MESSAGES[device_info]}"
+    lsblk "$device"
+    echo
+}
+
+# Função para verificar suporte ATA Security
+check_ata_security() {
+    local device=$1
+    
+    echo "${MESSAGES[ata_check]}"
+    local ata_info
+    ata_info=$(sudo hdparm -I "$device" 2>/dev/null)
+    
+    if [[ $? -ne 0 ]]; then
+        echo "${MESSAGES[ata_not_supported]}"
+        return 1
+    fi
+    
+    echo "$ata_info" | grep -A 10 "Security:"
+    
+    if echo "$ata_info" | grep -q "frozen"; then
+        echo "${MESSAGES[ata_frozen]}"
+        return 2
+    fi
+    
+    if echo "$ata_info" | grep -q "supported:.*enhanced erase"; then
+        return 0
+    else
+        echo "${MESSAGES[ata_not_supported]}"
+        return 1
+    fi
+}
+
+# Função de confirmação
+confirm_operation() {
+    local device=$1
+    local mode=$2
+    
+    printf "\n${MESSAGES[warning_destructive]}\n" "$device"
+    printf "${MESSAGES[confirm_continue]}"
+    read -r response
+    
+    if [[ ! "${response,,}" =~ ^(s|sim|y|yes)$ ]]; then
+        echo "Operação cancelada."
+        exit 0
+    fi
+}
+
+# Processar argumentos
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -bs)
+            BS="$2"
+            if [[ ! "$BS" =~ ^[0-9]+$ ]] || [[ "$BS" -lt 1 ]] || [[ "$BS" -gt 16 ]]; then
+                echo "${MESSAGES[error_invalid_bs]}" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        -m)
+            MODE="$2"
+            if [[ ! "$MODE" =~ ^[0-9]+$ ]] || [[ "$MODE" -lt 1 ]] || [[ "$MODE" -gt 10 ]]; then
+                echo "${MESSAGES[error_invalid_mode]}" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        -l|--list)
+            list_modes
+            ;;
+        *)
+            if [[ -z "$DEVICE" ]]; then
+                DEVICE="$1"
+            else
+                echo "Argumento inválido: $1" >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Verificar se dispositivo foi especificado
+if [[ -z "$DEVICE" ]]; then
+    echo "${MESSAGES[error_no_device]}" >&2
+    show_help
+    exit 1
+fi
+
+# Verificar dispositivo
+check_device "$DEVICE"
+
+# Mostrar informações iniciais
+printf "${MESSAGES[checking_device]}\n" "$DEVICE"
+show_device_info "$DEVICE"
+
+# Confirmação do usuário
+confirm_operation "$DEVICE" "$MODE"
+
+# Executar modo selecionado
+printf "${MESSAGES[executing_mode]}\n" "$MODE"
+
+case $MODE in
+    1)
+        CMD="sudo dd if=/dev/zero of=$DEVICE oflag=direct,dsync conv=fsync bs=${BS}M status=progress"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+    2)
+        CMD="sudo dd if=/dev/zero of=$DEVICE bs=${BS}M status=progress oflag=direct"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+    3)
+        CMD="sudo dd if=/dev/zero of=$DEVICE bs=${BS}M status=progress"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+    4)
+        echo "${MESSAGES[bs_recommendation]}"
+        CMD="sudo dd if=/dev/urandom of=$DEVICE bs=${BS}M status=progress"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+    5)
+        CMD="sudo blkdiscard $DEVICE"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+    6)
+        CMD="sudo blkdiscard -f $DEVICE"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+    7)
+        check_ata_security "$DEVICE"
+        if [[ $? -eq 0 ]]; then
+            CMD="sudo hdparm --user-master u --security-erase PASSOU $DEVICE"
+            printf "${MESSAGES[executing_command]}\n" "$CMD"
+            eval "$CMD"
+        else
+            echo "Não foi possível executar ATA Secure Erase"
+            exit 1
+        fi
+        ;;
+    8)
+        check_ata_security "$DEVICE"
+        if [[ $? -eq 0 ]]; then
+            CMD1="sudo hdparm --user-master u --security-set-pass PASSOU $DEVICE"
+            CMD2="sudo hdparm --user-master u --security-erase PASSOU $DEVICE"
+            printf "${MESSAGES[executing_command]}\n" "$CMD1"
+            eval "$CMD1"
+            printf "${MESSAGES[executing_command]}\n" "$CMD2"
+            eval "$CMD2"
+        else
+            echo "Não foi possível executar ATA Secure Erase com senha"
+            exit 1
+        fi
+        ;;
+    9)
+        CMD="sudo nvme sanitize $DEVICE"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+    10)
+        CMD="sudo nvme format $DEVICE --ses=1"
+        printf "${MESSAGES[executing_command]}\n" "$CMD"
+        eval "$CMD"
+        ;;
+esac
+
+# Verificar resultado
+if [[ $? -eq 0 ]]; then
+    echo "${MESSAGES[success]}"
+else
+    printf "${MESSAGES[failure]}\n" $?
+    exit 1
+fi

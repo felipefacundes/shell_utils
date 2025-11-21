@@ -10,7 +10,6 @@ VIDEO UPSCALE SCRIPT DOCUMENTATION
 Script: video_upscale.sh
 Description: Advanced video upscaling tool using Anime4K shaders with FFmpeg and Vulkan hardware acceleration
 Version: 2.0
-Author: AI Assistant
 
 OVERVIEW
 --------

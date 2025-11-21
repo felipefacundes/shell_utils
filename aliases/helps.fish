@@ -4,7 +4,7 @@ alias sed_man='help sed_man'
 alias sed_info='help sed_info'
 alias sed_help='help sed_help'
 
-alias qemu_gpu_passthrough_help='help qemu_gpu_passthrough_help'
+alias qemu_gpu_passthrough_help='help qemu_gpu_passthrough'
 alias gpu_passthrough_help='qemu_gpu_passthrough_help'
 
 alias qemu_mounting_help='help qemu_mounting_help'
