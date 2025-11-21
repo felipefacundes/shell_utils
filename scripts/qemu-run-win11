@@ -26,6 +26,10 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 step() { echo -e "${PURPLE}[STEP]${NC} $1"; }
 debug() { echo -e "${CYAN}[DEBUG]${NC} $1"; }
 
+CONFIG_FILE="$HOME/.${0##*/}.conf"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+	cat <<'EOF' | tee "$CONFIG_FILE" >/dev/null
 VM_NAME="win11"
 VM_UUID="99894bf5-2eaf-4a10-80e3-3b56179b476e"
 MEMORY="8G"
@@ -43,6 +47,39 @@ WINFSP="$PUBLIC/winfsp-2.0.23075.msi"
 MESA3D_WIN="$PUBLIC/mesa3d-25.2.6-release-msvc.7z"
 OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd"
 OVMF_VARS="$HOME/.shell_utils/scripts/utilities/nvram/win11_VARS.fd"
+OVMF_VARS2="/var/lib/libvirt/qemu/nvram/win11_VARS.fd"
+OVMF_VARS3="/usr/share/edk2/x64/OVMF_VARS.4m.fd"
+
+if [[ -f "$OVMF_VARS" ]]; then
+	true
+elif [[ -f "$OVMF_VARS2" ]]; then
+	OVMF_VARS="$OVMF_VARS2"
+elif [[ -f "$OVMF_VARS3" ]]; then
+	OVMF_VARS="$OVMF_VARS3"
+fi
+
+# Configurations / Configurações
+if [[ -f /etc/modprobe.d/vfio.conf ]]; then
+	#config_video="-device vfio-pci,host=01:00.0,multifunction=on,romfile=~/rom_nvidia.rom,x-vga=on -display gtk,gl=on -device vfio-pci,host=01:00.1"
+	config_video="-device vfio-pci,host=01:00.0,multifunction=on,rombar=0,x-vga=on -display gtk,gl=on -device vfio-pci,host=01:00.1"
+else
+	config_video="-device virtio-vga-gl,id=video0 -display gtk,gl=on"
+fi
+config_cpu="-cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time"
+config_net="-netdev user,id=net0 -device rtl8139,netdev=net0,id=net0,mac=52:54:00:93:86:90"
+config_disk_boot="-drive file="${DISK_IMAGE}",if=none,id=nvme0,format=qcow2 -device nvme,serial=nvme-001,drive=nvme0,bootindex=1"
+config_win11iso="-drive file="${ISO_IMAGE}",media=cdrom,if=none,id=win11iso -device ide-cd,drive=win11iso,bootindex=2"
+config_virtioiso="-drive file="${VIRTIO_WIN}",media=cdrom,if=none,id=virtio_cdrom -device virtio-scsi-pci,id=scsi -device scsi-cd,drive=virtio_cdrom,bootindex=3"
+config_tpm="-chardev socket,id=chrtpm,path=/tmp/mytpm1/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis,tpmdev=tpm0"
+config_tablet_and_pre_fix_mouse="-device usb-ehci,id=ehci -device qemu-xhci,id=xhci -device qemu-xhci,id=usb -device usb-tablet,bus=usb.0,port=1"
+#config_audio="-audiodev id=audio1,driver=alsa -device ich9-intel-hda -device hda-output,audiodev=audio1" # Simplified audio driver configuration
+config_audio="-device ich9-intel-hda -device hda-output,audiodev=hda -audiodev pa,id=hda,server=unix:/run/user/1000/pulse/native,out.buffer-length=8000,timer-period=1000,out.frequency=44100"
+config_share_foder="-object memory-backend-memfd,id=mem,size=8G,share=on -numa node,memdev=mem -chardev socket,id=char0,path=/tmp/virtiofs.sock -device vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=Public"
+config_monitor_and_fix_mouse="-monitor unix:/tmp/monitor.sock,server,nowait -device virtio-serial,packed=on,ioeventfd=on -device virtserialport,name=com.redhat.spice.0,chardev=vdagent0 -chardev qemu-vdagent,id=vdagent0,name=vdagent,clipboard=on,mouse=off"
+EOF
+fi
+
+. "$CONFIG_FILE"
 
 clear
 
@@ -215,21 +252,6 @@ info "${MESSAGES[info_starting]}"
 info "${MESSAGES[info_memory_cpus]}"
 echo
 
-# Configurations / Configurações
-config_video="-device virtio-vga-gl,id=video0 -display gtk,gl=on"
-#config_video="-device vfio-pci,host=01:00.0,multifunction=on,x-vga=on -vga none -display gtk,gl=on"
-config_cpu="-cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time"
-config_net="-netdev user,id=net0 -device rtl8139,netdev=net0,id=net0,mac=52:54:00:93:86:90"
-config_disk_boot="-drive file="${DISK_IMAGE}",if=none,id=nvme0,format=qcow2 -device nvme,serial=nvme-001,drive=nvme0,bootindex=1"
-config_win11iso="-drive file="${ISO_IMAGE}",media=cdrom,if=none,id=win11iso -device ide-cd,drive=win11iso,bootindex=2"
-config_virtioiso="-drive file="${VIRTIO_WIN}",media=cdrom,if=none,id=virtio_cdrom -device virtio-scsi-pci,id=scsi -device scsi-cd,drive=virtio_cdrom,bootindex=3"
-config_tpm="-chardev socket,id=chrtpm,path=/tmp/mytpm1/swtpm-sock -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis,tpmdev=tpm0"
-config_tablet_and_pre_fix_mouse="-device usb-ehci,id=ehci -device qemu-xhci,id=xhci -device qemu-xhci,id=usb -device usb-tablet,bus=usb.0,port=1"
-#config_audio="-audiodev id=audio1,driver=alsa -device ich9-intel-hda -device hda-output,audiodev=audio1" # Simplified audio driver configuration
-config_audio="-device ich9-intel-hda -device hda-output,audiodev=hda -audiodev pa,id=hda,server=unix:/run/user/1000/pulse/native,out.buffer-length=8000,timer-period=1000,out.frequency=44100"
-config_share_foder="-object memory-backend-memfd,id=mem,size=8G,share=on -numa node,memdev=mem -chardev socket,id=char0,path=/tmp/virtiofs.sock -device vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=Public"
-config_monitor_and_fix_mouse="-monitor unix:/tmp/monitor.sock,server,nowait -device virtio-serial,packed=on,ioeventfd=on -device virtserialport,name=com.redhat.spice.0,chardev=vdagent0 -chardev qemu-vdagent,id=vdagent0,name=vdagent,clipboard=on,mouse=off"
-
 # Start TPM / Iniciar TPM
 step "${MESSAGES[step_starting_tpm]}"
 echo
@@ -260,7 +282,7 @@ fi
 sudo chmod 777 /tmp/virtiofs.sock
 
 step "${MESSAGES[step_starting_qemu]}"
-qemu-system-x86_64 \
+sudo qemu-system-x86_64 \
     -name "$VM_NAME" \
     -uuid "$VM_UUID" \
     -machine type=q35,accel=kvm \

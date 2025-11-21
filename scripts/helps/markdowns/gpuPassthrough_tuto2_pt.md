@@ -232,6 +232,7 @@ sudo nano /etc/modprobe.d/vfio_dependencies.conf
 ```bash
 softdep nvidia pre: vfio-pci
 softdep nvidia_drm pre: vfio-pci
+softdep nvidia_uvm pre: vfio-pci
 softdep nvidia_modeset pre: vfio-pci
 softdep nouveau pre: vfio-pci
 ```

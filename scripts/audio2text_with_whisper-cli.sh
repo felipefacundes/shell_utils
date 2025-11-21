@@ -1,7 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
 
-# Script: audio_to_text.sh
-# Description: Converts audio to text using whisper.cpp with OpenVINO
+: <<'DOCUMENTATION'
+Script: audio_to_text.sh
+Description: Converts audio to text using whisper.cpp with OpenVINO
+DOCUMENTATION
 
 # Settings
 CONFIG_DIR="$HOME/.config/audio_transcribe"

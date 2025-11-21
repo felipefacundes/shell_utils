@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
 
 # Verifica se o ImageMagick está instalado
 if ! command -v magick &> /dev/null; then

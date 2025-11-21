@@ -204,7 +204,9 @@ options vfio-pci ids=10de:1c8c,10de:0fb9
 
 # Dependency: load vfio-pci before nvidia
 softdep nvidia pre: vfio-pci
-softdep nvidia-drm pre: vfio-pci
+softdep nvidia_drm pre: vfio-pci
+softdep nvidia_uvm pre: vfio-pci
+softdep nvidia_modeset pre: vfio-pci
 ```
 
 ---

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+CONFIG_FILE="/etc/modprobe.d/blacklist_nvidia.conf"
+CONFIG_CONTENT="blacklist nvidia
+blacklist nvidia_modeset
+blacklist nvidia_uvm
+blacklist nvidia_drm
+options nvidia modeset=0"
+
+# Sistema de mensagens bilíngue
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["creating_file"]="Criando arquivo de blacklist da NVIDIA..."
+        ["file_created"]="Arquivo criado: $CONFIG_FILE"
+        ["removing_file"]="Removendo arquivo de blacklist da NVIDIA..."
+        ["file_removed"]="Arquivo removido: $CONFIG_FILE"
+        ["file_found"]="Arquivo encontrado. Removendo..."
+        ["file_not_found"]="Arquivo não encontrado. Criando..."
+        ["status_disabled"]="Status: Blacklist da NVIDIA DESATIVADA"
+        ["status_enabled"]="Status: Blacklist da NVIDIA ATIVADA"
+        ["see_content"]="Veja o conteúdo do arquivo com o comando:"
+        ["note_restart"]="Nota: Para que as mudanças tenham efeito, você pode precisar reiniciar o sistema"
+    )
+else
+    MESSAGES=(
+        ["creating_file"]="Creating NVIDIA blacklist file..."
+        ["file_created"]="File created: $CONFIG_FILE"
+        ["removing_file"]="Removing NVIDIA blacklist file..."
+        ["file_removed"]="File removed: $CONFIG_FILE"
+        ["file_found"]="File found. Removing..."
+        ["file_not_found"]="File not found. Creating..."
+        ["status_disabled"]="Status: NVIDIA Blacklist DISABLED"
+        ["status_enabled"]="Status: NVIDIA Blacklist ENABLED"
+        ["see_content"]="See file content with command:"
+        ["note_restart"]="Note: For changes to take effect, you may need to restart the system"
+    )
+fi
+
+# Função para criar o arquivo
+create_file() {
+    echo "${MESSAGES[creating_file]}"
+    echo "$CONFIG_CONTENT" | sudo tee "$CONFIG_FILE" >/dev/null
+    echo "${MESSAGES[file_created]}"
+}
+
+# Função para remover o arquivo
+remove_file() {
+    echo "${MESSAGES[removing_file]}"
+    sudo rm -f "$CONFIG_FILE"
+    echo "${MESSAGES[file_removed]}"
+}
+
+# Verifica se o arquivo existe
+if [ -f "$CONFIG_FILE" ]; then
+    echo "${MESSAGES[file_found]}"
+    remove_file
+    sudo mkinitcpio -P && sudo grub-mkconfig -o /boot/grub/grub.cfg
+    echo ""
+    echo "${MESSAGES[status_disabled]}"
+else
+    echo "${MESSAGES[file_not_found]}"
+    create_file
+    sudo mkinitcpio -P && sudo grub-mkconfig -o /boot/grub/grub.cfg
+    echo ""
+    echo "${MESSAGES[status_enabled]}"
+    echo ""
+    echo "${MESSAGES[see_content]}"
+    echo "cat $CONFIG_FILE"
+fi
+
+echo ""
+echo "${MESSAGES[note_restart]}"

@@ -28,7 +28,7 @@ qemu_mounting_help()
     clear
 }
 
-qemu_gpu_passthrough_help()
+qemu_gpu_passthrough()
 {
 	cat <<-'EOF'
 	# QEMU - Complete Tutorial: Single-GPU Passthrough to Virtualization

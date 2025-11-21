@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # File to check
 BASHRC_FILE="$HOME/.bashrc"
