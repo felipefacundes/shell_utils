@@ -13,7 +13,7 @@ declare -A MESSAGES
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
         ["title"]="pendrive_zero - Ferramenta de Limpeza de Dispositivos"
-        ["usage"]="Uso: $0 [OPÇÕES] /dev/sdX"
+        ["usage"]="Uso: ${0##*/} [OPÇÕES] /dev/sdX"
         ["usage_options"]="OPÇÕES:"
         ["option_bs"]="  -bs NUM        Define o tamanho do bloco (1-16) para comandos dd (padrão: 1)"
         ["option_mode"]="  -m MODE        Modo de operação (1-10, padrão: 1)"
@@ -65,7 +65,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
 else
     MESSAGES=(
         ["title"]="pendrive_zero - Device Cleaning Tool"
-        ["usage"]="Usage: $0 [OPTIONS] /dev/sdX"
+        ["usage"]="Usage: ${0##*/} [OPTIONS] /dev/sdX"
         ["usage_options"]="OPTIONS:"
         ["option_bs"]="  -bs NUM        Set block size (1-16) for dd commands (default: 1)"
         ["option_mode"]="  -m MODE        Operation mode (1-10, default: 1)"

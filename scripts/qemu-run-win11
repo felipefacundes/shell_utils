@@ -58,6 +58,16 @@ elif [[ -f "$OVMF_VARS3" ]]; then
 	OVMF_VARS="$OVMF_VARS3"
 fi
 
+# USB Passthrough / Passagem para USB
+#usb_host="-device usb-ehci -device usb-host,bus=usb-bus.0,vendorid=0x0781,productid=0x558b"      # USB <
+#usb_host="-device nec-usb-xhci -device usb-host,bus=usb-bus.0,vendorid=0x0781,productid=0x558b"  # USB 3.0
+
+if [[ -n "$usb_host" ]]; then
+	if_arg_usb_host="$usb_host"
+else
+	if_arg_usb_host="-msg timestamp=on"
+fi
+
 # Configurations / Configurações
 if [[ -f /etc/modprobe.d/vfio.conf ]]; then
 	#config_video="-device vfio-pci,host=01:00.0,multifunction=on,romfile=~/rom_nvidia.rom,x-vga=on -display gtk,gl=on -device vfio-pci,host=01:00.1"
@@ -302,6 +312,8 @@ sudo qemu-system-x86_64 \
     \
     -device virtio-keyboard-pci \
     -device virtio-mouse-pci \
+    \
+	$if_arg_usb_host \
     \
     $config_tablet_and_pre_fix_mouse \
     \
