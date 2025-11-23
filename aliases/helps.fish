@@ -4,6 +4,12 @@ alias sed_man='help sed_man'
 alias sed_info='help sed_info'
 alias sed_help='help sed_help'
 
+alias windows_to_go='help windows_to_go'
+alias windows_on_pendrive='help windows_to_go'
+
+alias dd_help='help dd_help'
+alias zero_fill_help='dd_help'
+
 alias multiboot_help='help multiboot'
 alias 40_custom_help='multiboot_help'
 
