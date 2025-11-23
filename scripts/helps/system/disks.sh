@@ -14,6 +14,7 @@ count=1 – Copy only 1 BLOCK input blocks."
 }
 
 dd_help() {
+	clear
 echo '
 # dd --help - Zero fill Pendrive/HD/SSD - Delete MBR - Create Bootable OS USB Sticks: BSDs and Linux Distros
 '
@@ -35,6 +36,21 @@ echo '
     tput setaf 11
     echo -e "sudo dd if=/dev/zero of=/dev/sdX oflag=direct,dsync conv=fsync bs=1M status=progress\n"
     tput sgr0
+
+    tput setaf 11
+	echo -e "\nComplete tutorial\n"
+    tput sgr0
+	echo -e "1) English tutorial\n2) Portuguese tutorial\n"
+    read -r option
+    [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
+    case $option in
+        1)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/disks_boot_and_zerofill.md
+        ;;
+        2)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/disks_boot_and_zerofill_pt.md
+        ;;
+    esac
 }
 
 gpt_or_mbr() {
