@@ -1,5 +1,4 @@
 . $HOME/.shell_utils/aliases/adb.fish
-. $HOME/.shell_utils/aliases/beep.fish
 . $HOME/.shell_utils/aliases/chatgpt_aliases.fish
 . $HOME/.shell_utils/aliases/check_for_alias.fish
 . $HOME/.shell_utils/aliases/coin.fish
