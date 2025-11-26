@@ -101,7 +101,7 @@ sed -i 's|/dev/sd[abcdefghij]|/dev/sdX|g' "$bash_history"
 "$shell_utils/scripts/shell_utils_update.sh"
 
 ########################################
-unset bash_history
+unset shell_utils_configs
 unset shell_utils
 unset source_file
 unset source_path

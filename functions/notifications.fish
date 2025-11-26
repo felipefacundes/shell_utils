@@ -123,6 +123,28 @@ function fish_postexec --on-event fish_postexec
     end
 end
 
+function beep_toggle
+	set -l conf_file ~/.shell_utils_configs/shell_utils_notifications.conf
+    if test "$BEEP" = "0"
+        set BEEP 1
+        echo -e "🗹 BEEP temporarily set to: $BEEP\n💡 For persistent setting, edit BEEP in: $conf_file"
+    else
+        set BEEP 0
+        echo -e "🗵 BEEP temporarily set to: $BEEP\n💡 For persistent setting, edit BEEP in: $conf_file"
+    end
+end
+
+function notify_toggle
+	set -l conf_file ~/.shell_utils_configs/shell_utils_notifications.conf
+    if test "$NOTIFY" = "0"
+        set NOTIFY 1
+        echo -e "🗹 NOTIFY temporarily set to: $NOTIFY\n💡 For persistent setting, edit NOTIFY in: $conf_file"
+    else
+        set NOTIFY 0
+        echo -e "🗵 NOTIFY temporarily set to: $NOTIFY\n💡 For persistent setting, edit NOTIFY in: $conf_file"
+    end
+end
+
 # Clean up temporary variables
 set -e CONFIG_DIR
 set -e CONFIG_FILE

@@ -122,5 +122,27 @@ elif [[ -n "$BASH_VERSION" ]] && [[ -z "$PROMPT_COMMAND" ]]; then
 	PROMPT_COMMAND="notifications; $PROMPT_COMMAND"
 fi
 
+beep_toggle() {
+	local conf_file="$HOME/.shell_utils_configs/shell_utils_notifications.conf"
+	if [[ "$BEEP" == 0 ]]; then
+		BEEP=1
+		echo -e "🗹 BEEP temporarily set to: $BEEP\n💡 For persistent setting, edit BEEP in: $conf_file"
+	else
+		BEEP=0
+		echo -e "🗵 BEEP temporarily set to: $BEEP\n💡 For persistent setting, edit BEEP in: $conf_file"
+	fi
+}
+
+notify_toggle() {
+	local conf_file="$HOME/.shell_utils_configs/shell_utils_notifications.conf"
+	if [[ "$NOTIFY" == 0 ]]; then
+		NOTIFY=1
+		echo -e "🗹 NOTIFY temporarily set to: $NOTIFY\n💡 For persistent setting, edit NOTIFY in: $conf_file"
+	else
+		NOTIFY=0
+		echo -e "🗵 NOTIFY temporarily set to: $NOTIFY\n💡 For persistent setting, edit NOTIFY in: $conf_file"
+	fi
+}
+
 unset CONFIG_DIR
 unset CONFIG_FILE

@@ -81,7 +81,8 @@ sed -i 's|/dev/sd[abcdefghij]|/dev/sdX|g' ~/.local/share/fish/fish_history
 "$shell_utils/scripts/shell_utils_update.sh"
 
 ########################################
-set -e source_file
+set -e shell_utils_configs
 set -e shell_utils
+set -e source_file
 set -e source_path
 set -e sourced
