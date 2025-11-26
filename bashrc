@@ -256,7 +256,7 @@ complete -abcdefgjksuv doas
 
 # Configure command prompt
 
-export PROMPT_COMMAND="fix_bash_history"
+export PROMPT_COMMAND='fix_bash_history && [[ "$BEEP" == 1 ]] && beep_sound'
 ############################################################################
 
 fzf_bash() {
