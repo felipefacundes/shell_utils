@@ -13,6 +13,9 @@ alias zero_fill_help='dd_help'
 alias multiboot_help='help multiboot'
 alias 40_custom_help='multiboot_help'
 
+alias markers_ascii_for_documentation='printf "1\n" | help markers'
+alias marcadores_ascii_para_documentar='printf "2\n" | help markers'
+
 alias qemu_gpu_passthrough_help='help qemu_gpu_passthrough'
 alias gpu_passthrough_help='qemu_gpu_passthrough_help'
 
