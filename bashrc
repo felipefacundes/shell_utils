@@ -256,7 +256,14 @@ complete -abcdefgjksuv doas
 
 # Configure command prompt
 
-export PROMPT_COMMAND='fix_bash_history && [[ "$BEEP" == 1 ]] && beep_sound'
+notifications() {
+	local exit_status=$?
+	[[ "$BEEP" == 1 ]] && beep_sound
+	[[ "$NOTIFY" == 1 ]] && notify-send "Command finished" "Status: $exit_status"
+}
+
+PROMPT_COMMAND="notifications; $PROMPT_COMMAND; fix_bash_history"
+
 ############################################################################
 
 fzf_bash() {
