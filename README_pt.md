@@ -17,7 +17,7 @@
 
 ## 🌟 Visão Geral
 
-O Shell Utils é um framework educacional projetado para tornar a programação shell acessível e poderosa. É o resultado de um trabalho exaustivo de muitos anos, agora disponível no GitHub. Com mais de 280 scripts documentados, atende tanto iniciantes quanto usuários avançados. Seu grande diferencial é a capacidade de interagir com os principais shells: **Bash, Zsh e Fish**.
+O Shell Utils é um framework educacional projetado para tornar a programação shell acessível e poderosa. É o resultado de um trabalho exaustivo de muitos anos, agora disponível no GitHub. Com mais de 400 scripts documentados, atende tanto iniciantes quanto usuários avançados. Seu grande diferencial é a capacidade de interagir com os principais shells: **Bash, Zsh e Fish**.
 
 Este repositório tem como objetivo estender o shell e conter funções úteis e legíveis que ajudam os desenvolvedores a manter seus scripts de forma mais fácil e organizada.
 
@@ -30,8 +30,9 @@ Este repositório tem como objetivo estender o shell e conter funções úteis e
 - Compatibilidade entre shells (fish, zsh, bash)
 - Rica coleção de scripts utilitários
 - Recursos educacionais e tutoriais
+- **Estrutura de pastas persistente** para customizações do usuário que não são afetadas pelas atualizações do framework
 
-📌 O script `help_shell` lista funções como `sed_info` (para auxiliar no uso do sed), fornecendo tutoriais rápidos sobre comandos do Linux. Para criar uma função simples, basta criar um arquivo `função.sh` e armazená-lo em `~/.shell_utils/scripts/helps/`. O script `help_shell` será capaz de lê-los e mostrar uma lista completa de funções pedagógicas e muito mais.
+📌 O script `help_shell` lista funções como `sed_info` (para auxiliar no uso do sed), fornecendo tutoriais rápidos sobre comandos do Linux. Para criar uma função simples, basta criar um arquivo `função.sh` e armazená-lo em `~/.local/shell_utils/scripts/helps/`. O script `help_shell` será capaz de lê-los e mostrar uma lista completa de funções pedagógicas e muito mais.
 
 ## 📁 Estrutura de Diretórios
 
@@ -43,6 +44,40 @@ Este repositório tem como objetivo estender o shell e conter funções úteis e
 ├── functions/   # Funções personalizadas
 ├── variables/   # Variáveis de ambiente
 └── aliases/     # Aliases do shell
+```
+
+## 🛡️ Estrutura Persistente para Usuários
+
+Para garantir que suas customizações sejam preservadas durante as atualizações automáticas do framework, utilize a estrutura de diretórios persistente:
+
+```bash
+~/.local/shell_utils/
+├── functions/   # Suas funções personalizadas (seguras contra atualizações)
+├── variables/   # Suas variáveis de ambiente personalizadas
+├── aliases/     # Seus aliases personalizados
+├── priority/    # Scripts com prioridade de carregamento
+└── scripts/
+    ├── utils/   # Seus scripts utilitários
+    └── helps/
+        └── markdowns/  # Sua documentação personalizada
+```
+
+### 🔄 Como Funciona:
+- **`~/.shell_utils/`** - Framework principal (atualizável via Git)
+- **`~/.local/shell_utils/`** - Suas customizações (persistentes e seguras)
+- **Ordem de Carregamento**: Primeiro o framework, depois suas customizações
+- **Atualizações Automáticas**: Seus arquivos em `~/.local/shell_utils/` nunca são sobrescritos
+
+### 💡 Para Adicionar Suas Customizações:
+```bash
+# Suas funções personalizadas
+vim ~/.local/shell_utils/functions/minha_funcao.sh
+
+# Seus aliases personalizados  
+vim ~/.local/shell_utils/aliases/meus_aliases.sh
+
+# Suas variáveis de ambiente
+vim ~/.local/shell_utils/variaveis/minhas_variaveis.sh
 ```
 
 ## 🔧 Recursos e Ferramentas

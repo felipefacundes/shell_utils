@@ -1,6 +1,7 @@
 zsh_history=~/.zsh_history
 bash_history=~/.bash_history
 shell_utils=~/.shell_utils
+shell_utils_users=~/.local/shell_utils
 shell_utils_configs=~/.shell_utils_configs
 
 # Path to your shell_utils installation.
@@ -9,18 +10,25 @@ if [ ! -d "$shell_utils" ]; then
 fi
 
 # Path to your shell_utils configs
-if [ ! -d "$shell_utils" ]; then
+if [ ! -d "$shell_utils_configs" ]; then
     mkdir -p "$shell_utils_configs"
 fi
 
 # Loops through all .sh files in the source directory and its subdirectories
 sourced() {
-    source_file="${shell_utils}/${source_path}.sh"
-    [[ -f "${source_file}" ]] && rm "${source_file}"
-    for file in "${shell_utils}/${source_path}"/**/*.sh; do
-        if [[ "$file" ]]; then
+    local source_dir="$1"
+    
+    [[ -f "${source_dir}.sh" ]] && rm "${source_dir}.sh"
+
+    # Checks if the directory exists and has .sh files
+    if [[ ! -d "$source_dir" ]] || [[ -z $(find "$source_dir" -name "*.sh" -type f -print -quit 2>/dev/null) ]]; then
+        return
+    fi
+        
+    for file in "${source_dir}"/**/*.sh; do
+        if [[ -f "$file" ]]; then
             file="${file/#$HOME/\"\${HOME\}\"}"
-            echo ". $file" >> "${shell_utils}/${source_path}".sh
+            echo ". $file" >> "${source_dir}.sh"
         fi
     done >/dev/null 2>&1
 }
@@ -28,37 +36,79 @@ sourced() {
 # Priority
 # What should be started before
 source_path=priority
-sourced
+sourced "${shell_utils}/${source_path}"
 if test -f "${shell_utils}/${source_path}.sh"; then
     . "${shell_utils}/${source_path}.sh"
 fi
 
+if [[ ! -d "${shell_utils_users}/${source_path}" ]]; then
+	mkdir -p "${shell_utils_users}/${source_path}"
+fi
+
+sourced "${shell_utils_users}/${source_path}"
+
+if test -f "${shell_utils_users}/${source_path}.sh"; then
+    . "${shell_utils_users}/${source_path}.sh"
+fi
 ########################################
 ############# MY VARIABLES #############
 source_path=variables
-sourced
+sourced "${shell_utils}/${source_path}"
 if test -f "${shell_utils}/${source_path}.sh"; then
     . "${shell_utils}/${source_path}.sh"
 fi
 
+if [[ ! -d "${shell_utils_users}/${source_path}" ]]; then
+	mkdir -p "${shell_utils_users}/${source_path}"
+fi
+
+sourced "${shell_utils_users}/${source_path}"
+
+if test -f "${shell_utils_users}/${source_path}.sh"; then
+    . "${shell_utils_users}/${source_path}.sh"
+fi
 ########################################
 ############# MY FUNCTIONS #############
 source_path=functions
-sourced
+sourced "${shell_utils}/${source_path}"
 if test -f "${shell_utils}/${source_path}.sh"; then
     . "${shell_utils}/${source_path}.sh"
 fi
 
+if [[ ! -d "${shell_utils_users}/${source_path}" ]]; then
+	mkdir -p "${shell_utils_users}/${source_path}"
+fi
+
+sourced "${shell_utils_users}/${source_path}"
+
+if test -f "${shell_utils_users}/${source_path}.sh"; then
+    . "${shell_utils_users}/${source_path}.sh"
+fi
 ########################################
 ############### ALIASES ###############
 # Example aliases:
 # alias bashconfig="vim ~/.bashrc"
 # alias zshconfig="vim ~/.zshrc"
 source_path=aliases
-sourced
+sourced "${shell_utils}/${source_path}"
 if test -f "${shell_utils}/${source_path}.sh"; then
     . "${shell_utils}/${source_path}.sh"
 fi
+
+if [[ ! -d "${shell_utils_users}/${source_path}" ]]; then
+	mkdir -p "${shell_utils_users}/${source_path}"
+fi
+
+sourced "${shell_utils_users}/${source_path}"
+
+if test -f "${shell_utils_users}/${source_path}.sh"; then
+    . "${shell_utils_users}/${source_path}.sh"
+fi
+
+########################################
+### USER SCRIPTS / HELPS / MARKDOWNS ###
+[[ ! -d "${shell_utils_users}/scripts/helps/markdowns" ]] && mkdir -p "${shell_utils_users}/scripts/helps/markdowns"
+[[ ! -d "${shell_utils_users}/scripts/utils" ]] && mkdir -p "${shell_utils_users}/scripts/utils"
 
 ##### History
 [[ ! -f "$zsh_history" ]] && touch "$zsh_history"
@@ -102,6 +152,7 @@ sed -i 's|/dev/sd[abcdefghij]|/dev/sdX|g' "$bash_history"
 
 ########################################
 unset shell_utils_configs
+unset shell_utils_users
 unset shell_utils
 unset source_file
 unset source_path

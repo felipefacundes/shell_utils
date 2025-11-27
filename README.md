@@ -17,9 +17,9 @@
 
 ## 🌟 Overview
 
-Shell Utils is an educational framework designed to make shell programming accessible and powerful. It is the result of extensive work over many years, now available on GitHub. With over 280 documented scripts, it caters to both beginners and advanced users. Its main differentiator is the ability to interact with the major shells: **Bash, Zsh, and Fish**.
+Shell Utils is an educational framework designed to make shell programming accessible and powerful. It is the result of exhaustive work over many years, now available on GitHub. With over 400 documented scripts, it serves both beginners and advanced users. Its main differentiator is the ability to interact with the main shells: **Bash, Zsh, and Fish**.
 
-This repo is intended to extend the shell and contain useful and readable functions that help developers to maintaine their scripts easier and neatly.
+This repository aims to extend the shell and contain useful and readable functions that help developers maintain their scripts more easily and organized.
 
 ✅ Includes third-party scripts, such as those from [Fred's Imagemagick](http://www.fmwconcepts.com/imagemagick/index.php) *(credits maintained in the scripts)*.
 
@@ -27,11 +27,12 @@ This repo is intended to extend the shell and contain useful and readable functi
 
 - Dynamic recognition of scripts, functions, variables, and aliases
 - Comprehensive documentation and help menus
-- Shell compatibility (fish, zsh, bash)
+- Cross-shell compatibility (fish, zsh, bash)
 - Rich collection of utility scripts
 - Educational resources and tutorials
+- **Persistent folder structure** for user customizations that are not affected by framework updates
 
-📌 The `help_shell` script lists functions like `sed_info` (to assist with using sed), providing quick tutorials on Linux commands. To create a simple function, just create a file `function.sh` and store it in `~/.shell_utils/scripts/helps/`. The `help_shell` script will be able to read them and display a complete list of educational functions and much more.
+📌 The `help_shell` script lists functions like `sed_info` (to assist with using sed), providing quick tutorials on Linux commands. To create a simple function, just create a `function.sh` file and store it in `~/.local/shell_utils/scripts/helps/`. The `help_shell` script will be able to read them and show a complete list of pedagogical functions and much more.
 
 ## 📁 Directory Structure
 
@@ -45,11 +46,45 @@ This repo is intended to extend the shell and contain useful and readable functi
 └── aliases/     # Shell aliases
 ```
 
-## 🔧 Features and Tools
+## 🛡️ Persistent Structure for Users
 
-- **Alarm**: Multilingual alarm, capable of executing external commands, snooze function, and more.
-- **Markdown Reader**: An enhanced markdown reader combining clean formatting with optional syntax highlighting.
-- **Calendar**: Full calendar with holiday support
+To ensure your customizations are preserved during automatic framework updates, use the persistent directory structure:
+
+```bash
+~/.local/shell_utils/
+├── functions/   # Your custom functions (safe from updates)
+├── variables/   # Your custom environment variables
+├── aliases/     # Your custom aliases
+├── priority/    # Scripts with loading priority
+└── scripts/
+    ├── utils/   # Your utility scripts
+    └── helps/
+        └── markdowns/  # Your custom documentation
+```
+
+### 🔄 How It Works:
+- **`~/.shell_utils/`** - Main framework (updatable via Git)
+- **`~/.local/shell_utils/`** - Your customizations (persistent and safe)
+- **Loading Order**: First the framework, then your customizations
+- **Automatic Updates**: Your files in `~/.local/shell_utils/` are never overwritten
+
+### 💡 To Add Your Customizations:
+```bash
+# Your custom functions
+vim ~/.local/shell_utils/functions/my_function.sh
+
+# Your custom aliases  
+vim ~/.local/shell_utils/aliases/my_aliases.sh
+
+# Your environment variables
+vim ~/.local/shell_utils/variables/my_variables.sh
+```
+
+## 🔧 Resources and Tools
+
+- **Alarm**: Multilingual alarm, with ability to run external commands, snooze function, and much more.
+- **Markdown Reader**: An enhanced markup reader combining clean formatting with optional syntax highlighting.
+- **Calendar**: Complete calendar with holiday support
 - **Video Tools**: Screen recorder and video managers
 - **Audio Tools**: Generate audio frequencies and sound managers
 - **Image Processing Tools**: Convert, resize, and manipulate images
@@ -61,7 +96,7 @@ This repo is intended to extend the shell and contain useful and readable functi
   - ANSI color palette
   - Hex to ANSI converter
 - **Window Manager Tools**: Support for i3, awesome, openbox, and others
-- **Integration with Third-Party Tools**: Including scripts from ["Fred's Imagemagick"](http://www.fmwconcepts.com/imagemagick/index.php)
+- **Third-Party Tool Integration**: Including scripts from ["Fred's Imagemagick"](http://www.fmwconcepts.com/imagemagick/index.php)
 
 ## 🚀 Installation
 
@@ -84,7 +119,7 @@ The installer automatically detects your shell (fish, zsh, or bash) and installs
 
 ## 🤝 Contributing
 
-Contributions are welcome! Feel free to submit a Pull Request. For significant changes, please open an issue first to discuss what you would like to change.
+Contributions are welcome! Feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 ## 📜 License
 
@@ -93,7 +128,7 @@ This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) fi
 ## 👏 Credits
 
 - Original creator: [Felipe Facundes](https://github.com/felipefacundes)
-- Special thanks to all contributors and to [Fred's Imagemagick](http://www.fmwconcepts.com/imagemagick/index.php) for some included scripts
+- Special thanks to all contributors and [Fred's Imagemagick](http://www.fmwconcepts.com/imagemagick/index.php) for some included scripts
 
 ---
 

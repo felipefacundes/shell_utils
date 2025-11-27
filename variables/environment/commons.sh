@@ -5,9 +5,10 @@ export vblank_mode=0
 export __GL_SYNC_TO_VBLANK=0
 export PYENV_ROOT="${HOME}/.pyenv"
 export SHELL_UTILS="${HOME}/.shell_utils"
+export SHELL_UTILS_USERS="${HOME}/.local/shell_utils"
 
 # Updating Path
-PATH=$PATH:/bin:/usr/bin:"${HOME}/.local/bin":"${SHELL_UTILS}/scripts":"${SHELL_UTILS}/scripts/faqs":"${SHELL_UTILS}/scripts/utils":"${SHELL_UTILS}/scripts/Freds_img":"${HOME}/.local/share/gem/ruby/3.0.0/bin/":"$PYENV_ROOT/bin:$PATH":"${HOME}/.perl5/bin${PATH:+:${PATH}}"; export PATH;
+PATH=$PATH:/bin:/usr/bin:"${HOME}/.local/bin":"${SHELL_UTILS}/scripts":"${SHELL_UTILS_USERS}/scripts":"${SHELL_UTILS}/scripts/faqs":"${SHELL_UTILS}/scripts/utils":"${SHELL_UTILS_USERS}/scripts/utils":"${SHELL_UTILS}/scripts/Freds_img":"${HOME}/.local/share/gem/ruby/3.0.0/bin/":"$PYENV_ROOT/bin:$PATH":"${HOME}/.perl5/bin${PATH:+:${PATH}}"; export PATH;
 ###export PATH="$PATH:~/Library/Python/2.7/bin:$HOME/Library/Haskell/bin"
 
 # Configuring perl5lib
