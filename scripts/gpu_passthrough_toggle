@@ -138,15 +138,15 @@ checks_vfio_modules() {
         return 1
     fi
     
-    local linha_modules; linha_modules=$(grep '^MODULES=' "$modules_mkinitcpio")
+    local line_modules; line_modules=$(grep '^MODULES=' "$modules_mkinitcpio")
     
-    if [[ -z "$linha_modules" ]]; then
+    if [[ -z "$line_modules" ]]; then
         return 1
     fi
     
-    if echo "$linha_modules" | grep -q "vfio_pci" &&
-       echo "$linha_modules" | grep -q "vfio" &&
-       echo "$linha_modules" | grep -q "vfio_iommu_type1"; then
+    if echo "$line_modules" | grep -q "vfio_pci" &&
+       echo "$line_modules" | grep -q "vfio" &&
+       echo "$line_modules" | grep -q "vfio_iommu_type1"; then
         return 0
     fi
 

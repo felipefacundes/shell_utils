@@ -2,39 +2,36 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-CONFIG_FILE="/etc/modprobe.d/blacklist_nvidia.conf"
-CONFIG_CONTENT="blacklist nvidia
-blacklist nvidia_modeset
-blacklist nvidia_uvm
-blacklist nvidia_drm
-options nvidia modeset=0"
+CONFIG_FILE="/etc/modprobe.d/blacklist_nouveau.conf"
+CONFIG_CONTENT="blacklist nouveau
+options nouveau modeset=0"
 
 # Bilingual messaging system
 declare -A MESSAGES
 
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
-        ["creating_file"]="Criando arquivo de blacklist da NVIDIA..."
+        ["creating_file"]="Criando arquivo de blacklist da NOUVEAU..."
         ["file_created"]="Arquivo criado: $CONFIG_FILE"
-        ["removing_file"]="Removendo arquivo de blacklist da NVIDIA..."
+        ["removing_file"]="Removendo arquivo de blacklist da NOUVEAU..."
         ["file_removed"]="Arquivo removido: $CONFIG_FILE"
         ["file_found"]="Arquivo encontrado. Removendo..."
         ["file_not_found"]="Arquivo não encontrado. Criando..."
-        ["status_disabled"]="Status: Blacklist da NVIDIA DESATIVADA"
-        ["status_enabled"]="Status: Blacklist da NVIDIA ATIVADA"
+        ["status_disabled"]="Status: Blacklist da NOUVEAU DESATIVADA"
+        ["status_enabled"]="Status: Blacklist da NOUVEAU ATIVADA"
         ["see_content"]="Veja o conteúdo do arquivo com o comando:"
         ["note_restart"]="Nota: Para que as mudanças tenham efeito, você pode precisar reiniciar o sistema"
     )
 else
     MESSAGES=(
-        ["creating_file"]="Creating NVIDIA blacklist file..."
+        ["creating_file"]="Creating NOUVEAU blacklist file..."
         ["file_created"]="File created: $CONFIG_FILE"
-        ["removing_file"]="Removing NVIDIA blacklist file..."
+        ["removing_file"]="Removing NOUVEAU blacklist file..."
         ["file_removed"]="File removed: $CONFIG_FILE"
         ["file_found"]="File found. Removing..."
         ["file_not_found"]="File not found. Creating..."
-        ["status_disabled"]="Status: NVIDIA Blacklist DISABLED"
-        ["status_enabled"]="Status: NVIDIA Blacklist ENABLED"
+        ["status_disabled"]="Status: NOUVEAU Blacklist DISABLED"
+        ["status_enabled"]="Status: NOUVEAU Blacklist ENABLED"
         ["see_content"]="See file content with command:"
         ["note_restart"]="Note: For changes to take effect, you may need to restart the system"
     )

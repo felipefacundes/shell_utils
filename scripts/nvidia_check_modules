@@ -1,0 +1,726 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+#
+# SCRIPT PEDAGÓGICO: CONFIGURAÇÃO DRIVER NVIDIA PROPRIETÁRIO NO ARCH LINUX
+#
+# Este script ajuda a configurar os drivers proprietários para NVIDIA:
+# - NVIDIA: Driver proprietário de kernel para máximo desempenho
+# - CUDA: Suporte a computação paralela e IA
+# - NVENC: Codificação de vídeo acelerada por hardware
+#
+# OBJETIVO EDUCATIVO: Ensinar como funciona a stack de gráficos proprietária
+# para placas NVIDIA no Arch Linux, incluindo vantagens e desvantagens.
+
+set -e  # Para o script em caso de erro
+
+# Array associativa para mensagens multilíngue
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    # Mensagens em português
+    MESSAGES=(
+        ["title"]="CONFIGURADOR EDUCATIVO: NVIDIA PROPRIETÁRIO NO ARCH LINUX"
+        ["architecture_title"]="ARQUITETURA DOS DRIVERS NVIDIA PROPRIETÁRIOS:"
+        ["architecture_line1"]="1. NVIDIA: Driver de kernel proprietário para máximo desempenho"
+        ["architecture_line2"]="2. CUDA:   Plataforma de computação paralela para IA e científico"
+        ["architecture_line3"]="3. NVENC:  Codificador de vídeo hardware para gravação e streaming"
+        ["architecture_ideal"]="Esta configuração é ideal para:"
+        ["architecture_ideal1"]="- Jogos de alta performance"
+        ["architecture_ideal2"]="- Computação CUDA (IA, machine learning)"
+        ["architecture_ideal3"]="- Streaming e gravação de vídeo"
+        ["architecture_ideal4"]="- Workstations profissionais"
+        ["performance_note"]="DESEMPENHO: Drivers proprietários oferecem performance máxima"
+        ["performance_note2"]="e recursos completos, mas são software não-livre."
+        ["checking_nvidia"]="Verificando se os módulos NVIDIA estão carregados..."
+        ["nvidia_loaded"]="Módulos NVIDIA proprietários estão carregados e funcionando"
+        ["nvidia_not_loaded"]="Módulos NVIDIA não estão carregados"
+        ["checking_conflicts"]="Verificando conflitos com drivers Nouveau..."
+        ["nouveau_loaded"]="Módulos Nouveau detectados! Eles conflitam com os drivers NVIDIA."
+        ["remove_nouveau"]="Para remover os drivers Nouveau:"
+        ["nouveau_packages"]="Pacotes Nouveau detectados. Eles podem causar conflitos."
+        ["packages_found"]="Pacotes encontrados:"
+        ["no_conflicts"]="Nenhum conflito grave detectado com drivers Nouveau"
+        ["checking_mkinitcpio"]="Verificando configuração do mkinitcpio..."
+        ["mkinitcpio_not_found"]="Arquivo %s não encontrado!"
+        ["mkinitcpio_warning"]="Você pode não ter o mkinitcpio instalado ou usar outro gerenciador (dracut)"
+        ["modules_not_found"]="Linha MODULES= não encontrada em %s"
+        ["modules_normal"]="Isso é normal - vamos configurar os módulos necessários"
+        ["nouveau_in_modules"]="Módulos Nouveau detectados no mkinitcpio! Eles precisam ser removidos."
+        ["current_line"]="Linha atual: %s"
+        ["edit_mkinitcpio"]="Você precisa editar %s e remover: nouveau"
+        ["nvidia_configured"]="Módulos NVIDIA já configurados no mkinitcpio"
+        ["nvidia_not_configured"]="Módulos NVIDIA não estão configurados no mkinitcpio"
+        ["setting_blacklist"]="Configurando blacklist para drivers Nouveau..."
+        ["blacklist_configured"]="Blacklist configurado em %s"
+        ["setting_modules"]="Configurando módulos no mkinitcpio..."
+        ["pause_explain"]="Agora vamos configurar o mkinitcpio para incluir os módulos NVIDIA na imagem initramfs. Isso garante que os drivers sejam carregados durante o boot."
+        ["backup_created"]="Backup criado: %s"
+        ["module_configured"]="Módulos NVIDIA configurados no mkinitcpio"
+        ["updating_initramfs"]="Atualizando imagem initramfs..."
+        ["pause_initramfs"]="Agora vamos regenerar a imagem initramfs com os novos módulos NVIDIA. Esta imagem é carregada durante a inicialização do sistema."
+        ["initramfs_success"]="Initramfs atualizado com sucesso"
+        ["initramfs_failed"]="Falha ao atualizar initramfs"
+        ["checking_packages"]="Verificando pacotes necessários..."
+        ["missing_packages"]="Pacotes faltando: %s"
+        ["install_prompt"]="Deseja instalar os pacotes faltantes? [s/N] "
+        ["packages_installed"]="Pacotes instalados"
+        ["packages_missing"]="Alguns pacotes necessários não estão instalados"
+        ["all_packages_ok"]="Todos os pacotes necessários estão instalados"
+        ["checking_cuda"]="Verificando suporte ao CUDA..."
+        ["cuda_available"]="CUDA disponível e funcionando"
+        ["cuda_warning"]="CUDA pode não estar disponível. Certifique-se de ter os drivers NVIDIA instalados"
+        ["cuda_info"]="Para CUDA completo, instale: cuda nvidia-utils"
+        ["checking_grub"]="Verificando configuração do GRUB..."
+        ["grub_not_found"]="Arquivo do GRUB não encontrado em %s"
+        ["grub_warning"]="Se você usar outro bootloader, verifique a configuração manualmente"
+        ["nouveau_in_grub"]="Parâmetros Nouveau detectados no GRUB. Eles podem precisar ser removidos."
+        ["grub_file"]="Arquivo: %s"
+        ["edit_grub"]="Você pode precisar editar este arquivo e remover parâmetros relacionados ao Nouveau"
+        ["grub_ok"]="GRUB parece estar configurado corretamente"
+        ["testing_config"]="Testando a configuração..."
+        ["checking_modules"]="1. Verificando módulos carregados:"
+        ["nvidia_ok"]="✓ NVIDIA carregado"
+        ["nvidia_failed"]="✗ NVIDIA não está carregado"
+        ["checking_vulkan"]="2. Verificando dispositivos Vulkan:"
+        ["vulkan_ok"]="✓ NVIDIA detectado no Vulkan"
+        ["vulkan_warning"]="NVIDIA não detectado no Vulkan"
+        ["vulkan_info"]="vulkaninfo não instalado. Instale com: sudo pacman -S vulkan-tools"
+        ["checking_opengl"]="3. Verificando renderização OpenGL:"
+        ["opengl_ok"]="✓ NVIDIA ativo no OpenGL"
+        ["opengl_warning"]="NVIDIA não detectado no OpenGL"
+        ["opengl_info"]="glxinfo não instalado. Instale com: sudo pacman -S mesa-demos"
+        ["checking_cuda_test"]="4. Verificando CUDA:"
+        ["cuda_test_ok"]="✓ CUDA funcionando"
+        ["cuda_test_warning"]="CUDA não disponível"
+        ["cuda_test_info"]="nvidia-smi não disponível. Instale com: sudo pacman -S nvidia-utils"
+        ["system_check"]="Iniciando verificação do sistema..."
+        ["config_summary"]="RESUMO DA CONFIGURAÇÃO ATUAL:"
+        ["conflicts_detected"]="CONFLITOS DETECTADOS:"
+        ["conflict1"]="- Drivers Nouveau presentes"
+        ["conflict2"]="- Configuração incorreta no mkinitcpio"
+        ["resolve_problems"]="Vamos resolver esses problemas..."
+        ["incomplete_config"]="CONFIGURAÇÃO INCOMPLETA:"
+        ["incomplete1"]="- Módulos NVIDIA não configurados no mkinitcpio"
+        ["basic_config_ok"]="CONFIGURAÇÃO BÁSICA OK"
+        ["final_adjustments"]="Apenas ajustes finais necessários"
+        ["main_config_done"]="CONFIGURAÇÃO PRINCIPAL CONCLUÍDA!"
+        ["next_steps"]="PRÓXIMOS PASSOS MANUAIS:"
+        ["step1"]="1. REINICIE o sistema: sudo reboot"
+        ["step2"]="2. Após reiniciar, verifique se os módulos NVIDIA estão carregados: lsmod | grep nvidia"
+        ["step3"]="3. Teste o Vulkan: vulkaninfo --summary (se vulkan-tools estiver instalado)"
+        ["step4"]="4. Verifique o status da GPU: nvidia-smi"
+        ["step5"]="5. Para CUDA, teste com: nvidia-cuda-mps-control"
+        ["important"]="IMPORTANTE: Se encontrar problemas:"
+        ["important1"]="- Verifique se os drivers Nouveau foram removidos completamente"
+        ["important2"]="- Confirme que os módulos NVIDIA não estão no blacklist"
+        ["important3"]="- Consulte o log de boot: dmesg | grep nvidia"
+        ["important4"]="- Verifique se sua GPU é suportada pelos drivers atuais"
+        ["test_prompt"]="Deseja testar a configuração agora (sem reiniciar)? [s/N] "
+        ["educational_complete"]="Processo educativo concluído!"
+        ["educational_note1"]="Lembre-se: Este script tem propósito educativo para entender"
+        ["educational_note2"]="como funciona a stack gráfica proprietária NVIDIA no Linux."
+        ["educational_note3"]="Drivers proprietários oferecem melhor performance mas são software não-livre."
+        ["not_root"]="Não execute este script como root! Use como usuário normal."
+        ["driver_selection"]="Seleção de driver baseado na arquitetura da GPU:"
+        ["driver_nvidia"]="- nvidia: GPUs modernas (Turing, Ampere, Ada Lovelace)"
+        ["driver_nvidia_lts"]="- nvidia-lts: Para kernel LTS"
+        ["driver_nvidia_dkms"]="- nvidia-dkms: Para kernels customizados"
+        ["driver_nvidia_470"]="- nvidia-470xx: GPUs Kepler e Maxwell antigas"
+        ["driver_nvidia_390"]="- nvidia-390xx: GPUs Fermi muito antigas"
+        ["select_driver"]="Selecione o driver apropriado para sua GPU:"
+        ["driver_prompt"]="Digite o número do driver (1-5): "
+        ["invalid_selection"]="Seleção inválida! Usando nvidia (padrão para GPUs modernas)"
+        ["installing_driver"]="Instalando driver: %s"
+        ["cuda_question"]="Deseja instalar suporte ao CUDA também? [s/N] "
+        ["cuda_installing"]="Instalando pacotes CUDA..."
+        ["cuda_skipped"]="CUDA não será instalado"
+    )
+else
+    # Mensagens em inglês (padrão)
+    MESSAGES=(
+        ["title"]="EDUCATIONAL CONFIGURATOR: PROPRIETARY NVIDIA ON ARCH LINUX"
+        ["architecture_title"]="PROPRIETARY NVIDIA DRIVERS ARCHITECTURE:"
+        ["architecture_line1"]="1. NVIDIA: Proprietary kernel driver for maximum performance"
+        ["architecture_line2"]="2. CUDA:   Parallel computing platform for AI and scientific computing"
+        ["architecture_line3"]="3. NVENC:  Hardware video encoder for recording and streaming"
+        ["architecture_ideal"]="This configuration is ideal for:"
+        ["architecture_ideal1"]="- High performance gaming"
+        ["architecture_ideal2"]="- CUDA computing (AI, machine learning)"
+        ["architecture_ideal3"]="- Video streaming and recording"
+        ["architecture_ideal4"]="- Professional workstations"
+        ["performance_note"]="PERFORMANCE: Proprietary drivers offer maximum performance"
+        ["performance_note2"]="and full features, but are non-free software."
+        ["checking_nvidia"]="Checking if NVIDIA modules are loaded..."
+        ["nvidia_loaded"]="Proprietary NVIDIA modules are loaded and working"
+        ["nvidia_not_loaded"]="NVIDIA modules are not loaded"
+        ["checking_conflicts"]="Checking for conflicts with Nouveau drivers..."
+        ["nouveau_loaded"]="Nouveau modules detected! They conflict with NVIDIA drivers."
+        ["remove_nouveau"]="To remove Nouveau drivers:"
+        ["nouveau_packages"]="Nouveau packages detected. They may cause conflicts."
+        ["packages_found"]="Packages found:"
+        ["no_conflicts"]="No serious conflicts detected with Nouveau drivers"
+        ["checking_mkinitcpio"]="Checking mkinitcpio configuration..."
+        ["mkinitcpio_not_found"]="File %s not found!"
+        ["mkinitcpio_warning"]="You may not have mkinitcpio installed or use another manager (dracut)"
+        ["modules_not_found"]="MODULES= line not found in %s"
+        ["modules_normal"]="This is normal - we'll configure the necessary modules"
+        ["nouveau_in_modules"]="Nouveau modules detected in mkinitcpio! They need to be removed."
+        ["current_line"]="Current line: %s"
+        ["edit_mkinitcpio"]="You need to edit %s and remove: nouveau"
+        ["nvidia_configured"]="NVIDIA modules already configured in mkinitcpio"
+        ["nvidia_not_configured"]="NVIDIA modules not configured in mkinitcpio"
+        ["setting_blacklist"]="Setting up blacklist for Nouveau drivers..."
+        ["blacklist_configured"]="Blacklist configured at %s"
+        ["setting_modules"]="Configuring modules in mkinitcpio..."
+        ["pause_explain"]="Now we'll configure mkinitcpio to include NVIDIA modules in the initramfs image. This ensures the drivers are loaded during boot."
+        ["backup_created"]="Backup created: %s"
+        ["module_configured"]="NVIDIA modules configured in mkinitcpio"
+        ["updating_initramfs"]="Updating initramfs image..."
+        ["pause_initramfs"]="Now we'll regenerate the initramfs image with the new NVIDIA modules. This image is loaded during system boot."
+        ["initramfs_success"]="Initramfs updated successfully"
+        ["initramfs_failed"]="Failed to update initramfs"
+        ["checking_packages"]="Checking required packages..."
+        ["missing_packages"]="Missing packages: %s"
+        ["install_prompt"]="Do you want to install missing packages? [y/N] "
+        ["packages_installed"]="Packages installed"
+        ["packages_missing"]="Some required packages are not installed"
+        ["all_packages_ok"]="All required packages are installed"
+        ["checking_cuda"]="Checking CUDA support..."
+        ["cuda_available"]="CUDA available and working"
+        ["cuda_warning"]="CUDA may not be available. Make sure you have NVIDIA drivers installed"
+        ["cuda_info"]="For full CUDA, install: cuda nvidia-utils"
+        ["checking_grub"]="Checking GRUB configuration..."
+        ["grub_not_found"]="GRUB file not found at %s"
+        ["grub_warning"]="If you use another bootloader, check the configuration manually"
+        ["nouveau_in_grub"]="Nouveau parameters detected in GRUB. They may need to be removed."
+        ["grub_file"]="File: %s"
+        ["edit_grub"]="You may need to edit this file and remove Nouveau-related parameters"
+        ["grub_ok"]="GRUB appears to be properly configured"
+        ["testing_config"]="Testing configuration..."
+        ["checking_modules"]="1. Checking loaded modules:"
+        ["nvidia_ok"]="✓ NVIDIA loaded"
+        ["nvidia_failed"]="✗ NVIDIA not loaded"
+        ["checking_vulkan"]="2. Checking Vulkan devices:"
+        ["vulkan_ok"]="✓ NVIDIA detected in Vulkan"
+        ["vulkan_warning"]="NVIDIA not detected in Vulkan"
+        ["vulkan_info"]="vulkaninfo not installed. Install with: sudo pacman -S vulkan-tools"
+        ["checking_opengl"]="3. Checking OpenGL rendering:"
+        ["opengl_ok"]="✓ NVIDIA active in OpenGL"
+        ["opengl_warning"]="NVIDIA not detected in OpenGL"
+        ["opengl_info"]="glxinfo not installed. Install with: sudo pacman -S mesa-demos"
+        ["checking_cuda_test"]="4. Checking CUDA:"
+        ["cuda_test_ok"]="✓ CUDA working"
+        ["cuda_test_warning"]="CUDA not available"
+        ["cuda_test_info"]="nvidia-smi not available. Install with: sudo pacman -S nvidia-utils"
+        ["system_check"]="Starting system check..."
+        ["config_summary"]="CURRENT CONFIGURATION SUMMARY:"
+        ["conflicts_detected"]="CONFLICTS DETECTED:"
+        ["conflict1"]="- Nouveau drivers present"
+        ["conflict2"]="- Incorrect configuration in mkinitcpio"
+        ["resolve_problems"]="Let's resolve these problems..."
+        ["incomplete_config"]="INCOMPLETE CONFIGURATION:"
+        ["incomplete1"]="- NVIDIA modules not configured in mkinitcpio"
+        ["basic_config_ok"]="BASIC CONFIGURATION OK"
+        ["final_adjustments"]="Only final adjustments needed"
+        ["main_config_done"]="MAIN CONFIGURATION COMPLETED!"
+        ["next_steps"]="NEXT MANUAL STEPS:"
+        ["step1"]="1. REBOOT the system: sudo reboot"
+        ["step2"]="2. After reboot, check if NVIDIA modules are loaded: lsmod | grep nvidia"
+        ["step3"]="3. Test Vulkan: vulkaninfo --summary (if vulkan-tools is installed)"
+        ["step4"]="4. Check GPU status: nvidia-smi"
+        ["step5"]="5. For CUDA, test with: nvidia-cuda-mps-control"
+        ["important"]="IMPORTANT: If you encounter problems:"
+        ["important1"]="- Verify that Nouveau drivers were completely removed"
+        ["important2"]="- Confirm that NVIDIA modules are not blacklisted"
+        ["important3"]="- Check boot log: dmesg | grep nvidia"
+        ["important4"]="- Verify your GPU is supported by current drivers"
+        ["test_prompt"]="Do you want to test configuration now (without rebooting)? [y/N] "
+        ["educational_complete"]="Educational process completed!"
+        ["educational_note1"]="Remember: This script has educational purpose to understand"
+        ["educational_note2"]="how the proprietary NVIDIA graphics stack works on Linux."
+        ["educational_note3"]="Proprietary drivers offer better performance but are non-free software."
+        ["not_root"]="Do not run this script as root! Use as normal user."
+        ["driver_selection"]="Driver selection based on GPU architecture:"
+        ["driver_nvidia"]="- nvidia: Modern GPUs (Turing, Ampere, Ada Lovelace)"
+        ["driver_nvidia_lts"]="- nvidia-lts: For LTS kernel"
+        ["driver_nvidia_dkms"]="- nvidia-dkms: For custom kernels"
+        ["driver_nvidia_470"]="- nvidia-470xx: Older Kepler and Maxwell GPUs"
+        ["driver_nvidia_390"]="- nvidia-390xx: Very old Fermi GPUs"
+        ["select_driver"]="Select the appropriate driver for your GPU:"
+        ["driver_prompt"]="Enter driver number (1-5): "
+        ["invalid_selection"]="Invalid selection! Using nvidia (default for modern GPUs)"
+        ["installing_driver"]="Installing driver: %s"
+        ["cuda_question"]="Do you want to install CUDA support too? [y/N] "
+        ["cuda_installing"]="Installing CUDA packages..."
+        ["cuda_skipped"]="CUDA will not be installed"
+    )
+fi
+
+# Cores para output mais amigável
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Arquivos de configuração importantes
+MODULES_MKINITCPIO="/etc/mkinitcpio.conf"
+MODPROBE_DIR="/etc/modprobe.d"
+BOOT_LOADER_CONF="/etc/default/grub"
+
+# Função para imprimir mensagens informativas
+info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+# Função para imprimir avisos
+warning() {
+    echo -e "${YELLOW}[AVISO]${NC} $1"
+}
+
+# Função para imprimir sucesso
+success() {
+    echo -e "${GREEN}[SUCESSO]${NC} $1"
+}
+
+# Função para imprimir erros
+error() {
+    echo -e "${RED}[ERRO]${NC} $1"
+}
+
+# Função para pausar e explicar o que está acontecendo
+pause_and_explain() {
+    echo
+    info "PAUSA PEDAGÓGICA: $1"
+    read -p "Pressione Enter para continuar..."
+    echo
+}
+
+# Verifica se o usuário é root
+check_root() {
+    if [[ $EUID -eq 0 ]]; then
+        error "${MESSAGES[not_root]}"
+        exit 1
+    fi
+}
+
+# Seleciona o driver apropriado baseado na arquitetura da GPU
+select_nvidia_driver() {
+    echo
+    info "${MESSAGES[driver_selection]}"
+    echo "${MESSAGES[driver_nvidia]}"
+    echo "${MESSAGES[driver_nvidia_lts]}"
+    echo "${MESSAGES[driver_nvidia_dkms]}"
+    echo "${MESSAGES[driver_nvidia_470]}"
+    echo "${MESSAGES[driver_nvidia_390]}"
+    echo
+    
+    info "${MESSAGES[select_driver]}"
+    echo "1) nvidia (GPUs modernas - padrão)"
+    echo "2) nvidia-lts (Kernel LTS)"
+    echo "3) nvidia-dkms (Kernels customizados)"
+    echo "4) nvidia-470xx (GPUs antigas Kepler/Maxwell)"
+    echo "5) nvidia-390xx (GPUs muito antigas Fermi)"
+    
+    read -p "${MESSAGES[driver_prompt]}" driver_choice
+    
+    case $driver_choice in
+        1) SELECTED_DRIVER="nvidia" ;;
+        2) SELECTED_DRIVER="nvidia-lts" ;;
+        3) SELECTED_DRIVER="nvidia-dkms" ;;
+        4) SELECTED_DRIVER="nvidia-470xx" ;;
+        5) SELECTED_DRIVER="nvidia-390xx" ;;
+        *) 
+            warning "${MESSAGES[invalid_selection]}"
+            SELECTED_DRIVER="nvidia"
+            ;;
+    esac
+    
+    info "$(printf "${MESSAGES[installing_driver]}" "$SELECTED_DRIVER")"
+    echo
+}
+
+# Pergunta sobre instalação do CUDA
+ask_cuda_installation() {
+    read -p "${MESSAGES[cuda_question]}" -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[SsYy]$ ]]; then
+        INSTALL_CUDA=true
+        info "${MESSAGES[cuda_installing]}"
+    else
+        INSTALL_CUDA=false
+        info "${MESSAGES[cuda_skipped]}"
+    fi
+    echo
+}
+
+# Explica a arquitetura dos drivers
+explain_architecture() {
+    echo "================================================================================"
+    info "${MESSAGES[architecture_title]}"
+    echo
+    echo "${MESSAGES[architecture_line1]}"
+    echo "${MESSAGES[architecture_line2]}"
+    echo "${MESSAGES[architecture_line3]}"
+    echo
+    echo "${MESSAGES[architecture_ideal]}"
+    echo "${MESSAGES[architecture_ideal1]}"
+    echo "${MESSAGES[architecture_ideal2]}"
+    echo "${MESSAGES[architecture_ideal3]}"
+    echo "${MESSAGES[architecture_ideal4]}"
+    echo
+    warning "${MESSAGES[performance_note]}"
+    warning "${MESSAGES[performance_note2]}"
+    echo "================================================================================"
+    echo
+}
+
+# Verifica se os módulos NVIDIA estão carregados
+check_nvidia_loaded() {
+    info "${MESSAGES[checking_nvidia]}"
+    
+    if lsmod | grep -qi nvidia; then
+        success "${MESSAGES[nvidia_loaded]}"
+        return 0
+    else
+        warning "${MESSAGES[nvidia_not_loaded]}"
+        return 1
+    fi
+}
+
+# Verifica se há conflitos com drivers Nouveau
+check_nouveau_conflicts() {
+    info "${MESSAGES[checking_conflicts]}"
+    
+    # Verifica módulos carregados
+    if lsmod | grep -qi nouveau; then
+        error "${MESSAGES[nouveau_loaded]}"
+        echo
+        info "${MESSAGES[remove_nouveau]}"
+        echo "  sudo pacman -Rs xf86-video-nouveau mesa-git-nouveau-*"
+        echo
+        return 1
+    fi
+    
+    # Verifica pacotes instalados
+    if pacman -Qs nouveau > /dev/null 2>&1; then
+        warning "${MESSAGES[nouveau_packages]}"
+        echo "${MESSAGES[packages_found]}"
+        pacman -Qs nouveau | grep "nouveau" | head -5
+        echo
+    fi
+    
+    success "${MESSAGES[no_conflicts]}"
+    return 0
+}
+
+# Verifica configuração do mkinitcpio para módulos NVIDIA
+check_mkinitcpio_config() {
+    info "${MESSAGES[checking_mkinitcpio]}"
+    
+    if [[ ! -f "$MODULES_MKINITCPIO" ]]; then
+        error "$(printf "${MESSAGES[mkinitcpio_not_found]}" "$MODULES_MKINITCPIO")"
+        error "${MESSAGES[mkinitcpio_warning]}"
+        return 1
+    fi
+    
+    local line_modules=$(grep '^MODULES=' "$MODULES_MKINITCPIO" || true)
+    
+    if [[ -z "$line_modules" ]]; then
+        warning "$(printf "${MESSAGES[modules_not_found]}" "$MODULES_MKINITCPIO")"
+        info "${MESSAGES[modules_normal]}"
+        return 2
+    fi
+    
+    # Verifica se há módulos Nouveau que podem causar conflito
+    if echo "$line_modules" | grep -q "nouveau"; then
+        error "${MESSAGES[nouveau_in_modules]}"
+        echo "$(printf "${MESSAGES[current_line]}" "$line_modules")"
+        echo
+        info "$(printf "${MESSAGES[edit_mkinitcpio]}" "$MODULES_MKINITCPIO")"
+        return 1
+    fi
+    
+    # Verifica se NVIDIA está nos módulos
+    if echo "$line_modules" | grep -q "nvidia"; then
+        success "${MESSAGES[nvidia_configured]}"
+        return 0
+    else
+        warning "${MESSAGES[nvidia_not_configured]}"
+        return 2
+    fi
+}
+
+# Configura o blacklist para drivers Nouveau
+setup_nouveau_blacklist() {
+    info "${MESSAGES[setting_blacklist]}"
+    
+    local blacklist_file="$MODPROBE_DIR/blacklist-nouveau.conf"
+    
+    cat << EOF | sudo tee "$blacklist_file" > /dev/null
+# Blacklist para drivers Nouveau - Configurado pelo script educativo NVIDIA
+# Este arquivo impede que os drivers Nouveau sejam carregados
+# permitindo que os drivers NVIDIA proprietários funcionem corretamente.
+
+blacklist nouveau
+options nouveau modeset=0
+
+# Garante que o módulo não seja carregado mesmo se for explicitamente solicitado
+alias nouveau off
+alias nouveau off
+EOF
+
+    success "$(printf "${MESSAGES[blacklist_configured]}" "$blacklist_file")"
+}
+
+# Configura os módulos no mkinitcpio
+setup_mkinitcpio_modules() {
+    info "${MESSAGES[setting_modules]}"
+    
+    pause_and_explain "${MESSAGES[pause_explain]}"
+    
+    # Backup do arquivo original
+    sudo cp "$MODULES_MKINITCPIO" "$MODULES_MKINITCPIO.backup.$(date +%Y%m%d)"
+    success "$(printf "${MESSAGES[backup_created]}" "$MODULES_MKINITCPIO.backup.$(date +%Y%m%d)")"
+    
+    # Configura módulos NVIDIA - importante manter a ordem correta
+    sudo sed -i 's/^MODULES=.*/MODULES=(nvidia nvidia_modeset nvidia_drm nvidia_uvm)/' "$MODULES_MKINITCPIO" 2>/dev/null || {
+        # Se a substituição falhar, adiciona a linha MODULES
+        echo 'MODULES=(nvidia nvidia_modeset nvidia_drm nvidia_uvm)' | sudo tee -a "$MODULES_MKINITCPIO" > /dev/null
+    }
+    
+    success "${MESSAGES[module_configured]}"
+}
+
+# Atualiza a imagem initramfs
+update_initramfs() {
+    info "${MESSAGES[updating_initramfs]}"
+    
+    pause_and_explain "${MESSAGES[pause_initramfs]}"
+    
+    if sudo mkinitcpio -P; then
+        success "${MESSAGES[initramfs_success]}"
+    else
+        error "${MESSAGES[initramfs_failed]}"
+        return 1
+    fi
+}
+
+# Verifica e instala pacotes necessários
+install_required_packages() {
+    info "${MESSAGES[checking_packages]}"
+    
+    select_nvidia_driver
+    
+    local required_packages=()
+    local missing_packages=()
+    
+    # Pacotes base do driver NVIDIA
+    required_packages=(
+        "$SELECTED_DRIVER"
+        "${SELECTED_DRIVER}-utils"
+        "lib32-$SELECTED_DRIVER-utils"
+        "opencl-nvidia"
+        "lib32-opencl-nvidia"
+    )
+    
+    # Adiciona pacotes CUDA se solicitado
+    if [[ "$INSTALL_CUDA" == true ]]; then
+        required_packages+=("cuda" "cuda-tools")
+    fi
+    
+    # Verifica pacotes instalados
+    for pkg in "${required_packages[@]}"; do
+        if ! pacman -Qs "$pkg" > /dev/null 2>&1; then
+            missing_packages+=("$pkg")
+        fi
+    done
+    
+    if [[ ${#missing_packages[@]} -gt 0 ]]; then
+        warning "$(printf "${MESSAGES[missing_packages]}" "${missing_packages[*]}")"
+        read -p "${MESSAGES[install_prompt]}" -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[SsYy]$ ]]; then
+            sudo pacman -S --needed "${missing_packages[@]}"
+            success "${MESSAGES[packages_installed]}"
+        else
+            warning "${MESSAGES[packages_missing]}"
+        fi
+    else
+        success "${MESSAGES[all_packages_ok]}"
+    fi
+    
+    # Verifica especificamente o CUDA
+    info "${MESSAGES[checking_cuda]}"
+    if command -v nvidia-smi > /dev/null 2>&1; then
+        success "${MESSAGES[cuda_available]}"
+    else
+        warning "${MESSAGES[cuda_warning]}"
+        info "${MESSAGES[cuda_info]}"
+    fi
+}
+
+# Verifica se o GRUB precisa de configuração
+check_grub_config() {
+    info "${MESSAGES[checking_grub]}"
+    
+    if [[ ! -f "$BOOT_LOADER_CONF" ]]; then
+        warning "$(printf "${MESSAGES[grub_not_found]}" "$BOOT_LOADER_CONF")"
+        warning "${MESSAGES[grub_warning]}"
+        return 0
+    fi
+    
+    # Verifica parâmetros de kernel que podem conflitar
+    if grep -q "nouveau" "$BOOT_LOADER_CONF"; then
+        warning "${MESSAGES[nouveau_in_grub]}"
+        echo "$(printf "${MESSAGES[grub_file]}" "$BOOT_LOADER_CONF")"
+        grep "nouveau" "$BOOT_LOADER_CONF" || true
+        echo
+        info "${MESSAGES[edit_grub]}"
+    else
+        success "${MESSAGES[grub_ok]}"
+    fi
+}
+
+# Testa a configuração
+test_configuration() {
+    info "${MESSAGES[testing_config]}"
+    
+    echo
+    info "${MESSAGES[checking_modules]}"
+    if lsmod | grep -i nvidia; then
+        success "${MESSAGES[nvidia_ok]}"
+    else
+        error "${MESSAGES[nvidia_failed]}"
+    fi
+    
+    echo
+    info "${MESSAGES[checking_vulkan]}"
+    if command -v vulkaninfo > /dev/null 2>&1; then
+        if vulkaninfo --summary 2>/dev/null | grep -i "nvidia"; then
+            success "${MESSAGES[vulkan_ok]}"
+        else
+            warning "${MESSAGES[vulkan_warning]}"
+        fi
+    else
+        warning "${MESSAGES[vulkan_info]}"
+    fi
+    
+    echo
+    info "${MESSAGES[checking_opengl]}"
+    if command -v glxinfo > /dev/null 2>&1; then
+        if glxinfo | grep -i "nvidia"; then
+            success "${MESSAGES[opengl_ok]}"
+        else
+            warning "${MESSAGES[opengl_warning]}"
+        fi
+    else
+        warning "${MESSAGES[opengl_info]}"
+    fi
+    
+    echo
+    info "${MESSAGES[checking_cuda_test]}"
+    if command -v nvidia-smi > /dev/null 2>&1; then
+        if nvidia-smi > /dev/null 2>&1; then
+            success "${MESSAGES[cuda_test_ok]}"
+            echo
+            nvidia-smi
+        else
+            warning "${MESSAGES[cuda_test_warning]}"
+        fi
+    else
+        warning "${MESSAGES[cuda_test_info]}"
+    fi
+}
+
+# Função principal
+main() {
+    echo "================================================================================"
+    echo "${MESSAGES[title]}"
+    echo "================================================================================"
+    echo
+    
+    check_root
+    explain_architecture
+    
+    # Pergunta sobre CUDA antes de começar
+    ask_cuda_installation
+    
+    info "${MESSAGES[system_check]}"
+    echo
+    
+    # Executa todas as verificações
+    check_nvidia_loaded
+    check_nouveau_conflicts
+    check_mkinitcpio_config
+    mkinitcpio_result=$?
+    
+    check_grub_config
+    
+    echo
+    info "${MESSAGES[config_summary]}"
+    echo "=============================="
+    
+    if [[ $mkinitcpio_result -eq 1 ]]; then
+        error "${MESSAGES[conflicts_detected]}"
+        error "${MESSAGES[conflict1]}"
+        error "${MESSAGES[conflict2]}"
+        echo
+        info "${MESSAGES[resolve_problems]}"
+        echo
+        
+        setup_nouveau_blacklist
+        setup_mkinitcpio_modules
+        update_initramfs
+        
+    elif [[ $mkinitcpio_result -eq 2 ]]; then
+        warning "${MESSAGES[incomplete_config]}"
+        warning "${MESSAGES[incomplete1]}"
+        echo
+        info "${MESSAGES[complete_config]}"
+        
+        setup_mkinitcpio_modules
+        update_initramfs
+        
+    else
+        success "${MESSAGES[basic_config_ok]}"
+        info "${MESSAGES[final_adjustments]}"
+    fi
+    
+    install_required_packages
+    
+    echo
+    success "${MESSAGES[main_config_done]}"
+    echo
+    
+    info "${MESSAGES[next_steps]}"
+    echo "${MESSAGES[step1]}"
+    echo "${MESSAGES[step2]}"
+    echo "${MESSAGES[step3]}"
+    echo "${MESSAGES[step4]}"
+    echo "${MESSAGES[step5]}"
+    echo
+    warning "${MESSAGES[important]}"
+    warning "${MESSAGES[important1]}"
+    warning "${MESSAGES[important2]}"
+    warning "${MESSAGES[important3]}"
+    warning "${MESSAGES[important4]}"
+    
+    echo
+    read -p "${MESSAGES[test_prompt]}" -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[SsYy]$ ]]; then
+        test_configuration
+    fi
+    
+    echo
+    success "${MESSAGES[educational_complete]}"
+    info "${MESSAGES[educational_note1]}"
+    info "${MESSAGES[educational_note2]}"
+    info "${MESSAGES[educational_note3]}"
+    echo
+}
+
+# Executa a função principal
+main "$@"

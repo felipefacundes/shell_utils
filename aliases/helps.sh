@@ -23,6 +23,8 @@ alias qemu_mounting_help='help qemu_mounting_help'
 alias qcow2_mounting_help='qemu_mounting_help'
 alias mounting_qcow2_help='qemu_mounting_help'
 
+alias nouveau_nvk_zink_help='help nouveau_nvk_zink'
+
 alias trap_signals='help trap_signals'
 alias trap_signals_a_help='trap_signals'
 alias trap_signals_a_comprehensive_guide='trap_signals'
