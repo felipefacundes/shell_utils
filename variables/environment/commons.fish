@@ -5,9 +5,10 @@ set -gx vblank_mode 0
 set -gx __GL_SYNC_TO_VBLANK 0
 set -gx PYENV_ROOT "$HOME/.pyenv"
 set -gx SHELL_UTILS "$HOME/.shell_utils"
+set -gx SHELL_UTILS_USERS "$HOME/.local/shell_utils"
 
 # Updating Path
-set -gx PATH $PATH /bin /usr/bin "$HOME/.local/bin" "$SHELL_UTILS/scripts" "$SHELL_UTILS/scripts/faqs" "$SHELL_UTILS/scripts/utils" "$SHELL_UTILS/scripts/Freds_img" "$HOME/.local/share/gem/ruby/3.0.0/bin" "$PYENV_ROOT/bin" "$HOME/.perl5/bin"
+set -gx PATH $PATH /bin /usr/bin "$HOME/.local/bin" "$SHELL_UTILS/scripts" "$SHELL_UTILS_USERS/scripts" "$SHELL_UTILS/scripts/faqs" "$SHELL_UTILS/scripts/utils" "$SHELL_UTILS_USERS/scripts/utils" "$SHELL_UTILS/scripts/Freds_img" "$HOME/.local/share/gem/ruby/3.0.0/bin" "$PYENV_ROOT/bin" "$HOME/.perl5/bin"
 
 # Configuring perl5lib
 set -gx PERL5LIB "$HOME/.perl5/lib/perl5"

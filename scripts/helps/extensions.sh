@@ -12,7 +12,7 @@ remove_extension()
 
 	SCRIPT_NAME="${0##*/}"
 
-	filename="arquivo.backup.tar.gz"
+	filename="file.backup.tar.gz"
 	echo "${filename%.*}"     # Output: file.backup.tar
 	echo "${filename%%.*}"    # Output: file
 	echo "${filename##*.}"    # Output: gz

@@ -3,28 +3,83 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
+help_shell - Dynamic Function Help System for Bash
+
+DESCRIPTION:
 Imagine creating helper functions and typing whatever you want in the terminal, just creating a 
 simple function instead of an entire script—this is the premise of help_shell.
 
 The help_shell script is an efficient and user-friendly tool designed to dynamically 
 display help information for your Bash functions.
 
-Define your functions below. Add as many functions as you like in a similar manner
-
+FEATURES:
 - Dynamic Help Display: Automatically lists all available functions with descriptions extracted from comments.
 - Interactive Search: Search for functions by name or description using a clean and intuitive menu powered by whiptail.
 - Flexible Usage: Allows for specifying functions as command-line arguments or interacting via the dynamic menu.
 - Integration Ready: Seamlessly integrates with the shell_utils framework, leveraging pre-defined variables and resources.
+
+USAGE:
+  help_shell                    # Interactive mode with search menu
+  help_shell function_name      # Execute specific function directly
+  help_shell func1 func2 ...    # Execute multiple functions
+  help_shell -h | --help        # Display this help message
+  help_shell search_term        # Search and select functions matching term
+
+EXAMPLES:
+  help_shell                    # Launch interactive function browser
+  help_shell git_status         # Execute git_status function directly
+  help_shell backup cleanup     # Execute backup then cleanup functions
+  help_shell -h                 # Show detailed help documentation
+  help_shell "docker"           # Search for functions related to docker
+
+FUNCTION DOCUMENTATION FORMAT:
+To ensure your functions are properly documented, use this format:
+
+# Function description that will appear in help
+
+✅ CORRECT - Description will be detected:
+my_function() {
+    echo "# This description WILL be detected"
+    echo "Doing actual work..."
+}
+
+❌ INCORRECT - Regular comments won't work:
+my_function() {
+    # This comment WON'T be detected
+    echo "Doing work..."
+}
+
+Best example:
+
+remove_extension() {
+cat <<'EOF'
+# Remove extension
+
+Examples:
+
+SCRIPT_NAME="${0##*/}"
+
+filename="file.backup.tar.gz"
+echo "${filename%.*}"     # Output: file.backup.tar
+echo "${filename%%.*}"    # Output: file
+echo "${filename##*.}"    # Output: gz
+EOF
+}
 DOCUMENTATION
 
 shell_utils=~/.shell_utils
-helps_dir="${shell_utils}/scripts/helps"
+help_dir="${shell_utils}/scripts/helps"
+help_user_dir="${HOME}/.local/shell_utils/scripts/helps"
 
 shopt -s globstar
 source "${shell_utils}/variables/shell_colors.sh"
 
-for file in "${helps_dir}"/**/*.sh; do
-    source "${file}"
+help_directories=("$help_dir" "$help_user_dir")
+
+for dir in "${help_directories[@]}"; do
+    for file in "${dir}"/**/*.sh; do
+        [[ -f "$file" ]] && source "${file}"
+    done
 done
 
 show_documentation() {
@@ -44,23 +99,14 @@ show_documentation() {
 
 # Display help dynamically
 help() {
-    echo -e "$(show_documentation | head -7)\n"
-    echo "Usage: ${0##*/} [function1 function2 ...]"
-    echo -e "\n-h, --help,"
-    echo -e "
-# Display this help message.
-"
-    echo -e "Available functions:\n"
- 
-    for func_name in $(declare -F | cut -d " " -f 3); do
-        # Extract the first comment line of the function
-        description=$(type "$func_name" | grep -m 1 '^#')  # Or | awk '/^#/ {print; exit}' or | sed -n '/^#/p' | head -n 1
-        # Remove the '#' character from the description
-        description=${description/#\# /}
-        echo -e "  ${func_name} <=> $description"
-    done
-
-    echo -e "\nEnter q to quit this help.\n"
+    show_documentation
+            
+    echo -e "\nINTERACTIVE USAGE:"
+    echo "  • Leave search term blank to list all functions"
+    echo "  • Use arrow keys to navigate the menu"
+    echo "  • Press Enter to execute selected function"
+    echo "  • Press Esc or Cancel to exit"
+    echo -e "\nEnter 'q' to quit this help.\n"
 }
 
 # Function to search and display functions matching a term
