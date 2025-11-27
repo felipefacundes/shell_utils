@@ -301,7 +301,7 @@ fi
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     touch "$CONFIG_FILE"
-    echo 'If this configuration is not set or is set to 0, automatic updates will be disabled.' | tee "$CONFIG_FILE" 1>/dev/null
+    echo '# If this configuration is not set or is set to 0, automatic updates will be disabled.' | tee "$CONFIG_FILE" 1>/dev/null
     echo 'SHELL_UTILS_AUTO_UPDATE=1' | tee -a "$CONFIG_FILE" 1>/dev/null
     echo 'UPDATE_CHECK_INTERVAL=21600' | tee -a "$CONFIG_FILE" 1>/dev/null
 fi
