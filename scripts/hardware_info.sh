@@ -524,8 +524,12 @@ detectgpu () {
     
 	if lspci | grep -E "VGA|3D" | grep "NVIDIA" >/dev/null; then
 		# Detect NVIDIA GPUs
-		if type -p nvidia-smi >/dev/null 2>&1; then
+		if lsmod | grep -qi nvidia && type -p nvidia-smi >/dev/null 2>&1; then
 			nvidia_gpus=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null)
+		else
+			nvidia_gpus=$(lspci 2>/dev/null | grep -i 'vga.*nvidia' | head -1 | cut -d':' -f3- | sed 's/^[ \t]*//')
+		fi
+		if [[ -n "$nvidia_gpus" ]]; then
 			while IFS= read -r gpu; do
 				if [[ -n "$gpu" ]]; then
 					#gpus+=("NVIDIA $gpu [Discrete]")

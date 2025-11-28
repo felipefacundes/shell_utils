@@ -14,3 +14,4 @@ alias waydroid_script_libhoudini='sudo waydroid-extras -l'
 
 alias waydroid_mount_share_folder='help waydroid_mount_share_folder'
 alias waydroid_fix_solutions='help waydroid_fix_solutions'
+alias waydroid_certificate_playstore='help waydroid_certificate_playstore'
