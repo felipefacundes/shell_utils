@@ -1,4 +1,4 @@
-# Educational Tutorial: Configuration of Nouveau + NVK on Arch Linux
+# Educational Tutorial: Nouveau + NVK Configuration on Arch Linux
 
 ![Nouveau + NVK](https://via.placeholder.com/800x200/4A90E2/FFFFFF?text=Nouveau+%2B+NVK+-+Open+Source+Drivers+for+NVIDIA+on+Linux)
 
@@ -6,19 +6,20 @@
 
 1. [🎯 Conceptual Introduction](#-conceptual-introduction)
 2. [🏗️ Driver Architecture](#️-driver-architecture)
-3. [🔍 Prerequisites and Checks](#-prerequisites-and-checks)
+3. [🔍 Prerequisites and Verifications](#-prerequisites-and-verifications)
 4. [🛠️ Step-by-Step Configuration](#️-step-by-step-configuration)
 5. [🧪 Testing and Validation](#-testing-and-validation)
-6. [🐛 Educational Troubleshooting](#-educational-troubleshooting)
-7. [📖 Concepts Glossary](#-concepts-glossary)
+6. [⚡ Optimization with GSP Parameter](#-optimization-with-gsp-parameter)
+7. [🐛 Educational Troubleshooting](#-educational-troubleshooting)
+8. [📖 Concepts Glossary](#-concepts-glossary)
 
 ## 🎯 Conceptual Introduction
 
 ### What is This Driver Stack?
 
-Imagine your NVIDIA video card is a **musical orchestra**:
+Imagine your NVIDIA graphics card as a **musical orchestra**:
 
-- **Nouveau** = The **musicians** (controls the hardware directly)
+- **Nouveau** = The **musicians** (controls hardware directly)
 - **NVK** = The **modern conductor** (Vulkan - manages resources efficiently)
 - **Zink** = The **musical translator** (converts OpenGL to Vulkan)
 
@@ -28,7 +29,7 @@ Imagine your NVIDIA video card is a **musical orchestra**:
 |---------|-------------|
 | **Pure Free Software** | ✅ Ideal |
 | **Development** | ✅ Excellent |
-| **Modern games** | ⚠️ Limited (better on Turing+) |
+| **Modern gaming** | ⚠️ Limited (better on Turing+) |
 | **Machine Learning** | ❌ Not recommended |
 | **Study/Academic** | ✅ Perfect |
 
@@ -50,7 +51,7 @@ Imagine your NVIDIA video card is a **musical orchestra**:
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### Component Explanation
+### Components Explanation
 
 #### 1. **Nouveau** - The Kernel Driver
 ```bash
@@ -84,7 +85,7 @@ vulkaninfo | grep -i "deviceName"
 glxinfo | grep "OpenGL renderer"
 ```
 
-## 🔍 Prerequisites and Checks
+## 🔍 Prerequisites and Verifications
 
 ### 1. ✅ Check Supported Hardware
 
@@ -126,7 +127,7 @@ lsmod | grep nouveau
 
 ### 📋 Pre-configuration Checklist
 
-- [ ] Backup of important data
+- [ ] Important data backup
 - [ ] Stable internet connection
 - [ ] Estimated time: 15-30 minutes
 - [ ] Terminal access as normal user (not root)
@@ -135,7 +136,7 @@ lsmod | grep nouveau
 
 ```bash
 # 💀 DANGER: This step is only necessary if you have NVIDIA drivers installed
-# ❌ DO NOT run if you already use Nouveau or if you don't have NVIDIA drivers
+# ❌ DO NOT run if you already use Nouveau or don't have NVIDIA drivers
 
 # List NVIDIA packages to remove
 pacman -Qs nvidia
@@ -143,7 +144,7 @@ pacman -Qs nvidia
 # Remove proprietary NVIDIA drivers
 sudo pacman -Rs nvidia nvidia-utils nvidia-settings nvidia-dkms
 
-# Clean up any residual configuration files
+# Clean any residual configuration files
 sudo rm -f /etc/modprobe.d/nvidia*
 ```
 
@@ -166,7 +167,7 @@ blacklist nvidia_drm
 blacklist nvidia_modeset
 blacklist nvidia_uvm
 
-# "alias" = defines aliases that disable the modules
+# "alias" = defines aliases that disable modules
 alias nvidia off
 alias nvidia_drm off
 alias nvidia_modeset off
@@ -177,7 +178,7 @@ alias nvidia_uvm off
 # conflicts with Nouveau.
 ```
 
-### 🔧 Step 3: Configure Nouveau Module in the Kernel
+### 🔧 Step 3: Configure Nouveau Module in Kernel
 
 ```bash
 # Edit mkinitcpio configuration
@@ -194,9 +195,9 @@ MODULES=(nouveau)
 
 # 💡 Pedagogical explanation:
 # mkinitcpio creates the initramfs image - a mini-system
-# that is loaded during boot. By including "nouveau" in
-# MODULES, we ensure the driver is loaded early in the
-# boot process, even before the main system.
+# that loads during boot. By including "nouveau" in
+# MODULES, we ensure the driver loads early in the
+# boot process, before the main system.
 ```
 
 ### 🏗️ Step 4: Rebuild Initramfs
@@ -206,8 +207,8 @@ MODULES=(nouveau)
 sudo mkinitcpio -P
 
 # 💡 What's happening?
-# 1. The system reads /etc/mkinitcpio.conf
-# 2. Creates a new initramfs with the Nouveau module
+# 1. System reads /etc/mkinitcpio.conf
+# 2. Creates new initramfs with Nouveau module
 # 3. Updates all available kernel images
 ```
 
@@ -227,13 +228,13 @@ sudo pacman -S --needed \
     mesa-demos         # Tools to test OpenGL
 
 # 💡 Educational note about each package:
-# - mesa: Contains DRI (Direct Rendering Infrastructure) drivers
+# - mesa: Contains DRI drivers (Direct Rendering Infrastructure)
 # - xf86-video-nouveau: 2D/X11 driver for Nouveau
 # - vulkan-icd-loader: Allows multiple Vulkan drivers to coexist
-# - lib32-mesa: 32-bit application support (important for games via Wine)
+# - lib32-mesa: 32-bit application support (important for Wine games)
 ```
 
-### 🔄 Step 6: Restart the System
+### 🔄 Step 6: Restart System
 
 ```bash
 # Restart to apply all changes
@@ -250,7 +251,7 @@ sudo reboot
 ### 1. ✅ Verify Loaded Modules
 
 ```bash
-# Check if Nouveau is loaded correctly
+# Verify if Nouveau is loaded correctly
 lsmod | grep nouveau
 
 # Expected output:
@@ -270,7 +271,7 @@ lsmod | grep nouveau
 # Check available Vulkan devices
 vulkaninfo --summary
 
-# Look for "nvk" or "nouveau" in the output
+# Look for "nvk" or "nouveau" in output
 # Example of successful output:
 # ==========
 # VULKANINFO
@@ -296,18 +297,146 @@ glxinfo | grep -E "OpenGL vendor|OpenGL renderer"
 # Expected output with Zink:
 # OpenGL vendor string: Mesa
 # OpenGL renderer string: AMD Radeon Graphics (RADV NAVI23) 
-# 💡 Note: May show RADV because Zink uses the Vulkan backend
+# 💡 Note: May show RADV because Zink uses Vulkan backend
 ```
 
 ### 4. 🎮 Practical Test with Application
 
 ```bash
-# Test with a simple Vulkan application
+# Test with simple Vulkan application
 vkcube
 
-# If a colored rotating 3D cube appears: 🎉 SUCCESS!
-# This demonstrates that the entire stack is working:
+# If colored rotating 3D cube appears: 🎉 SUCCESS!
+# This demonstrates the entire stack is working:
 # Nouveau (kernel) → NVK (Vulkan) → Mesa (userspace)
+```
+
+## ⚡ Optimization with GSP Parameter
+
+### 🎯 What is `nouveau.config=NvGspRm=1`?
+
+**Technical Definition:**
+```bash
+# This parameter activates NVIDIA GSP (GPU System Processor) Firmware
+# in the Nouveau driver. GSP is a coprocessor present in modern GPUs
+# that manages various GPU functions.
+
+# Syntax to add to GRUB:
+GRUB_CMDLINE_LINUX_DEFAULT="... nouveau.config=NvGspRm=1"
+```
+
+### 🚀 GSP Parameter Benefits
+
+**What it's for:**
+- **🎯 Performance Improvement**: Offloads tasks from CPU to GSP
+- **🔧 Stability**: Dedicated processing of GPU functions
+- **⚡ Boot**: Faster boot on compatible GPUs
+- **🔋 Efficiency**: Better power management
+
+**GPUs That Benefit:**
+```bash
+# 🟢 GPUs with FULL support (recommended):
+# - Ada Lovelace (RTX 40xx)
+# - Ampere (RTX 30xx) 
+# - Turing (RTX 20xx, GTX 16xx)
+
+# 🟡 GPUs with PARTIAL support (may help):
+# - Volta (Tesla V100)
+# - Pascal (GTX 10xx) - limited
+
+# 🔴 GPUs WITHOUT support (don't use):
+# - Maxwell (GTX 9xx) and earlier
+```
+
+### 🛠️ How to Configure
+
+**Step 1: Edit GRUB Configuration**
+```bash
+# Open GRUB configuration file
+sudo nano /etc/default/grub
+
+# Locate GRUB_CMDLINE_LINUX_DEFAULT line
+# And add nouveau.config=NvGspRm=1 parameter
+```
+
+**Configuration Example:**
+```bash
+# 🔧 BEFORE:
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet"
+
+# 🎯 AFTER:
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet nouveau.config=NvGspRm=1"
+
+# 💡 Tip: Keep existing parameters and just add the new one
+```
+
+**Step 2: Update GRUB Configuration**
+```bash
+# For BIOS systems:
+sudo grub-mkconfig -o /boot/grub/grub.cfg
+
+# For UEFI systems:
+sudo grub-mkconfig -o /boot/efi/EFI/arch/grub.cfg
+
+# For systems using systemd-boot, edit entry file directly:
+sudo nano /boot/loader/entries/arch.conf
+# Add: options ... nouveau.config=NvGspRm=1
+```
+
+**Step 3: Verify It's Active**
+```bash
+# After restarting, check if parameter is loaded:
+cat /proc/cmdline | grep nouveau.config
+
+# Check kernel logs for confirmation:
+dmesg | grep -i "gsp"
+
+# Expected output if working:
+# nouveau: NVIDIA GSP firmware in use
+```
+
+### ⚠️ Important Considerations
+
+**Compatibility:**
+```bash
+# Check if your GPU is compatible before using:
+lspci | grep -i nvidia
+
+# Example for RTX 30xx (Ampere):
+# 01:00.0 VGA compatible controller: NVIDIA Corporation GA102 [GeForce RTX 3090] (rev a1)
+# ✅ THIS GPU BENEFITS from the parameter
+
+# Example for GTX 970 (Maxwell):
+# 01:00.0 VGA compatible controller: NVIDIA Corporation GM204 [GeForce GTX 970] (rev a1)
+# ❌ THIS GPU DOES NOT BENEFIT
+```
+
+**Potential Problems:**
+```bash
+# If you encounter problems, remove parameter and restart
+# Incompatibility symptoms:
+# - Black screen on boot
+# - Graphical artifacts
+# - System freeze
+
+# For debug, use temporary parameters in GRUB menu:
+# Edit entry by pressing 'e' and remove nouveau.config=NvGspRm=1
+```
+
+### 📊 Performance Comparison
+
+**With GSP Enabled:**
+```bash
+# ✅ Advantages:
+# - Faster boot
+# - Lower CPU usage
+# - Better responsiveness
+# - Support for modern features
+
+# ⚠️ Considerations:
+# - Only works on recent GPUs
+# - May be less stable on old hardware
+# - Dependent on firmware version
 ```
 
 ## 🐛 Educational Troubleshooting
@@ -330,13 +459,13 @@ grep -r "blacklist nouveau" /etc/modprobe.d/
 
 2. **Check modules in mkinitcpio:**
 ```bash
-# Confirm Nouveau is in the modules list
+# Confirm Nouveau is in modules list
 grep "MODULES" /etc/mkinitcpio.conf
 ```
 
 3. **Reload modules manually:**
 ```bash
-# Try to load the module manually for debug
+# Try to load module manually for debug
 sudo modprobe nouveau
 dmesg | tail -20  # Check kernel messages
 ```
@@ -368,7 +497,7 @@ vulkaninfo --summary
 **Technical explanation:**
 ```bash
 # Maxwell (GTX 900) and Pascal (GTX 1000) don't have
-# reclocking support in Nouveau, operating at
+# recloking support in Nouveau, operating only at
 # minimum frequencies (boot clocks)
 
 # Check current frequency (if supported):
@@ -390,10 +519,11 @@ echo "performance" | sudo tee /sys/class/drm/card0/device/power_dpm_force_perfor
 | Term | Pedagogical Definition |
 |-------|---------------------|
 | **DRM** | Direct Rendering Manager - kernel subsystem for graphics |
-| **KMS** | Kernel Mode Setting - video mode configuration in the kernel |
+| **KMS** | Kernel Mode Setting - video mode configuration in kernel |
 | **GBM** | Generic Buffer Management - graphics buffer management |
 | **Vulkan** | Modern and efficient graphics API (OpenGL successor) |
 | **ICD** | Installable Client Driver - how multiple Vulkan drivers coexist |
+| **GSP** | GPU System Processor - coprocessor in modern NVIDIA GPUs |
 
 ### 🔧 Specific Components
 
@@ -401,8 +531,9 @@ echo "performance" | sudo tee /sys/class/drm/card0/device/power_dpm_force_perfor
 |------------|--------|----------|
 | **Nouveau** | Kernel driver for NVIDIA | 🚗 Car engine |
 | **NVK** | Open source Vulkan driver | 🎮 Modern onboard computer |
-| **Zink** | OpenGL layer on top of Vulkan | 🗣️ Simultaneous translator |
+| **Zink** | OpenGL layer over Vulkan | 🗣️ Simultaneous translator |
 | **Mesa** | Open source implementation of graphics APIs | 🏭 Graphics factory |
+| **GSP Firmware** | GPU coprocessor firmware | 🧠 Auxiliary brain |
 
 ### 🎯 Useful Diagnostic Commands
 
@@ -413,6 +544,7 @@ lsmod | grep -e nouveau -e nvidia     # Loaded modules
 dmesg | grep -i nouveau               # Driver logs
 glxinfo | grep -i "opengl version"    # OpenGL version
 vulkaninfo --summary                  # Vulkan summary
+cat /proc/cmdline                     # Kernel parameters
 ```
 
 ## 🎓 Educational Conclusion
@@ -423,14 +555,16 @@ vulkaninfo --summary                  # Vulkan summary
 2. **Difference between kernel space and user space**
 3. **Relationship between Nouveau, NVK and Zink**
 4. **Kernel module configuration process**
-5. **Systematic troubleshooting techniques**
+5. **Optimization with GSP parameter for modern GPUs**
+6. **Systematic troubleshooting techniques**
 
-### 🔮 Next Steps for Learning:
+### 🔮 Next Learning Steps:
 
 - Explore graphics APIs (Vulkan vs OpenGL)
 - Learn about GPGPU computing with open source
 - Study Nouveau/NVK source code
 - Contribute to open source graphics projects
+- Deepen knowledge in GPU firmware and GSP
 
 ### 📚 Additional Resources
 
@@ -438,7 +572,8 @@ vulkaninfo --summary                  # Vulkan summary
 - [NVK repository on GitLab](https://gitlab.freedesktop.org/nouveau/mesa/)
 - [Arch Linux Wiki about Nouveau](https://wiki.archlinux.org/title/Nouveau)
 - [Collabora blog about NVK](https://www.collabora.com/news-and-blog/blog/)
+- [NVIDIA GSP documentation](https://github.com/NVIDIA/open-gpu-kernel-modules)
 
 ---
 
-**🎉 Congratulations!** You not only configured an open source graphics stack, but also understood the concepts behind each component. This knowledge is fundamental to becoming an advanced Linux user!
+**🎉 Congratulations!** You not only configured an open source graphics stack, but also understood the concepts behind each component and learned about advanced optimizations like the GSP parameter. This knowledge is fundamental to becoming an advanced Linux user!
