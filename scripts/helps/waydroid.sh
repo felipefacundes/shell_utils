@@ -4,13 +4,17 @@ waydroid_certificate_playstore() {
 
 1. Run command:
 
+$ sudo waydroid shell -- sh -c "sqlite3 /data/data/com.google.android.gsf/databases/gservices.db 'select * from main where name = \"android_id\";'"
+
+Or:
+
 $ sudo waydroid shell
 
-2. In waydroid shell, run command:
+# In waydroid shell, run command:
 
 $ ANDROID_RUNTIME_ROOT=/apex/com.android.runtime ANDROID_DATA=/data ANDROID_TZDATA_ROOT=/apex/com.android.tzdata ANDROID_I18N_ROOT=/apex/com.android.i18n sqlite3 /data/data/com.google.android.gsf/databases/gservices.db "select * from main where name = \"android_id\";"
 
-3. then access the link and use the number generated
+2. then access the link and use the number generated
 https://www.google.com/android/uncertified/
 
 EOF
