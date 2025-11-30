@@ -42,7 +42,32 @@ waydroid_process=$(pidof waydroid)
 
 # Check kernel
 #kernel=$(uname -r | sed 's|-|.|g')
-#! [[ "$kernel" =~ "zen" ]] && echo "Start the system with the linux-zen kernel"
+#sudo modprobe binder || { ! [[ "$kernel" =~ "zen" ]] && echo "Start the system with the linux-zen kernel or install binder_linux-dkms" && exit 1; }
+
+# Try to load the main binder module
+if sudo modprobe binder; then
+    echo "Binder module loaded successfully."
+else
+    echo "Error: Failed to load 'binder' module." >&2
+
+    # Check if the DKMS module (binder_linux) is available
+    if modinfo binder_linux &>/dev/null; then
+        echo "The 'binder_linux' (DKMS) module was found."
+        echo "Attempting to load 'binder_linux'..."
+        if sudo modprobe binder_linux; then
+            echo "Binder_linux module loaded successfully."
+            exit 0
+        fi
+    fi
+
+    # If none of the modules could be loaded, provide guidance
+    echo "" >&2
+    echo "Possible solutions:" >&2
+    echo "1. Boot with a kernel that includes the modules, such as linux-zen, linux-xanmod, liquorix, etc." >&2
+    echo "2. Install and build the modules via DKMS (binder_linux-dkms)." >&2
+    echo "   - Make sure the kernel headers packages (e.g., linux-zen-headers) are installed." >&2
+    exit 1
+fi
 
 # Manage Waydroid service
 if [[ -n "${waydroid_process}" ]]; then 
