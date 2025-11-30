@@ -49,3 +49,23 @@ $ sudo ufw allow 53
 $ sudo ufw default allow FORWARD 
 EOF
 }
+
+waydroid_help() {
+	clear
+	cat <<-'EOF'
+	# Waydroid Help: Complete Setup and Usage Guide
+
+	EOF
+    echo -e "1) English tutorial\n2) Portuguese tutorial\n"
+    read -r option
+    [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
+    case $option in
+        1)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/waydroid.md
+        ;;
+        2)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/waydroid_pt.md
+        ;;
+    esac
+    clear
+}

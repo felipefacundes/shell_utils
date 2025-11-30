@@ -1,0 +1,4 @@
+#!/bin/bash
+
+mount | grep Public/Android >/dev/null && sudo umount -R ~/Public/Android
+sudo waydroid session stop && sudo waydroid container stop

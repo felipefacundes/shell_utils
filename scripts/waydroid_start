@@ -3,27 +3,81 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-Waydroid Start
+Waydroid Start Script
+=====================
+
+Description:
+This script manages Waydroid initialization and file sharing setup between the host system and Android container.
+
+Features:
+- Starts or restarts Waydroid container service
+- Initializes Waydroid with GApps support
+- Handles first-time setup
+- Creates and mounts shared directory for file transfer between host and Android
+
+Requirements:
+- Waydroid installed and configured
+- sudo privileges for system operations
+- systemd for service management
+
+Usage:
+Simply run the script. It will:
+1. Check if Waydroid is running and offer to restart if needed
+2. Initialize Waydroid if not already done
+3. Set up file sharing between host and Android container
+
+Directory Structure:
+- Waydroid share directory: ~/.local/share/waydroid/data/media/0/Share
+- Host mount point: ~/Public/Android
+
+Note: The script uses bind mount to enable file sharing between systems.
 DOCUMENTATION
 
-#####################################################
-################## Waydroid Start ###################
-waydroid_container=$(pgrep -f waydroid)
-waydroid=$(pidof waydroid)
+# Directory configurations
+waydroid_share="$HOME/.local/share/waydroid/data/media/0/Share"
+waydroid_mount="$HOME/Public/Android"
 
-if [[ -n "${waydroid_container}" ]]; then 
-    echo "Restart Service? y - yes | n - no"    
-    read -r o
-    if [[ "$o" = y ]]; then 
+# Check if Waydroid container is running
+waydroid_process=$(pidof waydroid)
+
+# Manage Waydroid service
+if [[ -n "${waydroid_process}" ]]; then 
+    echo -n "Waydroid service detected. Restart? (y/n): "   
+	echo 
+    read -r response
+    if [[ "${response}" =~ ^[Yy]$ ]]; then 
         sudo systemctl stop waydroid-container.service
         clear
     fi
 fi
 
-if [ -z "${waydroid_container}" ]; then 
-    sudo waydroid init -s GAPPS -f
+if [[ ! -d "${waydroid_mount}" ]]; then
+    mkdir -p "${waydroid_mount}"
 fi
 
-if [ -z "${waydroid}" ]; then 
-    waydroid first-launch 2>/dev/null & sleep 0.1
+# Waydroid initialization
+if [ -z "${waydroid_process}" ]; then 
+    echo "Starting Waydroid initialization..."
+    sudo waydroid init -s GAPPS -f & disown
 fi
+
+# First-time setup
+if [ -z "${waydroid_process}" ]; then 
+    echo "Running first-time setup..."
+    waydroid first-launch 2>/dev/null & disown
+fi
+
+## File sharing configuration
+echo "Configuring file sharing..."
+if ! sudo ls "${waydroid_share}" >/dev/null 2>&1; then
+	sudo mkdir -p "${waydroid_share}"
+	# Change ownership of the share directory to the current user
+	sudo chmod -R 755 "${waydroid_share}"
+	sudo chown -R "${USER}" "${waydroid_share}"
+fi
+
+# Mount shared directory
+sudo mount --bind -o rw "${waydroid_share}" "${waydroid_mount}"
+sudo chown -R "${USER}" "${waydroid_mount}"
+
+echo "Waydroid setup completed successfully!"
