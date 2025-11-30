@@ -40,6 +40,10 @@ waydroid_mount="$HOME/Public/Android"
 # Check if Waydroid container is running
 waydroid_process=$(pidof waydroid)
 
+# Check kernel
+#kernel=$(uname -r | sed 's|-|.|g')
+#! [[ "$kernel" =~ "zen" ]] && echo "Start the system with the linux-zen kernel"
+
 # Manage Waydroid service
 if [[ -n "${waydroid_process}" ]]; then 
     echo -n "Waydroid service detected. Restart? (y/n): "   
