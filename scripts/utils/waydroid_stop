@@ -1,4 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
 
 mount | grep Public/Android >/dev/null && sudo umount -R ~/Public/Android
+sudo systemctl stop waydroid-container.service
 sudo waydroid session stop && sudo waydroid container stop
