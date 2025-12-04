@@ -7,7 +7,7 @@ This script is to keep the program open in X seconds. The default is 5 seconds.
 DOCUMENTATION
 
 doc() {
-    less -FX "$0" | head -n6 | tail -n1
+    cat "$0" | head -n6 | tail -n1
     echo
 }
 
@@ -17,6 +17,9 @@ error() {
 }
 
 command="$1"
+check_pids=()
+delay="${delay:-5}"
+native_command=$(command -v "$command")
 ban_term=$(echo "$command" | sed '/^-/d')
 
 if [[ -z "$command" ]] || [[ -z "$ban_term" ]]; then
@@ -28,8 +31,6 @@ Example:
     exit 0
 fi
 
-native_command=$(command -v "$command")
-delay="${delay:-5}"
 
 if [[ -z "$native_command" ]]; then
     error
@@ -37,11 +38,60 @@ elif [[ ! -x "$command" && ! -f "$command" ]]; then
     error
 fi
 
-while true
-        do pid=$(pidof "$command")
+# if pgrep -f "${0##*/}"; then
+# 	exit 1
+# fi
+
+_check() {
+    local test=$1
+    sleep "$delay"
+
+    if [[ -z "$test" ]] && ! pidof "$command"; then
+        clear
+        echo "$command not working"
+        # Kill all script processes
+        kill -9 $(jobs -p) 2>/dev/null
+        exit 1
+    fi
+}
+
+# Cleaning function
+cleanup() {
+    # Kill all child processes
+    kill -9 $(jobs -p) 2>/dev/null 2>/dev/null
+    # Clear the PID array
+    check_pids=()
+    exit
+}
+
+main() {
+    local pid
+    
+    # Configure traps for different signals
+    trap cleanup EXIT INT TERM
+    
+    while true; do
+        pid=$(pidof "$command")
+        
+        if [[ -z "$pid" ]]; then
+            "$command" &
+            # Store the PID for possible cleaning
+            check_pids+=($!)
+        fi
+        
+        sleep "$delay"
 
         if [[ -z "$pid" ]]; then
-            exec "$command" &
+            _check "$pid" &
         fi
-        sleep "$delay"
-done
+        
+        # Clear PIDs of processes that have already finished
+        for i in "${!check_pids[@]}"; do
+            if ! kill -0 "${check_pids[$i]}" 2>/dev/null; then
+                unset "check_pids[$i]"
+            fi
+        done
+    done
+}
+
+main

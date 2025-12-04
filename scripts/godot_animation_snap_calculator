@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+clear
+
+# ============================================================================
+# SCRIPT: Godot Animation Snap Calculator
+# VERSION: 1.2
+# AUTHOR: Assistant
+# DESCRIPTION: Calculates precise snap interval for Godot AnimationPlayer
+#              when using PNG frames from video conversion.
+# ============================================================================
+
+: <<'DOCUMENTATION'
+OVERVIEW:
+    This script provides a solution for developers who want to avoid the
+    poor visual quality of the OGV/Theora video format in Godot and instead
+    use high-quality PNG image sequences for animations.
+
+PROBLEM STATEMENT:
+    When converting a video to individual PNG frames and creating an
+    AnimationPlayer in Godot, determining the correct snap interval to
+    match the original video timing is mathematically challenging.
+    An incorrect interval causes animation timing issues and potential
+    audio desynchronization.
+
+SOLUTION:
+    This script calculates the precise decimal snap value needed to
+    distribute N frames evenly across S seconds, ensuring the animation
+    duration matches the original video length. This enables perfect
+    frame-by-frame animation with PNG quality while maintaining accurate
+    timing for audio synchronization.
+
+USE CASE:
+    1. Convert video to PNG frames (e.g., using ffmpeg)
+    2. Count total frames generated
+    3. Note original video duration
+    4. Run this script with duration and frame count
+    5. Use output snap value in Godot AnimationPlayer's custom snap setting
+    6. Create keyframes at each snapped interval for frame changes
+
+BENEFITS:
+    - Preserves original video quality using lossless PNG frames
+    - Maintains accurate animation timing
+    - Enables perfect audio-video synchronization
+    - Provides mathematical precision for professional results
+
+EXAMPLE WORKFLOW:
+    Original video: 8.967 seconds, 72 frames
+    Command: ./script.sh -s 8.967 -f 72
+    Output: Snap value: 0.124542 seconds
+    Godot: Set AnimationPlayer custom snap to 0.124542
+
+DEPENDENCIES:
+    Requires bc (basic calculator) for precise decimal arithmetic.
+    Install with: sudo pacman -S bc             # Arch Linux
+	              sudo apt-get install bc   # Debian/Ubuntu
+                  brew install bc               # macOS
+DOCUMENTATION
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+SCRIPT_NAME="$(basename "$0")"
+VERSION="1.2"
+BC_PRECISION=6  # Decimal places for calculations
+
+# ============================================================================
+# FUNCTIONS
+# ============================================================================
+
+show_documentation() {
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0"
+}
+
+# Display help information
+help() {
+    echo ""
+    echo "┌─────────────────────────────────────────────────────────────────────┐"
+    echo "│                GODOT ANIMATION SNAP CALCULATOR v$VERSION                 │"
+    echo "├─────────────────────────────────────────────────────────────────────┤"
+    
+    # Display documentation
+    echo "│                          DOCUMENTATION                              │"
+    echo "├─────────────────────────────────────────────────────────────────────┤"
+	echo ""
+    show_documentation
+    echo ""
+    echo "├─────────────────────────────────────────────────────────────────────┤"
+    echo "│                            USAGE                                    │"
+    echo "├─────────────────────────────────────────────────────────────────────┤"
+    echo "│  $SCRIPT_NAME -s <seconds> -f <frames> [options] │"
+    echo "│                                                                     │"
+    echo "│  REQUIRED ARGUMENTS:                                                │"
+    echo "│    -s, --seconds   Total duration in seconds (e.g., 8.967)          │"
+    echo "│    -f, --frames    Total number of frames (e.g., 72)                │"
+    echo "│                                                                     │"
+    echo "│  OPTIONAL ARGUMENTS:                                                │"
+    echo "│    -h, --help      Display this help message and exit               │"
+    echo "│    -v, --version   Display version information and exit             │"
+    echo "│    -p, --precision Decimal precision for output (default: 6)        │"
+    echo "│                                                                     │"
+    echo "│  EXAMPLES:                                                          │"
+    echo "│    $SCRIPT_NAME -s 8.967 -f 72                   │"
+    echo "│    $SCRIPT_NAME -s 12.5 -f 150 --precision 8     │"
+    echo "│    $SCRIPT_NAME --seconds 5.25 --frames 63       │"
+    echo "└─────────────────────────────────────────────────────────────────────┘"
+    echo ""
+}
+
+show_help() {
+	if command -v less >/dev/null; then
+	    help | less
+	else
+	    help
+	fi
+}
+
+# Display version information
+show_version() {
+    echo "Godot Animation Snap Calculator v$VERSION"
+    echo "A tool for calculating precise animation timing in Godot Engine"
+}
+
+# Calculate and display snap value
+calculate_snap() {
+    local duration="$1"
+    local frames="$2"
+    local precision="$3"
+    
+    # Validate inputs
+    if ! [[ "$duration" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "ERROR: Invalid duration format. Use format like 8.967" >&2
+        return 1
+    fi
+    
+    if ! [[ "$frames" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: Frames must be a positive integer" >&2
+        return 1
+    fi
+    
+    if [ "$frames" -eq 0 ]; then
+        echo "ERROR: Frame count must be greater than zero" >&2
+        return 1
+    fi
+    
+    # Calculate snap value using bc for precision
+    local snap_value
+    snap_value=$(echo "scale=$((precision + 2)); $duration / $frames" | bc)
+    
+    # Format output
+    local rounded_value
+    rounded_value=$(echo "scale=$precision; $snap_value / 1" | bc)
+    
+    # Calculate FPS
+    local fps_value
+    fps_value=$(echo "scale=3; $frames / $duration" | bc)
+    
+    echo ""
+    echo "╔═══════════════════════════════════════════════════════════════════╗"
+    echo "║                     CALCULATION RESULTS                           ║"
+    echo "╠═══════════════════════════════════════════════════════════════════╣"
+    echo "  Original Duration:  $duration seconds" | awk '{printf " %-63s\n", $0}'
+    echo "  Total Frames:       $frames frames" | awk '{printf " %-63s\n", $0}'
+    echo "  Calculated FPS:     $fps_value frames per second" | awk '{printf " %-63s\n", $0}'
+    echo "╠═══════════════════════════════════════════════════════════════════╣"
+    echo "║  GODOT ANIMATIONPLAYER SNAP SETTING:                              ║"
+    echo "║                                                                   ║"
+    printf "║  » Custom Snap Value:  %-43s \n" "$rounded_value"
+    echo "║                                                                   ║"
+    echo "║  » Action: In Godot AnimationPlayer, set custom snap to the       ║"
+    echo "║    value above for perfect frame timing.                          ║"
+    echo "║                                                                   ║"
+    printf "║  » Note: This value is APPROXIMATED to %d decimal places.      \n" "$precision"
+    echo "║       Godot may display fewer decimals visually but will          ║"
+    echo "║       use the full precision internally.                          ║"
+    echo "╚═══════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    # Additional technical information
+    echo "TECHNICAL DETAILS:"
+    echo "  • Exact calculation: $duration ÷ $frames = $snap_value seconds per frame"
+    echo "  • Animation duration: $duration seconds"
+    echo "  • Frame interval: ~$rounded_value seconds"
+    echo "  • For audio sync: Ensure audio file length matches $duration seconds"
+}
+
+# ============================================================================
+# MAIN SCRIPT EXECUTION
+# ============================================================================
+
+# Initialize variables
+DURATION=""
+FRAMES=""
+PRECISION=$BC_PRECISION
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -s|--seconds)
+            if [[ -n "$2" && "$2" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                DURATION="$2"
+                shift 2
+            else
+                echo "ERROR: Invalid value for -s. Expected number like 8.967" >&2
+                exit 1
+            fi
+            ;;
+        -f|--frames)
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+                FRAMES="$2"
+                shift 2
+            else
+                echo "ERROR: Invalid value for -f. Expected integer like 72" >&2
+                exit 1
+            fi
+            ;;
+        -p|--precision)
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+                PRECISION="$2"
+                shift 2
+            else
+                echo "ERROR: Invalid value for -p. Expected integer like 6" >&2
+                exit 1
+            fi
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            show_version
+            exit 0
+            ;;
+        -*)
+            echo "ERROR: Unknown option: $1" >&2
+            echo "Use $SCRIPT_NAME -h for help" >&2
+            exit 1
+            ;;
+        *)
+            echo "ERROR: Unexpected argument: $1" >&2
+            echo "Use $SCRIPT_NAME -h for help" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Check for required arguments
+if [ -z "$DURATION" ] || [ -z "$FRAMES" ]; then
+    echo "ERROR: Missing required arguments" >&2
+    echo ""
+    echo "Usage: $SCRIPT_NAME -s <seconds> -f <frames>"
+    echo "Example: $SCRIPT_NAME -s 8.967 -f 72"
+    echo ""
+    echo "Use $SCRIPT_NAME -h for detailed help"
+    exit 1
+fi
+
+# Check if bc is available
+if ! command -v bc &> /dev/null; then
+    echo "ERROR: 'bc' calculator is required but not installed." >&2
+    echo "Install it with one of these commands:" >&2
+    echo "  Arch Linux: sudo pacman -S bc" >&2
+    echo "  Debian/Ubuntu: sudo apt-get install bc" >&2
+    echo "  macOS: brew install bc" >&2
+    echo "  CentOS/RHEL: sudo yum install bc" >&2
+    exit 1
+fi
+
+# Perform calculation
+calculate_snap "$DURATION" "$FRAMES" "$PRECISION"

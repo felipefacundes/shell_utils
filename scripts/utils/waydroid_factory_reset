@@ -7,3 +7,4 @@ if mount | grep Public/Android >/dev/null; then
 fi
 sudo systemctl stop waydroid-container.service
 sudo waydroid session stop && sudo waydroid container stop
+sudo rm -rf ~/.local/share/waydroid && sudo rm -rf ~/.local/share/applications/*aydroid* && sudo rm -rf /var/lib/waydroid
