@@ -1,5 +1,4 @@
-remove_extension()
-{
+remove_extension() {
 	clear
 	cat <<-'EOF'
 	# Remove extension tips - This guide presents professional techniques for file name manipulation in shell scripts, with special focus on removing file extensions. Each method includes practical examples with clearly demonstrated inputs and outputs.
