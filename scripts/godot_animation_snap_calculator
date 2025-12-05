@@ -2,8 +2,6 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-clear
-
 # ============================================================================
 # SCRIPT: Godot Animation Snap Calculator
 # VERSION: 1.2
@@ -55,7 +53,7 @@ EXAMPLE WORKFLOW:
 DEPENDENCIES:
     Requires bc (basic calculator) for precise decimal arithmetic.
     Install with: sudo pacman -S bc             # Arch Linux
-	              sudo apt-get install bc   # Debian/Ubuntu
+                  sudo apt-get install bc       # Debian/Ubuntu
                   brew install bc               # macOS
 DOCUMENTATION
 
@@ -71,18 +69,7 @@ BC_PRECISION=6  # Decimal places for calculations
 # ============================================================================
 
 show_documentation() {
-    awk '
-    BEGIN { inside_block = 0 }
-
-    # Check the beginning of the DOCUMENTATION block
-    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
-
-    # Check the end of the DOCUMENTATION block
-    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
-
-    # Print lines within the DOCUMENTATION block
-    inside_block { print }
-    ' "$0"
+    sed -n '/^: <<.DOCUMENTATION./,/^DOCUMENTATION/p' "$0" | sed '1d;$d'
 }
 
 # Display help information

@@ -1,0 +1,439 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Based on Felipe Facundes' cmd script
+
+: <<'DOCUMENTATION'
+Script: shell_fuzzy_search - Fuzzy finder for file content and directory files
+
+✓ Substring case-insensitive search in text files or directories
+✓ Real-time updating while typing/deleting
+✓ Colorful and intuitive interface
+✓ Navigation with arrow keys
+✓ Direct selection with Enter
+✓ Usage modes: interactive search in file or directory
+
+Usage modes:
+  shell_fuzzy_search [term] <file>      # Search terms in a text file
+  shell_fuzzy_search [term] <directory> # Search files in a directory
+  shell_fuzzy_search --docs, -d         # Print this documentation
+  shell_fuzzy_search --help, -h         # Help
+
+Examples:
+  shell_fuzzy_search function script.sh  # Search "function" in script.sh
+  shell_fuzzy_search .conf /etc          # Search ".conf" files in /etc
+DOCUMENTATION
+
+# Colors for the interface
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+# Internationalization messages
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    # Portuguese messages
+    MESSAGES=(
+        [title_file]="=== Buscador Fuzzy de Termos no Arquivo ==="
+        [title_dir]="=== Buscador Fuzzy de Arquivos no Diretório ==="
+        [search]="Busca: "
+        [items_found]="Itens encontrados: "
+        [instructions]="Use ↑↓ para navegar, Enter para selecionar, Backspace para editar, Ctrl+C para sair"
+        [no_items]="Nenhum item encontrado."
+        [position]="[%d/%d]"
+        [term_selected]="Termo selecionado: "
+        [file_selected]="Arquivo selecionado:"
+        [file_type]="Tipo: "
+        [mime_type]="MIME: "
+        [full_path]="Caminho completo: "
+        [usage_title]="Uso: shell_fuzzy_search [termo] <arquivo_ou_diretório>"
+        [usage1]="     shell_fuzzy_search [termo] <arquivo>     - Buscar termos em arquivo de texto"
+        [usage2]="     shell_fuzzy_search [termo] <diretório>   - Buscar arquivos em diretório"
+        [usage3]="     shell_fuzzy_search --docs, -d            - Mostrar documentação"
+        [usage4]="     shell_fuzzy_search --help, -h            - Mostrar esta ajuda"
+        [error_path]="Erro: O caminho especificado não existe."
+        [error_binary]="Erro: O arquivo parece ser binário. Use apenas arquivos de texto."
+    )
+else
+    # English messages (default)
+    MESSAGES=(
+        [title_file]="=== File Terms Fuzzy Finder ==="
+        [title_dir]="=== Directory Files Fuzzy Finder ==="
+        [search]="Search: "
+        [items_found]="Items found: "
+        [instructions]="Use ↑↓ to navigate, Enter to select, Backspace to edit, Ctrl+C to exit"
+        [no_items]="No items found."
+        [position]="[%d/%d]"
+        [term_selected]="Selected term: "
+        [file_selected]="Selected file:"
+        [file_type]="Type: "
+        [mime_type]="MIME: "
+        [full_path]="Full path: "
+        [usage_title]="Usage: shell_fuzzy_search [term] <file_or_directory>"
+        [usage1]="     shell_fuzzy_search [term] <file>        - Search terms in text file"
+        [usage2]="     shell_fuzzy_search [term] <directory>   - Search files in directory"
+        [usage3]="     shell_fuzzy_search --docs, -d           - Show documentation"
+        [usage4]="     shell_fuzzy_search --help, -h           - Show this help"
+        [error_path]="Error: The specified path does not exist."
+        [error_binary]="Error: The file appears to be binary. Use text files only."
+    )
+fi
+
+# Global variables
+declare -a items
+declare -a filtered_items
+current_index=0
+search_term=""
+search_mode=""  # "file" or "directory"
+target_path=""
+
+# Configuration
+MAX_RESULTS=35
+SHOW_COUNT=10
+
+# Function to get all unique terms from a text file
+get_file_terms() {
+    local file="$1"
+    local -a unique_terms
+    local -A seen
+    
+    # Check if file is binary
+    if file "$file" | grep -q "executable\|binary\|compiled"; then
+        echo "${MESSAGES[error_binary]}" >&2
+        exit 1
+    fi
+    
+    # Extract all words/terms from file
+    while IFS= read -r line; do
+        # Split line into words
+        for word in $line; do
+            # Remove special characters but keep alphanumeric and common symbols
+            word=$(echo "$word" | sed 's/[^a-zA-Z0-9._-]//g')
+            if [[ -n "$word" && ! ${seen["$word"]} ]]; then
+                unique_terms+=("$word")
+                seen["$word"]=1
+            fi
+        done
+    done < "$file"
+    
+    # Sort terms
+    mapfile -t items < <(printf "%s\n" "${unique_terms[@]}" | sort -u)
+    filtered_items=("${items[@]}")
+}
+
+# Function to get all files from a directory (recursively)
+get_directory_files() {
+    local dir="$1"
+    local -a file_list
+    
+    # Use find to get all files recursively
+    while IFS= read -r -d '' file; do
+        # Get relative path from directory
+        local rel_path="${file#$dir/}"
+        [[ "$rel_path" != "$file" ]] && file_list+=("$rel_path") || file_list+=("${file##*/}")
+    done < <(find "$dir" -type f -print0 2>/dev/null)
+    
+    # Also add directories
+    while IFS= read -r -d '' file; do
+        local rel_path="${file#$dir/}"
+        [[ "$rel_path" != "$file" && -n "$rel_path" ]] && file_list+=("$rel_path/")
+    done < <(find "$dir" -type d -print0 2>/dev/null)
+    
+    # Sort items
+    mapfile -t items < <(printf "%s\n" "${file_list[@]}" | sort -u)
+    filtered_items=("${items[@]}")
+}
+
+# IMPROVED function for fuzzy matching (case-insensitive substring search)
+fuzzy_match() {
+    local pattern="$1"
+    local string="$2"
+    
+    # If no pattern, return success
+    [[ -z "$pattern" ]] && return 0
+    
+    local pattern_lower="${pattern,,}"
+    local string_lower="${string,,}"
+    
+    # Check if pattern is contained in string (substring search)
+    [[ "$string_lower" == *"$pattern_lower"* ]]
+}
+
+# Function to filter items based on search term
+filter_items() {
+    filtered_items=()
+    
+    if [[ -z "$search_term" ]]; then
+        filtered_items=("${items[@]}")
+        return
+    fi
+    
+    for item in "${items[@]}"; do
+        if fuzzy_match "$search_term" "$item"; then
+            filtered_items+=("$item")
+        fi
+    done
+}
+
+# Function to highlight search term in item
+highlight_match() {
+    local item="$1"
+    local pattern="$2"
+    
+    if [[ -z "$pattern" ]]; then
+        echo "$item"
+        return
+    fi
+    
+    local pattern_lower="${pattern,,}"
+    local item_lower="${item,,}"
+    
+    # Find pattern position
+    local pos="${item_lower%%$pattern_lower*}"
+    local pos_len=${#pos}
+    
+    if [[ "$item_lower" == *"$pattern_lower"* ]]; then
+        local before="${item:0:$pos_len}"
+        local match="${item:$pos_len:${#pattern}}"
+        local after="${item:$((pos_len + ${#pattern}))}"
+        echo -e "${before}${BOLD}${GREEN}${match}${NC}${after}"
+    else
+        echo "$item"
+    fi
+}
+
+# Function to clear screen
+clear_screen() {
+    printf "\033[2J\033[H"
+}
+
+# Function to display interface
+display_interface() {
+    clear_screen
+    
+    # Title
+    if [[ "$search_mode" == "file" ]]; then
+        echo -e "${BOLD}${CYAN}${MESSAGES[title_file]}${NC}"
+    else
+        echo -e "${BOLD}${CYAN}${MESSAGES[title_dir]}${NC}"
+    fi
+    
+    echo -e "${YELLOW}${MESSAGES[search]}${BOLD}${search_term}${NC}\033[5m_\033[0m"
+    echo -e "${BLUE}${MESSAGES[items_found]}${#filtered_items[@]}${NC}"
+    echo -e "${MAGENTA}${MESSAGES[instructions]}${NC}"
+    echo "----------------------------------------"
+    
+    # Calculate indices for display
+    local start_index=$((current_index - SHOW_COUNT/2))
+    [[ $start_index -lt 0 ]] && start_index=0
+    
+    local end_index=$((start_index + SHOW_COUNT))
+    [[ $end_index -gt ${#filtered_items[@]} ]] && end_index=${#filtered_items[@]}
+    
+    # Adjust start_index if needed
+    if [[ $((end_index - start_index)) -lt $SHOW_COUNT && $start_index -gt 0 ]]; then
+        start_index=$((end_index - SHOW_COUNT))
+        [[ $start_index -lt 0 ]] && start_index=0
+    fi
+    
+    # Display items
+    for ((i=start_index; i<end_index; i++)); do
+        local item="${filtered_items[$i]}"
+        
+        if [[ $i -eq $current_index ]]; then
+            echo -e "${BOLD}${RED}❯ ${NC}$(highlight_match "$item" "$search_term")"
+        else
+            echo -e "  $(highlight_match "$item" "$search_term")"
+        fi
+    done
+    
+    # Additional information
+    if [[ ${#filtered_items[@]} -eq 0 ]]; then
+        echo -e "\n${YELLOW}${MESSAGES[no_items]}${NC}"
+    else
+        printf "\n${BLUE}${MESSAGES[position]}${NC}\n" "$((current_index + 1))" "${#filtered_items[@]}"
+    fi
+}
+
+# Main fuzzy finder function
+run_fuzzy_finder() {
+    # Set up terminal for key reading
+    local old_stty
+    old_stty=$(stty -g)
+    stty -icanon -echo min 1 time 0
+    
+    # Trap to restore terminal settings
+    trap 'stty "$old_stty"; exit 0' INT TERM EXIT
+    
+    while true; do
+        display_interface
+        
+        # Read character by character
+        local char
+        IFS= read -r -n1 char
+        
+        # Detect escape sequences (special keys)
+        if [[ "$char" == $'\x1b' ]]; then
+            # Read next 2 characters for escape sequences
+            local seq1 seq2
+            read -r -n1 -t 0.01 seq1
+            read -r -n1 -t 0.01 seq2
+            
+            if [[ "$seq1" == '[' ]]; then
+                case "$seq2" in
+                    'A') # Up arrow
+                        if [[ $current_index -gt 0 ]]; then
+                            ((current_index--))
+                        fi
+                        ;;
+                    'B') # Down arrow
+                        if [[ $current_index -lt $((${#filtered_items[@]} - 1)) ]]; then
+                            ((current_index++))
+                        fi
+                        ;;
+                    'H') # Home
+                        current_index=0
+                        ;;
+                    'F') # End
+                        current_index=$((${#filtered_items[@]} - 1))
+                        [[ $current_index -lt 0 ]] && current_index=0
+                        ;;
+                esac
+            fi
+        elif [[ "$char" == $'\x7f' || "$char" == $'\x08' ]]; then
+            # Backspace or Delete
+            if [[ ${#search_term} -gt 0 ]]; then
+                search_term="${search_term:0:$((${#search_term}-1))}"
+                filter_items
+                current_index=0
+            fi
+        elif [[ "$char" == $'\x0a' || "$char" == $'\x0d' || "$char" == '' ]]; then
+            # Enter (Line Feed or Carriage Return or empty)
+            if [[ ${#filtered_items[@]} -gt 0 && $current_index -ge 0 ]]; then
+                local selected_item="${filtered_items[$current_index]}"
+                stty "$old_stty"
+                clear_screen
+                
+                # Handle selection based on mode
+                if [[ "$search_mode" == "file" ]]; then
+                    # Show selected term
+                    echo -e "${GREEN}${MESSAGES[term_selected]}${BOLD}$selected_item${NC}"
+                else
+                    # Show file information
+                    local full_path
+                    if [[ "$selected_item" == /* ]]; then
+                        full_path="$selected_item"
+                    else
+                        full_path="$target_path/$selected_item"
+                    fi
+                    
+                    echo -e "${GREEN}${MESSAGES[file_selected]}${NC}"
+                    
+                    # Get file type and MIME
+                    local file_type
+                    local mime_type
+                    
+                    if [[ -e "$full_path" ]]; then
+                        file_type=$(file -b "$full_path")
+                        mime_type=$(file -b --mime-type "$full_path")
+                        
+                        echo -e "${CYAN}${MESSAGES[file_type]}${NC}${file_type}"
+                        echo -e "${CYAN}${MESSAGES[mime_type]}${NC}${mime_type}"
+                        echo -e "${CYAN}${MESSAGES[full_path]}${NC}$(realpath "$full_path" 2>/dev/null || echo "$full_path")"
+                    else
+                        echo -e "${YELLOW}File not found or inaccessible${NC}"
+                    fi
+                fi
+                
+                exit 0
+            fi
+        elif [[ "$char" == $'\x03' ]]; then
+            # Ctrl+C
+            stty "$old_stty"
+            clear_screen
+            exit 0
+        elif [[ -n "$char" && "$char" =~ [[:print:]] ]]; then
+            # Normal printable characters
+            search_term+="$char"
+            filter_items
+            current_index=0
+        fi
+    done
+}
+
+# Main entry point
+main() {
+    # Check for help/docs flags
+    if [[ "$1" == "--docs" || "$1" == "-d" ]]; then
+        sed -n '/^: <<.DOCUMENTATION./,/^DOCUMENTATION/p' "$0" | sed '1d;$d'
+        exit 0
+    elif [[ "$1" == "--help" || "$1" == "-h" ]]; then
+        echo "${MESSAGES[usage_title]}"
+        echo "${MESSAGES[usage1]}"
+        echo "${MESSAGES[usage2]}"
+        echo "${MESSAGES[usage3]}"
+        echo "${MESSAGES[usage4]}"
+        exit 0
+    fi
+    
+    # Require at least one argument (path)
+    if [[ $# -lt 1 ]]; then
+        echo "${MESSAGES[usage_title]}"
+        echo "${MESSAGES[usage1]}"
+        echo "${MESSAGES[usage2]}"
+        exit 1
+    fi
+    
+    # Parse arguments
+    local initial_search=""
+    local path_arg=""
+    
+    if [[ $# -eq 1 ]]; then
+        path_arg="$1"
+    else
+        initial_search="$1"
+        path_arg="$2"
+    fi
+    
+    # Check if path exists
+    if [[ ! -e "$path_arg" ]]; then
+        echo "${MESSAGES[error_path]}" >&2
+        exit 1
+    fi
+    
+    target_path="$path_arg"
+    
+    # Determine mode and load data
+    if [[ -f "$path_arg" ]]; then
+        search_mode="file"
+        get_file_terms "$path_arg"
+    elif [[ -d "$path_arg" ]]; then
+        search_mode="directory"
+        get_directory_files "$path_arg"
+    else
+        echo "${MESSAGES[error_path]}" >&2
+        exit 1
+    fi
+    
+    # Set initial search term if provided
+    if [[ -n "$initial_search" ]]; then
+        search_term="$initial_search"
+        filter_items
+    fi
+    
+    # Check if in an interactive terminal
+    if [[ -t 0 && -t 1 ]]; then
+        run_fuzzy_finder
+    else
+        echo "This script requires an interactive terminal" >&2
+        exit 1
+    fi
+}
+
+# Execute
+main "$@"
