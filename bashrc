@@ -284,4 +284,6 @@ fzf_bash
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
 # conda_setup # Uncomment this line 
-source ~/.shell_utils/scripts/utils/bash_smartcd.sh
+
+# Bash SmartCD 
+source ~/.shell_utils/scripts/utils/zbash_smartcd_with_fzf.sh

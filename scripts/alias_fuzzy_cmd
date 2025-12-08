@@ -398,7 +398,7 @@ run_fuzzy_finder() {
                 add_to_history "$selected_alias"
                 
                 # Show alias definition from shell
-                #type -a "$selected_alias" 2>/dev/null || echo "${alias_commands[$selected_alias]}"
+                [[ "$RUN_ALIAS" == 1 ]] && "$selected_alias" 2>/dev/null || echo "${alias_commands[$selected_alias]}"
                 exit 0
             fi
         elif [[ "$char" == $'\x03' ]]; then
