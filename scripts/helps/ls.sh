@@ -1,3 +1,43 @@
+ls_tips() {
+	clear
+	cat <<-'EOF'
+	# Complete ls Command Guide - Examples and Explanations
+
+    $ ls -lt | head -5
+    $ ls -lt --time-style=+%Y-%m-%d | grep $(date +%Y-%m-%d)
+    $ ls -lht --time-style=+%Y-%m-%d | grep $(date +%Y-%m-%d)
+    $ ls -lt --time-style=+%s | awk -v limit=$(date -d "7 days ago" +%s) '$6 < limit'
+
+	EOF
+    echo -e "1) English tutorial\n2) Portuguese tutorial\n"
+    read -r option
+    [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
+    case $option in
+        1)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ls_tips.md
+        ;;
+        2)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ls_tips_pt.md
+        ;;
+    esac
+    clear
+}
+
+ls_help() {
+	clear
+echo "
+	# ls help
+
+"
+    clear
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        ls_help_em_portugues
+    else
+        ls --help
+    fi
+
+}
+
 ls_list_precise_all_files() {
     echo '
 # ls -p | wc -l

@@ -78,12 +78,17 @@ cleanswap_force() {
 
 # Function to clean RAM
 cleanram() {
-    echo "${MESSAGES["clean_ram"]}"
-    sudo su -c "echo 1 > /proc/sys/vm/drop_caches"
-    sudo su -c "echo 2 > /proc/sys/vm/drop_caches"
-    sudo su -c "echo 3 > /proc/sys/vm/drop_caches"
+    clear
     free -h
-    echo "${MESSAGES["clean_ram_done"]}"
+    echo -e "\n${MESSAGES["clean_ram"]}\n"
+    # sync && echo 1 | sudo tee /proc/sys/vm/drop_caches
+    # sync && sudo sysctl -w vm.drop_caches=1
+    # sync && echo 2 | sudo tee /proc/sys/vm/drop_caches
+    # sync && sudo sysctl -w vm.drop_caches=2
+    # sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+    sync && sudo sysctl -w vm.drop_caches=3 # All caches (pages + inodes + dentries)
+    free -h
+    echo -e "\n${MESSAGES["clean_ram_done"]}"
 }
 
 # Function to clean RAM and Swap
