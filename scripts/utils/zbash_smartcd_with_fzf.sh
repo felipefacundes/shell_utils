@@ -193,7 +193,7 @@ function __smartcd::choose_direct() {
     
     # Read from stdin (pipe) instead of file
     if [[ -n "$TERMUX_VERSION" ]]; then
-        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="50%" 2>/dev/tty
+        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" 2>/dev/tty
     else
         fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
             --preview="${fzfPreview}" 2>/dev/tty
