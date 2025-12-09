@@ -180,7 +180,7 @@ function __smartcd::choose_direct() {
     local errMessage="no such directory [ {} ]'\n\n'hint: run '\033[1m'smartcd --cleanup'\033[22m'"
     
     case "${cmdPreview}" in
-        */eza|*/exa)
+        */eza)
             fzfPreview='[ -d {} ] && '${cmdPreview}' --tree --colour=always --icons --group-directories-first --all --level=1 {} || echo '"${errMessage}"''
             ;;
         */tree)
