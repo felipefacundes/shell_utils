@@ -192,11 +192,14 @@ function __smartcd::choose_direct() {
     esac
     
     # Read from stdin (pipe) instead of file
-    [[ -z "$TERMUX_VERSION" ]] && fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
-        --preview="${fzfPreview}" 2>/dev/tty
-
-    [[ -n "$TERMUX_VERSION" ]] && fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="20%" \
-        --preview="${fzfPreview}" 2>/dev/tty
+    if [[ -n "$TERMUX_VERSION" ]]; then
+        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="70%" \
+            --preview="${fzfPreview}" 2>/dev/tty
+    else
+        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
+            --preview="${fzfPreview}" 2>/dev/tty
+    fi
+    
 }
 
 function __smartcd::enterPath() {
