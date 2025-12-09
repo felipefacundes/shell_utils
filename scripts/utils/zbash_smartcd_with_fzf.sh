@@ -179,16 +179,23 @@ function __smartcd::choose_direct() {
     
     local errMessage="no such directory [ {} ]'\n\n'hint: run '\033[1m'smartcd --cleanup'\033[22m'"
     
-    if [[ -z "$TERMUX_VERSION" ]] && { [[ "${cmdPreview}" == */eza ]] || [[ "${cmdPreview}" == */exa ]]; }; then
-        fzfPreview='[ -d {} ] && '${cmdPreview}' --tree --colour=always --icons --group-directories-first --all --level=1 {} || echo '"${errMessage}"''
-    elif [[ -z "$TERMUX_VERSION" ]] && [[ "${cmdPreview}" == */tree ]]; then
-        fzfPreview='[ -d {} ] && '${cmdPreview}' --dirsfirst -a -x -C --filelimit 100 -L 1 {} || echo '"${errMessage}"''
-    else
-        fzfPreview='[ -d {} ] && echo [ {} ] ; '${cmdPreview}' --color=always --almost-all --group-directories-first {} || echo '"${errMessage}"''
-    fi
+    case "${cmdPreview}" in
+        */eza|*/exa)
+            fzfPreview='[ -d {} ] && '${cmdPreview}' --tree --colour=always --icons --group-directories-first --all --level=1 {} || echo '"${errMessage}"''
+            ;;
+        */tree)
+            fzfPreview='[ -d {} ] && '${cmdPreview}' --dirsfirst -a -x -C --filelimit 100 -L 1 {} || echo '"${errMessage}"''
+            ;;
+        *)
+            fzfPreview='[ -d {} ] && echo [ {} ] ; '${cmdPreview}' --color=always --almost-all --group-directories-first {} || echo '"${errMessage}"''
+            ;;
+    esac
     
     # Read from stdin (pipe) instead of file
-    fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
+    [[ -z "$TERMUX_VERSION" ]] && fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
+        --preview="${fzfPreview}" 2>/dev/tty
+
+    [[ -n "$TERMUX_VERSION" ]] && fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="20%" \
         --preview="${fzfPreview}" 2>/dev/tty
 }
 
