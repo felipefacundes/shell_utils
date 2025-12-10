@@ -29,7 +29,7 @@ ffmpeg parameters explained:
 -movflags +faststart  - Enables streaming (playback before full download)
 -vf "scale=..."       - Smart scaling to target resolution
 
-Usage: $0 [mode] input_video.mp4 [output_video.mp4]
+Usage: ${0##*/} [mode] input_video.mp4 [output_video.mp4]
 DOCUMENTATION
 
 # Default values

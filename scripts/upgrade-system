@@ -59,12 +59,10 @@ positive_response() {
     sudo su -c 'systemctl stop pacman-auto-update.timer;
     systemctl stop pacman-auto-update.service'
     echo -e "${bold}${green}${MESSAGES[AUTO_UPDATE_DISABLED]}${color_off}"
-    sleep 5
 }
 
 negative_response() {
     echo -e "${bold}${green}${MESSAGES[AUTO_UPDATE_ACTIVE]}${color_off}"
-    sleep 5
 }
 
 echo -e "${red}${MESSAGES[CHECK_UPDATE]}${color_off}"

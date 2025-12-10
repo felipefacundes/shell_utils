@@ -23,21 +23,6 @@ ls_tips() {
     clear
 }
 
-ls_help() {
-	clear
-echo "
-	# ls help
-
-"
-    clear
-    if [[ "${LANG,,}" =~ pt_ ]]; then
-        ls_help_em_portugues
-    else
-        ls --help
-    fi
-
-}
-
 ls_list_precise_all_files() {
     echo '
 # ls -p | wc -l

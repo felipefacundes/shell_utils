@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # License: GPLv3
-# Credits: Felipe Facundes
+# Credits: Based on Felipe Facundes' cmd script
 
 : <<'DOCUMENTATION'
-Script: fuzzy_search - Fuzzy finder for file content and directory files
+Script: shell_fuzzy_search - Fuzzy finder for file content and directory files
 
 ✓ Substring case-insensitive search in text files or directories
 ✓ Real-time updating while typing/deleting
@@ -13,14 +13,14 @@ Script: fuzzy_search - Fuzzy finder for file content and directory files
 ✓ Usage modes: interactive search in file or directory
 
 Usage modes:
-  fuzzy_search [term] <file>      # Search terms in a text file
-  fuzzy_search [term] <directory> # Search files in a directory
-  fuzzy_search --docs, -d         # Print this documentation
-  fuzzy_search --help, -h         # Help
+  shell_fuzzy_search [term] <file>      # Search terms in a text file
+  shell_fuzzy_search [term] <directory> # Search files in a directory
+  shell_fuzzy_search --docs, -d         # Print this documentation
+  shell_fuzzy_search --help, -h         # Help
 
 Examples:
-  fuzzy_search function script.sh  # Search "function" in script.sh
-  fuzzy_search .conf /etc          # Search ".conf" files in /etc
+  shell_fuzzy_search function script.sh  # Search "function" in script.sh
+  shell_fuzzy_search .conf /etc          # Search ".conf" files in /etc
 DOCUMENTATION
 
 # Colors for the interface
@@ -51,11 +51,11 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [file_type]="Tipo: "
         [mime_type]="MIME: "
         [full_path]="Caminho completo: "
-        [usage_title]="Uso: fuzzy_search [termo] <arquivo_ou_diretório>"
-        [usage1]="     fuzzy_search [termo] <arquivo>     - Buscar termos em arquivo de texto"
-        [usage2]="     fuzzy_search [termo] <diretório>   - Buscar arquivos em diretório"
-        [usage3]="     fuzzy_search --docs, -d            - Mostrar documentação"
-        [usage4]="     fuzzy_search --help, -h            - Mostrar esta ajuda"
+        [usage_title]="Uso: shell_fuzzy_search [termo] <arquivo_ou_diretório>"
+        [usage1]="     shell_fuzzy_search [termo] <arquivo>     - Buscar termos em arquivo de texto"
+        [usage2]="     shell_fuzzy_search [termo] <diretório>   - Buscar arquivos em diretório"
+        [usage3]="     shell_fuzzy_search --docs, -d            - Mostrar documentação"
+        [usage4]="     shell_fuzzy_search --help, -h            - Mostrar esta ajuda"
         [error_path]="Erro: O caminho especificado não existe."
         [error_binary]="Erro: O arquivo parece ser binário. Use apenas arquivos de texto."
     )
@@ -74,11 +74,11 @@ else
         [file_type]="Type: "
         [mime_type]="MIME: "
         [full_path]="Full path: "
-        [usage_title]="Usage: fuzzy_search [term] <file_or_directory>"
-        [usage1]="     fuzzy_search [term] <file>        - Search terms in text file"
-        [usage2]="     fuzzy_search [term] <directory>   - Search files in directory"
-        [usage3]="     fuzzy_search --docs, -d           - Show documentation"
-        [usage4]="     fuzzy_search --help, -h           - Show this help"
+        [usage_title]="Usage: shell_fuzzy_search [term] <file_or_directory>"
+        [usage1]="     shell_fuzzy_search [term] <file>        - Search terms in text file"
+        [usage2]="     shell_fuzzy_search [term] <directory>   - Search files in directory"
+        [usage3]="     shell_fuzzy_search --docs, -d           - Show documentation"
+        [usage4]="     shell_fuzzy_search --help, -h           - Show this help"
         [error_path]="Error: The specified path does not exist."
         [error_binary]="Error: The file appears to be binary. Use text files only."
     )

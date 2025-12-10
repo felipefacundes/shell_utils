@@ -347,24 +347,28 @@ function __smartcd_wrapper() {
 
 # Main smartcd function - call this instead of overriding cd
 function smartcd() {
-	case "$1" in
-		--help|-h)
-			echo "Usage: smartcd [PATH]"
-			echo "       smartcd --     (interactive mode)"
-			echo "       smartcd -      (go to previous directory)"
-			echo "       smartcd --cleanup (cleanup database)"
-			echo "       smartcd --reset (reset database)"
-			;;
-		--cleanup)
-			__smartcd::databaseCleanup
-			;;
-		--reset)
-			__smartcd::databaseReset
-			;;
-		*)
-			__smartcd_wrapper "$@"
-			;;
-	esac
+    case "$1" in
+        --help|-h)
+            echo "Usage: smartcd [PATH]"
+            echo "       smartcd --     (interactive mode)"
+            echo "       smartcd -      (go to previous directory)"
+            echo "       smartcd --cleanup (cleanup database)"
+            echo "       smartcd --reset (reset database)"
+            ;;
+        --cleanup)
+            __smartcd::databaseCleanup
+            ;;
+        --reset)
+            __smartcd::databaseReset
+            ;;
+        -)
+            # Default cd behavior - (go back to previous folder)
+            builtin cd -
+            ;;
+        *)
+            __smartcd_wrapper "$@"
+            ;;
+    esac
 }
 
 # To complete smartcd in bash (optional)
