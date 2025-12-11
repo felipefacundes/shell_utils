@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Associative array for bilingual messages
+declare -A MESSAGES
+
+# Detect language
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["clean_ram"]="Limpando RAM..."
+        ["clean_ram_done"]="Memória RAM liberada"
+    )
+else
+    MESSAGES=(
+        ["clean_ram"]="Cleaning RAM..."
+        ["clean_ram_done"]="RAM memory cleared"
+    )
+fi
+
+clear
+free -h
+echo -e "\n${MESSAGES["clean_ram"]}\n"
+sync && sudo sysctl -w vm.drop_caches=3 # All caches (pages + inodes + dentries)
+free -h
+echo -e "\n${MESSAGES["clean_ram_done"]}"
