@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+video="$1"
+
+# ANSI color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+declare -A MESSAGES
+
+messages() {
+    # Set language based on system locale
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        # Portuguese messages
+        MESSAGES=(
+            ["usage"]="${GREEN}${BOLD}Uso:${NC} ${0##*/} [opção] [comando...]"
+            ["gpu_options"]="${CYAN}Opções de placa de vídeo:${NC}"
+            ["intel"]="  ${GREEN}intel${NC}        - Driver Intel padrão"
+            ["intel_hasvk"]="  ${GREEN}intel_hasvk${NC}  - Driver Intel com Hasvk (Vulkan)"
+            ["nvidia"]="  ${GREEN}nvidia${NC}       - Driver NVIDIA proprietário"
+            ["nouveau"]="  ${GREEN}nouveau${NC}      - Driver NVIDIA open-source"
+            ["amd"]="  ${GREEN}amd${NC}          - Driver AMD/ATI (radeon)"
+            ["radeon"]="  ${GREEN}radeon${NC}       - Alias para amd"
+            ["force_nvidia"]="  ${GREEN}force_nvidia${NC} - Forçar driver NVIDIA no TTY"
+            ["force_nouveau"]="  ${GREEN}force_nouveau${NC}- Forçar driver Nouveau no TTY"
+            ["examples_header"]="${CYAN}Exemplos:${NC}"
+            ["example1"]="  ${0##*/} ${GREEN}nvidia${NC} glxgears"
+            ["example2"]="  ${0##*/} ${GREEN}intel${NC} vulkaninfo"
+            ["example3"]="  ${0##*/} ${GREEN}force_nvidia${NC}"
+            ["help_full"]="\nUse ${YELLOW}${0##*/} --help-full${NC} para ajuda detalhada"
+            
+            ["full_title"]="${GREEN}${BOLD}${0##*/} - Script para seleção de drivers gráficos${NC}"
+            ["full_description"]="  Este script configura variáveis de ambiente para selecionar drivers gráficos\n  específicos (OpenGL e Vulkan) antes de executar um aplicativo."
+            ["full_syntax"]="${CYAN}${BOLD}SINTAXE${NC}"
+            ["full_syntax1"]="  ${0##*/} ${GREEN}<driver>${NC} [comando...]"
+            ["full_syntax2"]="  ${0##*/} ${GREEN}<modo_force>${NC}"
+            ["full_driver_options"]="${CYAN}${BOLD}OPÇÕES DE DRIVER${NC}"
+            ["full_intel"]="  ${GREEN}intel${NC}\n      • Usa driver Intel Mesa padrão\n      • __GLX_VENDOR_LIBRARY_NAME=intel\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_icd.x86_64.json"
+            ["full_intel_hasvk"]="  ${GREEN}intel_hasvk${NC}\n      • Usa driver Intel com suporte Vulkan experimental (Hasvk)\n      • __GLX_VENDOR_LIBRARY_NAME=intel\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_hasvk_icd.x86_64.json"
+            ["full_nvidia"]="  ${GREEN}nvidia${NC}\n      • Usa driver NVIDIA proprietário\n      • __GLX_VENDOR_LIBRARY_NAME=nvidia\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json"
+            ["full_nouveau"]="  ${GREEN}nouveau${NC}\n      • Usa driver NVIDIA open-source\n      • __GLX_VENDOR_LIBRARY_NAME=nouveau\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nouveau_icd.x86_64.json"
+            ["full_amd"]="  ${GREEN}amd${NC} | ${GREEN}radeon${NC}\n      • Usa driver AMD/ATI (Radeon)\n      • __GLX_VENDOR_LIBRARY_NAME=radeon\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+            ["full_force_modes"]="${CYAN}${BOLD}MODOS ESPECIAIS${NC}"
+            ["full_force_nvidia"]="  ${YELLOW}force_nvidia${NC}\n      • Remove driver nouveau e carrega nvidia no TTY\n      • Requer: mesa-utils instalado\n      • Só funciona fora do X/Wayland (em TTY)\n      • Após executar, entre no X/Wayland e use: ${0##*/} nvidia"
+            ["full_force_nouveau"]="  ${YELLOW}force_nouveau${NC}\n      • Remove driver nvidia e carrega nouveau no TTY\n      • Requer: mesa-utils instalado\n      • Só funciona fora do X/Wayland (em TTY)\n      • Após executar, entre no X/Wayland e use: ${0##*/} nouveau"
+            ["full_env_vars"]="${CYAN}${BOLD}VARIÁVEIS DE AMBIENTE CONFIGURADAS${NC}"
+            ["full_env_glx"]="  ${MAGENTA}__GLX_VENDOR_LIBRARY_NAME${NC}\n      • Força o uso de um driver OpenGL específico via GLVND"
+            ["full_env_vk_icd"]="  ${MAGENTA}VK_ICD_FILENAMES${NC}\n      • Especifica o arquivo ICD Vulkan a ser usado"
+            ["full_env_vk_loader"]="  ${MAGENTA}VK_LOADER_DRIVERS_SELECT${NC} (informacional)\n      • Pode ser necessário em alguns casos para o loader Vulkan"
+            ["full_examples_header"]="${CYAN}${BOLD}EXEMPLOS DETALHADOS${NC}"
+            ["full_example1"]="  1. Executar glxgears com driver NVIDIA:\n     ${0##*/} ${GREEN}nvidia${NC} glxgears"
+            ["full_example2"]="  2. Testar informações Vulkan com driver Intel:\n     ${0##*/} ${GREEN}intel${NC} vulkaninfo"
+            ["full_example3"]="  3. Mudar para driver NVIDIA no TTY e depois usar:\n     ${0##*/} ${YELLOW}force_nvidia${NC}\n     # Login no X/Wayland...\n     ${0##*/} ${GREEN}nvidia${NC} aplicativo"
+            ["full_example4"]="  4. Executar Steam com driver AMD:\n     ${0##*/} ${GREEN}amd${NC} steam"
+            ["full_notes_header"]="${CYAN}${BOLD}NOTAS${NC}"
+            ["full_note1"]="  • Os modos force_* requerem privilégios sudo"
+            ["full_note2"]="  • Alguns aplicativos podem precisar de ${MAGENTA}VK_LOADER_DRIVERS_SELECT${NC}"
+            ["full_note3"]="  • O fallback __GLX_VENDOR_LIBRARY_NAME=mesa é tentado se o comando falhar"
+            ["full_note4"]="  • Use ${YELLOW}glxinfo | grep 'OpenGL vendor'${NC} para verificar o driver atual"
+            ["full_files_header"]="${CYAN}${BOLD}ARQUIVOS IMPORTANTES${NC}"
+            ["full_files_opengl"]="  • Drivers OpenGL: ${BLUE}/usr/share/glvnd/egl_vendor.d/${NC}"
+            ["full_files_vulkan"]="  • Drivers Vulkan: ${BLUE}/usr/share/vulkan/icd.d/${NC}"
+            ["full_license"]="${GREEN}License: GPLv3${NC}"
+            
+            ["video_error"]="${RED}${BOLD}ERRO:${NC} Placa de vídeo ${MAGENTA}'$video'${NC} não é suportada.${NC}"
+            ["video_options"]="${CYAN}Use uma das opções:${NC} ${GREEN}intel${NC}, ${GREEN}intel_hasvk${NC}, ${GREEN}nvidia${NC}, ${GREEN}nouveau${NC}, ${GREEN}force_nvidia${NC}, ${GREEN}force_nouveau${NC}, ${GREEN}amd${NC} ou ${GREEN}radeon${NC}."
+            ["install_mesa"]="${YELLOW}Aviso:${NC} Instale ${CYAN}mesa-utils${NC} para usar este modo."
+            ["force_nvidia_instructions"]="${GREEN}✓ Modo force_nvidia ativado${NC}\n${YELLOW}Agora entre no servidor X ou Wayland e execute:${NC}\n\n${CYAN}${0##*/} nvidia comando${NC}"
+            ["force_nouveau_instructions"]="${GREEN}✓ Modo force_nouveau ativado${NC}\n${YELLOW}Agora entre no servidor X ou Wayland e execute:${NC}\n\n${CYAN}${0##*/} nouveau comando${NC}"
+            ["tty_only"]="${RED}Erro:${NC} Este modo funciona apenas em ${YELLOW}TTY${NC} (fora do X/Wayland)."
+            ["env_info"]="${YELLOW}Informação:${NC} Em alguns casos é necessário definir a variável de ambiente:\n${CYAN}VK_LOADER_DRIVERS_SELECT=$VK_ICD_FILENAMES${NC}\n"
+            ["driver_loaded"]="${GREEN}✓ Driver carregado:${NC}\n${CYAN}__GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME}${NC}\n${CYAN}VK_ICD_FILENAMES=${VK_ICD_FILENAMES}${NC}\n"
+        )
+    else
+        # English messages
+        MESSAGES=(
+            ["usage"]="${GREEN}${BOLD}Usage:${NC} ${0##*/} [option] [command...]"
+            ["gpu_options"]="${CYAN}Graphics card options:${NC}"
+            ["intel"]="  ${GREEN}intel${NC}        - Standard Intel driver"
+            ["intel_hasvk"]="  ${GREEN}intel_hasvk${NC}  - Intel driver with Hasvk (Vulkan)"
+            ["nvidia"]="  ${GREEN}nvidia${NC}       - Proprietary NVIDIA driver"
+            ["nouveau"]="  ${GREEN}nouveau${NC}      - Open-source NVIDIA driver"
+            ["amd"]="  ${GREEN}amd${NC}          - AMD/ATI driver (radeon)"
+            ["radeon"]="  ${GREEN}radeon${NC}       - Alias for amd"
+            ["force_nvidia"]="  ${GREEN}force_nvidia${NC} - Force NVIDIA driver in TTY"
+            ["force_nouveau"]="  ${GREEN}force_nouveau${NC}- Force Nouveau driver in TTY"
+            ["examples_header"]="${CYAN}Examples:${NC}"
+            ["example1"]="  ${0##*/} ${GREEN}nvidia${NC} glxgears"
+            ["example2"]="  ${0##*/} ${GREEN}intel${NC} vulkaninfo"
+            ["example3"]="  ${0##*/} ${GREEN}force_nvidia${NC}"
+            ["help_full"]="\nUse ${YELLOW}${0##*/} --help-full${NC} for detailed help"
+            
+            ["full_title"]="${GREEN}${BOLD}${0##*/} - Graphics driver selection script${NC}"
+            ["full_description"]="  This script configures environment variables to select specific graphics\n  drivers (OpenGL and Vulkan) before running an application."
+            ["full_syntax"]="${CYAN}${BOLD}SYNTAX${NC}"
+            ["full_syntax1"]="  ${0##*/} ${GREEN}<driver>${NC} [command...]"
+            ["full_syntax2"]="  ${0##*/} ${GREEN}<force_mode>${NC}"
+            ["full_driver_options"]="${CYAN}${BOLD}DRIVER OPTIONS${NC}"
+            ["full_intel"]="  ${GREEN}intel${NC}\n      • Uses standard Intel Mesa driver\n      • __GLX_VENDOR_LIBRARY_NAME=intel\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_icd.x86_64.json"
+            ["full_intel_hasvk"]="  ${GREEN}intel_hasvk${NC}\n      • Uses Intel driver with experimental Vulkan support (Hasvk)\n      • __GLX_VENDOR_LIBRARY_NAME=intel\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_hasvk_icd.x86_64.json"
+            ["full_nvidia"]="  ${GREEN}nvidia${NC}\n      • Uses proprietary NVIDIA driver\n      • __GLX_VENDOR_LIBRARY_NAME=nvidia\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json"
+            ["full_nouveau"]="  ${GREEN}nouveau${NC}\n      • Uses open-source NVIDIA driver\n      • __GLX_VENDOR_LIBRARY_NAME=nouveau\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nouveau_icd.x86_64.json"
+            ["full_amd"]="  ${GREEN}amd${NC} | ${GREEN}radeon${NC}\n      • Uses AMD/ATI (Radeon) driver\n      • __GLX_VENDOR_LIBRARY_NAME=radeon\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+            ["full_force_modes"]="${CYAN}${BOLD}SPECIAL MODES${NC}"
+            ["full_force_nvidia"]="  ${YELLOW}force_nvidia${NC}\n      • Removes nouveau driver and loads nvidia in TTY\n      • Requires: mesa-utils installed\n      • Only works outside X/Wayland (in TTY)\n      • After running, enter X/Wayland and use: ${0##*/} nvidia"
+            ["full_force_nouveau"]="  ${YELLOW}force_nouveau${NC}\n      • Removes nvidia driver and loads nouveau in TTY\n      • Requires: mesa-utils installed\n      • Only works outside X/Wayland (in TTY)\n      • After running, enter X/Wayland and use: ${0##*/} nouveau"
+            ["full_env_vars"]="${CYAN}${BOLD}CONFIGURED ENVIRONMENT VARIABLES${NC}"
+            ["full_env_glx"]="  ${MAGENTA}__GLX_VENDOR_LIBRARY_NAME${NC}\n      • Forces use of a specific OpenGL driver via GLVND"
+            ["full_env_vk_icd"]="  ${MAGENTA}VK_ICD_FILENAMES${NC}\n      • Specifies the Vulkan ICD file to use"
+            ["full_env_vk_loader"]="  ${MAGENTA}VK_LOADER_DRIVERS_SELECT${NC} (informational)\n      • May be needed in some cases for Vulkan loader"
+            ["full_examples_header"]="${CYAN}${BOLD}DETAILED EXAMPLES${NC}"
+            ["full_example1"]="  1. Run glxgears with NVIDIA driver:\n     ${0##*/} ${GREEN}nvidia${NC} glxgears"
+            ["full_example2"]="  2. Test Vulkan information with Intel driver:\n     ${0##*/} ${GREEN}intel${NC} vulkaninfo"
+            ["full_example3"]="  3. Switch to NVIDIA driver in TTY and then use:\n     ${0##*/} ${YELLOW}force_nvidia${NC}\n     # Login to X/Wayland...\n     ${0##*/} ${GREEN}nvidia${NC} application"
+            ["full_example4"]="  4. Run Steam with AMD driver:\n     ${0##*/} ${GREEN}amd${NC} steam"
+            ["full_notes_header"]="${CYAN}${BOLD}NOTES${NC}"
+            ["full_note1"]="  • force_* modes require sudo privileges"
+            ["full_note2"]="  • Some applications may need ${MAGENTA}VK_LOADER_DRIVERS_SELECT${NC}"
+            ["full_note3"]="  • __GLX_VENDOR_LIBRARY_NAME=mesa fallback is attempted if command fails"
+            ["full_note4"]="  • Use ${YELLOW}glxinfo | grep 'OpenGL vendor'${NC} to check current driver"
+            ["full_files_header"]="${CYAN}${BOLD}IMPORTANT FILES${NC}"
+            ["full_files_opengl"]="  • OpenGL drivers: ${BLUE}/usr/share/glvnd/egl_vendor.d/${NC}"
+            ["full_files_vulkan"]="  • Vulkan drivers: ${BLUE}/usr/share/vulkan/icd.d/${NC}"
+            ["full_license"]="${GREEN}License: GPLv3${NC}"
+            
+            ["video_error"]="${RED}${BOLD}ERROR:${NC} Graphics card ${MAGENTA}'$video'${NC} is not supported.${NC}"
+            ["video_options"]="${CYAN}Use one of the following options:${NC} ${GREEN}intel${NC}, ${GREEN}intel_hasvk${NC}, ${GREEN}nvidia${NC}, ${GREEN}nouveau${NC}, ${GREEN}force_nvidia${NC}, ${GREEN}force_nouveau${NC}, ${GREEN}amd${NC} or ${GREEN}radeon${NC}."
+            ["install_mesa"]="${YELLOW}Warning:${NC} Install ${CYAN}mesa-utils${NC} to use this mode."
+            ["force_nvidia_instructions"]="${GREEN}✓ force_nvidia mode activated${NC}\n${YELLOW}Now enter X or Wayland server and run:${NC}\n\n${CYAN}${0##*/} nvidia command${NC}"
+            ["force_nouveau_instructions"]="${GREEN}✓ force_nouveau mode activated${NC}\n${YELLOW}Now enter X or Wayland server and run:${NC}\n\n${CYAN}${0##*/} nouveau command${NC}"
+            ["tty_only"]="${RED}Error:${NC} This mode works only in ${YELLOW}TTY${NC} (outside X/Wayland)."
+            ["env_info"]="${YELLOW}Info:${NC} In some cases it's necessary to set the environment variable:\n${CYAN}VK_LOADER_DRIVERS_SELECT=$VK_ICD_FILENAMES${NC}\n"
+            ["driver_loaded"]="${GREEN}✓ Driver loaded:${NC}\n${CYAN}__GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME}${NC}\n${CYAN}VK_ICD_FILENAMES=${VK_ICD_FILENAMES}${NC}\n"
+        )
+    fi
+}
+
+messages
+
+# Help summary if no arguments or with --help
+if [[ $# -eq 0 ]] || [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+    echo -e "${MESSAGES[usage]}"
+    echo ""
+    echo -e "${MESSAGES[gpu_options]}"
+    echo -e "${MESSAGES[intel]}"
+    echo -e "${MESSAGES[intel_hasvk]}"
+    echo -e "${MESSAGES[nvidia]}"
+    echo -e "${MESSAGES[nouveau]}"
+    echo -e "${MESSAGES[amd]}"
+    echo -e "${MESSAGES[radeon]}"
+    echo -e "${MESSAGES[force_nvidia]}"
+    echo -e "${MESSAGES[force_nouveau]}"
+    echo ""
+    echo -e "${MESSAGES[examples_header]}"
+    echo -e "${MESSAGES[example1]}"
+    echo -e "${MESSAGES[example2]}"
+    echo -e "${MESSAGES[example3]}"
+    echo -e "${MESSAGES[help_full]}"
+    [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]] && exit 0 || exit 1
+fi
+
+# Detailed help
+if [[ "$1" == "--help-full" ]] || [[ "$1" == "--man" ]]; then
+    echo -e "${MESSAGES[full_title]}"
+    echo ""
+    echo -e "${MESSAGES[full_description]}"
+    echo ""
+    echo -e "${MESSAGES[full_syntax]}"
+    echo -e "${MESSAGES[full_syntax1]}"
+    echo -e "${MESSAGES[full_syntax2]}"
+    echo ""
+    echo -e "${MESSAGES[full_driver_options]}"
+    echo ""
+    echo -e "${MESSAGES[full_intel]}"
+    echo ""
+    echo -e "${MESSAGES[full_intel_hasvk]}"
+    echo ""
+    echo -e "${MESSAGES[full_nvidia]}"
+    echo ""
+    echo -e "${MESSAGES[full_nouveau]}"
+    echo ""
+    echo -e "${MESSAGES[full_amd]}"
+    echo ""
+    echo -e "${MESSAGES[full_force_modes]}"
+    echo ""
+    echo -e "${MESSAGES[full_force_nvidia]}"
+    echo ""
+    echo -e "${MESSAGES[full_force_nouveau]}"
+    echo ""
+    echo -e "${MESSAGES[full_env_vars]}"
+    echo ""
+    echo -e "${MESSAGES[full_env_glx]}"
+    echo ""
+    echo -e "${MESSAGES[full_env_vk_icd]}"
+    echo ""
+    echo -e "${MESSAGES[full_env_vk_loader]}"
+    echo ""
+    echo -e "${MESSAGES[full_examples_header]}"
+    echo ""
+    echo -e "${MESSAGES[full_example1]}"
+    echo ""
+    echo -e "${MESSAGES[full_example2]}"
+    echo ""
+    echo -e "${MESSAGES[full_example3]}"
+    echo ""
+    echo -e "${MESSAGES[full_example4]}"
+    echo ""
+    echo -e "${MESSAGES[full_notes_header]}"
+    echo -e "${MESSAGES[full_note1]}"
+    echo -e "${MESSAGES[full_note2]}"
+    echo -e "${MESSAGES[full_note3]}"
+    echo -e "${MESSAGES[full_note4]}"
+    echo ""
+    echo -e "${MESSAGES[full_files_header]}"
+    echo -e "${MESSAGES[full_files_opengl]}"
+    echo -e "${MESSAGES[full_files_vulkan]}"
+    echo ""
+    echo -e "${MESSAGES[full_license]}"
+    exit 0
+fi
+
+# Rest of the script remains unchanged
+if [[ "$video" =~ ^(force_nvidia|force_nouveau)$ ]] && ! command -v glxinfo >/dev/null; then
+    echo -e "${MESSAGES[install_mesa]}"
+    exit 1
+fi
+
+if ! [[ "$video" =~ ^(intel|intel_hasvk|nvidia|nouveau|force_nvidia|force_nouveau|amd|radeon)$ ]]; then
+    echo -e "${MESSAGES[video_error]}"
+    echo -e "${MESSAGES[video_options]}"
+    exit 1
+fi
+
+# Show which driver was loaded (for all normal modes)
+if [[ "$video" =~ ^(intel|intel_hasvk|nvidia|nouveau|amd|radeon)$ ]]; then
+    if [[ "$video" == intel ]]; then
+        shift
+        export __GLX_VENDOR_LIBRARY_NAME=intel
+        export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_icd.x86_64.json
+
+    elif [[ "$video" == intel_hasvk ]]; then
+        shift
+        export __GLX_VENDOR_LIBRARY_NAME=intel
+        export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/intel_hasvk_icd.x86_64.json
+
+    elif [[ "$video" == nvidia ]]; then
+        shift
+        export __GLX_VENDOR_LIBRARY_NAME=nvidia
+        export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+
+    elif [[ "$video" == nouveau ]]; then
+        shift
+        export __GLX_VENDOR_LIBRARY_NAME=nouveau
+        export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nouveau_icd.x86_64.json
+
+    elif [[ "$video" == amd || "$video" == radeon ]]; then
+        shift
+        export __GLX_VENDOR_LIBRARY_NAME=radeon
+        export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+    fi
+    
+    messages
+    echo -e "${MESSAGES[driver_loaded]}"
+fi
+
+# force_nvidia and force_nouveau modes
+if [[ "$video" == force_nvidia ]]; then
+    shift
+    if ! glxinfo -B >/dev/null 2>&1 && [[ "$XDG_SESSION_TYPE" == tty ]]; then
+        lsmod | grep -i nouveau >/dev/null && sudo rmmod -f nouveau
+        ! lsmod | grep -i nvidia >/dev/null && sudo modprobe nvidia nvidia_uvm nvidia_drm nvidia_modeset
+        echo -e "${MESSAGES[force_nvidia_instructions]}"
+        exit 0
+    else
+        echo -e "${MESSAGES[tty_only]}"
+        exit 1
+    fi
+
+elif [[ "$video" == force_nouveau ]]; then
+    shift
+    if ! glxinfo -B >/dev/null 2>&1 && [[ "$XDG_SESSION_TYPE" == tty ]]; then
+        lsmod | grep -i nvidia >/dev/null && sudo rmmod -f nvidia nvidia_uvm nvidia_drm nvidia_modeset
+        ! lsmod | grep -i nouveau >/dev/null && sudo modprobe nouveau
+        echo -e "${MESSAGES[force_nouveau_instructions]}"
+        exit 0
+    else
+        echo -e "${MESSAGES[tty_only]}"
+        exit 1
+    fi
+fi
+
+messages
+# Additional information before executing command
+echo -e "${MESSAGES[env_info]}"
+
+# Execute command
+{ "$@" || __GLX_VENDOR_LIBRARY_NAME=mesa "$@"; }
