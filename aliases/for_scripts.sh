@@ -38,7 +38,7 @@ alias date_diff='days_calculate'
 alias diff_date='days_calculate'
 
 alias help_with_rofi='~/.shell_utils/scripts/help_shell_with_rofi'
-alias help='~/.shell_utils/scripts/help_shell'
+alias help='~/.shell_utils/scripts/help_shell_fzf'
 alias helps='help'
 alias auto_confirm_scripts='help auto_confirm_scripts'
 

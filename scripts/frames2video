@@ -165,12 +165,10 @@ fi
 echo "Converting image sequence to video..."
 echo "Pattern: $frame_pattern"
 echo "Frame rate: $framerate fps"
-echo "Output: $output_file"
-
-ffmpeg -framerate "$framerate" -i "$frame_pattern" -c:v libx264 -pix_fmt yuv420p "$output_file"
+echo -e "Output: $output_file\n\n"
 
 # Check if conversion was successful
-if [ $? -eq 0 ]; then
+if ffmpeg -init_hw_device vulkan -framerate "$framerate" -i "$frame_pattern" -c:v libsvtav1 -preset -2 -crf 15 -pix_fmt yuv420p "$output_file"; then
     echo "Conversion completed successfully!"
     echo "Video saved as: $output_file"
 else

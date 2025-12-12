@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+shell_utils=~/.shell_utils
+help_dir="${shell_utils}/scripts/helps"
+help_user_dir="${HOME}/.local/shell_utils/scripts/helps"
+
+shopt -s globstar
+source "${shell_utils}/variables/shell_colors.sh"
+
+help_directories=("$help_dir" "$help_user_dir")
+
+clear
+
+for dir in "${help_directories[@]}"; do
+    for file in "${dir}"/**/*.sh; do
+        [[ -f "$file" ]] && source "${file}"
+    done
+done
+
+show_documentation() {
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0"
+}
+
+# Display help dynamically
+help() {
+    show_documentation
+            
+    echo -e "\nINTERACTIVE USAGE:"
+    echo "  • Leave search term blank to list all functions"
+    echo "  • Use arrow keys to navigate the menu"
+    echo "  • Press Enter to execute selected function"
+    echo "  • Press Ctrl+P to toggle description preview"
+    echo "  • Press Esc or Cancel to exit"
+    echo -e "\nEnter 'q' to quit this help.\n"
+}
+
+# Function to search and display functions matching a term
+search_and_select_function() {
+    local search_term="$1"
+    
+    # Initialize an empty array to hold the menu items
+    menu_items=()
+
+    for func_name in $(declare -F | cut -d " " -f 3); do
+        # Extract the first comment line of the function
+        description=$(type "$func_name" | grep -m 1 '^#')
+        # Remove the '#' character from the description
+        description=${description/#\# /}
+        
+        # Add to menu items
+        menu_items+=("$func_name | $description")
+    done
+
+    # Check if no items were found
+    if [[ ${#menu_items[@]} -eq 0 ]]; then
+        whiptail --msgbox "No functions found." 8 78
+        return 1
+    fi
+
+    # Configurações do FZF reutilizáveis
+    # --with-nth=1 foi removido para mostrar "Função | Descrição" na lista
+    # preview-window=hidden inicia sem o preview
+    # ctrl-p:toggle-preview ativa o atalho
+    local fzf_opts=(
+        --prompt="Choose a function: "
+        --height=80%
+        --border
+        --reverse
+        --header="Functions menu (Ctrl+P: Toggle Preview)"
+        --delimiter=' | '
+        --preview='echo -e "{1}\n\n{2..}"'
+        --preview-window=right:50%:wrap
+        --bind 'ctrl-p:toggle-preview'
+    )
+
+    # Use fzf to select the function
+    if [[ -n "$search_term" ]]; then
+        selected_item=$(printf '%s\n' "${menu_items[@]}" | fzf --query="$search_term" "${fzf_opts[@]}")
+    else
+        selected_item=$(printf '%s\n' "${menu_items[@]}" | fzf "${fzf_opts[@]}")
+    fi
+
+    # If the user pressed Cancel (Esc), return
+    if [[ -z "$selected_item" ]]; then
+        return 1
+    fi
+
+    # Extract the function name (before the pipe)
+    func_name=$(echo "$selected_item" | awk -F' \\| ' '{print $1}' | xargs)
+
+    # Check if the selected item is a function
+    if declare -f "$func_name" > /dev/null; then
+        clear
+        # Call the function
+        "$func_name"
+        return 0
+    else
+        whiptail --msgbox "Function '$func_name' not found." 8 78
+        return 1
+    fi
+}
+
+# Check if help option was provided
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    help | less -i -R
+    exit 0
+fi
+
+if [[ -z "$1" ]]; then
+    # Use fzf directly for search and selection
+    search_and_select_function ""
+    exit 0
+fi
+
+# Iterate over the passed arguments
+for func_name in "$@"; do
+    # Check if the function exists
+    if declare -f "$func_name" > /dev/null; then
+        # Call the function
+        shift
+        "$func_name" "$@"
+    else
+        # If function not found, search for similar functions
+        search_and_select_function "$func_name"
+        break
+    fi
+done

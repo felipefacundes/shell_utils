@@ -107,45 +107,21 @@ $ ffmpeg -i input.mp4 -vsync 0 output_frames/%08d.png
 EOF
 }
 
-images2video() 
-{
-    cat <<'EOF'
-# images to video with ffmpeg
+images2video() {
+	clear
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+	    cat <<-'EOF'
+		# Este guia explica diversos comandos FFmpeg para converter sequências de imagens em vídeo, com foco em diferentes cenários e necessidades.
 
-$ ffmpeg -framerate 1 -i picture%d.jpg -c:v libx264 -r 30 output.mp4
+		EOF
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/image2video_pt.md
+    else
+		cat <<-'EOF'
+		# This guide explains various FFmpeg commands for converting image sequences into video, focusing on different scenarios and needs.
 
-$ ffmpeg -framerate 1 -i pic%d.jpg -c:v libx264 -r 30 -pix_fmt yuv420p output.mp4
-
-$ ffmpeg -framerate 1 -pattern_type glob -i '*.jpg' -c:v libx264 -r 30 -pix_fmt yuv420p output.mp4
-
-$ cat *.jpg | ffmpeg -framerate 1 -f image2pipe -i - -c:v libx264 -r 30 -pix_fmt yuv420p output.mp4
-
-$ ffmpeg -f concat -i input.txt -c:v libx264 -r 30 -pix_fmt yuv420p output.mp4
-
-$ ffmpeg -framerate 1 -pattern_type glob -i '*.jpg' -i freeflow.mp3 \
-  -shortest -c:v libx264 -r 30 -pix_fmt yuv420p output6.mp4
-
--framerate 1: This option sets the frame rate for the output video. In the case of -framerate 1, 
-the video will play at 1 frame per second, which is a very low frame rate. 
-This can be useful in specific situations, such as creating a time-lapse video with very slow motion.
-
--r 30: This option sets the frame rate during video encoding. In the context of the given command, 
--r 30 establishes that the frame rate during the video encoding process will be 30 frames per second. 
-This can be useful for videos where you want to maintain standard quality and smoothness.
-
-However, it's important to note that the -framerate and -r options are related to frame rate in different ways:
-
--framerate defines the frame rate during the final video playback. In other words, it determines how 
-fast the frames will be displayed when you watch the video.
-
--r defines the frame rate during video encoding. It specifies how many frames are processed and included per second in the output file.
-
-Therefore, using -framerate 1 -r 30 might result in a final video where frames were captured at a very low rate (1 FPS), 
-but during the encoding process, they are grouped into a file that is played back at a more standard rate (30 FPS).
-
-See more:
-    https://shotstack.io/learn/use-ffmpeg-to-convert-images-to-video/
-EOF
+		EOF
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/image2video.md
+    fi
 }
 
 ffmpeg_metadata()
