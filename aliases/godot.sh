@@ -1,0 +1,1 @@
+alias godot_animation_generate='help godot_animation_generate'

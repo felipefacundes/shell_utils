@@ -14,6 +14,7 @@
 . "${HOME}"/.shell_utils/aliases/freds_aliases.sh
 . "${HOME}"/.shell_utils/aliases/game.sh
 . "${HOME}"/.shell_utils/aliases/git.sh
+. "${HOME}"/.shell_utils/aliases/godot.sh
 . "${HOME}"/.shell_utils/aliases/helps.sh
 . "${HOME}"/.shell_utils/aliases/image_magick.sh
 . "${HOME}"/.shell_utils/aliases/inch.sh
