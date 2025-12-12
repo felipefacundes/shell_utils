@@ -76,13 +76,12 @@ if [ -n "$UPDATE" ]; then
     echo '━━━━━━━━━'
     sudo pacman -Syyu --noconfirm
 else
-    sleep 2
     clear
     echo -e "${green}${MESSAGES[SYSTEM_UPDATED]}${color_off}"
     notify-send "${MESSAGES[SYSTEM_UPDATED]}"
 fi
 
-sleep 2
+sleep 1
 echo
 echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 echo -e "${yellow}${MESSAGES[DISABLE_AUTO_UPDATE]}${color_off}"
@@ -111,7 +110,7 @@ case "$option" in
         echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
         echo -e "${yellow}${MESSAGES[RESTART_MESSAGE]}${color_off}"
         echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-        sleep 6
+        sleep 2
         exec "$0"
     ;;
 esac

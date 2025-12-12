@@ -1,0 +1,544 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Capabilities:
+
+- Multilingual support (Portuguese, English)
+- Automatic dependency checks (Git and SSH key)
+- SSH key verification and generation guidance
+- AUR repository cloning and validation
+- PKGBUILD file verification
+- Commit description validation:
+
+- 70-character maximum
+- Only Latin characters, numbers, and punctuation allowed
+
+- Automated package preparation (makepkg and .SRCINFO generation)
+- Git operations (add, commit, push)
+- Localized error handling and user guidance
+
+Primary functionality: Automate AUR package submission with validation and configuration.
+DOCUMENTATION
+
+config_file=~/.aur_package_gen.conf
+declare -A MESSAGES
+package_name="$1"
+USERNAME=''
+EMAIL=''
+
+# Message configuration: Portuguese - English
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [description_prompt]="Insira uma descrição (ou pressione Enter para usar 'first commit'):"
+        [length_error]="Erro: A descrição deve ter no máximo 70 caracteres."
+        [character_error]="Erro: A descrição contém caracteres não suportados (somente latinos básicos, números e pontuações são permitidos)."
+        [git_missing]="Git não está instalado. Instale-o antes de continuar."
+        [ssh_key_missing]="Chave SSH não encontrada em ~/.ssh/id_ed25519.pub"
+        [ssh_key_help]="Para criar uma chave SSH, execute: ssh-keygen -t ed25519 -C \"seu-email@example.com\""
+        [ssh_key_question]="Deseja criar a chave SSH agora? (s/n): "
+        [ssh_key_created]="Chave SSH criada com sucesso!"
+        [aur_ssh_instructions]="🔑 Adicione a chave pública ao AUR:
+1. cat ~/.ssh/id_ed25519.pub
+2. Copie o conteúdo de '~/.ssh/id_ed25519.pub'.
+3. Vá para \"My Account\" no site do AUR.
+4. Cole a chave em \"SSH Public Key\"."
+        [clone_failed]="Falha ao clonar repositório do AUR. Verifique se:
+- O pacote já existe no AUR
+- Sua chave SSH está configurada corretamente
+- Você tem permissões de acesso
+- O nome do pacote segue as convenções do AUR"
+        [pkgbuild_missing]="Arquivo PKGBUILD não encontrado no diretório do pacote."
+        [pkgbuild_empty]="Arquivo PKGBUILD está vazio. Adicione o conteúdo necessário."
+        [pkgbuild_template]="# Maintainer: $USERNAME  # Use seu e-mail real
+
+pkgname=$package_name
+pkgver=0.1  # Exemplo inicial, será atualizado automaticamente
+pkgrel=1
+pkgdesc=\"Descrição para o seu pacote\"
+arch=('i686' 'x86_64')
+url=\"http://github.com/$USERNAME/$package_name/\"
+license=('GPL')
+depends=('python' 'bash' 'etc')
+makedepends=('git' 'boost')
+source=(\"git+\${url}.git\")
+md5sums=('SKIP')
+
+pkgver() {
+  cd \"\${srcdir}/$package_name/src\" || true
+  echo \"r\$(git rev-list --count HEAD).\$(git rev-parse --short HEAD)\"
+}
+
+build() {
+  cd \"\${srcdir}/$package_name/src/\"
+  autoconf
+  ./configure
+  make
+}
+
+package() {
+  cd \"\${srcdir}/$package_name/src/\"
+  make DESTDIR=\"\${pkgdir}\" install
+}"
+        [pkgbuild_created]="PKGBUILD criado. Edite-o com as informações do seu pacote."
+        [makepkg_question]="O pacote já foi testado com 'makepkg -si'? (s/n): "
+        [makepkg_not_tested]="Teste o pacote primeiro com 'makepkg -si' antes de continuar."
+        [srcinfo_generated]=".SRCINFO gerado com sucesso."
+        [srcinfo_failed]="Aviso: Falha ao gerar .SRCINFO. Verifique seu PKGBUILD."
+        [success]="Pacote enviado para o AUR com sucesso!"
+        [failed]="Erro: Falha ao enviar para o AUR. Verifique suas permissões e o repositório."
+        [config_creating]="Arquivo de configuração ausente. Criando ~/.aur_package_gen.conf."
+        [directory_empty]="O repositório não pode ser criado manualmente. Ele deve ser criado com o comando:
+git clone ssh://aur@aur.archlinux.org/seu_pacote.git
+Por favor, remova o diretório."
+        [directory_exists]="Diretório '$package_name' já existe. Verificando se é um repositório Git válido..."
+        [invalid_git_repo]="O diretório existe mas não é um repositório Git válido."
+        [valid_git_repo]="Repositório Git válido detectado."
+        [checking_remote]="Verificando repositório remoto..."
+        [remote_mismatch]="AVISO: O repositório local não aponta para o AUR correto.
+Remoto atual: %s
+Esperado: ssh://aur@aur.archlinux.org/$package_name.git"
+        [ssh_test]="Testando conexão SSH com o AUR..."
+        [ssh_test_success]="Conexão SSH testada com sucesso!"
+        [ssh_test_failed]="Falha na conexão SSH. Verifique sua chave SSH e permissões."
+        [git_status]="Verificando status do Git..."
+        [git_status_clean]="Repositório limpo (sem alterações não commitadas)."
+        [git_status_dirty]="AVISO: Há alterações não commitadas no repositório."
+        [aur_guidelines]="\n📋 Lembre-se das diretrizes do AUR:
+• O PKGBUILD deve seguir as convenções do Arch
+• Verifique dependências e versões
+• Teste localmente antes de enviar
+• Mantenha .SRCINFO atualizado"
+        [usage]="Uso: %s <nome_do_pacote>
+Exemplo: %s meu-pacote-incrivel"
+        [package_name_invalid]="Erro: O nome do pacote deve seguir as convenções de nomenclatura do AUR:
+- Letras minúsculas, números, pontos, hífens, sublinhados
+- Deve começar e terminar com caractere alfanumérico
+- Sem caracteres especiais consecutivos"
+        [makepkg_warning]="Aviso: makepkg não encontrado. Você precisa dele para testar pacotes e gerar .SRCINFO.
+Instale com: sudo pacman -S pacman-contrib"
+        [edit_instructions]="\nVocê pode editar o PKGBUILD com:
+nano PKGBUILD
+ou
+vim PKGBUILD
+
+Após editar, execute o script novamente."
+        [srcinfo_preview]="\n--- Conteúdo do .SRCINFO (primeiras 10 linhas) ---
+%s
+---"
+        [files_to_add]="\nArquivos a serem adicionados ao Git:"
+        [add_confirmation]="Adicionar todos os arquivos e continuar? (s/n): "
+        [operation_cancelled]="Operação cancelada."
+        [commit_summary]="\nMensagem de commit: %s"
+        [commit_confirmation]="Confirmar commit? (s/n): "
+        [push_confirmation]="\nPronto para enviar para o repositório do AUR.
+Remoto: %s
+Enviar para o AUR? (s/n): "
+        [package_available]="Pacote disponível em: https://aur.archlinux.org/packages/%s/"
+        [manual_push]="Você pode tentar manualmente: git push origin master"
+        [manual_srcinfo]="Você pode tentar manualmente: makepkg --printsrcinfo"
+        [test_command]="Você pode testar com: makepkg -si"
+        [ssh_agent_help]="Você pode precisar adicionar sua chave SSH ao ssh-agent:
+eval \$(ssh-agent -s)
+ssh-add ~/.ssh/id_ed25519"
+        [pkgname_missing]="Erro: PKGBUILD sem campo pkgname."
+        [pkgver_missing]="Aviso: PKGBUILD sem campo pkgver."
+        [repository_cloned]="Repositório clonado com sucesso."
+        [cloning_repo]="Clonando repositório do AUR: %s"
+        [config_incomplete]="Erro: Arquivo de configuração incompleto."
+        [enter_ssh_email]="Digite seu e-mail para a chave SSH: "
+        [aur_username]="Nome de usuário do AUR: "
+        [aur_email]="E-mail do AUR: "
+    )
+else
+    MESSAGES=(
+        [description_prompt]="Enter a description (or press Enter to use 'first commit'):"
+        [length_error]="Error: The description must be at most 70 characters."
+        [character_error]="Error: The description contains unsupported characters (only basic Latin, numbers, and punctuation are allowed)."
+        [git_missing]="Git is not installed. Please install it before continuing."
+        [ssh_key_missing]="SSH key not found at ~/.ssh/id_ed25519.pub"
+        [ssh_key_help]="To create an SSH key, run: ssh-keygen -t ed25519 -C \"your-email@example.com\""
+        [ssh_key_question]="Do you want to create the SSH key now? (y/n): "
+        [ssh_key_created]="SSH key created successfully!"
+        [aur_ssh_instructions]="🔑 Add the public key to AUR:
+1. cat ~/.ssh/id_ed25519.pub
+2. Copy the content of '~/.ssh/id_ed25519.pub'.
+3. Go to \"My Account\" on the AUR website.
+4. Paste the key into \"SSH Public Key\"."
+        [clone_failed]="Failed to clone AUR repository. Check:
+- If the package already exists on AUR
+- Your SSH key is properly configured
+- You have access permissions
+- Package name follows AUR conventions"
+        [pkgbuild_missing]="PKGBUILD file not found in package directory."
+        [pkgbuild_empty]="PKGBUILD file is empty. Add the necessary content."
+        [pkgbuild_template]="# Maintainer: $USERNAME  # Use your real email
+
+pkgname=$package_name
+pkgver=0.1  # Initial example, will be updated automatically
+pkgrel=1
+pkgdesc=\"Description for your package\"
+arch=('i686' 'x86_64')
+url=\"http://github.com/$USERNAME/$package_name/\"
+license=('GPL')
+depends=('python' 'bash' 'etc')
+makedepends=('git' 'boost')
+source=(\"git+\${url}.git\")
+md5sums=('SKIP')
+
+pkgver() {
+  cd \"\${srcdir}/$package_name/src\" || true
+  echo \"r\$(git rev-list --count HEAD).\$(git rev-parse --short HEAD)\"
+}
+
+build() {
+  cd \"\${srcdir}/$package_name/src/\"
+  autoconf
+  ./configure
+  make
+}
+
+package() {
+  cd \"\${srcdir}/$package_name/src/\"
+  make DESTDIR=\"\${pkgdir}\" install
+}"
+        [pkgbuild_created]="PKGBUILD created. Edit it with your package information."
+        [makepkg_question]="Has the package been tested with 'makepkg -si'? (y/n): "
+        [makepkg_not_tested]="Test the package first with 'makepkg -si' before proceeding."
+        [srcinfo_generated]=".SRCINFO generated successfully."
+        [srcinfo_failed]="Warning: Failed to generate .SRCINFO. Check your PKGBUILD."
+        [success]="Package submitted to AUR successfully!"
+        [failed]="Error: Failed to push to AUR. Check your permissions and repository."
+        [config_creating]="Configuration file missing. Creating ~/.aur_package_gen.conf."
+        [directory_empty]="The repository cannot be created manually. It must be created with the command:
+git clone ssh://aur@aur.archlinux.org/your_package.git
+Please remove the directory."
+        [directory_exists]="Directory '$package_name' already exists. Checking if it's a valid Git repository..."
+        [invalid_git_repo]="Directory exists but is not a valid Git repository."
+        [valid_git_repo]="Valid Git repository detected."
+        [checking_remote]="Checking remote repository..."
+        [remote_mismatch]="WARNING: Local repository does not point to correct AUR.
+Current remote: %s
+Expected: ssh://aur@aur.archlinux.org/$package_name.git"
+        [ssh_test]="Testing SSH connection to AUR..."
+        [ssh_test_success]="SSH connection tested successfully!"
+        [ssh_test_failed]="SSH connection failed. Check your SSH key and permissions."
+        [git_status]="Checking Git status..."
+        [git_status_clean]="Repository clean (no uncommitted changes)."
+        [git_status_dirty]="WARNING: There are uncommitted changes in the repository."
+        [aur_guidelines]="\n📋 Remember AUR guidelines:
+• PKGBUILD must follow Arch conventions
+• Check dependencies and versions
+• Test locally before submitting
+• Keep .SRCINFO updated"
+        [usage]="Usage: %s <package_name>
+Example: %s my-awesome-package"
+        [package_name_invalid]="Error: Package name must follow AUR naming conventions:
+- Lowercase letters, numbers, dots, hyphens, underscores
+- Must start and end with alphanumeric character
+- No consecutive special characters"
+        [makepkg_warning]="Warning: makepkg not found. You need it to test packages and generate .SRCINFO.
+Install with: sudo pacman -S pacman-contrib"
+        [edit_instructions]="\nYou can edit the PKGBUILD with:
+nano PKGBUILD
+or
+vim PKGBUILD
+
+After editing, run the script again."
+        [srcinfo_preview]="\n--- .SRCINFO content (first 10 lines) ---
+%s
+---"
+        [files_to_add]="\nFiles to be added to Git:"
+        [add_confirmation]="Add all files and continue? (y/n): "
+        [operation_cancelled]="Operation cancelled."
+        [commit_summary]="\nCommit message: %s"
+        [commit_confirmation]="Confirm commit? (y/n): "
+        [push_confirmation]="\nReady to push to AUR repository.
+Remote: %s
+Push to AUR? (y/n): "
+        [package_available]="Package available at: https://aur.archlinux.org/packages/%s/"
+        [manual_push]="You can try manually: git push origin master"
+        [manual_srcinfo]="You can try manually: makepkg --printsrcinfo"
+        [test_command]="You can test with: makepkg -si"
+        [ssh_agent_help]="You might need to add your SSH key to ssh-agent:
+eval \$(ssh-agent -s)
+ssh-add ~/.ssh/id_ed25519"
+        [pkgname_missing]="Error: PKGBUILD missing pkgname field."
+        [pkgver_missing]="Warning: PKGBUILD missing pkgver field."
+        [repository_cloned]="Repository cloned successfully."
+        [cloning_repo]="Cloning AUR repository: %s"
+        [config_incomplete]="Error: Configuration file is incomplete."
+        [enter_ssh_email]="Enter your email for SSH key: "
+        [aur_username]="AUR Username: "
+        [aur_email]="AUR Email: "
+    )
+fi
+
+# Function to check dependencies
+check_dependencies() {
+    if ! command -v git &>/dev/null; then
+        echo "${MESSAGES[git_missing]}"
+        exit 1
+    fi
+    
+    # Check for makepkg (optional but recommended)
+    if ! command -v makepkg &>/dev/null; then
+        echo "${MESSAGES[makepkg_warning]}"
+    fi
+}
+
+# Check SSH key and test connection
+check_ssh_key() {
+    if [[ ! -f ~/.ssh/id_ed25519.pub ]]; then
+        echo "${MESSAGES[ssh_key_missing]}"
+        echo "${MESSAGES[ssh_key_help]}"
+        
+        read -rp "${MESSAGES[ssh_key_question]}" create_key
+        
+        if [[ "$create_key" =~ ^[sSyY] ]]; then
+            read -rp "${MESSAGES[enter_ssh_email]}" ssh_email
+            ssh-keygen -t ed25519 -C "$ssh_email" -f ~/.ssh/id_ed25519.pub -N ""
+            echo "${MESSAGES[ssh_key_created]}"
+        fi
+        
+        echo -e "\n${MESSAGES[aur_ssh_instructions]}"
+        exit 0
+    fi
+    
+    # Test SSH connection to AUR
+    echo "${MESSAGES[ssh_test]}"
+    if ssh -T git@aur.archlinux.org 2>&1 | grep -q "authenticated"; then
+        echo "${MESSAGES[ssh_test_success]}"
+    else
+        echo "${MESSAGES[ssh_test_failed]}"
+        echo "${MESSAGES[ssh_agent_help]}"
+        exit 1
+    fi
+}
+
+# Setup configuration
+setup_config() {
+    if [[ ! -f "$config_file" ]]; then
+        echo "${MESSAGES[config_creating]}"
+        read -rp "${MESSAGES[aur_username]}" username
+        read -rp "${MESSAGES[aur_email]}" email
+
+        echo "USERNAME=$username" > "$config_file"
+        echo "EMAIL=$email" >> "$config_file"
+    fi
+
+    source "$config_file"
+    
+    # Validate configuration
+    if [[ -z "$USERNAME" ]] || [[ -z "$EMAIL" ]]; then
+        echo "${MESSAGES[config_incomplete]}"
+        rm -f "$config_file"
+        setup_config
+    fi
+}
+
+validate_description() {
+    local description=""
+    
+    while :; do
+        read -rp "${MESSAGES[description_prompt]} " description
+        description="${description:-"first commit"}"
+
+        if (( ${#description} > 70 )); then
+            echo "${MESSAGES[length_error]}"
+            description=""
+            continue
+        fi
+
+        if ! [[ "$description" =~ ^[a-zA-Z0-9[:space:][:punct:]]*$ ]]; then
+            echo "${MESSAGES[character_error]}"
+            description=""
+            continue
+        fi
+
+        export description
+        break
+    done
+}
+
+# Clone AUR repository with enhanced checks
+clone_aur_repo() {
+    local package_name="$1"
+    local expected_remote="ssh://aur@aur.archlinux.org/$package_name.git"
+    
+    if [[ -d "$package_name" ]]; then
+        echo "${MESSAGES[directory_exists]}"
+        
+        if [[ -d "$package_name/.git" ]]; then
+            echo "${MESSAGES[valid_git_repo]}"
+            
+            # Check Git repository status
+            cd "$package_name" || exit 1
+            
+            echo "${MESSAGES[git_status]}"
+            if ! git status --porcelain | grep -q "^"; then
+                echo "${MESSAGES[git_status_clean]}"
+            else
+                echo "${MESSAGES[git_status_dirty]}"
+                git status --short
+            fi
+            
+            # Check remote URL
+            echo "${MESSAGES[checking_remote]}"
+            local current_remote=$(git remote get-url origin 2>/dev/null || echo "none")
+            
+            if [[ "$current_remote" != "$expected_remote" ]]; then
+                printf "${MESSAGES[remote_mismatch]}\n" "$current_remote"
+                read -rp "Continue anyway? (y/n): " continue_anyway
+                if [[ ! "$continue_anyway" =~ ^[yYsS] ]]; then
+                    exit 1
+                fi
+            fi
+            
+            return 0
+        else
+            echo "${MESSAGES[invalid_git_repo]}"
+            echo "${MESSAGES[directory_empty]}"
+            exit 1
+        fi
+    fi
+
+    # Clone new repository
+    printf "${MESSAGES[cloning_repo]}\n" "$expected_remote"
+    if git clone "$expected_remote"; then
+        cd "$package_name" || exit 1
+        echo "${MESSAGES[repository_cloned]}"
+    else
+        echo -e "${MESSAGES[clone_failed]}"
+        exit 1
+    fi
+}
+
+# Check and create PKGBUILD
+check_pkgbuild() {
+    if [[ ! -f "PKGBUILD" ]]; then
+        echo "${MESSAGES[pkgbuild_missing]}"
+        echo -e "${MESSAGES[pkgbuild_template]}" > PKGBUILD
+        echo "${MESSAGES[pkgbuild_created]}"
+        
+        # Show editing instructions
+        echo -e "${MESSAGES[edit_instructions]}"
+        exit 0
+    fi
+
+    if [[ ! -s "PKGBUILD" ]]; then
+        echo "${MESSAGES[pkgbuild_empty]}"
+        exit 1
+    fi
+    
+    # Basic PKGBUILD validation
+    if ! grep -q "pkgname=" PKGBUILD; then
+        echo "${MESSAGES[pkgname_missing]}"
+        exit 1
+    fi
+    
+    if ! grep -q "pkgver=" PKGBUILD; then
+        echo "${MESSAGES[pkgver_missing]}"
+    fi
+}
+
+# Prepare package for AUR
+prepare_package() {
+    echo "${MESSAGES[aur_guidelines]}"
+    
+    read -rp "${MESSAGES[makepkg_question]}" tested
+    
+    if [[ ! "$tested" =~ ^[sSyY] ]]; then
+        echo "${MESSAGES[makepkg_not_tested]}"
+        echo "${MESSAGES[test_command]}"
+        echo "Then run this script again."
+        exit 0
+    fi
+
+    # Generate .SRCINFO
+    echo "Generating .SRCINFO file..."
+    if makepkg --printsrcinfo > .SRCINFO 2>/dev/null; then
+        echo "${MESSAGES[srcinfo_generated]}"
+        
+        # Show .SRCINFO for verification
+        srcinfo_content=$(head -10 .SRCINFO)
+        printf "${MESSAGES[srcinfo_preview]}\n" "$srcinfo_content"
+    else
+        echo "${MESSAGES[srcinfo_failed]}"
+        echo "${MESSAGES[manual_srcinfo]}"
+        exit 1
+    fi
+}
+
+# Git operations with confirmation
+git_operations() {
+    # Show what will be added
+    echo -e "${MESSAGES[files_to_add]}"
+    git status --short
+    
+    # Confirm before adding
+    read -rp "${MESSAGES[add_confirmation]}" confirm_add
+    if [[ ! "$confirm_add" =~ ^[yYsS] ]]; then
+        echo "${MESSAGES[operation_cancelled]}"
+        exit 0
+    fi
+    
+    git add .
+    
+    validate_description
+    
+    # Show commit summary
+    printf "${MESSAGES[commit_summary]}\n" "$description"
+    read -rp "${MESSAGES[commit_confirmation]}" confirm_commit
+    if [[ ! "$confirm_commit" =~ ^[yYsS] ]]; then
+        echo "${MESSAGES[operation_cancelled]}"
+        exit 0
+    fi
+    
+    git commit -m "$description"
+    
+    # Confirm before pushing
+    remote_url=$(git remote get-url origin)
+    printf "${MESSAGES[push_confirmation]}\n" "$remote_url"
+    read -rp "${MESSAGES[push_confirmation]}" confirm_push
+    if [[ ! "$confirm_push" =~ ^[yYsS] ]]; then
+        echo "${MESSAGES[operation_cancelled]}"
+        exit 0
+    fi
+    
+    if git push origin master; then
+        echo -e "\n${MESSAGES[success]}"
+        printf "${MESSAGES[package_available]}\n" "$package_name"
+    else
+        echo -e "\n${MESSAGES[failed]}"
+        echo "${MESSAGES[manual_push]}"
+        exit 1
+    fi
+}
+
+# Main function
+main() {
+    check_dependencies
+    check_ssh_key
+    setup_config
+    clone_aur_repo "$1"
+    check_pkgbuild
+    prepare_package
+    git_operations
+}
+
+# Validate arguments
+if [[ $# -ne 1 ]]; then
+    printf "${MESSAGES[usage]}\n" "${0##*/}" "${0##*/}"
+    exit 1
+fi
+
+# Validate package name (basic AUR conventions)
+if ! [[ "$package_name" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+    echo "${MESSAGES[package_name_invalid]}"
+    exit 1
+fi
+
+# Main execution
+main "$@"

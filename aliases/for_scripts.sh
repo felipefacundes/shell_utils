@@ -4,6 +4,10 @@ alias docx2pdf='~/.shell_utils/scripts/utils/odt2pdf'
 alias fff='PREVIEW_MODE=0 ~/.shell_utils/scripts/preview'
 alias juros_compostos='~/.shell_utils/scripts/compound_interest'
 
+alias video_select="~/.shell_utils/scripts/gpu_select"
+
+alias shell_fuzzy_search='~/.shell_utils/scripts/fuzzy_search'
+
 alias renomear_imagens_de_onde_parou='~/.shell_utils/scripts/rename_images_of_where_it_stopped.sh'
 
 alias retrocede_um_diretorio_para_pasta_anterior='~/.shell_utils/scripts/return_a_directory_to_previous_folder.sh'
@@ -14,6 +18,10 @@ alias hd_zero='~/.shell_utils/scripts/pendrive_zero'
 alias ssd_zero='hd_zero'
 alias nvme_zero='hd_zero'
 alias zero_fill='hd_zero'
+
+alias repo_git_gen='~/.shell_utils/scripts/git_gen_repo'
+
+alias aur_package_gen='~/.shell_utils/scripts/aur_gen_repo'
 
 alias scrolling-neon='~/.shell_utils/scripts/illuminated-hoarding.sh'
 alias illuminated-hoarding-baruch-hashem='scrolling-neon left-right ~/.shell_utils/ascii_arts_themes/Baruch\ Hashem\ 6.txt'

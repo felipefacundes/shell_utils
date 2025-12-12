@@ -1,3 +1,5 @@
 # ffmpeg
-set -gx MY_X265_TEST_FLAGS '-c:a copy -ar 16000 -c:v libx265 -preset fast -tune zerolatency -maxrate 2M -bufsize 1M -pix_fmt yuv420p -framerate 15 -g 52 -max_muxing_queue_size 400 -f mp4 -movflags frag_keyframe+empty_moov -crf 23 -b:v 2M'
-set -gx MY_X264_TEST_FLAGS '-c:a copy -ar 16000 -c:v libx264 -preset fast -tune zerolatency -maxrate 2M -bufsize 1M -pix_fmt yuv420p -framerate 15 -g 52 -max_muxing_queue_size 400 -f mp4 -bsf:v h264_mp4toannexb -movflags frag_keyframe+empty_moov -crf 23 -b:v 2M'
+set -gx MY_X265_TEST_FLAGS '-c:a aac -ar 44100 -b:a 128k -c:v libx265 -preset fast -tune zerolatency -maxrate 1.8M -bufsize 3.6M -pix_fmt yuv420p -framerate 24 -g 48 -crf 28 -f mp4 -tag:v hvc1 -movflags frag_keyframe+empty_moov'
+set -gx MY_X264_TEST_FLAGS '-c:a aac -ar 44100 -c:v libx264 -preset medium -tune zerolatency -maxrate 2.5M -bufsize 5M -pix_fmt yuv420p -framerate 24 -g 48 -crf 22 -f mp4 -movflags frag_keyframe+empty_moov'
+set -gx MY_AV1_TEST_FLAGS '-c:a aac -ar 44100 -c:v libsvtav1 -preset 8 -crf 35 -maxrate 1M -bufsize 2M -pix_fmt yuv420p10le -framerate 24 -g 240 -f mp4 -movflags frag_keyframe+empty_moov -lad 0 -still-picture 0 -film-grain 0'
+set -gx MY_AV1_TEST2_FLAGS '-c:a aac -ar 44100 -b:a 128k -c:v libsvtav1 -preset 8 -crf 35 -maxrate 1.2M -bufsize 2.4M -pix_fmt yuv420p10le -framerate 24 -g 240 -f mp4 -lad 0 -movflags frag_keyframe+empty_moov -still-picture 0 -film-grain 0 -svt-params "tune=0:hielevel=3:aq-mode=2"'

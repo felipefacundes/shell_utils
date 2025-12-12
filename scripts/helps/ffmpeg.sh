@@ -1,6 +1,26 @@
 # ffmpeg full flags
 . ~/.shell_utils/scripts/helps/ffmpeg_full_flags.sh
 
+ffmpeg_tips() {
+	clear
+	cat <<-'EOF'
+	# A Complete and Pedagogical FFmpeg Guide
+
+	EOF
+    echo -e "1) English tutorial\n2) Portuguese tutorial\n"
+    read -r option
+    [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
+    case $option in
+        1)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips.md
+        ;;
+        2)
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips_pt.md
+        ;;
+    esac
+    clear
+}
+
 video2whatsapp() {
     cat <<'EOF'
 $ ffmpeg -i input.mp4 -c:v libx264 -crf 32 -vf "scale=1920:1080" -r 24 -c:a aac -b:a 96k -preset slow -movflags +faststart output_whatsapp.mp4
