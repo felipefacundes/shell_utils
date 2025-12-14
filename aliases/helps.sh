@@ -4,6 +4,8 @@ alias sed_man='help sed_man'
 alias sed_info='help sed_info'
 alias sed_help='help sed_help'
 
+alias video_clear_metadata='help video_clear_metadata'
+
 alias windows_to_go='help windows_to_go'
 alias windows_on_pendrive='help windows_to_go'
 

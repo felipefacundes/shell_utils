@@ -202,8 +202,8 @@ process_transcription() {
 main() {
     # Check arguments
     if [[ $# -eq 0 ]]; then
-        echo "Usage: $0 <audio_file>"
-        echo "Example: $0 my_audio.mp3"
+        echo "Usage: ${0##*/} <audio_file>"
+        echo "Example: ${0##*/} my_audio.mp3"
         exit 1
     fi
     

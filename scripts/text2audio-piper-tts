@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+text2audio-piper-tts - Convert text to audio using Piper TTS
+DOCUMENTATION
+
+CONFIG_DIR="$HOME/.config/piper-tts"
+CONFIG_FILE="$CONFIG_DIR/default_voice"
+PIPER_VOICES_DIR="/usr/share/piper-voices"
+
+# Function to display usage
+usage() {
+    echo "Usage: ${0##*/} [OPTIONS]"
+    echo "Convert text to audio using Piper TTS"
+    echo ""
+    echo "Options:"
+    echo "  -f, --file FILE     Input text file to convert"
+    echo "  -o, --output FILE   Output audio file (WAV format)"
+    echo "  -m, --model         Select default voice model"
+    echo "  -h, --help          Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/} -f input.txt -o output.wav"
+    echo "  ${0##*/} -m (to select default voice)"
+    exit 0
+}
+
+# Function to select default voice
+select_default_voice() {
+    # Check if Piper voices directory exists
+    if [ ! -d "$PIPER_VOICES_DIR" ]; then
+        whiptail --title "Error" --msgbox "Piper voices directory not found: $PIPER_VOICES_DIR\n\nPlease install piper-voices package first." 12 70
+        exit 1
+    fi
+
+    # Create configuration directory
+    mkdir -p "$CONFIG_DIR"
+
+    # Find all .onnx files
+    onnx_files=($(find "$PIPER_VOICES_DIR" -name "*.onnx" -type f))
+
+    if [ ${#onnx_files[@]} -eq 0 ]; then
+        whiptail --title "Error" --msgbox "No .onnx files found in $PIPER_VOICES_DIR\n\nPlease install piper voices first." 12 70
+        exit 1
+    fi
+
+    # Prepare arrays for whiptail
+    voice_list=()
+    for file in "${onnx_files[@]}"; do
+        # Extract information from path
+        relative_path="${file#$PIPER_VOICES_DIR/}"
+        
+        # Extract language (first subdirectory after base directory)
+        language=$(echo "$relative_path" | cut -d'/' -f1)
+        
+        # Extract model name (last part without extension)
+        model_name=$(basename "$file" .onnx)
+        
+        # Use only the model name as identifier, not the full path
+        voice_list+=("$model_name" "$model_name ($language)")
+    done
+
+    # Show voice selection dialog
+    default_voice_name=$(whiptail --title "Select Default Voice" \
+        --menu "Choose the default voice for text-to-audio conversion:" \
+        20 80 10 \
+        "${voice_list[@]}" \
+        3>&1 1>&2 2>&3)
+
+    if [ $? -ne 0 ] || [ -z "$default_voice_name" ]; then
+        whiptail --title "Cancelled" --msgbox "Voice selection cancelled by user." 10 40
+        exit 1
+    fi
+
+    # Find the full path for the selected voice
+    selected_voice=""
+    for file in "${onnx_files[@]}"; do
+        model_name=$(basename "$file" .onnx)
+        if [ "$model_name" = "$default_voice_name" ]; then
+            selected_voice="$file"
+            break
+        fi
+    done
+
+    if [ -z "$selected_voice" ]; then
+        whiptail --title "Error" --msgbox "Selected voice not found: $default_voice_name" 10 60
+        exit 1
+    fi
+
+    # Extract information from selected voice
+    relative_path="${selected_voice#$PIPER_VOICES_DIR/}"
+    language=$(echo "$relative_path" | cut -d'/' -f1)
+    model_name=$(basename "$selected_voice" .onnx)
+
+    # Save default voice to config file
+    echo "$selected_voice" > "$CONFIG_FILE"
+    
+    # Also store additional info in a separate file for reference
+    echo "$model_name|$language" > "$CONFIG_DIR/voice_info"
+
+    whiptail --title "Configuration Complete" \
+        --msgbox "Default voice configured successfully!
+
+Voice: $model_name
+Language: $language
+Model file: $(basename "$selected_voice")
+
+The voice will be used for all future conversions.
+You can change it anytime using: ${0##*/} -m" 15 70
+
+    echo "Default voice configured: $model_name ($language)"
+    exit 0
+}
+
+# Function to convert text to audio
+convert_text_to_audio() {
+    local input_file="$1"
+    local output_file="$2"
+    local voice_model="$3"
+
+    # Check if input file exists
+    if [ ! -f "$input_file" ]; then
+        echo "Error: Input file not found: $input_file"
+        exit 1
+    fi
+
+    # Check if piper command is available
+    if ! command -v piper &> /dev/null && ! command -v piper-tts &> /dev/null; then
+        echo "Error: piper or piper-tts command not found."
+        echo "Please install Piper TTS first."
+        exit 1
+    fi
+
+    # Determine piper command name
+    local piper_cmd="piper"
+    if command -v piper-tts &> /dev/null; then
+        piper_cmd="piper-tts"
+    fi
+
+    # Check if voice model file exists
+    if [ ! -f "$voice_model" ]; then
+        echo "Error: Voice model file not found: $voice_model"
+        echo "Please reconfigure default voice using: ${0##*/} -m"
+        exit 1
+    fi
+
+    # Create output directory if it doesn't exist
+    output_dir=$(dirname "$output_file")
+    if [ ! -d "$output_dir" ] && [ "$output_dir" != "." ]; then
+        mkdir -p "$output_dir"
+    fi
+
+    # Check if output file already exists
+    if [ -f "$output_file" ]; then
+        if ! whiptail --title "File Exists" --yesno "Output file already exists: $output_file\n\nOverwrite it?" 10 60; then
+            echo "Conversion cancelled."
+            exit 1
+        fi
+    fi
+
+    # Show conversion progress
+    echo "Converting text to audio..."
+    echo "Input:  $input_file"
+    echo "Output: $output_file"
+    echo "Voice:  $(basename "$voice_model" .onnx)"
+
+    # Read text from file
+    local text_content
+    text_content=$(cat "$input_file")
+
+    # Check if text content is empty
+    if [ -z "$text_content" ]; then
+        echo "Error: Input file is empty."
+        exit 1
+    fi
+
+    # Convert text to audio
+    if echo "$text_content" | $piper_cmd --model "$voice_model" --output_file "$output_file" 2>/dev/null; then
+        echo "Conversion completed successfully!"
+        echo "Audio file saved as: $output_file"
+        
+        # Show success dialog if whiptail is available
+        if command -v whiptail &> /dev/null; then
+            whiptail --title "Success" \
+                --msgbox "Text converted to audio successfully!
+
+Input: $(basename "$input_file")
+Output: $(basename "$output_file")
+Voice: $(basename "$voice_model" .onnx)
+
+File saved to: $output_file" 12 70
+        fi
+    else
+        echo "Error: Failed to convert text to audio."
+        echo "Please check:"
+        echo "1. Piper TTS is properly installed"
+        echo "2. The voice model file exists: $voice_model"
+        exit 1
+    fi
+}
+
+# Function to get default voice from config
+get_default_voice() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Error: No default voice configured."
+        echo ""
+        echo "Please set a default voice first using:"
+        echo "  ${0##*/} -m"
+        echo ""
+        echo "Or select a voice using the interactive menu."
+        exit 1
+    fi
+    
+    local voice_path
+    voice_path=$(cat "$CONFIG_FILE")
+    
+    if [ ! -f "$voice_path" ]; then
+        echo "Error: Configured voice model not found: $voice_path"
+        echo "Please reconfigure default voice using: ${0##*/} -m"
+        exit 1
+    fi
+    
+    echo "$voice_path"
+}
+
+# Main script logic
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|--file)
+            INPUT_FILE="$2"
+            shift 2
+            ;;
+        -o|--output)
+            OUTPUT_FILE="$2"
+            shift 2
+            ;;
+        -m|--model)
+            SELECT_MODEL=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+# If -m option is specified, select default voice
+if [ "$SELECT_MODEL" = true ]; then
+    select_default_voice
+fi
+
+# Check if both input and output files are specified
+if [ -z "$INPUT_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
+    if [ -z "$INPUT_FILE" ] && [ -z "$OUTPUT_FILE" ]; then
+        # No arguments provided, show usage
+        usage
+    else
+        echo "Error: Both -f/--file and -o/--output options are required."
+        echo ""
+        usage
+    fi
+fi
+
+# Get default voice
+DEFAULT_VOICE=$(get_default_voice)
+
+# Convert text to audio
+convert_text_to_audio "$INPUT_FILE" "$OUTPUT_FILE" "$DEFAULT_VOICE"

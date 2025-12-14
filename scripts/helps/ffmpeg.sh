@@ -2,67 +2,72 @@
 . ~/.shell_utils/scripts/helps/ffmpeg_full_flags.sh
 
 ffmpeg_tips() {
-	clear
+    clear
 	cat <<-'EOF'
 	# A Complete and Pedagogical FFmpeg Guide
 
 	EOF
-    echo -e "1) English tutorial\n2) Portuguese tutorial\n"
-    read -r option
-    [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
-    case $option in
-        1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips.md
-        ;;
-        2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips_pt.md
-        ;;
-    esac
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips_pt.md
+    else
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips.md
+    fi
+    clear
+}
+
+video_clear_metadata() {
+    clear
+	cat <<-'EOF'
+	# Removing Video Metadata Using FFmpeg or exiftool
+
+	EOF
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video_clear_metadat_pt.md
+    else
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video_clear_metadat.md
+    fi
     clear
 }
 
 video2whatsapp() {
-    cat <<'EOF'
-$ ffmpeg -i input.mp4 -c:v libx264 -crf 32 -vf "scale=1920:1080" -r 24 -c:a aac -b:a 96k -preset slow -movflags +faststart output_whatsapp.mp4
+	cat <<-'EOF'
+		# Transform videos to WhatsApp standard
 
-# With filter
+		$ ffmpeg -i input.mp4 -c:v libx264 -crf 32 -vf "scale=1920:1080" -r 24 -c:a aac -b:a 96k -preset slow -movflags +faststart output_whatsapp.mp4
 
-$ ffmpeg -i input.mp4 -c:v libx264 -crf 32 -vf "scale=1920:1080:flags=lanczos" -r 24 -c:a aac -b:a 96k -preset slow -movflags +faststart output_whatsapp.mp4
-EOF
+		# With filter
+
+		$ ffmpeg -i input.mp4 -c:v libx264 -crf 32 -vf "scale=1920:1080:flags=lanczos" -r 24 -c:a aac -b:a 96k -preset slow -movflags +faststart output_whatsapp.mp4
+	EOF
 }
 
 gif2sprite() {
-    cat <<'EOF'
-# 1 frame per second (ideal for sprites)
-$ ffmpeg -i sprite.gif -vf "fps=1" -vsync 0 %08d.png
+	cat <<-'EOF'
+		# 1 frame per second (ideal for sprites)
+		$ ffmpeg -i sprite.gif -vf "fps=1" -vsync 0 %08d.png
 
-# Custom rate (ex: 15 FPS)
-$ ffmpeg -i sprite.gif -r 15 %08d.png
+		# Custom rate (ex: 15 FPS)
+		$ ffmpeg -i sprite.gif -r 15 %08d.png
 
-# Frame every N seconds (ex: 1 frame every 3 seconds)
-$ ffmpeg -i sprite.gif -r 1/3 %08d.png
+		# Frame every N seconds (ex: 1 frame every 3 seconds)
+		$ ffmpeg -i sprite.gif -r 1/3 %08d.png
 
-# Specific number of frames
-$ ffmpeg -i animation.gif -frames:v 10 %08d.png
-EOF
+		# Specific number of frames
+		$ ffmpeg -i animation.gif -frames:v 10 %08d.png
+	EOF
 }
 
 video2sprite() {
-    cat <<'EOF'
-# Video for Sprites - A Comprehensive Guide
-EOF
     clear
-    echo -e "1) English tutorial\n2) Portuguese tutorial\n"
-    read -r option
-    [[ ! "$option" =~ ^[1-3]$ ]] && echo "Only number 1-3" && exit 1
-    case $option in
-        1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video2sprite.md
-        ;;
-        2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video2sprite-pt.md
-        ;;
-    esac
+	cat <<-'EOF'
+	# Video for Sprites - A Comprehensive Guide
+
+	EOF
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video2sprite-pt.md
+    else
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video2sprite.md
+    fi
     clear
 }
 
