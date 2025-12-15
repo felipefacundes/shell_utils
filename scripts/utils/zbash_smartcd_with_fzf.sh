@@ -99,7 +99,33 @@ elif [[ -n "$BASH_VERSION" ]]; then
     alias cd='smartcd'
 fi
 
+# Smartcd configuration
 export SMARTCD_LOG=~/.smartcd.log
+export SMARTCD_HIST_SIZE=${SMARTCD_HIST_SIZE:-"100"}
+export SMARTCD_HIST_IGNORE=${SMARTCD_HIST_IGNORE:-".git"}
+export SMARTCD_CONFIG_FOLDER=${SMARTCD_CONFIG_FOLDER:-"$HOME/.shell_utils_configs/smartcd"}
+export SMARTCD_CONFIG="$SMARTCD_CONFIG_FOLDER/smartcd.conf"
+export SMARTCD_HIST_FILE=${SMARTCD_HIST_FILE:-"path_history.db"}
+export SMARTCD_AUTOEXEC_FILE=${SMARTCD_AUTOEXEC_FILE:-"autoexec.db"}
+
+[[ ! -d "$SMARTCD_CONFIG_FOLDER" ]] && mkdir -p "$SMARTCD_CONFIG_FOLDER"
+
+if [[ ! -f "$SMARTCD_CONFIG" ]]; then
+cat <<'EOF' | tee "$SMARTCD_CONFIG" &>/dev/null
+export SMARTCD=1
+EOF
+fi
+
+[[ -f "$SMARTCD_CONFIG" ]] && source "$SMARTCD_CONFIG"
+
+if [[ "$SMARTCD" != 1 ]]; then
+    unset SMARTCD_LOG
+    unset SMARTCD_HIST_SIZE
+    unset SMARTCD_HIST_FILE
+    unset SMARTCD_HIST_IGNORE
+    unset SMARTCD_AUTOEXEC_FILE
+    return
+fi
 
 # Check dependencies
 if ! command -v fzf &> /dev/null; then
@@ -111,13 +137,6 @@ if ! command -v md5sum &> /dev/null; then
 	echo "Can't use smartcd : missing md5sum" | tee "$SMARTCD_LOG" >/dev/null
 	return #1
 fi
-
-# Smartcd configuration
-export SMARTCD_HIST_SIZE=${SMARTCD_HIST_SIZE:-"100"}
-export SMARTCD_HIST_IGNORE=${SMARTCD_HIST_IGNORE:-".git"}
-export SMARTCD_CONFIG_FOLDER=${SMARTCD_CONFIG_FOLDER:-"$HOME/.config/smartcd"}
-export SMARTCD_HIST_FILE=${SMARTCD_HIST_FILE:-"path_history.db"}
-export SMARTCD_AUTOEXEC_FILE=${SMARTCD_AUTOEXEC_FILE:-"autoexec.db"}
 
 # Smartcd functions
 function __smartcd::cd() {
