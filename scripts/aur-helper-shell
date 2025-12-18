@@ -87,6 +87,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         ["generating_force_installing"]="Gerando, forçando e instalando pacote..."
         ["invalid_option"]="Opção inválida. Saindo."
         ["process_completed"]="Processo concluído!"
+        ["build_failed"]="O processo não conseguiu construir o pacote."
         ["package_location"]="O pacote está em: %s"
         ["see_detailed_info"]="Deseja ver informações detalhadas dos primeiros pacotes? (s/n):"
         ["error_no_search_term"]="Erro: Nenhum termo de pesquisa fornecido."
@@ -202,6 +203,7 @@ else
         ["generating_force_installing"]="Generating, forcing and installing package..."
         ["invalid_option"]="Invalid option. Exiting."
         ["process_completed"]="Process completed!"
+        ["build_failed"]="The process failed to build the package"
         ["package_location"]="Package is located at: %s"
         ["see_detailed_info"]="Do you want to see detailed information of first packages? (y/n):"
         ["error_no_search_term"]="Error: No search term provided."
@@ -351,7 +353,7 @@ _is_installed() {
     local pkg="$1"
     
     if pacman -Qi "$pkg" &>/dev/null; then
-        local version; version=$(LANG=c pacman -Qi "$pkg" | grep -i 'version' | head -1 | cut -d: -f2 | xargs)
+        local version; version=$(LANG=c pacman -Qi "$pkg" | grep -i 'version' | head -1 | cut -d: -f2-5 | xargs)
         echo -e "${GREEN}${MESSAGES["installed"]}${NC} (v${version})"
     else
         if pacman -Si "$pkg" &>/dev/null; then
@@ -439,6 +441,18 @@ save_results() {
         awk '{print "Nome: " $1 "\tVersão: " $2 "\tDescrição: " substr($0, index($0,$3))}' > "$filename"
         
         echo -e "${GREEN}${MESSAGES["results_saved"]}${NC} $filename"
+    fi
+}
+
+f_makepkg() {
+    local arg="$1"
+
+    if makepkg "$arg"; then
+        echo -e "${GREEN}${MESSAGES["process_completed"]}${NC}"
+        printf "${MESSAGES["package_location"]}%s\n" "$CACHE/$package_name"
+    else
+        echo -e "${RED}${MESSAGES["build_failed"]}${NC}"
+        printf "${MESSAGES["package_location"]}%s\n" "$CACHE/$package_name"
     fi
 }
 
@@ -532,23 +546,21 @@ install_package() {
     case $build_choice in
         1)
             echo -e "${BLUE}${MESSAGES["generating_package"]}${NC}"
-            makepkg -s
+            f_makepkg -s
             ;;
         2)
             echo -e "${BLUE}${MESSAGES["generating_installing"]}${NC}"
-            makepkg -si
+            f_makepkg -si
             ;;
         3)
             echo -e "${BLUE}${MESSAGES["generating_force_installing"]}${NC}"
-            makepkg -sfi
+            f_makepkg -sfi
             ;;
         *)
             echo -e "${YELLOW}${MESSAGES["invalid_option"]}${NC}"
             ;;
     esac
     
-    echo -e "${GREEN}${MESSAGES["process_completed"]}${NC}"
-    printf "${MESSAGES["package_location"]}%s\n" "$CACHE/$package_name"
 }
 
 # Main search function
@@ -685,7 +697,7 @@ case "$1" in
             main_search "$search_term" 5 5
         fi
         ;;
-    -i|--install)
+    -i| -S|--install)
         if [ $# -lt 2 ]; then
             echo -e "${RED}${MESSAGES["error_no_package_name"]}${NC}"
             printf "${MESSAGES["usage_install"]}%s\n" "${0##*/}"

@@ -12,6 +12,8 @@ if command -v pacman >/dev/null; then
 	alias pacman_remove_debug='help pacman_remove_debug'
 	alias last_update='ls -lt --time-style=+%Y-%m-%d /var/cache/pacman/pkg/*.zst | grep $(date +%Y-%m-%d)'
 	alias last_update2="ls -ltr --time-style=+%Y-%m-%d /var/cache/pacman/pkg/*.zst | grep -E '\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b'"
+    alias pacman_history_installed_today='last_update'
+    alias pacman_history_installed_today2='last_update2'
 
 	alias u='sudo pacman -Syyu --noconfirm --overwrite "*"'
 	alias up="u"
