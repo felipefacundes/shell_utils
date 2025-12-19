@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+SCRIPT_DIR="$HOME/.shell_utils/scripts"
+TV_NAME=${TV_NAME:-"MyTV"}  # Default value
+url=""
+
+# Check if necessary scripts exist
+if [ ! -f "$SCRIPT_DIR/lgtv" ] || [ ! -f "$SCRIPT_DIR/youtube-id-extractor" ]; then
+    echo "Error: Required scripts not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+help() {
+    echo "Usage: ${0##*/} [OPTIONS] <youtube_url>"
+    echo ""
+    echo "Options:"
+    echo "  -tv, --tv NAME    Set LG TV name (overrides TV_NAME environment variable)"
+    echo "  -h, --help        Show this help message"
+    echo ""
+    echo "Environment variables:"
+    echo "  TV_NAME           Name of the LG TV (default: MyTV)"
+    exit 0
+}
+
+# Process arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -tv|--tv)
+            TV_NAME="$2"
+            shift 2  # Remove -tv and its value
+            ;;
+        -h|--help)
+            help
+            ;;
+        -*)
+            echo "Error: Unknown option $1"
+            echo "Use ${0##*/} --help for usage information"
+            exit 1
+            ;;
+        *)
+            # First non-option argument is the URL
+            if [ -z "$url" ]; then
+                url="$1"
+            else
+                echo "Error: Multiple URLs specified"
+                echo "Use ${0##*/} --help for usage information"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Validate URL
+if [ -z "$url" ]; then
+    echo "Error: No URL specified"
+    echo "Usage: ${0##*/} [OPTIONS] <youtube_url>"
+    echo "Use ${0##*/} --help for more information"
+    exit 1
+fi
+
+if [[ ! "$url" =~ youtube\.com|youtu\.be ]]; then
+    echo "Error: Not a valid YouTube URL"
+    exit 1
+fi
+
+# Wrapper functions
+f_lgtv() {
+    local arg=$1
+    "$SCRIPT_DIR/lgtv" --name "$TV_NAME" --ssl openYoutubeId "$arg"
+}
+
+yt_id_extractor() {
+    local arg=$1
+    "$SCRIPT_DIR/youtube-id-extractor" "$arg"
+}
+
+# Extrair ID do YouTube
+if ! id=$(yt_id_extractor "$url"); then
+    echo "Error extracting YouTube ID"
+    exit 1
+fi
+
+# Executar comando na TV
+f_lgtv "$id"
