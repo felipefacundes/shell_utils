@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+YouTube Video ID Extractor
+Supports different YouTube URL formats
+DOCUMENTATION
+
+extract_youtube_id() {
+    local url="$1"
+    local video_id=""
+    
+    # Remove possible whitespace
+    url="${url// /}"
+    
+    # Decode HTML entities (optional, but useful)
+    url="${url//&amp;/&}"
+    
+    url="${url//\\/}"
+
+    # Check if the URL appears to be from YouTube
+    if [[ ! "$url" =~ (youtube\.com|youtu\.be) ]]; then
+        echo "ERROR: URL does not appear to be from YouTube" >&2
+        return 1
+    fi
+    
+    # Rule 1: URLs with watch?v= (including playlists)
+    # Example: https://www.youtube.com/watch?v=CcJ-ybZdFss&list=...
+    if [[ "$url" =~ watch\?v=([a-zA-Z0-9_-]{11})([&?]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 2: URLs with watch/?v= (extra slash)
+    # Example: https://www.youtube.com/watch/?v=APYVWYHS654
+    if [[ "$url" =~ watch/\?v=([a-zA-Z0-9_-]{11})([&?]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 3: Generic URLs with ?v= (captures even without watch)
+    # Example: https://www.youtube.com/something?v=ABC123DEF45
+    if [[ "$url" =~ \?v=([a-zA-Z0-9_-]{11})([&?]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 4: Shortened youtu.be URLs
+    # Example: https://youtu.be/WjrfQ_5tWjQ?si=...
+    # Example: https://youtu.be/d6gXoH5bECU
+    if [[ "$url" =~ youtu\.be/([a-zA-Z0-9_-]{11})([?&/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 5: URLs with /embed/
+    # Example: https://www.youtube.com/embed/wCCSEol8oSc
+    if [[ "$url" =~ /embed/([a-zA-Z0-9_-]{11})([?&/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 6: URLs with /v/
+    # Example: https://www.youtube.com/v/ABC123DEF45
+    if [[ "$url" =~ /v/([a-zA-Z0-9_-]{11})([?&/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 7: URLs with /e/
+    # Example: https://www.youtube.com/e/ABC123DEF45
+    if [[ "$url" =~ /e/([a-zA-Z0-9_-]{11})([?&/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 8: URLs of type /user/username#p/u/11/VIDEO_ID
+    if [[ "$url" =~ /u/[0-9]+/([a-zA-Z0-9_-]{11})([?&/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 9: Mobile URLs of type m.youtube.com
+    if [[ "$url" =~ m\.youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})([&?]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 10: /shorts/ format
+    # Example: https://www.youtube.com/shorts/ABC123DEF45
+    if [[ "$url" =~ /shorts/([a-zA-Z0-9_-]{11})([?&/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 11: /live/ format for live streams
+    # Example: https://www.youtube.com/live/ABC123DEF45
+    if [[ "$url" =~ /live/([a-zA-Z0-9_-]{11})([?&/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # Rule 12: &v= parameter (when it's not the first parameter)
+    # Example: https://www.youtube.com/watch?list=...&v=ABC123DEF45
+    if [[ "$url" =~ [\&?]v=([a-zA-Z0-9_-]{11})([&?]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+    
+    # If no rule works, try a more generic search
+    # Last resort: look for any 11-character ID pattern
+    if [[ "$url" =~ ([a-zA-Z0-9_-]{11}) ]]; then
+        # Check if the found pattern is in a plausible position
+        local potential_id="${BASH_REMATCH[1]}"
+        # Check if the pattern is near known markers
+        if [[ "$url" =~ (watch\?v=|youtu\.be/|/embed/|/v/|/shorts/|/live/) ]]; then
+            echo "$potential_id"
+            return 0
+        fi
+    fi
+    
+    # Check if it's a playlist-only URL (not a video with playlist parameter)
+    # Example: https://www.youtube.com/playlist?list=PLgKGJP3qmrzbe7EjpXPuCgen_TFWIkbay
+    if [[ "$url" =~ ^https?://(www\.)?youtube\.com/playlist\?list= ]] && ! [[ "$url" =~ \?v= ]]; then
+        echo "ERROR: This is a playlist URL, not a video URL. Please provide a video URL." >&2
+        return 1
+    fi
+
+    if [[ "$url" =~ /playlist\?list= ]] && ! [[ "$url" =~ \?v= ]]; then
+        echo "ERROR: This is a playlist URL, not a video URL. Please provide a video URL." >&2
+        return 1
+    fi
+
+    # If no rule works
+    echo "ERROR: Could not extract video ID from the provided URL" >&2
+    return 1
+}
+
+# Function to test multiple cases
+test_youtube_extractor() {
+    local test_cases=(
+        # Basic cases
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        "https://youtu.be/dQw4w9WgXcQ"
+        "https://www.youtube.com/embed/dQw4w9WgXcQ"
+        
+        # With extra parameters
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLABC123"
+        "https://youtu.be/dQw4w9WgXcQ?si=xyz123"
+        
+        # Special formats
+        "https://www.youtube.com/shorts/dQw4w9WgXcQ"
+        "https://www.youtube.com/live/dQw4w9WgXcQ"
+        "https://www.youtube.com/v/dQw4w9WgXcQ"
+        
+        # Cases from your examples
+        "https://m.youtube.com/watch?v=uiJJkgspPSs"
+        "https://www.youtube.com/watch?v=CcJ-ybZdFss&list=PLgKGJP3qmrzbe7EjpXPuCgen_TFWIkbay&index=2"
+        "https://www.youtube.com/watch/?v=APYVWYHS654"
+        "https://youtu.be/d6gXoH5bECU"
+        "https://youtu.be/WjrfQ_5tWjQ?si=aBu2-WbKxmcBFPtq"
+        "https://www.youtube.com/embed/wCCSEol8oSc"
+        "https://www.youtube.com/shorts/abc123def45"
+        
+        # URLs with &amp; (HTML encoded)
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ&amp;list=PLABC"
+        
+        # Mobile URL
+        "https://m.youtube.com/watch?v=dQw4w9WgXcQ"
+    )
+    
+    echo "🧪 Testing YouTube ID Extractor"
+    echo "====================================="
+    
+    local passed=0
+    local total=0
+    
+    for url in "${test_cases[@]}"; do
+        ((total++))
+        echo -n "Testing: ${url:0:50}..."
+        
+        if result=$(extract_youtube_id "$url" 2>/dev/null); then
+            echo " ✅ ID: $result"
+            ((passed++))
+        else
+            echo " ❌ Failed"
+        fi
+    done
+    
+    echo "====================================="
+    echo "Result: $passed/$total tests passed"
+    
+    if [ $passed -eq $total ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Main function
+main() {
+    if [ $# -eq 0 ]; then
+        echo "Usage: ${0##*/} <YOUTUBE_URL>"
+        echo "       ${0##*/} --test  (runs tests)"
+        echo ""
+        echo "Examples of supported URLs:"
+        echo "  • https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        echo "  • https://youtu.be/dQw4w9WgXcQ"
+        echo "  • https://www.youtube.com/embed/dQw4w9WgXcQ"
+        echo "  • https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=..."
+        echo "  • https://www.youtube.com/shorts/dQw4w9WgXcQ"
+        echo "  • https://www.youtube.com/live/dQw4w9WgXcQ"
+        exit 1
+    fi
+    
+    if [ "$1" = "--test" ] || [ "$1" = "-t" ]; then
+        test_youtube_extractor
+    else
+        extract_youtube_id "$1"
+    fi
+}
+
+# Run the main function with the provided arguments
+main "$@"
