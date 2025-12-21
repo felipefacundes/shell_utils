@@ -661,7 +661,7 @@ case "$1" in
         show_help
         exit 0
         ;;
-    -s|--search)
+    -Ss| -s|--search)
         if [ $# -lt 2 ]; then
             echo -e "${RED}${MESSAGES["error_no_search_term"]}${NC}"
             printf "${MESSAGES["usage_search"]}%s\n" "${0##*/}"

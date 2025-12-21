@@ -68,9 +68,15 @@ fi
 
 # Function to clean swap forcefully
 cleanswap_force() {
+    local zram="/dev/zram0"
     echo "${MESSAGES["clean_swap"]}"
-    sudo swapoff /dev/zram0 && sudo swapoff -a
-    sudo swapon /dev/zram0 -p 10
+
+    if [ -b "$zram" ]; then
+        sudo swapoff "$zram"
+        sudo swapon "$zram" -p 10
+    fi
+
+    sudo swapoff -a
     sudo swapon -a
     cat /proc/swaps
     echo "${MESSAGES["clean_swap_done"]}"
