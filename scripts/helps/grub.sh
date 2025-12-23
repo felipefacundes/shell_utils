@@ -32,7 +32,7 @@ multiboot()
             markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/multiboot.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/multiboot_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/multiboot-pt.md
         ;;
     esac
     clear

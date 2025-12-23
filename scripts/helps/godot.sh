@@ -9,10 +9,10 @@ godot_restore_editor_theme() {
     [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
     case $option in
         1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove_extension.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/godot_editor_theme_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/godot-editor-theme-pt.md
         ;;
     esac
     clear
@@ -29,10 +29,10 @@ godot_animation_generate() {
     [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
     case $option in
         1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/animation_generate.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/animation-generate.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gerar_animacoes.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gerar-animacoes.md
         ;;
     esac
     clear

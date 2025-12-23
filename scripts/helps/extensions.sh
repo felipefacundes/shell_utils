@@ -18,7 +18,7 @@ remove_extension() {
 		EOF
 
         read -s -n 1 -p "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove_extension_pt.md
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension-pt.md
     else
 		cat <<-'EOF'
 		# Remove extension tips - This guide presents professional techniques for file name manipulation in shell scripts, with special focus on removing file extensions. Each method includes practical examples with clearly demonstrated inputs and outputs.
@@ -36,6 +36,6 @@ remove_extension() {
 
 		EOF
         read -s -n 1 -p "Press any key to display the full help" >/dev/tty
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove_extension.md
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension.md
     fi
 }

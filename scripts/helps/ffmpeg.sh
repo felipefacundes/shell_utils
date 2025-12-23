@@ -8,9 +8,9 @@ ffmpeg_tips() {
 
 	EOF
     if [[ "${LANG,,}" =~ pt_ ]]; then
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips_pt.md
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg-tips-pt.md
     else
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg_tips.md
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/ffmpeg-tips.md
     fi
     clear
 }
@@ -22,9 +22,9 @@ video_clear_metadata() {
 
 	EOF
     if [[ "${LANG,,}" =~ pt_ ]]; then
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video_clear_metadat_pt.md
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video-clear-metadat-pt.md
     else
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video_clear_metadat.md
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/video-clear-metadat.md
     fi
     clear
 }
@@ -119,7 +119,7 @@ images2video() {
 		# Este guia explica diversos comandos FFmpeg para converter sequências de imagens em vídeo, com foco em diferentes cenários e necessidades.
 
 		EOF
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/image2video_pt.md
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/image2video-pt.md
     else
 		cat <<-'EOF'
 		# This guide explains various FFmpeg commands for converting image sequences into video, focusing on different scenarios and needs.

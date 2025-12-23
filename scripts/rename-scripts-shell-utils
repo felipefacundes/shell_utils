@@ -170,9 +170,13 @@ for file_path in "$TARGET_SCRIPTS_DIR"/**/*; do
         # Construct full new path
         new_file_path="${dir_name}/${new_base_name}"
         
+        blacklist_dir=$(realpath "$file_path")
+
         # Check if renaming is actually needed
-        if [[ "$file_path" != "$new_file_path" ]]; then
-            
+        if [[ "$file_path" != "$new_file_path" ]] && \
+            ! [[ "$blacklist_dir" =~ "/scripts/utilities/" ]] && \
+            ! [[ "$blacklist_dir" =~ "/scripts/helps/" ]]; then
+
             log "INFO" "Processing: $base_name -> $new_base_name"
             
             # Safety check: avoid overwriting existing files
@@ -181,31 +185,28 @@ for file_path in "$TARGET_SCRIPTS_DIR"/**/*; do
                 ((count_errors++))
                 continue
             fi
-
-
             
             # Step C: Rename
-            if [[ "$DRY_RUN" == "false" ]]; then
-                blacklist_dir=$(realpath "$file_path")
-                if ! [[ "$blacklist_dir" =~ "/scripts/utilities/" ]] && ! [[ "$blacklist_dir" =~ "/scripts/helps/" ]]; then
-                    if mv "$file_path" "$new_file_path"; then
-                        log "INFO" "Successfully renamed: $file_path -> $new_file_path"
-                        ((count_renamed++))
-                        # Step B: Register Old Name
-                        # Using only the filename relative to the project or the basename as needed?
-                        # Storing the full original path for clarity.
-                        register_old_name "$file_path" "$new_base_name"
-                    else
-                        log "ERROR" "Failed to rename: $file_path"
-                        ((count_errors++))
-                    fi
+            if [[ "$DRY_RUN" == "false" ]]; then                
+                if mv "$file_path" "$new_file_path"; then
+                    log "INFO" "Successfully renamed: $file_path -> $new_file_path"
+                    ((count_renamed++))
+                    # Step B: Register Old Name
+                    # Using only the filename relative to the project or the basename as needed?
+                    # Storing the full original path for clarity.
+                    register_old_name "$file_path" "$new_base_name"
+                else
+                    log "ERROR" "Failed to rename: $file_path"
+                    ((count_errors++))
                 fi
             else
                 log "INFO" "[DRY-RUN] Would rename: $file_path -> $new_file_path"
             fi
             
-        else
-             log "DEBUG" "Skipping: $base_name (Already normalized)"
+        elif [[ "$file_path" == "$new_file_path" ]]; then
+            log "DEBUG" "Skipping: $base_name (Already normalized)"
+        elif [[ "$blacklist_dir" =~ "/scripts/utilities/" ]] || [[ "$blacklist_dir" =~ "/scripts/helps/" ]]; then
+            log "DEBUG" "Skipping: $base_name (Blacklisted directory)"
         fi
         
         ((count_processed++))

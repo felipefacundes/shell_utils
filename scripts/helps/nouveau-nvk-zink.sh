@@ -11,10 +11,10 @@ nouveau_nvk_zink()
     [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
     case $option in
         1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/nouveau_nvk_zink.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/nouveau-nvk-zink.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/nouveau_nvk_zink_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/nouveau-nvk-zink-pt.md
         ;;
     esac
     clear

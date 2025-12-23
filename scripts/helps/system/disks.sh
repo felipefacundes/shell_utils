@@ -45,10 +45,10 @@ echo '
     [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
     case $option in
         1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/disks_boot_and_zerofill.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/disks-boot-and-zerofill.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/disks_boot_and_zerofill_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/disks-boot-and-zerofill-pt.md
         ;;
     esac
 }

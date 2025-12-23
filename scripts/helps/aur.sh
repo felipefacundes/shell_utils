@@ -8,13 +8,13 @@ EOF
     [[ ! "$option" =~ ^[1-3]$ ]] && echo "Only number 1-3" && exit 1
     case $option in
         1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/AUR_NEW_PACKAGE.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/AUR-NEW-PACKAGE.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/AUR_NEW_PACKAGE-pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/AUR-NEW-PACKAGE-pt.md
         ;;
         3)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/AUR_NEW_PACKAGE-es.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/AUR-NEW-PACKAGE-es.md
         ;;
     esac
     clear

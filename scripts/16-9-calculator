@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+
+: <<'DOCUMENTATION'
+Calculate 16:9 aspect ratio
+Usage: 16-9-calculator [width|height] [value]
+Example: 16-9-calculator 1920
+Example: 16-9-calculator width 1920
+Example: 16-9-calculator height 1080
+DOCUMENTATION
+
+calculate_16_9() {
+    local value="$1"
+    local is_width="$2"
+    
+    if [[ "$is_width" == "true" ]]; then
+        # If we have width, calculate height
+        width=$(printf "%.0f" "$value")
+        # Use scale=2 to limit decimal places before passing to printf
+        height=$(bc -l <<< "scale=2; $value * 9 / 16" | xargs printf "%.0f")
+    else
+        # If we have height, calculate width
+        height=$(printf "%.0f" "$value")
+        # Use scale=2 to limit decimal places before passing to printf
+        width=$(bc -l <<< "scale=2; $value * 16 / 9" | xargs printf "%.0f")
+    fi
+    
+    echo "${width}x${height}"
+}
+
+show_help() {
+    echo "16:9 Aspect Ratio Calculator"
+    echo "=============================="
+    echo "Usage:"
+    echo "  ${0##*/} [value]                - Calculate from width (default)"
+    echo "  ${0##*/} width [value]          - Calculate height from width"
+    echo "  ${0##*/} height [value]         - Calculate width from height"
+    echo "  ${0##*/} --help or -h           - Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/} 1920                   # Returns: 1920x1080"
+    echo "  ${0##*/} width 1920             # Returns: 1920x1080"
+    echo "  ${0##*/} height 1080            # Returns: 1920x1080"
+    echo "  ${0##*/} height 720             # Returns: 1280x720"
+}
+
+interactive_mode() {
+    echo "16:9 Aspect Ratio Calculator"
+    echo "=============================="
+    
+    while true; do
+        echo ""
+        echo "1. Calculate from width"
+        echo "2. Calculate from height"
+        echo "3. Show common resolutions"
+        echo "4. Exit"
+        echo ""
+        read -rp "Choose an option (1-4): " choice
+        
+        case $choice in
+            1)
+                read -rp "Enter width value: " width_value
+                # Remove non-numeric characters except decimal point
+                width_value=$(echo "$width_value" | tr -cd '0-9.')
+                
+                if [[ -z "$width_value" ]] || ! [[ "$width_value" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+                    echo "Invalid value. Please enter a positive number."
+                    continue
+                fi
+                
+                if (( $(echo "$width_value <= 0" | bc -l) )); then
+                    echo "Value must be greater than zero."
+                    continue
+                fi
+                
+                result=$(calculate_16_9 "$width_value" "true")
+                echo ""
+                echo "Result: $result"
+                echo "Aspect ratio: 16:9"
+                echo "Multiplier: 9/16 = 0.5625"
+                ;;
+            2)
+                read -p "Enter height value: " height_value
+                # Remove non-numeric characters except decimal point
+                height_value=$(echo "$height_value" | tr -cd '0-9.')
+                
+                if [[ -z "$height_value" ]] || ! [[ "$height_value" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+                    echo "Invalid value. Please enter a positive number."
+                    continue
+                fi
+                
+                if (( $(echo "$height_value <= 0" | bc -l) )); then
+                    echo "Value must be greater than zero."
+                    continue
+                fi
+                
+                result=$(calculate_16_9 "$height_value" "false")
+                echo ""
+                echo "Result: $result"
+                echo "Aspect ratio: 16:9"
+                echo "Multiplier: 16/9 = 1.777..."
+                ;;
+            3)
+                echo ""
+                echo "Common 16:9 Resolutions:"
+                echo "------------------------"
+                echo "3840x2160  (4K UHD)"
+                echo "2560x1440  (2K QHD)"
+                echo "1920x1080  (Full HD)"
+                echo "1600x900   (HD+)"
+                echo "1366x768   (HD)"
+                echo "1280x720   (HD Ready)"
+                echo "1024x576"
+                echo "854x480"
+                echo "640x360"
+                ;;
+            4)
+                echo "Exiting..."
+                exit 0
+                ;;
+            *)
+                echo "Invalid option. Please choose 1-4."
+                ;;
+        esac
+    done
+}
+
+# Main script logic
+main() {
+    # Check if bc is available
+    if ! command -v bc &> /dev/null; then
+        echo "Error: 'bc' calculator is required but not installed."
+        echo "Install it with: sudo apt-get install bc (Ubuntu/Debian)"
+        echo "or: sudo yum install bc (RHEL/CentOS)"
+        exit 1
+    fi
+    
+    # Show help if requested
+    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        show_help
+        exit 0
+    fi
+    
+    # If no arguments, start interactive mode
+    if [[ $# -eq 0 ]]; then
+        interactive_mode
+        exit 0
+    fi
+    
+    # Process command line arguments
+    if [[ $# -eq 1 ]]; then
+        # Single argument: assume it's a width value
+        value="$1"
+        # Remove non-numeric characters
+        value=$(echo "$value" | tr -cd '0-9.')
+        
+        if [[ -z "$value" ]] || ! [[ "$value" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+            echo "Error: Invalid value '$1'"
+            show_help
+            exit 1
+        fi
+        
+        result=$(calculate_16_9 "$value" "true")
+        echo "$result"
+        
+    elif [[ $# -eq 2 ]]; then
+        # Two arguments: mode and value
+        mode="$1"
+        value="$2"
+        
+        # Remove non-numeric characters from value
+        value=$(echo "$value" | tr -cd '0-9.')
+        
+        if [[ -z "$value" ]] || ! [[ "$value" =~ ^[0-9]*\.?[0-9]+$ ]]; then
+            echo "Error: Invalid value '$2'"
+            show_help
+            exit 1
+        fi
+        
+        case "$mode" in
+            width)
+                result=$(calculate_16_9 "$value" "true")
+                echo "$result"
+                ;;
+            height)
+                result=$(calculate_16_9 "$value" "false")
+                echo "$result"
+                ;;
+            *)
+                echo "Error: Invalid mode '$mode'. Use 'width' or 'height'."
+                show_help
+                exit 1
+                ;;
+        esac
+    else
+        echo "Error: Too many arguments."
+        show_help
+        exit 1
+    fi
+}
+
+# Run main function with all arguments
+main "$@"

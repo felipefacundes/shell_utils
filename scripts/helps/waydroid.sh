@@ -64,7 +64,7 @@ waydroid_help() {
             markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/waydroid.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/waydroid_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/waydroid-pt.md
         ;;
     esac
     clear

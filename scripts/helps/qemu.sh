@@ -22,7 +22,7 @@ qemu_mounting_help()
             markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/guestmount.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/guestmount_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/guestmount-pt.md
         ;;
     esac
     clear
@@ -41,13 +41,13 @@ qemu_gpu_passthrough()
             markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gpuPassthrough.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gpuPassthrough_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gpuPassthrough-pt.md
         ;;
         3)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gpuPassthrough_tuto2.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gpuPassthrough-tuto2.md
         ;;
         4)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gpuPassthrough_tuto2_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/gpuPassthrough-tuto2-pt.md
         ;;
     esac
     clear

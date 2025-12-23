@@ -27,10 +27,10 @@ windows_to_go()
     [[ ! "$option" =~ ^[1-2]$ ]] && echo "Only number 1 or 2" && exit 1
     case $option in
         1)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/windows_to_go.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/windows-to-go.md
         ;;
         2)
-            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/windows_to_go_pt.md
+            markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/windows-to-go-pt.md
         ;;
     esac
     clear
