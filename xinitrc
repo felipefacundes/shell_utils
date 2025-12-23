@@ -80,40 +80,13 @@ battery_check() {
 }
 
 monitor_mode() {
-    sleep 2
+    local xrandr_default=~/.screenlayout/xrandr_default.sh
 
-    ###xrandr --setprovideroutputsource modesetting modesetting &  # restar x
-    ###xrandr --auto
-    ###--rate 120.00
-
-    # xrandr --output eDP-1-1 --primary --mode 1920x1080 --auto \
-    #     --pos 0x0 --rotate normal --output HDMI-0 --off
-
-    # xrandr --output HDMI-0 --mode 1920x1080 --pos 0x0 --rotate inverted \
-    # --output eDP-1-1 --primary --mode 1920x1080 --pos 0x0 --rotate normal    
-
-    if glxinfo -B | grep -i 'NVIDIA' >/dev/null; then
-        xrandr --output HDMI-0 --mode 1920x1080 --pos 0x0 --rotate inverted \
-        --output eDP-1-1 --off
-	else
-	    xrandr --output eDP-1 --off --output HDMI-1-0 --primary --mode 1920x1080 \
-		--pos 0x0 --rotate inverted
-	fi
-
-    ##sleep 2
-    #cvt 1920 1080
-    #xrandr -s 1920x1080 --auto
-    ##xrandr --newmode "1920x1080_148"  148.50  1920 2008 2052 2200  1080 1084 1089 1125 +hsync +vsync
-    ##xrandr --verbose --addmode eDP-1-1 "1920x1080_148"
-    ##xrandr --output eDP-1-1 --mode "1920x1080_148"
-    ##xrandr --newmode "$(cvt 1920 1080 | tail -n1 | sed 's#Modeline ##g' | sed 's#"##g')"
-    ##xrandr --verbose --addmode eDP-1-1 "$(cvt 1920 1080 | tail -n1 | awk '{print $2}' | sed 's#"##g')"
-    ##xrandr --output eDP-1-1 --mode "$(cvt 1920 1080 | tail -n1 | awk '{print $2}' | sed 's#"##g')"
-    ##xrandr -s 1920x1080 -r 70
-    ##xrandr -s 1920x1080 -r 75
-    ##xrandr -s 1920x1080 -r 89
-    #xrandr -s "1920x1080_148" --auto
-    ##xrandr -s "$(cvt 1920 1080 | tail -n1 | awk '{print $2}' | sed 's#"##g')" --auto
+    # shellcheck source=/dev/null
+    if [[ -f "$xrandr_default" ]]; then
+        sleep 2
+        source "$xrandr_default"
+    fi
 }
 
 random_wallpaper() {
