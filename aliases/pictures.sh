@@ -1,5 +1,7 @@
 #####################################################
 ################# Pictures / Photos #################
+alias resize_force='help resize_force'
+alias force_resize='help resize_force'
 alias pdf2text='~/.shell_utils/scripts/faqs/pdftotext-help'
 alias ascii_image_converter_help='echo https://github.com/TheZoraiz/ascii-image-converter'
 alias ascii_image_converter_man='ascii_image_converter_help'

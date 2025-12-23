@@ -1,3 +1,21 @@
+permissions() {
+	cat <<-'EOF'
+	# chmod Permissions Listing (Octal System). Three-Digit Structure and Permissions: Files vs Directories
+	EOF
+	clear
+	if [[ "${LANG,,}" =~ pt_ ]]; then
+        markdown-reader -nl ~/.shell_utils/scripts/helps/markdowns/permissions_pt.md | head -n 51 | tail -n 33
+        echo
+        read -s -n 1 -rp "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/permissions_pt.md
+	else
+        markdown-reader -nl ~/.shell_utils/scripts/helps/markdowns/permissions.md | head -n 51 | tail -n 33
+        echo
+        read -s -n 1 -rp "Press any key to display the full help" >/dev/tty
+        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/permissions.md
+	fi
+}
+
 filesystem_help()
 {
 echo -e "

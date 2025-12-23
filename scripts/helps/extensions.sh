@@ -1,8 +1,12 @@
 remove_extension() {
+	cat <<-'EOF'
+	# Remove extension tips - This guide presents professional techniques for file name manipulation in shell scripts, with special focus on removing file extensions. Each method includes practical examples with clearly demonstrated inputs and outputs.
+	EOF
 	clear
-    if [[ "${LANG,,}" =~ pt_ ]]; then
+	if [[ "${LANG,,}" =~ pt_ ]]; then
 		cat <<-'EOF'
-		# Remoção de extensões - Este guia apresenta técnicas profissionais para manipulação de nomes de arquivos em scripts shell, com foco especial na remoção de extensões de arquivo. Cada método inclui exemplos práticos com entradas e saídas claramente demonstradas.
+		# Remoção de extensões - Este guia apresenta técnicas profissionais para manipulação de nomes de arquivos em scripts shell, 
+		# com foco especial na remoção de extensões de arquivo. Cada método inclui exemplos práticos com entradas e saídas claramente demonstradas.
 
 		# Remover extensão
 
@@ -17,9 +21,9 @@ remove_extension() {
 
 		EOF
 
-        read -s -n 1 -p "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension-pt.md
-    else
+		read -s -n 1 -rp "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
+		markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension-pt.md
+	else
 		cat <<-'EOF'
 		# Remove extension tips - This guide presents professional techniques for file name manipulation in shell scripts, with special focus on removing file extensions. Each method includes practical examples with clearly demonstrated inputs and outputs.
 
@@ -35,7 +39,7 @@ remove_extension() {
 		echo "${filename##*.}"    # Output: gz
 
 		EOF
-        read -s -n 1 -p "Press any key to display the full help" >/dev/tty
-        markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension.md
+		read -s -n 1 -rp "Press any key to display the full help" >/dev/tty
+		markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension.md
     fi
 }

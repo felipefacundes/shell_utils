@@ -1,6 +1,7 @@
-function markdown_reader() {
-    echo -e "
-# An enhanced markdown reader combining clean formatting with optional syntax highlighting
-"
-    ~/.shell_utils/scripts/markdown-reader "$@"
+markdown_reader() {
+	cat <<-EOF
+	# An enhanced markdown reader combining clean formatting with optional syntax highlighting
+	EOF
+    clear
+	~/.shell_utils/scripts/markdown-reader "$@"
 }
