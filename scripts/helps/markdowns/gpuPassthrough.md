@@ -90,10 +90,10 @@ sudo reboot
 
 ### 3.1 Create IOMMU Verification Script
 
-Create a file called `iommu_group.sh`:
+Create a file called `iommu-group`:
 
 ```bash
-nano iommu_group.sh
+nano iommu-group
 ```
 
 Paste the following content:
@@ -114,8 +114,8 @@ done;
 Make the script executable and run it:
 
 ```bash
-chmod +x iommu_group.sh
-./iommu_group.sh
+chmod +x iommu-group
+./iommu-group
 ```
 
 ### 3.2 Analyze the Output
@@ -274,7 +274,7 @@ sudo reboot
 lspci -k | grep -E "vfio-pci|NVIDIA"
 
 # Check IOMMU groups again
-./iommu_group.sh
+./iommu-group
 
 # Check if NVIDIA drivers are blocked
 lsmod | grep -E "nvidia|nouveau"
@@ -477,7 +477,7 @@ egrep -c '(vmx|svm)' /proc/cpuinfo
 echo "2. Checking IOMMU..."
 dmesg | grep -e "DMAR" -e "IOMMU"
 echo "3. Checking IOMMU groups..."
-./iommu_group.sh | grep -A 5 -B 5 "NVIDIA"
+./iommu-group | grep -A 5 -B 5 "NVIDIA"
 echo "4. Checking active drivers..."
 lspci -k | grep -A 2 -E "(VGA|3D)"
 ```

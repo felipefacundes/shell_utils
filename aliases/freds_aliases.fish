@@ -1,4 +1,4 @@
-alias browser_for_help='~/.shell_utils/scripts/browser_for_help.sh'
+alias browser_for_help='~/.shell_utils/scripts/browser-for-help'
 
 alias freds_all_scripts_oficial='xdg-open http://www.fmwconcepts.com/imagemagick/index.php 2>/dev/null &>1'
 alias freds_all_scripts_local="browser_for_help ~/.fred_site_offline/freds_all_scripts/Fred\'s\ ImageMagick\ Scripts.html"

@@ -12,7 +12,7 @@ DESCRIPTION:
 
 REQUIREMENTS:
     - Must be loaded via 'source' in the current shell
-    - beep_sound.sh script must be located at ~/.shell_utils/scripts/
+    - beep-sound script must be located at ~/.shell_utils/scripts/
     - Sound support on the system (afplay on macOS, paplay on Linux, etc)
 
 INSTALLATION:
@@ -49,7 +49,7 @@ CREATED FUNCTION:
 
 FILES:
     ~/.shell_utils_configs/shell_utils_notifications.conf - Configuration
-    ~/.shell_utils/scripts/beep_sound.sh - Main sound script
+    ~/.shell_utils/scripts/beep-sound - Main sound script
 
 USAGE EXAMPLES:
     # Reload configuration
@@ -74,7 +74,7 @@ set -g CONFIG_DIR "$HOME/.shell_utils_configs"
 set -g CONFIG_FILE "$CONFIG_DIR/shell_utils_notifications.fish_conf"
 
 function beep_sound --description "Play beep sound silently"
-    ~/.shell_utils/scripts/beep_sound.sh -d >/dev/null 2>&1 &
+    ~/.shell_utils/scripts/beep-sound -d >/dev/null 2>&1 &
 end
 
 # Create config file if it doesn't exist

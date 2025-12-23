@@ -1,5 +1,5 @@
 # ffmpeg full flags
-. ~/.shell_utils/scripts/helps/ffmpeg_full_flags.sh
+. ~/.shell_utils/scripts/helps/ffmpeg-full-flags.sh
 
 ffmpeg_tips() {
     clear

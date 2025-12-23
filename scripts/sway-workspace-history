@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+sway-workspace-history - Toggle between the two most recent workspaces in Sway
+
+ DESCRIPTION
+This script simulates the recent workspace toggle behavior found in other window managers:
+
+- AwesomeWM: "awful.tag.history.restore"
+- Openbox: "Switch to previous workspace" behavior (usually "Super+Tab")
+
+ BEHAVIOR
+The script maintains a history of the previous workspace and allows toggling between the current workspace and the last visited workspace using the shortcut,
+creating a toggle cycle similar to these behaviors:
+
+ AwesomeWM
+- "awful.tag.history.restore" - Toggles between recent tags (workspaces)
+- Maintains a navigation history between tags
+- Useful for quickly switching between two frequently used workspaces
+
+ OpenBox  
+- "Previous workspace" action or "Switch to previous application"
+- Usually mapped to "Super+Tab" or similar
+- Toggles between the two most recently active desktops
+
+ TECHNICAL FUNCTIONING
+
+ Script Flow:
+1. Captures current workspace using "swaymsg" and "jq"
+2. Reads previous workspace from state file ("/tmp/sway_last_workspace")
+3. Checks history validity (exists and different from current)
+4. Switches workspaces if valid, or goes to workspace 1 as fallback
+5. Updates history by saving current workspace for future use
+
+ Usage Example:
+
+Workspaces: [1:firefox] [2:alacritty] [3:audacity]
+Sequence:
+1. Start on workspace 1
+2. Go to workspace 2 (history: 1)
+3. Go to workspace 3 (history: 2) 
+4. Press shortcut → goes back to workspace 2 (history: 3)
+5. Press shortcut → goes back to workspace 3 (history: 2)
+
+
+ DEPENDENCIES
+- "swaymsg" (provided by Sway)
+- "jq" (JSON processing) - install with: "sudo apt install jq"
+
+ CONFIGURATION
+Add to "~/.config/sway/config" file:
+
+bindsym $mod+apostrophe exec ~/.config/sway/sway-workspace-history
+
+
+ FILES
+- Script: "~/.config/sway/sway-workspace-history"
+- State: "/tmp/sway_last_workspace" (volatile history)
+
+ NOTES
+- History is volatile (stored in "/tmp") and lost on reboot
+- For persistent history, change "STATE_FILE" to "~/.local/state/sway/last_workspace"
+- Works only with named workspaces (numbers or text)
+DOCUMENTATION
+
+# Workspace History Manager for Sway
+# Usage: sway-workspace-history [-d|--daemon] [-b|--back] [-h|--help]
+
+STATE_DIR="$HOME/.local/state/sway"
+HISTORY_FILE="$STATE_DIR/workspace_history"
+MAX_HISTORY=10
+
+show_help() {
+    cat << EOF
+Workspace History Manager for Sway
+
+Usage: ${0##*/} [OPTION]
+
+Options:
+  -d, --daemon    Run as daemon to track workspace changes
+  -b, --back      Switch to previous workspace in history
+  -s, --show      Show current history
+  -c, --clear     Clear workspace history
+  -h, --help      Show this help message
+
+Examples:
+  ${0##*/} --daemon     # Run in background to track workspace changes
+  ${0##*/} --back       # Switch to previous workspace
+  ${0##*/} --show       # Display workspace history
+
+Recommended setup:
+  1. Add to sway config: exec ${0##*/} --daemon
+  2. Bind key: bindsym \$mod+Tab exec ${0##*/} --back
+EOF
+}
+
+track_workspace() {
+    mkdir -p "$STATE_DIR"
+    
+    # Initialize with current workspace
+    swaymsg -t get_workspaces | jq -r '.[] | select(.focused==true) | .name' >> "$HISTORY_FILE"
+    
+    # Monitor workspace changes
+    swaymsg -t subscribe '["workspace"]' | while read -r event; do
+        CURRENT=$(swaymsg -t get_workspaces | jq -r '.[] | select(.focused==true) | .name')
+        PREVIOUS=$(tail -n 1 "$HISTORY_FILE" 2>/dev/null)
+        
+        if [[ "$CURRENT" != "$PREVIOUS" ]]; then
+            echo "$CURRENT" >> "$HISTORY_FILE"
+            # Keep only last entries
+            tail -n $MAX_HISTORY "$HISTORY_FILE" > "$HISTORY_FILE.tmp" && mv "$HISTORY_FILE.tmp" "$HISTORY_FILE"
+        fi
+    done
+}
+
+switch_to_previous() {
+    if [[ ! -f "$HISTORY_FILE" ]]; then
+        echo "No history found. Run with --daemon first." >&2
+        swaymsg workspace 1
+        exit 1
+    fi
+
+    # Get history (reverse order - most recent first)
+    mapfile -t HISTORY < <(tac "$HISTORY_FILE" | head -n $MAX_HISTORY)
+
+    # Get current workspace
+    CURRENT=$(swaymsg -t get_workspaces | jq -r '.[] | select(.focused==true) | .name')
+
+    # Find previous workspace (skip current)
+    for workspace in "${HISTORY[@]}"; do
+        if [[ -n "$workspace" && "$workspace" != "$CURRENT" ]]; then
+            swaymsg workspace "$workspace"
+            exit 0
+        fi
+    done
+
+    # Fallback
+    echo "No previous workspace found in history. Switching to workspace 1." >&2
+    swaymsg workspace 1
+}
+
+show_history() {
+    if [[ ! -f "$HISTORY_FILE" ]]; then
+        echo "No history file found at $HISTORY_FILE"
+        echo "Run with --daemon first to start tracking."
+        exit 1
+    fi
+    
+    CURRENT=$(swaymsg -t get_workspaces | jq -r '.[] | select(.focused==true) | .name')
+    echo "Workspace History (current: $CURRENT):"
+    echo "----------------------------------------"
+    tac "$HISTORY_FILE" | nl -v0 | while read num ws; do
+        if [[ "$ws" == "$CURRENT" ]]; then
+            echo "  $num: $ws  ← current"
+        else
+            echo "  $num: $ws"
+        fi
+    done
+}
+
+clear_history() {
+    if [[ -f "$HISTORY_FILE" ]]; then
+        rm "$HISTORY_FILE"
+        echo "Workspace history cleared."
+    else
+        echo "No history file found."
+    fi
+}
+
+daemon() {
+	while true; do
+		track_workspace
+		sleep .5
+	done
+}
+
+# Parse arguments
+case "${1:-}" in
+    -d|--daemon)
+        daemon
+        ;;
+    -b|--back)
+        switch_to_previous
+        ;;
+    -s|--show)
+        show_history
+        ;;
+    -c|--clear)
+        clear_history
+        ;;
+    -h|--help)
+        show_help
+        ;;
+    *)
+        echo "Invalid option: $1"
+        echo "Use -h or --help for usage information."
+        exit 1
+        ;;
+esac

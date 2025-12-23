@@ -138,10 +138,10 @@ sed -i 's|/dev/sd[abcdefghij][123456789]|/dev/sdX|g' ~/.local/share/fish/fish_hi
 sed -i 's|/dev/sd[abcdefghij]|/dev/sdX|g' ~/.local/share/fish/fish_history
 
 # Load ASCII Theme Art
-"$shell_utils/scripts/ascii_theme_select.sh"
+"$shell_utils/scripts/ascii-theme-select"
 
 # SHELL_UTILS AUTO UPDATE
-"$shell_utils/scripts/shell_utils_update.sh"
+"$shell_utils/scripts/shell-utils-update"
 
 ########################################
 set -e shell_utils_configs

@@ -537,8 +537,8 @@ setup_config() {
 
 # Markdown preview settings
 # Preferred markdown preview tool
-# Default: "5" (markdown_reader.sh)
-# 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown_reader.sh
+# Default: "5" (markdown-reader)
+# 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown-reader
 #PREVIEW_MARKDOWN=""
 
 # Key binding to open file with xdg-open
@@ -902,11 +902,11 @@ office_convert() {
 
 markdown_reader() {
     local file="$1"
-    local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
+    local mr="$HOME/.shell_utils/scripts/markdown-reader"
     { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
     "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
-    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
-    markdown_reader.sh -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown-reader &>/dev/null &&
+    markdown-reader -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
     { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 1 ]] && cmd_check glow glow &&
     _glow_no_kill "$file" | head -n "${sizeline}" && return 0; } ||
     { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 2 ]] && cmd_check bat bat &&

@@ -1,6 +1,6 @@
 #####################################################
 ##################### Waydroid ######################
-alias waydroids='~/.shell_utils/scripts/waydroid_start'
+alias waydroids='~/.shell_utils/scripts/waydroid-start'
 alias ws='waydroids'
 
 alias waydroid_app_help='waydroid app -h'

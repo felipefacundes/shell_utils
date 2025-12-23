@@ -59,7 +59,7 @@ office_convert() {
 }
 
 markdown_reader() {
-    ~/.shell_utils/scripts/markdown_reader.sh "$@" | head -n "${SIZELINE}"
+    ~/.shell_utils/scripts/markdown-reader "$@" | head -n "${SIZELINE}"
 }
 
 imgview() {

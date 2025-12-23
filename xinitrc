@@ -44,7 +44,7 @@ scripts=~/.shell_utils/scripts
 delay=10
 
 gnome_keyring_fix() {
-    exec "${scripts}"/gnome-keyring-fix.sh
+    exec "${scripts}"/gnome-keyring-fix
 }
 
 # Cursor Theme fix for WMs: openbox, i3 and more...
@@ -53,11 +53,11 @@ xsetroot -cursor_name left_ptr >/dev/null 2>&1
 xrdb -merge ~/.Xresources >/dev/null 2>&1
 
 only_xrdb() {
-    exec "${scripts}"/cursor-gtk-theme-fix.sh -o
+    exec "${scripts}"/cursor-gtk-theme-fix -o
 }
 
 alarm_daemon() {
-	! pgrep -f alarm-daemon-multilingual.sh && exec "${scripts}"/alarm-daemon-multilingual.sh -r
+	! pgrep -f alarm-daemon-multilingual && exec "${scripts}"/alarm-daemon-multilingual -r
 }
 
 # Restore persistent volume TV
@@ -72,11 +72,11 @@ restore_persistent_volume_tv_lg() {
 }
 
 has_the_kernel_been_updated() {
-    exec "${scripts}"/kernel_check_update.sh
+    exec "${scripts}"/kernel-check-update
 }
 
 battery_check() {
-    exec "${scripts}"/simple_battery_manager.sh
+    exec "${scripts}"/simple-battery-manager
 }
 
 monitor_mode() {
@@ -117,11 +117,11 @@ monitor_mode() {
 }
 
 random_wallpaper() {
-    exec "${scripts}"/random_wallpaper.sh -o
+    exec "${scripts}"/random-wallpaper -o
 }
 
 start_sound() {
-    exec "${scripts}"/fix_pulseaudio.sh
+    exec "${scripts}"/fix-pulseaudio
 }
 
 # persistent pid of openbox, tint2 and more...
@@ -190,7 +190,7 @@ delay_exec() {
 
 # Suspend if inert 
 suspend_if_inert() {
-    exec "${scripts}"/suspend_if_inert.sh
+    exec "${scripts}"/suspend-if-inert
 }
 
 # this file is run when calling startx

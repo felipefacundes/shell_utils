@@ -286,4 +286,4 @@ fzf_bash
 # conda_setup # Uncomment this line 
 
 # Bash SmartCD 
-source ~/.shell_utils/scripts/utils/zbash_smartcd_with_fzf.sh
+source ~/.shell_utils/scripts/utils/zbash-smartcd-with-fzf

@@ -60,7 +60,7 @@ gpt_or_mbr() {
 
 $ udevadm info -q property -n sdX | grep ID_PART_TABLE_TYPE
 $ udevadm info -q property -n sdX | grep ID_PART_TABLE_TYPE | cut -f2 -d'='
-$ disk_check_table
+$ disk-check-table
 $ sudo partprobe -d -s /dev/sdX
 $ sudo parted -l
 $ sudo parted /dev/sdX print

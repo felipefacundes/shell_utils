@@ -1,4 +1,4 @@
-alias screen_colors='~/.shell_utils/scripts/display_colors'
+alias screen_colors='~/.shell_utils/scripts/display-colors'
 alias purple_color="screen_colors purple"
 alias blue_color="screen_colors blue"
 alias cyan_color="screen_colors cyan"
@@ -9,7 +9,7 @@ alias green_color="screen_colors green"
 alias reset_color="screen_colors reset"
 alias r_color="screen_colors reset"
 
-alias xrandr_brightness='~/.shell_utils/scripts/brightness_adjust'
+alias xrandr_brightness='~/.shell_utils/scripts/brightness-adjust'
 alias decrease_brightness='xrandr_brightness --decrease'
 alias increase_brightness='xrandr_brightness --increase'
 alias diminuir_brilho='decrease_brightness'

@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+SCRIPT: gpu-passthrough-toggle
+
+Description:
+This script switches dynamically between normal mode (NVIDIA GPU used by the Linux host system)
+and passthrough mode (GPU prepared for VM with vfio-pci).
+
+Operation Modes:
+    Normal Mode:
+        All NVIDIA modules are loaded normally for Linux host usage.
+
+    Passthrough Mode:
+        GPU is bound to vfio-pci for direct passthrough into virtual machines, achieving near-native performance.
+
+Requirements:
+    - Linux system with dedicated NVIDIA GPU
+    - vfio-pci kernel modules installed and available
+    - Root access to modify kernel modules
+    - GRUB as bootloader (required to modify kernel parameters)
+
+Configuration Files:
+    /etc/default/grub
+    /etc/default/grub.default
+    /etc/default/grub.gpu_passthrough
+    /etc/modprobe.d/vfio.conf
+    /etc/modprobe.d/vfio.conf.gpu_passthrough
+    /etc/mkinitcpio.conf
+
+Full tutorial available via:
+    help qemu_gpu_passthrough
+DOCUMENTATION
+: <<'DOCUMENTATION_POR'
+SCRIPT: gpu-passthrough-toggle
+
+Descrição:
+Script para alternar dinamicamente entre o modo normal (GPU NVIDIA utilizada pelo sistema host)
+e modo de passagem (GPU preparada para VM com vfio-pci).
+
+Modos de Operação:
+    Modo Normal: 
+	    Todos os módulos NVIDIA carregados normalmente para uso pelo sistema Linux
+
+    Modo Passagem: 
+	    Drivers vfio-pci vinculados à GPU, permitindo passagem direta para máquinas virtuais com desempenho próximo ao nativo
+
+Pré-requisitos:
+    Sistema Linux com GPU NVIDIA dedicada
+    Módulos vfio-pci instalados e disponíveis
+    Acesso root para modificações de módulos do kernel
+    GRUB como gerenciador de boot (para modificações de kernel parameters)
+
+Arquivos de Configuração:
+    /etc/default/grub - Parâmetros do kernel
+    /etc/default/grub.default
+    /etc/default/grub.gpu_passthrough
+    /etc/modprobe.d/vfio.conf - Configuração vfio-pci
+    /etc/modprobe.d/vfio.conf.gpu_passthrough
+    /etc/mkinitcpio.conf - Módulos a serem carregado
+
+Saiba todo o passo a passo com o comando:
+	help qemu_gpu_passthrough
+DOCUMENTATION_POR
+
+###############################################################################
+# Color variables
+###############################################################################
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+###############################################################################
+# Prepare all messages (Portuguese/English)
+###############################################################################
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["error_header"]="${RED}[ERRO]${NC} O script não pôde ser executado. Verifique as informações abaixo:\n"
+        ["error_description"]="Este script alterna entre o modo padrão (GPU NVIDIA utilizada pelo sistema host) e o modo de passagem (GPU preparada para VM com vfio-pci)."
+        ["error_missing_files"]="\nPara o funcionamento correto, os seguintes arquivos de configuração devem existir:\n
+\t-> ${BLUE}/etc/modprobe.d/vfio.conf.gpu_passthrough${NC}
+\t-> ${BLUE}/etc/modprobe.d/vfio.conf${NC}
+\t-> ${BLUE}/etc/default/grub.default${NC}
+\t-> ${BLUE}/etc/default/grub.gpu_passthrough${NC}
+\t-> ${BLUE}/etc/mkinitcpio.conf${NC}\n"
+        ["error_base_cfg"]="▪ Configurações básicas necessárias:\n\n-> No arquivo ${BLUE}/etc/default/grub.gpu_passthrough${NC} deve conter: (amd ou intel)_iommu=on iommu=pt vfio-pci.ids=XxXx,XxXx\n-> O arquivo ${BLUE}/etc/default/grub.default${NC} é uma cópia do ${BLUE}/etc/default/grub${NC} sem os parâmetros de passagem.\n-> Crie-o com o comando: sudo cp -f ${BLUE}/etc/default/grub${NC} ${BLUE}/etc/default/grub.default${NC}.\n"
+        ["error_vfio_cfg"]="▪ O arquivo ${BLUE}/etc/modprobe.d/vfio.conf${NC} deve conter:\n\n\t-> options vfio-pci ids=XxXx,XxXx\n\t-> softdep nvidia pre: vfio-pci\n"
+        ["error_modules"]="▪ O arquivo ${BLUE}/etc/mkinitcpio.conf${NC} deve conter em MODULES=\n\n\t-> vfio_pci vfio vfio_iommu_type1\n\n"
+        ["error_help"]="${YELLOW}Precisa de ajuda para criar os arquivos de configuração?${NC} Consulte o tutorial com:\n\n$ ${GREEN}help qemu_gpu_passthrough${NC}\n"
+
+        ["success_passthrough"]="${YELLOW}Passagem de GPU para Máquina Virtual via vfio-pci configurada com sucesso${NC}"
+        ["success_normal"]="${YELLOW}Módulos da GPU retornaram para o modo de uso pelo sistema${NC}"
+        ["reboot_required"]="${YELLOW}Reinicie o sistema para que as alterações entrem em vigor${NC}"
+    )
+
+else
+    MESSAGES=(
+        ["error_header"]="${RED}[ERROR]${NC} The script could not be executed. Review the information below:\n"
+        ["error_description"]="This script toggles between normal mode (NVIDIA GPU used by the host system) and passthrough mode (GPU prepared for VM with vfio-pci)."
+        ["error_missing_files"]="\nFor proper operation, the following configuration files must exist:\n
+\t-> ${BLUE}/etc/modprobe.d/vfio.conf.gpu_passthrough${NC}
+\t-> ${BLUE}/etc/modprobe.d/vfio.conf${NC}
+\t-> ${BLUE}/etc/default/grub.default${NC}
+\t-> ${BLUE}/etc/default/grub.gpu_passthrough${NC}
+\t-> ${BLUE}/etc/mkinitcpio.conf${NC}\n"
+        ["error_base_cfg"]="▪ Required base settings:\n\n-> The file ${BLUE}/etc/default/grub.gpu_passthrough${NC} must contain: (amd or intel)_iommu=on iommu=pt vfio-pci.ids=XxXx,XxXx\n-> The file ${BLUE}/etc/default/grub.default${NC} is a copy of ${BLUE}/etc/default/grub${NC} without passthrough parameters.\n-> Create it using: sudo cp -f ${BLUE}/etc/default/grub${NC} ${BLUE}/etc/default/grub.default${NC}.\n"
+        ["error_vfio_cfg"]="▪ The file ${BLUE}/etc/modprobe.d/vfio.conf${NC} must contain:\n\n\t-> options vfio-pci ids=XxXx,XxXx\n\t-> softdep nvidia pre: vfio-pci\n"
+        ["error_modules"]="▪ The file ${BLUE}/etc/mkinitcpio.conf${NC} must contain in MODULES=\n\n\t-> vfio_pci vfio vfio_iommu_type1\n\n"
+        ["error_help"]="${YELLOW}Need help creating configuration files?${NC} See the tutorial with:\n\n$ ${GREEN}help qemu_gpu_passthrough${NC}\n"
+
+        ["success_passthrough"]="${YELLOW}GPU passthrough via vfio-pci enabled successfully${NC}"
+        ["success_normal"]="${YELLOW}GPU modules restored for normal system usage${NC}"
+        ["reboot_required"]="${YELLOW}Reboot the system for changes to take effect${NC}"
+    )
+fi
+
+###############################################################################
+# Paths
+###############################################################################
+vfio_bkp="/etc/modprobe.d/vfio.conf.gpu_passthrough"
+vfio_conf="/etc/modprobe.d/vfio.conf"
+grub="/etc/default/grub"
+grub_default="/etc/default/grub.default"
+grub_passthrough="/etc/default/grub.gpu_passthrough"
+modules_mkinitcpio="/etc/mkinitcpio.conf"
+
+###############################################################################
+# Check vfio modules in mkinitcpio.conf
+###############################################################################
+checks_vfio_modules() {    
+    if [[ ! -f "$modules_mkinitcpio" ]]; then
+        return 1
+    fi
+    
+    local line_modules; line_modules=$(grep '^MODULES=' "$modules_mkinitcpio")
+    
+    if [[ -z "$line_modules" ]]; then
+        return 1
+    fi
+    
+    if echo "$line_modules" | grep -q "vfio_pci" &&
+       echo "$line_modules" | grep -q "vfio" &&
+       echo "$line_modules" | grep -q "vfio_iommu_type1"; then
+        return 0
+    fi
+
+    return 1
+}
+
+###############################################################################
+# Check presence of required config files
+###############################################################################
+check_config_files() {
+	if { [[ -f "$vfio_bkp" ]] || [[ -f "$vfio_conf" ]]; } &&
+		[[ -f "$grub_default" ]] &&
+		[[ -f "$grub_passthrough" ]] &&
+		[[ -f "$modules_mkinitcpio" ]] &&
+        checks_vfio_modules; then
+		return 0
+	fi
+	return 1
+}
+
+###############################################################################
+# Validation: Print full error if needed
+###############################################################################
+if ! check_config_files; then
+	clear
+	echo -e "${MESSAGES["error_header"]}"
+	echo -e "${MESSAGES["error_description"]}"
+	echo -e "${MESSAGES["error_missing_files"]}"
+	echo -e "${MESSAGES["error_base_cfg"]}"
+	echo -e "${MESSAGES["error_vfio_cfg"]}"
+	echo -e "${MESSAGES["error_modules"]}"
+	echo -e "${MESSAGES["error_help"]}"
+	exit 1
+fi
+
+###############################################################################
+# Mode switching (unchanged logic)
+###############################################################################
+if [[ -f "$vfio_bkp" ]]; then
+	sudo mv -f "$vfio_bkp" "$vfio_conf"
+	sudo cp -f "$grub_passthrough" "$grub"
+elif [[ -f "$vfio_conf" ]]; then
+	sudo mv -f "$vfio_conf" "$vfio_bkp"
+	sudo cp -f "$grub_default" "$grub"
+fi
+
+sudo mkinitcpio -P && sudo grub-mkconfig -o /boot/grub/grub.cfg
+echo
+echo
+
+###############################################################################
+# Final status messages
+###############################################################################
+if [[ -f "$vfio_conf" ]]; then
+	echo -e "${MESSAGES["success_passthrough"]}"
+elif [[ -f "$vfio_bkp" ]]; then
+	echo -e "${MESSAGES["success_normal"]}"
+fi
+
+echo -e "${MESSAGES["reboot_required"]}"

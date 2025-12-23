@@ -34,7 +34,6 @@
 . "${HOME}"/.shell_utils/aliases/system/display.sh
 . "${HOME}"/.shell_utils/aliases/system/kernel.sh
 . "${HOME}"/.shell_utils/aliases/system/pacman.sh
-. "${HOME}"/.shell_utils/aliases/system/pointer.sh
 . "${HOME}"/.shell_utils/aliases/system/ram.sh
 . "${HOME}"/.shell_utils/aliases/system/sensors.sh
 . "${HOME}"/.shell_utils/aliases/system/system.sh

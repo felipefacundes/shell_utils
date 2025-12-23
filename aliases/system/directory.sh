@@ -1,4 +1,4 @@
-alias md5sum_dir='~/.shell_utils/scripts/md5sum_directory'
+alias md5sum_dir='~/.shell_utils/scripts/md5sum-directory'
 alias dir_md5sum='md5sum_dir'
 alias directory_md5sum='md5sum_dir'
 alias md5sum_of_all_files_in_a_directory='md5sum_dir'

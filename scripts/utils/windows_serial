@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-
-markdown=~/.shell_utils/scripts/markdown_reader.sh
-curl -s https://gist.githubusercontent.com/rvrsh3ll/0810c6ed60e44cf7932e4fbae25880df/raw/90dcafa00f8adcaaadbe8e04c4215b9a6bb838ff/windows-keys.md | "$markdown"

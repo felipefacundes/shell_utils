@@ -64,13 +64,13 @@ show_menu() {
 
     case "$selected_option" in
         "${icons[shutdown]}  - Shutdown")
-            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -p
+            ~/.shell_utils/scripts/shutdown-wait-pacman -p
             ;;
         "${icons[reboot]}  - Reboot")
-            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -r
+            ~/.shell_utils/scripts/shutdown-wait-pacman -r
             ;;
         "${icons[hibernate]}  - Hibernate")
-            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -h
+            ~/.shell_utils/scripts/shutdown-wait-pacman -h
             ;;
         "${icons[logout]}  - Logout")
             eval "$logout"
@@ -79,7 +79,7 @@ show_menu() {
             eval "$lock"            
             ;;
         "${icons[suspend]}  - Suspend")
-            ~/.shell_utils/scripts/shutdown_wait_pacman.sh -s
+            ~/.shell_utils/scripts/shutdown-wait-pacman -s
             ;;
         *)
             exit 1

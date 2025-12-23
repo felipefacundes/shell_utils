@@ -112,11 +112,11 @@ cmd_check() {
 
 markdown_reader() {
     local file="$1"
-    local mr="$HOME/.shell_utils/scripts/markdown_reader.sh"
+    local mr="$HOME/.shell_utils/scripts/markdown-reader"
     { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
     "$mr" -nc -nf -- "$file" && return 0; } ||
-    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && command -v markdown_reader.sh &>/dev/null &&
-    markdown_reader.sh -nc -nf -- "$file" && return 0; } ||
+    { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 5 ]] && command -v markdown-reader &>/dev/null &&
+    markdown-reader -nc -nf -- "$file" && return 0; } ||
     { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 1 ]] && cmd_check glow glow &&
     _glow_no_kill "$file" && return 0; } ||
     { [[ -z "$BOOKS_MARKDOWN" || "$BOOKS_MARKDOWN" == 2 ]] && cmd_check bat bat &&

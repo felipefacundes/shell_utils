@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+This script (text-it) saves clipboard content to a file, supporting Termux, macOS, X11, and Wayland. 
+It detects the OS and uses the appropriate clipboard tool ('termux-clipboard-get', 'pbpaste', 'xclip', 'wl-paste'). 
+If no text is found or tools are missing, it shows an error. The output file is specified as an argument. 
+Works cross-platform with clear success/error messages.
+DOCUMENTATION
+
+# Colors for messages (optional)
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
+# Creates a temporary file
+temp_file=$(mktemp)
+
+# Definitive file
+file="$*"
+
+show_documentation() {
+    awk '
+    BEGIN { inside_block = 0 }
+
+    # Check the beginning of the DOCUMENTATION block
+    /: <<'\''DOCUMENTATION'\''/ { inside_block = 1; next }
+
+    # Check the end of the DOCUMENTATION block
+    inside_block && $0 == "DOCUMENTATION" { inside_block = 0; exit }
+
+    # Print lines within the DOCUMENTATION block
+    inside_block { print }
+    ' "$0"
+}
+
+help() {
+	show_documentation
+
+    echo -e "\nUsage: ${0##*/} <filename>"
+}
+
+if [[ "$1" == -h ]] || [[ "$1" == --help ]]; then
+	help
+
+# Check if a file name was provided
+elif [ -z "$1" ]; then
+    echo -e "${RED}Error: Please provide a filename as argument${NC}\n"
+	help
+    exit 1
+fi
+
+# Try different clipboard methods
+if [[ -n "$TERMUX_VERSION" ]]; then
+    # Termux (Android)
+    if command -v termux-clipboard-get &> /dev/null; then
+        termux-clipboard-get > "$temp_file"
+    else
+        echo -e "${RED}Error: termux-clipboard-get not found (Termux clipboard utility)${NC}"
+        exit 1
+    fi
+elif [[ "$(uname)" == "Darwin" ]]; then
+    # macOS
+    if command -v pbpaste &> /dev/null; then
+        pbpaste > "$temp_file"
+    else
+        echo -e "${RED}Error: pbpaste not found (macOS clipboard utility)${NC}"
+        exit 1
+    fi
+elif [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]]; then
+    # Wayland
+    if command -v wl-paste &> /dev/null; then
+        wl-paste > "$temp_file"
+    else
+        echo -e "${RED}Error: wl-paste not found (wl-clipboard package required)${NC}"
+        exit 1
+    fi
+else
+    # X11
+    if command -v xclip &> /dev/null; then
+        xclip -o -selection clipboard > "$temp_file"
+    elif command -v xsel &> /dev/null; then
+        xsel --clipboard --output > "$temp_file"
+    else
+        echo -e "${RED}Error: No clipboard utility found (xclip or xsel required)${NC}"
+        exit 1
+    fi
+fi
+
+# Check if the clipboard had content
+if [ ! -s "$temp_file" ]; then
+    echo -e "${RED}Error: Clipboard is empty or contains no text${NC}"
+    rm "$temp_file"
+    exit 1
+fi
+
+# Moves the temporary file to the final destination
+mv "$temp_file" "$file"
+
+echo -e "${GREEN}Success: Clipboard content saved to '$file'${NC}"

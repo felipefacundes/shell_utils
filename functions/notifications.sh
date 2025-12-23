@@ -11,7 +11,7 @@ DESCRIPTION:
 
 REQUIREMENTS:
     - Must be loaded via 'source' or '.' in the current shell
-    - beep_sound.sh script must be located at ~/.shell_utils/scripts/
+    - beep-sound script must be located at ~/.shell_utils/scripts/
     - Sound support on the system (afplay on macOS, paplay on Linux, etc)
 
 INSTALLATION:
@@ -50,11 +50,11 @@ CREATED ALIAS:
 
 FILES:
     ~/.shell_utils_configs/shell_utils_notifications.conf - Configuration
-    ~/.shell_utils/scripts/beep_sound.sh - Main sound script
+    ~/.shell_utils/scripts/beep-sound - Main sound script
 
 USAGE EXAMPLES:
     # Reload configuration
-    source ~/.shell_utils/scripts/shell_beep_sound.sh
+    source ~/.shell_utils/scripts/shell_beep-sound
 
     # Temporarily enable/disable
     export BEEP=1  # Enable
@@ -73,7 +73,7 @@ DOCUMENTATION
 
 CONFIG_DIR="${HOME}/.shell_utils_configs"
 CONFIG_FILE="${CONFIG_DIR}/shell_utils_notifications.conf"
-alias beep_sound='(~/.shell_utils/scripts/beep_sound.sh -d &) >/dev/null 2>&1'
+alias beep_sound='(~/.shell_utils/scripts/beep-sound -d &) >/dev/null 2>&1'
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
     mkdir -p "$CONFIG_DIR"

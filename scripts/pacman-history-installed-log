@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+pachis_ins1() {
+    paclog-pkglist <(tail -500 /var/log/pacman.log | grep -A 3 -i installed)
+    echo "------------------------------------------------------------"
+    echo "paclog-pkglist <(tail -500 /var/log/pacman.log | grep -A 3 -i installed)"
+}
+pachis_ins2() {
+    paclog-pkglist <(tail -2000 /var/log/pacman.log | grep -A 3 -i 'pacman -S')
+    echo "------------------------------------------------------------"
+    echo "paclog-pkglist <(tail -2000 /var/log/pacman.log | grep -A 3 -i 'pacman -S')"
+}
+
+case $1 in
+    -m|--mode)
+        case $2 in
+            1) pachis_ins1 ;;
+            2) pachis_ins2 ;;
+        esac
+    ;;
+    *) echo "Usage: ${0##*/} [-m|--mode][1|2]"
+    ;;
+esac

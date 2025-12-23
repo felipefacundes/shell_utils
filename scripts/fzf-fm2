@@ -1,0 +1,2210 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+A simple file manager written in bash with file preview capabilities, inspired by "fff", "lesspipe", and "ranger". 
+It uses "lf" as its foundation, enhancing file previews with custom commands for efficient navigation. 
+It offers configurable shortcuts to streamline file management.
+DOCUMENTATION
+
+setup_config() {
+    local config_file="$CONFIG_PATH/preview.conf"
+    
+    # If config file already exists, source it
+    if [[ -f "$config_file" ]]; then
+        source "$config_file"
+        return 0
+    fi
+    
+    # Create the configuration file with default values and explanations
+    cat > "$config_file" << 'EOF'
+# Preview configuration file
+
+# Default preview mode
+# Default: 1 (preview mode)
+# 0 for normal mode, 1 for preview mode
+#PREVIEW_MODE=""
+
+# Maximum items to show in preview mode
+# Default: 9
+# Number of items displayed in the file list when in preview mode
+#PREVIEW_MAX_ITEMS=""
+
+# Enable/disable hidden files view by default
+# Default: 0 (disabled)
+# Set to 1 to show hidden files when preview starts
+#PREVIEW_HIDDEN=""
+
+# Enable/disable using LS_COLORS for file coloring
+# Default: 1 (enabled)
+# Set to 1 to use colors defined in LS_COLORS environment variable
+#PREVIEW_LS_COLORS=""
+
+# File format string for displaying files
+# Default: "%f"
+# %f is replaced with the filename
+#PREVIEW_FILE_FORMAT=""
+
+# Default program to open files with
+# Default: "xdg-open"
+# Specify the command to open files
+#PREVIEW_OPENER=""
+
+# Change directory on exit
+# Default: 1 (enabled)
+# Set to 1 to change to the last directory viewed when the preview application exits
+#PREVIEW_CD_ON_EXIT=""
+
+# Path to file that stores the last directory
+# Default: "${XDG_CACHE_HOME:-$HOME/.cache}/preview/.preview_d"
+# Specify where to store the last visited directory
+#PREVIEW_CD_FILE=""
+
+# Color for directories
+# Default: "2" (blue)
+# ANSI color code for directory display
+#PREVIEW_COL_DIRECTORY=""
+
+# Color for status line background
+# Default: "48;5;128" (purple)
+# ANSI color code for status line background
+#PREVIEW_STATUS_BACKGROUND=""
+
+# Color for selected item highlight
+# Default: "6" (cyan)
+# ANSI color code for highlighting selected items
+#PREVIEW_SELECTED_HIGHLIGHT=""
+
+# Color for status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
+#PREVIEW_STATUS_FOREGROUND=""
+
+# Color for PWD PREVIOUS DIRECTORY in status line text
+# Default: "1;38;5;16" (black)
+# ANSI color code for status line text
+#PWD_PREVIOUS_DIRECTORY=""
+
+# Color for PWD LAST DIR in status line text
+# Default: "1;33" (yellow)
+# ANSI color code for status line text
+#PWD_LAST_DIR=""
+
+# Color for PWD BAR in status line text
+# Default: "1;96" (cyan)
+# ANSI color code for status line text
+#PWD_BAR=""
+
+# Format for marked files
+# Default: "" (none)
+# %f is replaced with the filename
+#PREVIEW_MARK_FORMAT=""
+
+# Color for marked files
+# Default: "1" (red)
+# ANSI color code for marked file display
+#PREVIEW_COL_MARKED=""
+
+# Show image and info in terminal
+# Default: "i"
+# Key to display an image and info in the terminal
+#PREVIEW_KEY_INFO=""
+
+# Markdown preview settings
+# Preferred markdown preview tool
+# Default: "5" (markdown-reader)
+# 1: glow, 2: bat, 3: mdless, 4: mdcat, 5: markdown-reader
+#PREVIEW_MARKDOWN=""
+
+# Key binding to open file with xdg-open
+# Default: "" (none)
+# Key to open files using xdg-open or specified opener
+#PREVIEW_KEY_XDG_OPEN=""
+
+# Image preview settings
+# Preferred image preview tool
+# Default: "1" (img2sixel)
+# 1: img2sixel, 2: viu, 3: catimg, 4: chafa
+#PREVIEW_IMG=""
+
+# Width of full-size img2sixel preview
+# Default: "540"
+# Width in pixels for full-size image preview with img2sixel
+#PREVIEW_SIXEL_W=""
+
+# Height for img2sixel full-size preview
+# Default: "420"
+# Height in pixels for full-size image preview with img2sixel
+#PREVIEW_SIXEL_H=""
+
+# Width for viu full-size preview
+# Default: "90"
+# Width in characters for full-size image preview with viu
+#PREVIEW_VIU_W=""
+
+# Height for viu full-size preview
+# Default: "35"
+# Height in characters for full-size image preview with viu
+#PREVIEW_VIU_H=""
+
+# Width for catimg full-size preview
+# Default: "100"
+# Width in characters for full-size image preview with catimg
+#PREVIEW_CATIMG_W=""
+
+# Size for chafa full-size preview
+# Default: "50"
+# Size specification for full-size image preview with chafa
+#PREVIEW_CHAFA_S=""
+
+# Width for img2sixel thumbnail preview
+# Default: "300"
+# Width in pixels for thumbnail preview with img2sixel
+#PREVIEW_THUMB_SIXEL_W=""
+
+# Height for img2sixel thumbnail preview
+# Default: "200"
+# Height in pixels for thumbnail preview with img2sixel
+#PREVIEW_THUMB_SIXEL_H=""
+
+# Width for viu thumbnail preview
+# Default: "50"
+# Width in characters for thumbnail preview with viu
+#PREVIEW_THUMB_VIU_W=""
+
+# Height for viu thumbnail preview
+# Default: "16"
+# Height in characters for thumbnail preview with viu
+#PREVIEW_THUMB_VIU_H=""
+
+# Width for catimg thumbnail preview
+# Default: "60"
+# Width in characters for thumbnail preview with catimg
+#PREVIEW_THUMB_CATIMG_W=""
+
+# Size for chafa thumbnail preview
+# Default: "25"
+# Size specification for thumbnail preview with chafa
+#PREVIEW_THUMB_CHAFA_S=""
+
+# Scroll behavior
+# Default: "1" (loop)
+# 0: no loop (stops at ends), 1: loop (wraps around)
+#PREVIEW_LOOP_SCROLL=""
+
+# Favorite directory for key 0-9
+# Example: PREVIEW_FAV_0=~/Documents PREVIEW_FAV_1=~/Pictures
+# Default: "" (none)
+# Path to a favorite directory accessed with key 0-9
+#PREVIEW_FAV_0=""
+#PREVIEW_FAV_1=""
+#PREVIEW_FAV_2=""
+#PREVIEW_FAV_3=""
+#PREVIEW_FAV_4=""
+#PREVIEW_FAV_5=""
+#PREVIEW_FAV_6=""
+#PREVIEW_FAV_7=""
+#PREVIEW_FAV_8=""
+#PREVIEW_FAV_9=""
+
+# Command to show file attributes
+# Default: "stat"
+# Command used to display file attributes
+#PREVIEW_STAT_CMD=""
+
+# Shell nesting level
+# Default: "" (starts unset, incremented when opening shells)
+# Tracks the nesting level of shell instances
+#PREVIEW_LEVEL=""
+
+# Resolution for image and video previews
+# Default: "854x480"
+# Resolution used for resizing images and videos (format: WIDTHxHEIGHT)
+#RESOLUTION=""
+
+# Width for text folding in preview
+# Default: "5"
+# Maximum line width for text wrapping with fold command
+#PREVIEW_MARGIN=""
+
+# Maximum lines for file content preview
+# Default: "30" (non-Android) or "20" (Android)
+# Number of lines to display in file content previews
+#sizeline=""
+
+# Maximum width for text preview
+# Default: "200" (non-Android) or "50" (Android)
+# Width in characters for text formatting in previews
+#width=""
+
+# Tab width for code highlighting
+# Default: "8"
+# Number of spaces to replace tabs with when highlighting code
+#HIGHLIGHT_TABWIDTH=""
+
+# Style for code highlighting
+# Default: "pablo"
+# Highlight style to use with the highlight command
+#HIGHLIGHT_STYLE=""
+
+# Additional options for code highlighting
+# Default: ""
+# Extra options to pass to the highlight command
+#HIGHLIGHT_OPTIONS=""
+
+# Style for pygmentize code highlighting
+# Default: "autumn"
+# Pygmentize style to use for syntax highlighting
+#PYGMENTIZE_STYLE=""
+EOF
+
+    # Make the config file user-executable
+    chmod u+x "$config_file"
+    
+    # Source the newly created config file
+    source "$config_file"
+}
+
+get_os() {
+    case $OSTYPE in
+        darwin*)
+            opener=open
+            file_flags=bIL
+        ;;
+        haiku)
+            opener=open
+        ;;
+    esac
+}
+
+setup_terminal() {
+    printf '\e[?1049h\e[?7l\e[?25l\e[2J\e[1;%sr' "$max_items"
+    #stty -echo </dev/tty >/dev/null 2>/dev/null
+}
+
+reset_terminal() {
+    # Reset the terminal to a useable state (undo all changes).
+    # '\e[?7h':   Re-enable line wrapping.
+    # '\e[?25h':  Unhide the cursor.
+    # '\e[2J':    Clear the terminal.
+    # '\e[;r':    Set the scroll region to its default value.
+    #             Also sets cursor to (0,0).
+    # '\e[?1049l: Restore main screen buffer.
+    printf '\e[?7h\e[?25h\e[2J\e[;r\e[?1049l'
+
+    # Show user input.
+    stty echo </dev/tty >/dev/null 2>/dev/null
+}
+
+cleanup() {
+    [[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"
+    reset_terminal
+}
+
+clear_screen() {
+    printf '\e[%sH\e[9999C\e[1J%b\e[1;%sr' \
+           "$((LINES-2))" "${TMUX:+\e[2J}" "$max_items"
+}
+
+setup_options() {
+    [[ $PREVIEW_FILE_FORMAT == *%f* ]] && {
+        file_pre=${PREVIEW_FILE_FORMAT/'%f'*}
+        file_post=${PREVIEW_FILE_FORMAT/*'%f'}
+    }
+
+        # Format for marked files.
+    [[ $PREVIEW_MARK_FORMAT == *%f* ]] && {
+        mark_pre=${PREVIEW_MARK_FORMAT/'%f'*}
+        mark_post=${PREVIEW_MARK_FORMAT/*'%f'}
+    }
+
+    file -I &>/dev/null || : "${file_flags:=biL}"
+}
+
+get_term_size() {
+    read -r LINES COLUMNS < <(stty size)
+    
+    if ((preview_mode == 1)); then
+        ((max_items=${PREVIEW_MAX_ITEMS:-9}))
+        ((preview_area=LINES-max_items-3)) # -3 For the delimiter and status line
+    else
+        ((max_items=LINES-3))
+    fi
+}
+
+get_ls_colors() {
+    [[ -z $LS_COLORS ]] && {
+        PREVIEW_LS_COLORS=0
+        return
+    }
+
+    IFS=: read -ra ls_cols <<< "$LS_COLORS"
+
+    for ((i=0;i<${#ls_cols[@]};i++)); {
+        [[ ${ls_cols[i]} =~ ^\*[^\.] ]] &&
+            ls_patterns+="${ls_cols[i]/=*}|"
+
+        [[ ${ls_cols[i]} =~ ^(\*|\.) ]] && {
+            ls_cols[i]=${ls_cols[i]#\*}
+            ls_cols[i]=ls_${ls_cols[i]#.}
+        }
+    }
+
+    ls_cols=("${ls_cols[@]//[^a-zA-Z0-9=\\;]/_}")
+
+    ls_patterns=${ls_patterns//\*}
+    ls_patterns=${ls_patterns%?}
+
+    export "${ls_cols[@]}" &>/dev/null
+}
+
+get_mime_type() {
+    mime_type=$(file "-${file_flags:-biL}" "$1" 2>/dev/null | awk '{print $1}')
+    mime_type2=$(file --dereference --brief --mime-type -- "$1" 2>/dev/null)
+    mime_type_full=$(file "$1" | sed -n 's/.*:\s*\(.*\)/\1/p')
+    mime_type="${mime_type,,}"
+    mime_type2="${mime_type,,}"
+    mime_type_full="${mime_type_full,,}"
+}
+
+status_line() {
+    local mark_ui="[${#marked_files[@]}][selected] "
+    #PWD_escaped=${PWD//[^[:print:]]/^[}
+    
+    # Define color codes
+    previous_directory=$(printf '%b\n' "\033[${PWD_PREVIOUS_DIRECTORY:-1;38;5;16}m")    # Black ansi 256   
+    last_dir=$(printf '%b\n' "\033[${PWD_LAST_DIR:-1;33}m")                             # Yellow
+    bar=$(printf '%b\n' "\033[${PWD_BAR:-1;96}m")                                       # Cyan
+    ncpf=$(printf '\033[0m')                                                            # No color (reset)
+    
+    # Get base directory and current directory
+    basedir="$(dirname "$PWD")"
+    lastdir="$(basename "$PWD")"
+    
+    # Default colors if not specified in config
+    status_background="48;5;128"   # Purple background
+    status_foreground="1;38;5;16"  # Black foreground
+    
+    # Format the PWD with colors
+    PWD_color=$(printf '%b\n' "$basedir" | awk -v previous_directory="$previous_directory" -v bar="$bar" -v last_dir="$last_dir" -v reset="$ncpf" -v lastdir="$lastdir" '
+    {
+        gsub("/", bar "/" previous_directory); # Colors all bars "/" in bar, keeping the rest previous_directory
+        print previous_directory $0 bar "/" last_dir lastdir reset; # Red Way, Green Bars and Last Yellow Folder
+    }')
+    
+    # Set mode info
+    local mode_info=""
+    if ((preview_mode == 1)); then
+        mode_info="[Preview] "
+    else
+        mode_info="[Normal] "
+    fi
+    
+    # The key fix: correct escape sequence format for colors
+    # We need to use the full format: \e[<foreground>;<background>m
+    # Instead of using separate escape sequences
+    
+    # Build the complete color sequence
+    local color_seq="\e["
+    
+    # Add foreground if specified
+    if [[ -n "${PREVIEW_STATUS_FOREGROUND:-$status_foreground}" ]]; then
+        color_seq+="${PREVIEW_STATUS_FOREGROUND:-$status_foreground}"
+    fi
+    
+    # Add semicolon between foreground and background if both are present
+    if [[ -n "${PREVIEW_STATUS_FOREGROUND:-$status_foreground}" ]] && [[ -n "${PREVIEW_STATUS_BACKGROUND:-$status_background}" ]]; then
+        color_seq+=";"
+    fi
+    
+    # Add background if specified
+    if [[ -n "${PREVIEW_STATUS_BACKGROUND:-$status_background}" ]]; then
+        color_seq+="${PREVIEW_STATUS_BACKGROUND:-$status_background}"
+    fi
+    
+    # Close the sequence
+    color_seq+="m"
+    
+    # Print the status line with correct color formatting
+    printf '\e7\e[%sH%b%*s\r%s%s %s%s\e[m\e[%sH\e[K\e8' \
+        "$((LINES-1))" \
+        "$color_seq" \
+        "$COLUMNS" "" \
+        "$mode_info" \
+        "($((scroll+1))/$((list_total+1)))" \
+        "${marked_files[*]:+${mark_ui}}" \
+        "${PWD_color}" \
+        "$LINES"
+}
+
+read_dir() {
+    local dirs
+    local files
+    local item_index
+
+    printf '\e]2;preview: %s\e'\\ "$PWD"
+
+    [[ $PWD == / ]] && PWD=
+
+    for item in "$PWD"/*; do
+        if [[ -d $item ]]; then
+            dirs+=("$item")
+            ((item_index++))
+
+            [[ $item == "$OLDPWD" ]] &&
+                ((previous_index=item_index))
+        else
+            files+=("$item")
+        fi
+    done
+
+    list=("${dirs[@]}" "${files[@]}")
+
+    [[ -z ${list[0]} ]] &&
+        list[0]=empty
+
+    ((list_total=${#list[@]}-1))
+
+    cur_list=("${list[@]}")
+}
+
+get_background_from_foreground() {
+    local foreground_code="$1"
+    local bg_color_code=49  # Default background (no color)
+    
+    # Extract color codes
+    local IFS=';'
+    read -ra color_parts <<< "$foreground_code"
+    
+    for part in "${color_parts[@]}"; do
+        # Convert normal foreground (30-37) to background (40-47)
+        if ((part >= 30 && part <= 37)); then
+            bg_color_code=$((part + 10))
+        # Convert bright foreground (90-97) to background (100-107)
+        elif ((part >= 90 && part <= 97)); then
+            bg_color_code=$((part + 10))
+        fi
+    done
+    
+    # Return the background color code
+    echo "$bg_color_code"
+}
+
+print_line() {
+    local file_name=${list[$1]##*/}
+    local file_ext=${file_name##*.}
+    local format
+    local suffix
+
+    if [[ -z ${list[$1]} ]]; then
+        return
+
+    elif [[ -d ${list[$1]} ]]; then
+        format+=\\e[${di:-1;3${PREVIEW_COL_DIRECTORY:-2}}m
+        suffix+=/
+
+    elif [[ -b ${list[$1]} ]]; then
+        format+=\\e[${bd:-40;33;01}m
+
+    elif [[ -c ${list[$1]} ]]; then
+        format+=\\e[${cd:-40;33;01}m
+
+    elif [[ -x ${list[$1]} ]]; then
+        format+=\\e[${ex:-01;32}m
+
+    elif [[ -h ${list[$1]} && ! -e ${list[$1]} ]]; then
+        format+=\\e[${mi:-01;31;7}m
+
+    elif [[ -h ${list[$1]} ]]; then
+        format+=\\e[${ln:-01;36}m
+
+    elif [[ -p ${list[$1]} ]]; then
+        format+=\\e[${pi:-40;33}m
+
+    elif [[ -S ${list[$1]} ]]; then
+        format+=\\e[${so:-01;35}m
+
+    elif [[ $PREVIEW_LS_COLORS == 1 &&
+            $ls_patterns &&
+            $file_name =~ ($ls_patterns)$ ]]; then
+        match=${BASH_REMATCH[0]}
+        file_ext=ls_${match//[^a-zA-Z0-9=\\;]/_}
+        format+=\\e[${!file_ext:-${fi:-37}}m
+
+    elif [[ $PREVIEW_LS_COLORS == 1 &&
+            $file_ext != "$file_name" &&
+            $file_ext =~ ^[a-zA-Z0-9_]*$ ]]; then
+        file_ext=ls_${file_ext}
+        format+=\\e[${!file_ext:-${fi:-37}}m
+
+    else
+        format+=\\e[${fi:-37}m
+    fi
+
+    if [[ -n "$PREVIEW_SELECTED_HIGHLIGHT" ]]; then
+        # Only highlights the selected line in normal mode
+        if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
+            format+="\\e[1;3${PREVIEW_SELECTED_HIGHLIGHT:-6};7m"
+        fi
+
+    else
+        # Only highlights the selected line in normal mode
+        if ((preview_mode == 0 && $1 == scroll)) || ((preview_mode == 1 && $1 == displayed_selection)); then
+            # Extract the anxe codes from string format (removing the escapes)
+            local current_format="${format//\\e/\e}"
+            # Extract the color codes after the first [
+            local color_codes="${current_format#*[}"
+            color_codes="${color_codes%m*}"
+            
+            # Obtain the corresponding background code
+            bg_code=$(get_background_from_foreground "$color_codes")
+            
+            # Add the background code with white and bold text
+            format+="\\e[1;${bg_code};38;5;16m"
+        fi
+    fi
+
+    [[ ${marked_files[$1]} == "${list[$1]:-null}" ]] && {
+        format+=\\e[3${PREVIEW_COL_MARKED:-1}m${mark_pre:= }
+        suffix+=${mark_post:=<-}
+    }
+
+    file_name=${file_name//[^[:print:]]/^[}
+
+    printf '\r%b%s\e[m\r' \
+        "${file_pre}${format}" \
+        "${file_name}${suffix}${file_post}"
+}
+
+draw_dir() {
+    local scroll_start=$scroll
+    local scroll_new_pos
+    local scroll_end
+
+    ((find_previous == 1)) && {
+        ((scroll_start=previous_index-1))
+        ((scroll=scroll_start))
+
+        find_previous=
+    }
+
+    if ((list_total < max_items || scroll < max_items/2)); then
+        ((scroll_start=0))
+        ((scroll_end=max_items))
+        ((scroll_new_pos=scroll+1))
+
+    elif ((list_total - scroll < max_items/2)); then
+        ((scroll_start=list_total-max_items+1))
+        ((scroll_new_pos=max_items-(list_total-scroll)))
+        ((scroll_end=list_total+1))
+
+    else
+        ((scroll_start=scroll-max_items/2))
+        ((scroll_end=scroll_start+max_items))
+        ((scroll_new_pos=max_items/2+1))
+    fi
+
+    printf '\e[H'
+
+    if ((preview_mode == 1)); then
+        # In Preview mode, we need to track which file is visually selected
+        displayed_selection=scroll
+    fi
+    
+    for ((i=scroll_start;i<scroll_end;i++)); {
+        ((i > scroll_start)) &&
+            printf '\n'
+        print_line "$i"
+    }
+
+    if ((preview_mode == 0)); then
+        # In normal mode, we move the cursor to the position of the selected file
+        printf '\e[%sH' "$scroll_new_pos"
+        ((y=scroll_new_pos))
+    else 
+        # In Preview mode, we do not move the cursor to the selected line
+        printf '\e[H'
+        ((y=1))
+        
+        draw_delimiter
+        draw_file_preview
+    fi
+}
+
+draw_delimiter() {
+    printf '\e[%sH' "$((max_items+1))"
+    printf '\e[33m%*s\e[m\n' "$COLUMNS" "" | tr ' ' '='
+}
+
+cmd_check() {
+    [[ "${#no_cmd[*]}" -gt 1 ]] && msg=$(echo "${no_cmd[*]}" | awk 'BEGIN {first=1} {for (i=1; i<=NF; i++) \
+    {if (first) {printf "%s", $i; first=0} else {printf " or %s", $i}}} END {print ""}') || msg="${no_cmd[*]}"
+    [[ "$1" == "-msg" ]] && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "(It was not possible to display the file). Install $msg" &&
+    no_cmd=() && read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null && return 0
+    ! command -v "$1" 1>/dev/null && no_cmd+=(\""$2"\") && return 1 || return 0
+}
+
+draw_info() {
+    # Initial State: assumes that we are showing the files
+    showing_info=0
+
+    while true; do
+        if [[ "$showing_info" -eq 0 ]]; then # && [[ $mime_type == image/* ]]; then
+            # Cleans the screen and displays the full screen image with imgview
+            preserve_status="$preview_mode"
+            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
+            clear_screen
+            status_line "${list[scroll]}"
+            _draw_file_preview "${list[scroll]}"
+            showing_info=1
+        else
+            # Returns to display the files
+            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
+            redraw
+            showing_info=0
+            break
+        fi
+
+       # Wait for the next user input
+        read -srn 1 key </dev/tty >/dev/null 2>/dev/null
+        # If the key is not 'i', redesign and leaves the loop
+        [[ "$key" != "i" ]] && {
+            [[ "$preserve_status" == 1 ]] && toggle_preview_mode
+            redraw
+            break
+        }
+    done
+}
+
+extract_to_folder() {
+    local file="${1}"
+    
+    # Check if the file exists
+    if [ ! -f "$file" ]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '$file' not found"
+        read -n 1 -s -r -p "" </dev/tty >/dev/null 2>/dev/null
+        return 1
+    fi
+    
+    # Convert to lowercase for better matching
+    local file_lower="${file,,}"
+    local file_extension="${file%.*}"          # Remove the file extension
+    local folder_name="${file_extension%.*}"   # Remove the file extension
+    local only_file="${file##*/}" 
+    
+    # Create the destination directory
+    if [[ -d "$folder_name" ]]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: The '${folder_name##*/}' directory exists"
+        return 1
+    elif ! mkdir -p "$folder_name"; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Could not create directory '$folder_name'"
+        return 1
+    fi
+    
+    # Function to check if a command is available
+    check_command() {
+        if ! command -v "$1" >/dev/null 2>&1; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: '$2' is not installed. Please install it to extract this format."
+            read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null
+            return 1
+        fi
+        return 0
+    }
+
+    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extracting '$file' to '$folder_name'..."
+    sleep .5
+    
+    case "$file_lower" in
+        *.tar.bz2|*.tbz2)
+            check_command tar tar && tar -xjf "$file" -C "$folder_name" ;;
+        *.tar.gz|*.tgz)
+            check_command tar tar && tar -xzf "$file" -C "$folder_name" ;;
+        *.tar.xz)
+            check_command tar tar && tar -xJf "$file" -C "$folder_name" ;;
+        *.tar.zst)
+            check_command tar tar && tar --zstd -xvf "$file" -C "$folder_name" ;;
+        *.tar.lzma)
+            check_command tar tar && tar --lzma -xvf "$file" -C "$folder_name" ;;
+        *.tar)
+            check_command tar tar && tar -xvf "$file" -C "$folder_name" ;;
+        *.bz2)
+            { check_command bunzip2 bzip2 && bunzip2 -c "$file" > "$folder_name/${only_file%.bz2}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.gz)
+            { check_command gunzip gzip && gunzip -c "$file" > "$folder_name/${only_file%.gz}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.xz)
+            { check_command unxz xz && unxz -c "$file" > "$folder_name/${only_file%.xz}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.zst)
+            { check_command unzstd zstd && unzstd "$file" -o "$folder_name/${only_file%.zst}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.zip|*.zipx|*.apk|*.xapk|*.apk+)
+            { check_command unzip unzip && unzip -q "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.rar)
+            { check_command unrar unrar && unrar x -inul "$file" "$folder_name/"; } || 
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg|*.cbz|*.cbr)
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *.iso)
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *.cab)
+            { check_command cabextract cabextract && cabextract "$file" -d "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.arj)
+            { check_command unarj unarj && unarj x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.lzh|*.lha)
+            { check_command lha lhasa && lha -x "$file" -w "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.rpm)
+            { check_command rpm2cpio rpm-tools && rpm2cpio "$file" | cpio -idmv -D "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.deb)
+            { check_command dpkg-deb dpkg && dpkg-deb -x "$file" "$folder_name"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.z)
+            { check_command uncompress gzip && uncompress -c "$file" > "$folder_name/${only_file%.z}"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.ace)
+            { check_command unace unace && unace x "$file" "$folder_name/"; } ||
+            { check_command 7z 7zip && 7z x "$file" -o"$folder_name"; } ;;
+        *.exe)
+            # Might be a self-extracting archive
+            check_command 7z 7zip && 7z x "$file" -o"$folder_name" ;;
+        *)
+            printf '\e[%sH\e[K\e8' "$LINES" # Clear lines
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Unsupported format: $file"
+            rmdir "$folder_name" 2>/dev/null  # Remove directory if empty
+            read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null
+            return 1 ;;
+    esac
+    
+    # Check if extraction was successful
+    if [ $? -eq 0 ]; then
+        redraw full
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Extraction completed successfully!"
+        return 0
+    else
+        rmdir "$folder_name"
+        redraw full
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Error during extraction of '$file'"
+        read -rsn 1 -p "" </dev/tty >/dev/null 2>/dev/null
+        return 1
+    fi
+}
+
+any_file() {
+    file="$1"
+    margin <(file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p') && echo &&
+    margin <(strings -n 10 "$file") 2>/dev/null | sed '/^[0-9]\{11\}/d' && return 0
+}
+
+_exiftool() {
+    local file="$1"
+    timeout -k 1 1 exiftool "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_identify() {
+    local file="$1"
+    timeout -k 1 1 identify -verbose "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_pandoc() {
+    local file="$1"
+    timeout -k 1 1 pandoc -s -t plain -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_libreoffice() {
+    local file="$1"
+    local dir="$2"
+    timeout -k 1 1 libreoffice --headless --convert-to txt --outdir "$dir" "$file" >/dev/null 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_glow() {
+    local file="$1"
+    timeout -k 1 .6 env COLORTERM=8bit glow -s dark -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_glow_no_kill() {
+    local file="$1"
+    env COLORTERM=8bit glow -s dark -- "$file" 2>/dev/null
+    status=$? && [[ "$status" == 0 ]] && return 0
+    [[ "$status" -gt 0 ]] && return 1
+}
+
+_bsdtar() {
+    local file="$1"
+    cmd_check bsdtar libarchive && {
+        if ! bsdtar --list --file "$file" &>/dev/null; then
+            return 1
+        else
+            bsdtar --list --file "$file" | head -n "${sizeline}"
+            return 0
+        fi
+    }
+    return 1
+}
+
+archive() {
+    local file="$1"
+    local file_lower="${1,,}"
+
+    case "$file_lower" in
+        *.tar.bz2|*.tbz2|*.tar.gz|*.tgz|*.tar.xz|*.tar.lzma|*.tar.lz|*.tar.lz4|*.tar.br|*.tar.z|*.tar)
+            { bsdtar --list --file "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.tar.zst|*.zst|*.zstd)
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check zstdcat zstd && zstd -lv "${file}" | head -n "${sizeline}" && return 0; } ||
+            { _bsdtar "$file" && return 0; } ;;
+        *.bz2)
+            { cmd_check bzcat bzip2 && bzcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.gz|*.z)
+            { cmd_check zcat gzip && zcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.xz)
+            { cmd_check xzcat xz && xzcat "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.zip|*.zipx|*.apk|*.xapk|*.apk+|*.jar|*.oxt|*.xpi|*.vsix)
+            { _bsdtar "$file" && return 0; } ||
+            { cmd_check unzip unzip && unzip -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.rar)
+            { cmd_check unrar unrar && unrar lt -p- -- "${file}" | head -n "${sizeline}" && return 0; } || 
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.7z|*.7za|*.7zz|*.7zr|*.dmg)
+            cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0 ;;
+        *.iso)
+            { _bsdtar "$file" && return 0; } ||
+            { cmd_check isoinfo cdrtools && isoinfo -i "${file}" -l | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.cab)
+            { cmd_check cabextract cabextract && cabextract -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.arj)
+            { cmd_check arj arj && arj l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.lzh|*.lha)
+            { cmd_check lha lhasa && lha -l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.rpm)
+            { cmd_check rpm rpm-tools && rpm -qpl "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.deb)
+            { cmd_check dpkg dpkg && dpkg -c "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;            
+        *.ace)
+            { cmd_check unace unace && unace l "$file" | head -n "${sizeline}" && return 0; } ||
+            { cmd_check 7z 7zip && 7z l -p -- "$file" | head -n "${sizeline}" && return 0; } ;;
+        *.zlib|*.zz)
+            cmd_check zlib-flate qpdf && 
+            zlib-flate -uncompress < "${file}" | head -n "${sizeline}" && return 0 ;;
+        *.exe)
+            # Might be a self-extracting archive
+            cmd_check 7z 7zip && file "${file}" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
+            7z l -p -- "$file" | head -n "${sizeline}" && return 0 ;;
+        esac
+
+    { cmd_check atool atool && atool --list -- "${file}" | head -n "${sizeline}" && return 0; } ||
+    { _bsdtar "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+office_convert() {
+    local file="$1"
+    local temp_dir="${TMP_DIR}/temp_book"
+    local temp_file="${TMP_DIR}/temp_file.md"
+    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
+    [[ -d "${temp_dir}" ]] && rm -rf "${temp_dir}"
+
+    case "${file_ext}" in
+        csv)
+            { cmd_check csvtable csvtable && (csvtable "$file" | head -n "${sizeline}") && return 0; } ||
+            { cmd_check csvlook csvlook && (csvlook -S "$file" | head -n "${sizeline}") && return 0; } ||
+            { awk -F, '{ printf "%-20s %-20s %-20s\n", $1, $2, $3 }' "$file" | head -n "${sizeline}" && return 0; } ||
+            { column -t -s, "$file" | head -n "${sizeline}" && return 0; } ;;
+        xlsx)
+            { cmd_check xlsx2csv xlsx2csv && (xlsx2csv -- "$file" | head -n "${sizeline}") && return 0; } ||
+            { cmd_check xlscat xlscat && (xlscat -L -R all "$file" | head -n "${sizeline}") && return 0; } ;;
+        rtf)
+            { cmd_check catdoc catdoc && margin <(catdoc -- "$file") && return 0; } ||
+            { cmd_check unrtf unrtf && margin <(unrtf --text "$file") && return 0; } ;;
+        doc)
+            cmd_check antiword antiword && margin <(antiword "$file") && return 0
+            ;;
+        docx)
+            cmd_check docx2txt docx2txt && margin <(docx2txt "$file" - 2>/dev/null) && return 0
+            ;;
+        odt|ods|odp|sxw)
+            { cmd_check odt2txt odt2txt && margin <(odt2txt "$file") && return 0; } ||
+            { [[ "${file_ext}" =~ ^sxw ]] && cmd_check sxw2txt sxw2txt && margin <(sxw2txt "$file") && return 0; } ;;
+        pptx)
+            cmd_check pptx2md pptx2md && (pptx2md --disable-image --disable-wmf -o "$temp_file" "$file" &&
+            markdown_reader "$temp_file" | head -n "${sizeline}") && return 0
+            ;;
+        epub)
+            cmd_check epr epr && margin <(epr -d "$file" 2>/dev/null | sed '/^\s*$/d; /\[IMG:0\]/d; s/\[IMG:1\]//g') && return 0
+            ;;
+    esac
+
+    { cmd_check pandoc pandoc && margin <(_pandoc "$file") && return 0; } ||
+    { cmd_check libreoffice libreoffice && _libreoffice "${temp_dir}" "$file" >/dev/null 2>&1 &&
+    head -n "${sizeline}" "${temp_dir}"/*.txt && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+markdown_reader() {
+    local file="$1"
+    local mr="$HOME/.shell_utils/scripts/markdown-reader"
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && [[ -f "$mr" ]] &&
+    "$mr" -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 5 ]] && command -v markdown-reader &>/dev/null &&
+    markdown-reader -nl -nc -nf -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 1 ]] && cmd_check glow glow &&
+    _glow_no_kill "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 2 ]] && cmd_check bat bat &&
+    env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 3 ]] && cmd_check mdless mdless &&
+    mdless -P -- "$file" | head -n "${sizeline}" && return 0; } ||
+    { [[ -z "$PREVIEW_MARKDOWN" || "$PREVIEW_MARKDOWN" == 4 ]] && cmd_check mdcat mdcat &&
+    mdcat -- "$file" | head -n "${sizeline}" && return 0; }
+}
+
+test_books() {
+    local file="$1"
+    local books="$HOME/.shell_utils/scripts/books"
+    { [[ -f "$books" ]] && "$books" "$file" && return 0; } ||
+    { command -v books &>/dev/null && books "$file" && return 0; }
+}
+
+_books() {
+    local file="$1"
+    clear_screen
+    reset_terminal
+    test_books "$file"
+    setup_terminal
+    redraw
+}
+
+_picinfo() {
+    local file="$1"
+    { cmd_check mediainfo mediainfo && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' &&
+    echo && mediainfo "$file" | sed 's/               //; s|\(.*:\)\s*.*/|\1 |' && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_identify "${file}" | head -n "${sizeline}") && return 0; }
+}
+
+# TERMINAL COLOR AUTODETECTION.
+autodetect_color() {
+	# The following defaults may be overridden if autodetection succeeds.
+	numcolors=16     # Default number of colors in the palette.
+	timeout=0.25
+
+	# Find out how many color registers the terminal has
+	IFS=";" read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;1;0S' >&2
+    [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+
+	# YAFT is vt102 compatible, cannot respond to vt220 escape sequence.
+    if [[ "$TERM" == yaft* ]]; then numcolors=256; fi
+
+	# Increase colors, if needed
+    if [[ $numcolors -lt 256 ]]; then
+        # Attempt to set the number of colors to 256.
+        # This will work for xterm, but fail on a real vt340.
+        IFS=";"  read -ra REPLY -s -t ${timeout} -d "S" -p $'\e[?1;3;256S' >&2
+        [[ ${REPLY[1]} == "0" ]] && numcolors=${REPLY[2]}
+    fi
+}
+
+imgview() {
+    local file="$1"
+    local thumbnail="$2"
+	local sixel_size="${PREVIEW_SIXEL_W:-540}x${PREVIEW_SIXEL_H:-420}!"
+	local sixel_thumb_size="${PREVIEW_THUMB_SIXEL_W:-300}x${PREVIEW_THUMB_SIXEL_H:-200}!"
+    
+    [[ "$thumbnail" =~ ^-?[0-9]+$ ]] && {
+		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_thumb_size}" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_thumb_size}" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel && 
+        img2sixel -w "${PREVIEW_THUMB_SIXEL_W:-300}" -h "${PREVIEW_THUMB_SIXEL_H:-200}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        viu -w "${PREVIEW_THUMB_VIU_W:-50}" -h "${PREVIEW_THUMB_VIU_H:-16}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_THUMB_CATIMG_W:-60}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_THUMB_CHAFA_S:-25}" "${file}" 2>/dev/null && return 0; }
+    }
+    [[ -z "$thumbnail" ]] && {
+		{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+		{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+		magick -quiet -- "${file}" -auto-orient -resize "${sixel_size}" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+        { [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check img2sixel libsixel &&
+        img2sixel -w "${PREVIEW_SIXEL_W:-540}" -h "${PREVIEW_SIXEL_H:-420}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check viu viu && viu -w "${PREVIEW_VIU_W:-63}" -h "${PREVIEW_VIU_H:-24}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 2 ]] && cmd_check viu viu &&
+        viu -w "${PREVIEW_VIU_W:-90}" -h "${PREVIEW_VIU_H:-35}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check catimg catimg && catimg -w "${PREVIEW_CATIMG_W:-33}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 3 ]] && cmd_check catimg catimg &&
+        catimg -w "${PREVIEW_CATIMG_W:-100}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && [[ -n "$TERMUX_VERSION" ]] &&
+        cmd_check chafa chafa && chafa -s "${PREVIEW_CHAFA_S:-17}" "${file}" 2>/dev/null && return 0; } ||
+        { [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 4 ]] && cmd_check chafa chafa &&
+        chafa -s "${PREVIEW_CHAFA_S:-50}" "${file}" 2>/dev/null && return 0; }
+    }
+    { _picinfo "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+fontview() {
+    local file="$1"
+    temp_file="${TMP_DIR}/temp_file.png"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+    { cmd_check fontimage fontforge && fontimage -o "${temp_file}" \
+                    --pixelsize "120" \
+                    --fontname \
+                    --pixelsize "80" \
+                    --text "  ABCDEFGHIJKLMNOPQRSTUVWXYZ  " \
+                    --text "  abcdefghijklmnopqrstuvwxyz  " \
+                    --text "  0123456789.:,;(*!?') ff fl fi ffi ffl  " \
+                    --text "  A white sheep peacefully grazes on the green pasture.  " \
+                    "${file}" </dev/null 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && 
+    [[ "${file_ext}" =~ ^(ttf|ttc|otf|pfa|pfb|ps|bdf|gbdf|pcf|snf|nfnt|fon|fnt|woff|woff2|svg|sfnt|sfd)$ ]] && 
+    echo && cmd_check -msg && return 1; }
+}
+
+img2info() {
+    local file="$1"
+    temp_file="${TMP_DIR}/temp_file.jpg"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+
+	{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+    { cmd_check magick imagemagick && ls "${TMP_DIR}" && 
+    magick -- "${file}[0]" -auto-orient -filter Box -resize "${RESOLUTION}!" -quality 85 "$temp_file" 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { _picinfo "$file" && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1; }
+}
+
+video2static() {
+    local file="$1"
+    local sizeline=27
+    local info="${TMP_DIR}/info.txt"
+    local resolution="${RESOLUTION/x/:}"
+    local temp_file="${TMP_DIR}/temp_file.jpg"
+    [[ -n "$TERMUX_VERSION" ]] && local sizeline=11
+
+    function if_ff_extract {
+        [[ -f "$temp_file" ]] && {
+            imgview "$temp_file" 1
+            media_info "$file"
+        } && return 0
+    }
+
+    [[ -f "$info" ]] && rm -f "$info"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+    { cmd_check ffmpeg ffmpeg && 
+    # black_start=$(ffmpeg -i "${file}" -vf "blackdetect=d=0.1:pic_th=0.98" -f null - 2>&1 | \
+    # awk -F'start:' '/black_start/ {print $2}' | awk '{print $1}' | head -n 1) &&
+    # [[ -n "$black_start" ]] && ffmpeg -i "${file}" -ss "$black_start" -frames:v 1 "$temp_file" </dev/null 2>/dev/null &&
+    ffmpeg -i "${file}" -vf "select=eq(n\,30),scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
+    if_ff_extract && return 0; } ||
+    { ffmpeg -i "${file}" -vf "scale=$resolution" -vsync vfr -frames:v 1 -q:v 5 "$temp_file" </dev/null 2>/dev/null &&
+    if_ff_extract && return 0; } ||
+    { media_info "${file}" && return 0; } ||
+    return 1
+}
+
+media_info() {
+    local file="$1"
+    [[ "$sizeline" != 11 ]] && sizeline=27
+    # [[ -n "$TERMUX_VERSION" ]] && cmd_check mediainfo mediainfo && 
+    # mediainfo "${file}" | sed '/General/d; /Complete name/d; s/                   //; s|\(.*:\)\s*.*/\([^/]*\)\(\.[^.]*\)$|\1\3|' | head -n "${sizeline}" && return 0
+    { cmd_check mediainfo mediainfo && mediainfo "${file}" |\
+    sed '/General/d; /Complete name/d; /^Video/d; /^Audio/d; /^$/d; s/                   //; s|\(.*:\)\s*.*/|\1 |' |\
+    head -n "${sizeline}" && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check ffmpeg ffmpeg && ffmpeg -i "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+pdfview() {
+    local file="$1"
+    temp_file="${TMP_DIR}/temp_file.jpg"
+    [[ -f "$temp_file" ]] && rm -f "$temp_file"
+
+    { cmd_check pdftotext poppler && 
+    pdf_lines=$(pdftotext -l 1 -nopgbrk -q -- "${file}" - | wc -l) &&
+    [[ "$pdf_lines" -gt 0 ]] &&
+    pdftotext -l 1 -nopgbrk -q -- "${file}" - | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check mutool mupdf && mutool draw -F txt -i -- "${file}" 1-10 | \
+    fmt -w "${width}" | head -n "${sizeline}" && return 0; } ||
+	{ [[ ${XDG_SESSION_TYPE,,} == tty ]] && cmd_check idump idump && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" jpg:- 2>/dev/null | idump -f 2>/dev/null && return 0; } ||
+	{ [[ -z "$TERMUX_VERSION" ]] && [[ -z "$XTERM_VERSION" ]] && [[ -z "$PREVIEW_IMG" || "$PREVIEW_IMG" == 1 ]] && cmd_check magick imagemagick &&
+	magick -quiet -- "${file}[0]" -auto-orient -resize "${RESOLUTION}!" -colors "$numcolors" sixel:- 2>/dev/null && return 0; } ||
+    { cmd_check magick imagemagick && 
+    magick -quiet -- "${file}[0]" -auto-orient -filter Box -resize "${RESOLUTION}!" -quality 85 "$temp_file" 2>/dev/null &&
+    [[ -f "$temp_file" ]] && imgview "$temp_file" && return 0; } ||
+    { cmd_check pdfinfo poppler && pdfinfo "$file" && return 0; } ||
+    { cmd_check exiftool perl-image-exiftool && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check identify imagemagick && file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo &&
+    (_identify "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+torrentview() {
+    local file="$1"
+    { cmd_check transmission-show transmission-cli && transmission-show -- "$file" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+djvuview() {
+    local file="$1"
+    { cmd_check djvutxt djvutxt && margin <(djvutxt "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check exiftool exiftool &&
+    (_exiftool "${file}" | head -n "${sizeline}") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+podview() {
+    local file="$1"
+    { cmd_check pod2text pod2text && margin <(pod2text "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check perldoc perldoc && margin <(perldoc -T "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+psview() {
+    local file="$1"
+    { cmd_check ps2ascii ghostscript && margin <(nodash ps2ascii "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+classview() {
+    local file="$1"
+    { cmd_check procyon-decompiler procyon-decompiler && margin <(procyon-decompiler "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check procyon procyon && margin <(procyon "$file" 2>/dev/null) && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+dviview() {
+    local file="$1"
+    { cmd_check dvi2tty dvi2tty && margin <(dvi2tty -q "$file") && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+pgpview() {
+    local file="$1"
+    { cmd_check gpg gnupg && gpg --decrypt --quiet --no-tty --batch --yes "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+opensslview() {
+    local file="$1"
+    { [[ "${file_ext}" =~ ^([Cc][Ss][Rr])$ ]] && 
+    cmd_check openssl openssl && openssl req -text -noout -in "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check openssl openssl && openssl storeutl -text -noout "$file" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+jsonview() {
+    local file="$1"
+    { cmd_check jq jq && jq --color-output . "${file}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check python python && python -m json.tool -- "${file}" | head -n "${sizeline}" && return 0; } ||
+    { cmd_check -msg && echo && any_file "$file" && return 1; }
+}
+
+nexttmp () {
+	declare new="${TMP_DIR}/preview.$RANDOM"
+	echo "$new"
+}
+
+nodash() {
+	prog="$1"
+	shift
+	[[ "$1" == - ]] && shift
+	$prog "$@"
+}
+
+handle_w3m() {
+	if [[ "$1" == *\?* ]]; then
+		t=$(nexttmp)
+		ln -s "$1" "$t"
+		set "$t" "$1"
+	fi
+	nodash "w3m -dump -T text/html" "$1"
+}
+
+_html2text() {
+    nodash html2text "$1" "$2"
+    return 0
+}
+
+ishtml() {
+	[[ "$1" == - ]] && arg1=-stdin || arg1="$1"
+	htmlopt=--unicode-snob
+	cmd_check html2text python-html2text && html2text -utf8 </dev/null 2>/dev/null && htmlopt=-utf8
+	# 3 lines following can easily be reshuffled according to the preferred tool
+	{ cmd_check elinks elinks && margin <(nodash "elinks -dump -force-html" "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check w3m w3m && margin <(handle_w3m "$1" </dev/null 2>/dev/null) && return 0; } ||
+	{ cmd_check lynx lynx && margin <(lynx -force_html -dump "$arg1" </dev/null 2>/dev/null) && return 0; } ||
+	# different versions of html2text existingi, force unicode
+	{ [[ "$1" == https://* ]] && return 0; } ||
+	{ cmd_check html2text python-html2text && margin <(_html2text "$htmlopt" "$1" </dev/null 2>/dev/null) && return 0; } ||
+    { file "$file" | sed -n 's/.*:\s*\(.*\)/\1/p' && echo && cmd_check -msg && return 1; }
+}
+
+highlight_code() {
+    local file="$1"
+    COLOR_RESET='\033[0m' 
+    COLOR_CODE='\033[38;5;155;48;5;241m'
+    HIGHLIGHT_OPTIONS="--replace-tabs=${HIGHLIGHT_TABWIDTH:-8} --style=${HIGHLIGHT_STYLE:-pablo} ${HIGHLIGHT_OPTIONS:-}"
+
+    ## Syntax highlight
+    if [[ "$( tput colors )" -ge 256 ]]; then
+        local pygmentize_format='terminal256'
+        local highlight_format='xterm256'
+    else
+        local pygmentize_format='terminal'
+        local highlight_format='ansi'
+    fi
+    if [ -z "$lang" ]; then
+        lang="$file_ext"  # Default language
+    fi
+
+    # Attempt syntax highlighting with specified language
+    { cmd_check bat bat && env COLORTERM=8bit bat --paging=never --color=always --style="plain" -- "${file}" && return 0; } ||
+    { cmd_check highlight highlight && env HIGHLIGHT_OPTIONS="${HIGHLIGHT_OPTIONS}" highlight \
+        --out-format="${highlight_format}" \
+        --force -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check source-highlight source-highlight &&
+    source-highlight -f esc -s "$lang" -i "$file" 2>/dev/null && return 0; } ||
+    { cmd_check pygmentize python-pygments && 
+    pygmentize -f "${pygmentize_format}" -O "style=${PYGMENTIZE_STYLE:-autumn}" -- "${file}" 2>/dev/null && return 0; } ||
+    { cmd_check glow glow && _glow "${file}" && return 0; } ||
+    { cmd_check mdless mdless && mdless -P -- "${file}" && return 0; } ||
+    { cmd_check mdcat mdcat && mdcat -- "${file}" && return 0; } ||
+	{ while IFS= read -r line; do
+        printf "${COLOR_CODE}%s${COLOR_RESET}\n" "$line"
+    done < "$file"; }
+}
+
+margin() {
+    local file="$1"
+    { cmd_check fold coreutils &&
+    fold -s -w $(($(tput cols) - ${PREVIEW_MARGIN:-5})) "$file" | head -n "${sizeline}" && return 0; } ||
+    cmd_check -msg && return 1
+}
+
+_mime_files() {
+    get_mime_type "$selected_file"
+    if [[ "$mime_type" == *"font"* ]]; then
+        if ! fontview "$selected_file"; then
+            printf '\n\e[33mFont file: %s\e[m\n' "${selected_file##*/}"
+            any_file "$selected_file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" == *"image"* || "$mime_type" =~ "image" ]]; then
+        if ! img2info "$selected_file"; then
+            printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
+            any_file "$selected_file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" == *"text"* || "$mime_type" == *"xml"* || "$mime_type" == *"empty"* || "$mime_type2" =~ ^text/.+|application/xml$ ]]; then
+        highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null && return 0
+        any_file "$selected_file"
+        return 1
+    elif [[ "$mime_type_full" =~ (audio|sound|video|media|stream) || "$mime_type" =~ (audio|sound|video|media|stream) || "$mime_type2" =~ ^(video|audio)/.+$ ]]; then
+        if ! media_info "$selected_file"; then
+            printf '\n\e[33mMedia file: %s\e[m\n' "${selected_file##*/}"
+            any_file "$selected_file"
+            return 1
+        else
+            return 0
+        fi
+    elif [[ "$mime_type" =~ (text|xml|python|css|htm|html|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        highlight_code "$selected_file" | head -n "${sizeline}" 2>/dev/null && return 0
+        any_file "$selected_file"
+        return 1
+    fi
+    return 1
+}
+
+_draw_file_preview() {
+    [[ -z "$1" ]] && local selected_file="${list[scroll]}"
+    [[ -n "$1" ]] && local selected_file="$1"
+    [[ -z "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-30}"
+    [[ -n "$TERMUX_VERSION" ]] && local sizeline="${sizeline:-20}"
+    [[ -z "$TERMUX_VERSION" ]] && local width="${width:-200}"
+    [[ -n "$TERMUX_VERSION" ]] && local width="${width:-50}"
+
+    if [[ -d "$selected_file" ]]; then
+        local leng="$(ls -1A "$selected_file" | wc -l)"
+        printf '\e[36mDirectory: %s\e[m\n' "${selected_file##*/}"
+        [[ "$leng" == 0 ]] && printf '\e[36mEmpty folder\e[m\n\n'
+        [[ "$leng" -gt 0 ]] && printf '\e[36mTotal Files: %s\e[m\n\n' "$leng"
+        ls -lha --group-directories-first --color=always "$selected_file" | head -n 2
+        printf '%s\n' "----------------------------------------------------"
+        # Count the number of items returned by LS
+        item_count=$(ls -pa --group-directories-first "$selected_file" | wc -l)
+        # Check that the number of items is greater than 30
+        if [ "$item_count" -le 30 ]; then
+            # If it is less than 30, displays all items with intact colors
+            ls -pa --group-directories-first --color=always "$selected_file"
+            return 0
+        else
+            # If it is more than 30, it limits the display for the first 30 items
+            ls -pa --group-directories-first --color=always "$selected_file" | head -n "${sizeline}"
+            return 0
+        fi
+        
+    elif [[ -f "$selected_file" ]]; then
+        local file_ext="${selected_file##*.}"
+        file_ext="${file_ext,,}" # lowercase
+        
+        # Displays the current file name in the preview area
+        printf '\e[36mFile: %s\e[m\n\n' "${selected_file##*/}"
+
+        case "$file_ext" in
+            a|apk|apk+|xapk|ace|alz|arc|arj|br|bz|bz2|cab|cpio|deb|gz|jar|oxt|lha|lz|lz4|lzh|lzma|lzo|rar|exe|rpm|\
+            7z|7zz|7za|7zr|rz|t7z|tar|tbz|tbz2|tgz|tlz|txz|tz|tzo|war|xpi|xz|z|zip|zst|zstd|iso|vsix|zlib|zz)
+                [[ "${file}" =~ \.img(\.[^.]+)?$ ]] && any_file "$selected_file" && return 0
+                if ! archive "$selected_file"; then
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            txt)
+                margin "$selected_file" && return 0
+            ;;
+            img|rom)
+                any_file "$selected_file" && return 0
+            ;;
+            md|markdown)
+                if ! markdown_reader "$selected_file"; then
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            class)
+                if ! classview "$selected_file"; then
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pod)
+                if ! podview "$selected_file"; then
+                    printf '\n\e[33mPOD file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pdf)
+                if ! pdfview "$selected_file"; then
+                    printf '\n\e[33mPDF file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            torrent)
+                if ! torrentview "$selected_file"; then
+                    printf '\n\e[33mTorrent file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            mp4|m4v|mov|avi|wmv|flv|webm|mkv|mpg|mpeg|3gp|3g2|ogv|asf|rm|rmvb|vob|ts|m2ts|mts|f4v|divx)
+                if ! video2static "$selected_file"; then
+                    printf '\n\e[33mVideo file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            mp3|wav|aac|m4a|flac|ogg|oga|opus|wma|alac|aiff|aif|au|snd|amr|ac3|dts|caf|mka|dff|dsf|wv|wvc)
+                if ! media_info "$selected_file"; then
+                    printf '\n\e[33mAudio file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            png|jpg|jpeg)
+                if ! imgview "$selected_file"; then
+                    printf '\n\e[33mImage file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+                if ! office_convert "$selected_file"; then
+                    printf '\n\e[33mOffice file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            djvu)
+                if ! djvuview "$selected_file"; then
+                    printf '\n\e[33mDjvu file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            postscript|ps)
+                if ! psview "$selected_file"; then
+                    printf '\n\e[33mPS file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            x509|crl|csr)
+                if ! opensslview "$selected_file"; then
+                    printf '\n\e[33mx509/CRL/CSR/CA file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            pgp)
+                if ! pgpview "$selected_file"; then
+                    printf '\n\e[33mPGP file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            dvi)
+                if ! dviview "$selected_file"; then
+                    printf '\n\e[33mDVI file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            htm|html|xhtml)
+                if ! ishtml "$selected_file" |\
+                fmt -w "${width}" | head -n "${sizeline}"; then
+                    printf '\n\e[33mWeb file: %s\e[m\n' "${selected_file##*/}" 
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            json)
+                if ! jsonview "$selected_file"; then
+                    printf '\n\e[33mJSON file: %s\e[m\n' "${selected_file##*/}"
+                    any_file "$selected_file" && return 1
+                else
+                    return 0
+                fi
+            ;;
+            *)
+                _mime_files && return 0
+                any_file "$selected_file" && return 1
+            ;;
+        esac
+    fi
+    _mime_files && return 0
+    any_file "$selected_file" && return 1
+}
+
+draw_file_preview() {
+    # Cleans the preview area
+    for ((i=max_items+2; i<LINES-1; i++)); do
+        printf '\e[%sH\e[K' "$i"
+    done
+    
+    printf '\e[%sH' "$((max_items+2))"
+
+    _draw_file_preview
+}
+
+redraw() {
+    [[ "$1" == full ]] && {
+        read_dir
+        scroll=0
+    }
+
+    clear_screen
+    draw_dir
+    status_line
+}
+
+toggle_preview_mode() {
+    preview_mode=$((preview_mode == 0 ? 1 : 0))
+    get_term_size
+    redraw
+}
+
+xdg_open() {
+    nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$1" &>/dev/null &
+    disown
+}
+
+open() {
+    local file="${list[scroll]}"
+    local file_ext="${file##*.}"
+    local file_lower="${file_ext,,}"
+
+    if [[ -d "$1"/ ]]; then
+        search=
+        search_end_early=
+        cd "${1:-/}" ||:
+        redraw full
+
+    elif [[ -f "$1" ]]; then
+        get_mime_type "$1"
+
+        case "$mime_type" in
+            text/*|*x-empty*|*json*)
+                ((file_picker == 1)) && {
+                    printf '%s\n' "$1" > \
+                        "${XDG_CACHE_HOME:=${HOME}/.cache}/preview/opened_file"
+                    exit
+                }
+
+                clear_screen
+                reset_terminal
+                "${VISUAL:-${EDITOR:-vi}}" "$1"
+                setup_terminal
+                redraw
+                return 0
+            ;;
+        esac
+        case "$file_lower" in
+            md|markdown)
+                _books "$file" && return 0
+            ;;
+            pod)
+                _books "$file" && return 0
+            ;;
+            pdf)
+                _books "$file" && return 0
+            ;;
+            png|jpg|jpeg)
+                _books "$file" && return 0
+            ;;
+            rtf|odt|ods|odp|sxw|doc|docx|xls|xlsx|ipynb|epub|ppt|pptx|csv)
+                _books "$file" && return 0
+            ;;
+            djvu)
+                _books "$file" && return 0
+            ;;
+            postscript|ps)
+                _books "$file" && return 0
+            ;;
+            dvi)
+                _books "$file" && return 0
+            ;;
+            htm|html|xhtml|xml)
+                _books "$file" && return 0
+            ;;
+            *)
+                nohup "${PREVIEW_OPENER:-${opener:-xdg-open}}" "$1" &>/dev/null &
+                disown
+            ;;
+        esac
+    fi
+}
+
+cmd_line() {
+    cmd_reply=${4:-}  # Set initial value if provided as 4th parameter
+    printf '\e7\e[%sH\e[?25h' "$LINES"
+
+    while IFS= read -rsn 1 -p $'\r\e[K'"${1}${cmd_reply}" read_reply </dev/tty; do
+        case $read_reply in
+            $'\177'|$'\b')
+                cmd_reply=${cmd_reply%?}
+                unset comp c
+            ;;
+            $'\t')
+                comp_glob="$cmd_reply*"
+
+                [[ $2 == dirs ]] &&
+                    comp_glob="$cmd_reply*/"
+
+                [[ -z ${comp[0]} ]] &&
+                    IFS=$'\n' read -d "" -ra comp < <(compgen -G "$comp_glob")
+
+                [[ -n ${comp[c]} ]] && {
+                    cmd_reply=${comp[c]}
+                    ((c=c >= ${#comp[@]}-1 ? 0 : ++c))
+                }
+            ;;
+            $'\e'|${3:-null})
+                read "${read_flags[@]}" -rsn 2
+                cmd_reply=
+                break
+            ;;
+            "")
+                [[ $2 == search && -d ${list[0]} ]] && ((list_total == 0)) && {
+                    printf '\e[?25l'
+
+                    open "${list[0]}"
+                    search_end_early=1
+                    unset comp c
+                    return
+                }
+
+                break
+            ;;
+            ${2:-null})
+                cmd_reply=$read_reply
+                break
+            ;;
+            "~")
+                cmd_reply+=$HOME
+            ;;
+            *)
+                cmd_reply+=$read_reply
+                unset comp c
+            ;;
+        esac
+
+        [[ $2 == search ]] && {
+            printf '\e[?25l'
+
+            list=("$PWD"/*"$cmd_reply"*)
+            ((list_total=${#list[@]}-1))
+
+            scroll=0
+            redraw
+            printf '\e[%sH\e[?25h' "$LINES"
+        }
+    done
+    unset comp c
+    printf '\e[2K\e[?25l\e8'
+}
+
+copy_to_clipboard() {
+    [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && [[ -z "$TERMUX_VERSION" ]] && ! type -p wl-copy >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install wl-clipboard." && return 1
+    [[ -z "$TERMUX_VERSION" ]] && ! type -p xclip >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install xclip." && return 1
+    [[ -n "$TERMUX_VERSION" ]] && ! type -p termux-clipboard-set >/dev/null && printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: Install termux-api." && return 1
+    local file="${1}"
+    local file_base="${1##*/}"
+    local file_ext="${1##*.}"
+    local ext_lower="${file_ext,,}"
+
+    if [ ! -f "$1" ]; then
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' does not exist."
+        return 1
+    fi
+
+    local file_size=$(ls -l "$1" | awk '{print $5}')
+    local max_size=$((10 * 1024 * 1024))
+    get_mime_type "$file"
+
+    if [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(jpg|jpeg)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/jpg -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(png|apng|tif|tiff|psd|xpm|svg|svgz|webp)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/png -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(bmp)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/bmp -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(ico)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/ico -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [[ -z "$TERMUX_VERSION" ]] && [ "$file_size" -le "$max_size" ] && [[ "${ext_lower}" =~ ^(gif)$ ]]; then
+        [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard -target image/gif -i
+        [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    elif [ "$file_size" -le "$max_size" ] && 
+        [[ "$mime_type" == *"text"* || "$mime_type" =~ (text|xml|python|css|htm|html|javascript|php|lua|text/plain|text/xml|application/xml|text/html|text/css|text/javascript|application/javascript|text/x-shellscript|text/x-perl|text/x-python|text/x-ruby|text/x-c|text/x-c++|text/x-java|text/x-php|text/x-awk|text/x-sed|text/x-makefile|text/x-patch|text/x-tex|text/x-markdown|text/x-yaml|application/x-yaml|text/x-toml|application/toml|text/x-ini|text/x-config|text/x-log|text/x-sql|text/x-csv|text/tab-separated-values|text/x-lisp|text/x-lua|text/x-go|text/x-rust|text/x-kotlin) ]]; then
+        [[ -z "$TERMUX_VERSION" ]] && [[ "${XDG_SESSION_TYPE,,}" != wayland ]] && cat "$file" | xclip -selection clipboard
+        [[ -z "$TERMUX_VERSION" ]] && [[ "${XDG_SESSION_TYPE,,}" == wayland ]] && cat "$file" | wl-copy
+        [[ -n "$TERMUX_VERSION" ]] && cat "$file" | termux-clipboard-set
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File '${file_base}' copied to clipboard successfully."
+    else
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "[Preview Error]: File '${file_base}' is too large (>10 MB) or has an unsupported format and cannot be copied to the clipboard."
+    fi
+
+}
+
+copy_file() {
+	[[ ! -e "${list[scroll]}" ]] && [[ ${#marked_files[@]} -eq 0 ]] &&
+		printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No file or directory has been selected!" &&
+		return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Generate suggested name with _copy suffix
+        local filename="${list[scroll]##*/}"
+        local basename="${filename%.*}"
+        local extension="${filename##*.}"
+        
+        # Handle files without extension
+        if [[ "$basename" == "$extension" ]]; then
+            suggested_name="${basename}_copy"
+        else
+            suggested_name="${basename}_copy.${extension}"
+        fi
+        
+        cmd_line "copy ${filename} to: " "" "" "$suggested_name"
+        
+        [[ "$cmd_reply" ]] &&
+            if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                cmd_line "warn: '${cmd_reply}' already exists. Overwrite? (y/N): "
+                
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                    else
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to copy the file."
+                    fi
+                fi
+            elif [[ -r "${list[scroll]}" ]]; then
+                if cp -r "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to copy the file."
+                fi
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Cannot read the file/directory."
+            fi
+    # Copy files marked to the current directory
+    else
+        # Checks writing permission in the current directory
+        if [[ ! -w "$PWD" ]]; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write permission in the current directory ($PWD)."
+        else
+            # Check if any files already exist at destination
+            local existing_files=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                if [[ -e "$PWD/$basename" ]]; then
+                    existing_files="$existing_files $basename"
+                fi
+            done
+
+            if [[ -n "$existing_files" ]]; then
+                cmd_line "Some files ($existing_files) already exist in $PWD. Overwrite? (y/N): "
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    # Copy with Sobrescript
+                    if cp -rf "${marked_files[@]}" "$PWD" >&2; then
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                    else
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to copy files."
+                    fi
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy operation canceled."
+                fi
+            else
+                # Copy Without Sobrescript Necessary
+                if cp -r "${marked_files[@]}" "$PWD" >&2; then
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Copy completed successfully!"
+                else
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to copy files."
+                fi
+            fi
+        fi
+    fi
+}
+
+create_symlink() {
+    # Verifica se nenhum arquivo/diretório está selecionado e se não há arquivos marcados
+    [[ ! -e "${list[scroll]}" ]] && [[ ${#marked_files[@]} -eq 0 ]] &&
+        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No file or directory has been selected!" &&
+        return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Gera um nome sugerido para o symlink com sufixo _link
+        local filename="${list[scroll]##*/}"
+        local basename="${filename%.*}"
+        local extension="${filename##*.}"
+        
+        # Lida com arquivos sem extensão
+        if [[ "$basename" == "$extension" ]]; then
+            suggested_name="${basename}_link"
+        else
+            suggested_name="${basename}_link.${extension}"
+        fi
+        
+        # Solicita ao usuário o nome do symlink
+        cmd_line "create symlink for ${filename} as: " "" "" "$suggested_name"
+        
+        [[ "$cmd_reply" ]] &&
+            if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                cmd_line "warn: '${cmd_reply}' already exists. Overwrite? (y/N): "
+                
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    # Remove o arquivo/diretório existente antes de criar o symlink
+                    rm -rf "${PWD}/${cmd_reply}" 2>/dev/null
+                    if ln -s "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Symlink created successfully!"
+                    else
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to create symlink."
+                    fi
+                fi
+            elif [[ -r "${list[scroll]}" ]]; then
+                if ln -s "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Symlink created successfully!"
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to create symlink."
+                fi
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Cannot read the file/directory."
+            fi
+    # Cria symlinks para arquivos marcados no diretório atual
+    else
+        # Verifica permissão de escrita no diretório atual
+        if [[ ! -w "$PWD" ]]; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write permission in the current directory ($PWD)."
+        else
+            # Verifica se algum arquivo já existe no destino
+            local existing_files=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                if [[ -e "$PWD/$basename" ]]; then
+                    existing_files="$existing_files $basename"
+                fi
+            done
+
+            if [[ -n "$existing_files" ]]; then
+                cmd_line "Some files ($existing_files) already exist in $PWD. Overwrite? (y/N): "
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    # Remove os arquivos/diretórios existentes antes de criar os symlinks
+                    for file in "${marked_files[@]}"; do
+                        rm -rf "${PWD}/${file##*/}" 2>/dev/null
+                    done
+                    # Cria os symlinks
+                    if ln -s "${marked_files[@]}" "$PWD" >&2; then
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Symlinks created successfully!"
+                    else
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to create symlinks."
+                    fi
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Symlink creation canceled."
+                fi
+            else
+                # Cria os symlinks sem necessidade de sobrescrever
+                if ln -s "${marked_files[@]}" "$PWD" >&2; then
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Symlinks created successfully!"
+                else
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to create symlinks."
+                fi
+            fi
+        fi
+    fi
+}
+
+move_file() {
+	[[ ! -e "${list[scroll]}" ]] && [[ ${#marked_files[@]} -eq 0 ]] &&
+		printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No file or directory has been selected!" &&
+		return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Generate suggested name for the move (with _move suffix)
+        local filename="${list[scroll]##*/}"
+        local basename="${filename%.*}"
+        local extension="${filename##*.}"
+        
+        # Handle files without extension
+        if [[ "$basename" == "$extension" ]]; then
+            suggested_name="${basename}_move"
+        else
+            suggested_name="${basename}_move.${extension}"
+        fi
+        
+        cmd_line "move ${filename} to: " "" "" "$suggested_name"
+        
+        [[ "$cmd_reply" ]] &&
+            if [[ -e "${PWD}/${cmd_reply}" ]]; then
+                cmd_line "warn: '${cmd_reply}' already exists. Overwrite? (y/N): "
+                
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    if mv -f "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                    else
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to move the file."
+                    fi
+                fi
+            elif [[ -r "${list[scroll]}" ]]; then
+                if mv "${list[scroll]}" "${PWD}/${cmd_reply}" 2>/dev/null; then
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Failed to move the file."
+                fi
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: Cannot read the file/directory."
+            fi
+    # Move files marked to the current directory
+    else
+        # Checks writing permission in the current directory
+        if [[ ! -w "$PWD" ]]; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write permission in the current directory ($PWD)."
+        else
+            # Check if any files already exist at destination
+            local existing_files=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                if [[ -e "$PWD/$basename" ]]; then
+                    existing_files="$existing_files $basename"
+                fi
+            done
+
+            if [[ -n "$existing_files" ]]; then
+                cmd_line "Some files ($existing_files) already exist in $PWD. Overwrite? (y/N): "
+                if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                    # Move with overwrite
+                    if mv -f "${marked_files[@]}" "$PWD" >&2; then
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                    else
+                        marked_files=()
+                        redraw full
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to move files."
+                    fi
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move operation canceled."
+                fi
+            else
+                # Move without overwrite necessary
+                if mv "${marked_files[@]}" "$PWD" >&2; then
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Move completed successfully!"
+                else
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Failed to move files."
+                fi
+            fi
+        fi
+    fi
+}
+
+delete_file() {
+    [[ ! -e "${list[scroll]}" ]] &&
+        return
+    if [[ ${#marked_files[@]} -eq 0 ]]; then
+        # Deletar um único arquivo selecionado
+        local filename="${list[scroll]##*/}"
+        cmd_line "Delete '${filename}'? (y/N): "
+
+        if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+            if [[ -w "${list[scroll]}" ]]; then
+                if rm -rf "${list[scroll]}" 2>/dev/null; then
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "File deleted successfully!"
+                else
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: deletion failed."
+                fi
+            else
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: no write access to file/directory."
+            fi
+        else
+           printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Deletion canceled."
+        fi
+    # Deletar arquivos marcados
+    else
+        # Verifica permissão de escrita no diretório atual
+        if [[ ! -w "$PWD" ]]; then
+            printf '\e7\e[%sH\e[K%s\e8' "$LINES" "No write permission in the current directory ($PWD)."
+        else
+            # Lista os arquivos marcados para confirmação
+            local file_list=""
+            for file in "${marked_files[@]}"; do
+                local basename="${file##*/}"
+                file_list="$file_list $basename"
+            done
+
+            cmd_line "Delete the following files?$file_list (y/N): "
+            if [[ "$cmd_reply" =~ ^[Yy]$ ]]; then
+                # Verifica permissões e deleta
+                local failed=false
+                for file in "${marked_files[@]}"; do
+                    if [[ -w "$file" ]]; then
+                        if ! rm -rf "$file" 2>/dev/null; then
+                            failed=true
+                        fi
+                    else
+                        failed=true
+                        printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: no write access to '$file'."
+                    fi
+                done
+
+                if [[ "$failed" == false ]]; then
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Files deleted successfully!"
+                else
+                    marked_files=()
+                    redraw full
+                    printf '\e7\e[%sH\e[K%s\e8' "$LINES" "warn: some deletions failed."
+                fi
+            else
+                marked_files=()
+                printf '\e7\e[%sH\e[K%s\e8' "$LINES" "Deletion canceled."
+            fi
+        fi
+    fi
+}
+
+mark() {
+    # Clean marking moves directory
+    [[ $PWD != "${mark_dir}" ]] && {
+        marked_files=()
+    }
+
+    # Does not allow to mark empty directory item
+    [[ "${list[0]}" == empty && -z "${list[1]}" ]] && return
+
+    # Check if we are marking all files or just one
+    if [[ "$1" == "all" ]]; then
+        # Check if all files are already marked
+        local all_marked=1
+        for ((i=0; i<=list_total; i++)); do
+            if [[ "${marked_files[$i]}" != "${list[$i]}" ]]; then
+                all_marked=0
+                break
+            fi
+        done
+
+        if ((all_marked == 1)); then
+            # All files are marked, so unmark them
+            marked_files=()
+        else
+            # Mark all files in the current directory
+            for ((i=0; i<=list_total; i++)); do
+                marked_files[$i]="${list[$i]}"
+            done
+            mark_dir="$PWD"
+        fi
+        # Redraw the entire directory to reflect the changes
+        redraw
+    else
+        # Mark/unmark a single file (original behavior)
+        local idx="${1:-$scroll}"  # Default to scroll if no index provided
+        if [[ "${marked_files[$idx]}" == "${list[scroll]}" ]]; then
+            # Unmarks the file
+            unset "marked_files[$idx]"
+        else
+            # Mark the file
+            marked_files[$idx]="${list[scroll]}"
+            mark_dir="$PWD"
+        fi
+        # Cleans the current line and redesign only the selected item line
+        printf '\e[%sH\e[K' "$((scroll + 1))"  # Adjusts to the correct position
+        print_line "$scroll"
+        # Updates the status line
+        status_line
+    fi
+}
+
+version() {
+	if command -v jq >/dev/null; then
+		printf '%s\n' "preview 1.0.$(curl -s https://api.github.com/repos/felipefacundes/preview/commits\?sha\=main | jq length)"
+	else
+		printf '%s\n' "preview 1.0"
+	fi
+}
+
+# Configuração do fzf com o file_manager como preview
+main_with_fzf() {
+    # Garante que o terminal esteja limpo ao iniciar
+    clear
+    
+    # Executa o fzf com os parâmetros especificados e binding para Ctrl+O
+    fzf --preview="bash $0 --preview-file {}" \
+        --preview-window="right:80%:border-left" \
+        --height=92% \
+        --bind "ctrl-o:execute(nohup xdg-open {} >/dev/null 2>&1 &)" \
+        --bind "ctrl-l:execute(bash $0 --open {})" \
+		--bind "ctrl-x:toggle-search"
+}
+
+# Função para processar arquivos individuais para o preview
+preview_file() {
+    # Configurações iniciais necessárias
+    SCRIPT="${0##*/}"
+    TMPDIR="${TMPDIR:-/tmp}"
+    TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
+    CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/${SCRIPT%.*}"
+    
+    [[ -d "${TMP_DIR}" ]] || mkdir -p "${TMP_DIR}"
+    [[ -d "${CONFIG_PATH}" ]] || mkdir -p "${CONFIG_PATH}"
+    setup_config
+    autodetect_color
+    
+    # Carrega funções necessárias para preview
+    get_mime_type "$1"
+    _draw_file_preview "$1"
+}
+
+# Lógica de entrada
+case "$1" in
+    --preview-file)
+        shift
+        preview_file "$1"
+        ;;
+    *)
+        main_with_fzf
+        ;;
+esac

@@ -56,7 +56,7 @@ local_count() {
 
 cursor_theme_fix()
 {
-    exec "${scripts}"/cursor_theme_fix.sh -t
+    exec "${scripts}"/cursor-theme-fix -t
 }
 cursor_theme_fix &
 

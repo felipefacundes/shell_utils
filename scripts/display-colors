@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+# Script name: display-colors
+
+The 'display-colors' script is a Bash utility designed to adjust screen gamma and color temperature using xrandr, 
+providing a versatile tool for display customization. Key capabilities include:
+
+1. Supports a wide range of color adjustments, including various shades of blue, red, green, purple, orange, 
+yellow, and more (over 20 predefined color options).
+
+2. Automatically detects connected displays and applies color transformations across all connected screens simultaneously.
+
+3. Includes a comprehensive help function that lists all available color options and provides usage examples, 
+making it user-friendly and accessible.
+
+4. Performs critical system checks, such as verifying xrandr installation and ensuring the session is running on X11, 
+with informative error messages if requirements aren't met.
+
+5. Offers simple command-line usage with case-insensitive color name inputs, allowing users to quickly change 
+screen color gamma with minimal effort (e.g., './display-colors blue' or './display-colors reset').
+
+The script is particularly useful for visual comfort, reducing eye strain, adjusting screen temperature, or creating 
+specific color atmospheres for different working environments.
+DOCUMENTATION
+
+if ! command -v xrandr &> /dev/null; then
+    echo "Error: 'xrandr' command not found. Please install it to proceed." >&2
+    exit 1
+fi
+
+# Colors to adjust the screen brightness using xrandr
+BLUE='1.0:1.0:2.0'
+RED='2.0:0.6:0.6'
+GREEN='0.5:2.5:0.5'
+RESET='1.0:1.0:1.0'
+BROWN='1.0:0.5:0.2'
+PURPLE='0.5:0.5:2.0'
+PINK='2.0:0.5:2.0'
+CYAN='0.8:1.2:2.0'
+MAGENTA='1.0:0.5:1.0'
+YELLOW='1.5:1.0:0.5'
+ORANGE='2.0:1.2:0.4'
+LIGHT_PURPLE='0.8:0.8:2.0'
+DARK_PURPLE='0.3:0.3:2.0'
+VIBRANT_PURPLE='1.0:0.4:2.0'
+SOFT_PURPLE='0.7:0.6:1.5'
+DEEP_PURPLE='0.4:0.2:2.0'
+LIGHT_ORANGE='2.0:1.4:0.6'
+DARK_ORANGE='1.8:0.8:0.2'
+VIBRANT_ORANGE='2.0:1.0:0.3'
+SOFT_ORANGE='1.6:1.2:0.5'
+BURNT_ORANGE='1.8:0.6:0.2'
+LIGHT_BLUE='1.0:1.0:2.5'
+DARK_BLUE='1.0:0.8:2.0'
+LIGHT_RED='2.0:1.0:1.0'
+DARK_RED='2.0:0.4:0.4'
+LIGHT_GREEN='1.0:2.0:1.0'
+DARK_GREEN='0.3:2.0:0.3'
+LIGHT_YELLOW='1.5:1.2:0.5'
+DARK_YELLOW='1.8:1.0:0.5'
+
+# Check if the session is using X11
+connected="$(xrandr | awk '/ connected/ {print $1; exit}')"
+if [[ $XDG_SESSION_TYPE != [xX]11 ]]; then
+    echo 'Session unavailable! Xrandr only works on X11!'
+    return 1
+fi
+
+# Detailed help function
+show_help() {
+    echo -e "Usage: ${0##*/} [color]"
+    echo -e "\nThis script adjusts the screen gamma for connected displays using xrandr."
+    echo -e "Available colors:"
+    echo -e "  blue         - Adjusts the screen gamma to a blue hue."
+    echo -e "  red          - Adjusts the screen gamma to a red hue."
+    echo -e "  green        - Adjusts the screen gamma to a green hue."
+    echo -e "  reset        - Resets the screen gamma to default (neutral)."
+    echo -e "  brown        - Adjusts the screen gamma to a brownish hue."
+    echo -e "  purple       - Adjusts the screen gamma to a soft purple hue."
+    echo -e "  light_purple - Adjusts the screen gamma to a light purple hue."
+    echo -e "  dark_purple  - Adjusts the screen gamma to a dark purple hue."
+    echo -e "  vibrant_purple - Adjusts the screen gamma to a vibrant purple hue."
+    echo -e "  soft_purple  - Adjusts the screen gamma to a soft purple hue."
+    echo -e "  deep_purple  - Adjusts the screen gamma to a deep purple hue."
+    echo -e "  pink         - Adjusts the screen gamma to a pinkish hue."
+    echo -e "  cyan         - Adjusts the screen gamma to a cyan hue."
+    echo -e "  magenta      - Adjusts the screen gamma to a magenta hue."
+    echo -e "  yellow       - Adjusts the screen gamma to a yellowish hue."
+    echo -e "  orange       - Adjusts the screen gamma to an orange hue."
+    echo -e "  light_orange - Adjusts the screen gamma to a light orange hue."
+    echo -e "  dark_orange  - Adjusts the screen gamma to a dark orange hue."
+    echo -e "  vibrant_orange - Adjusts the screen gamma to a vibrant orange hue."
+    echo -e "  soft_orange  - Adjusts the screen gamma to a soft orange hue."
+    echo -e "  burnt_orange - Adjusts the screen gamma to a burnt orange hue."
+    echo -e "  light_blue   - Adjusts the screen gamma to a light blue hue."
+    echo -e "  dark_blue    - Adjusts the screen gamma to a dark blue hue."
+    echo -e "  light_red    - Adjusts the screen gamma to a light red hue."
+    echo -e "  dark_red     - Adjusts the screen gamma to a dark red hue."
+    echo -e "  light_green  - Adjusts the screen gamma to a light green hue."
+    echo -e "  dark_green   - Adjusts the screen gamma to a dark green hue."
+    echo -e "  light_yellow - Adjusts the screen gamma to a light yellow hue."
+    echo -e "  dark_yellow  - Adjusts the screen gamma to a dark yellow hue."
+    echo -e "\nExamples:"
+    echo -e "  ${0##*/} blue         - Apply blue hue to the screen."
+    echo -e "  ${0##*/} reset        - Reset screen gamma to default."
+    echo -e "  ${0##*/} vibrant_orange - Apply vibrant orange hue to the screen."
+    echo -e "\nNote: The color names are case-insensitive."
+}
+
+# Process the color options
+for display in $connected; do
+    case $1 in 
+        b|blue) xrandr --output $display --gamma $BLUE ;;
+        red) xrandr --output $display --gamma $RED ;;
+        g|green) xrandr --output $display --gamma $GREEN ;;
+        0|r|reset) xrandr --output $display --gamma $RESET ;;
+        brown) xrandr --output $display --gamma $BROWN ;;
+        purple) xrandr --output $display --gamma $PURPLE ;;
+        light_purple) xrandr --output $display --gamma $LIGHT_PURPLE ;;
+        dark_purple) xrandr --output $display --gamma $DARK_PURPLE ;;
+        vibrant_purple) xrandr --output $display --gamma $VIBRANT_PURPLE ;;
+        soft_purple) xrandr --output $display --gamma $SOFT_PURPLE ;;
+        deep_purple) xrandr --output $display --gamma $DEEP_PURPLE ;;
+        pink) xrandr --output $display --gamma $PINK ;;
+        cyan) xrandr --output $display --gamma $CYAN ;;
+        magenta) xrandr --output $display --gamma $MAGENTA ;;
+        yellow) xrandr --output $display --gamma $YELLOW ;;
+        orange) xrandr --output $display --gamma $ORANGE ;;
+        light_orange) xrandr --output $display --gamma $LIGHT_ORANGE ;;
+        dark_orange) xrandr --output $display --gamma $DARK_ORANGE ;;
+        vibrant_orange) xrandr --output $display --gamma $VIBRANT_ORANGE ;;
+        soft_orange) xrandr --output $display --gamma $SOFT_ORANGE ;;
+        burnt_orange) xrandr --output $display --gamma $BURNT_ORANGE ;;
+        light_blue) xrandr --output $display --gamma $LIGHT_BLUE ;;
+        dark_blue) xrandr --output $display --gamma $DARK_BLUE ;;
+        light_red) xrandr --output $display --gamma $LIGHT_RED ;;
+        dark_red) xrandr --output $display --gamma $DARK_RED ;;
+        light_green) xrandr --output $display --gamma $LIGHT_GREEN ;;
+        dark_green) xrandr --output $display --gamma $DARK_GREEN ;;
+        light_yellow) xrandr --output $display --gamma $LIGHT_YELLOW ;;
+        dark_yellow) xrandr --output $display --gamma $DARK_YELLOW ;;
+        *)
+            echo -e "Invalid option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
