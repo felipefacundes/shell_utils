@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 
-tput setaf 11
-echo -e "ssh -p 22 user@192.168.X.X\n\n"
-tput sgr0
-[[ -z "$1" ]] && ssh --help && exit 1
-ssh "$@"
+help() {
+    tput setaf 11
+    echo -e "ssh -p 22 user@192.168.X.X\n\n"
+    tput sgr0
+}
+
+[[ -z "$1" ]] && help && ssh --help && exit 1
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+    help
+    ssh --help
+    exit 0
+}
+ssh "$*"

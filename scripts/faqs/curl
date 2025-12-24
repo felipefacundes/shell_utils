@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 
-tput setaf 11
-echo -e "curl -O URL\nor: curl -o file URL\n\n"
-tput sgr0
-[[ -z "$2" ]] && curl --help && exit 1
-curl -O "$@"
+help() {
+    tput setaf 11
+    echo -e "GET FILES: curl -O URL\nor: curl -o file URL\n\n"
+    tput sgr0
+}
+
+[[ -z "$1" ]] && help && curl --help && exit 1
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+    help
+    curl --help
+    exit 0
+}
+curl "$*"

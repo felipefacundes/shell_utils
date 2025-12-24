@@ -2,101 +2,423 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-: <<'DOCUMENTATION'
-Load a random wallpaper.
+: <<DOCUMENTATION
+Script for managing wallpapers with support for:
+- Sequential list with position cache
+- Random mode
+- Single mode (just set)
+
+The default mode is sequential (-l, --list) which:
+1. Creates cache in ~/.cache/random-wallpaper
+2. Remembers the current index
+3. Continues from last position on next execution
 DOCUMENTATION
 
-# Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
+SCRIPT_NAME="${0##*/}"
+SCRIPT_BASENAME="${SCRIPT_NAME%%.*}"
+CACHE_DIR="${HOME}/.cache/${SCRIPT_BASENAME}"
+INDEX_FILE="${CACHE_DIR}/current_index"
+WALLPAPER_LIST_FILE="${CACHE_DIR}/wallpaper_list.txt"
 
-doc() {
-    less -FX "${0}" | head -n6 | tail -n1
+# Wallpaper directory
+WALLPAPER_DIR="${XDG_PICTURES_DIR:-${HOME}/Pictures}/Wallpapers"
+
+DEFAULT_DELAY="5m"
+CURRENT_INDEX=0
+WALL_APP=""  # Will be defined by setup_wallpaper_app
+
+# Create necessary directories
+mkdir -p "${CACHE_DIR}"
+mkdir -p "${WALLPAPER_DIR}"
+
+# Store current directory to be able to return
+ORIGINAL_DIR="$(pwd)"
+
+# Function to verify if we're in the correct directory
+ensure_wallpaper_dir() {
+    cd "${WALLPAPER_DIR}" 2>/dev/null || {
+        echo "ERROR: Could not access directory: ${WALLPAPER_DIR}"
+        exit 1
+    }
 }
 
-help() {
-    doc
-    echo "Usage: ${0##*/} [args]
-
-    -o,
-        Set a random wallpaper once
-    -r,
-        Sets a wallpaper every X minutes. Default is 5 minutes
-
-Example:
-        minutes=2 ${0##*/} -r"
+# Documentation and help functions
+show_doc() {
+    sed -n '/^: <<DOCUMENTATION$/,/^DOCUMENTATION$/p' "${0}" | sed '1d;$d'
 }
 
-if [[ -z "${1}" ]]; then
-    help
-    exit 0
-fi
+show_help() {
+    show_doc
+    echo ""
+    echo "Usage: $SCRIPT_NAME [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -l, --list          Default mode: display wallpapers sequentially with cache"
+    echo "  -lo, --list-only    Set next wallpaper in sequence once (no loop)"
+    echo "  -r, --random        Random mode: set random wallpaper periodically"
+    echo "  -o, --only          Just set a random wallpaper once"
+    echo "  -d, --delay TIME    Set interval between changes (default: 5 minutes)"
+    echo "  -h, --help          Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  $SCRIPT_NAME -l                    # Sequential mode with cache (continuous loop)"
+    echo "  $SCRIPT_NAME -lo                   # Set next wallpaper in sequence once"
+    echo "  $SCRIPT_NAME -r -d 2m              # Random every 2 minutes"
+    echo "  $SCRIPT_NAME -o                    # Set one random image only once"
+    echo "  $SCRIPT_NAME --list --delay 10m    # Sequential every 10 minutes"
+    echo "  $SCRIPT_NAME --list-only           # Set next wallpaper once"
+    echo ""
+    echo "Time format: number followed by s (seconds), m (minutes), h (hours)"
+    echo "Ex: 30s, 2m, 1h"
+}
 
-#data_dirs=${XDG_DATA_DIRS:-${datadir:-/usr/share}}:${XDG_DATA_HOME:-~/.local/share}
-wallpaper_dir="${HOME}/Pictures/Wallpapers/"
-minutes="${minutes:-5}"
-delay="${minutes}m"
+# Function to check if there are wallpapers
+check_wallpaper_files() {
+    local count; count=$(find . -maxdepth 1 -type f \( \
+        -iname "*.jpg" -o \
+        -iname "*.jpeg" -o \
+        -iname "*.png" -o \
+        -iname "*.gif" -o \
+        -iname "*.bmp" -o \
+        -iname "*.webp" \) 2>/dev/null | wc -l)
+    
+    if [[ $count -eq 0 ]]; then
+        echo "WARNING: No image files found in:"
+        echo "  ${WALLPAPER_DIR}"
+        echo ""
+        echo "Supported formats:"
+        echo "  JPG, JPEG, PNG, GIF, BMP, WEBP"
+        echo ""
+        echo "Please add images to the directory."
+        return 1
+    fi
+    
+    echo "Found $count image file(s)"
+    return 0
+}
 
-cd "${wallpaper_dir}" || exit 0
-wallpapers=(*.[JjPpSsGg][PpNnVvIi][GgFf])
+# Cache management functions
+load_index() {
+    if [[ -f "${INDEX_FILE}" ]]; then
+        CURRENT_INDEX=$(cat "${INDEX_FILE}")
+    else
+        CURRENT_INDEX=0
+        save_index
+    fi
+}
 
-wall_app_wayland_check_daemon() {
-    while true
-        do swww=$(pidof swww-daemon)
-        sleep 10
-        if [ -z "${swww}" ]; then
-            swww init &
+save_index() {
+    echo "${CURRENT_INDEX}" > "${INDEX_FILE}"
+}
+
+increment_index() {
+    local total=$1
+    CURRENT_INDEX=$(( (CURRENT_INDEX + 1) % total ))
+    save_index
+}
+
+# Function to get wallpaper list
+get_wallpaper_list() {
+    # Try to load list from cache first
+    if [[ -f "${WALLPAPER_LIST_FILE}" ]]; then
+        local cache_age=$(($(date +%s) - $(stat -c %Y "${WALLPAPER_LIST_FILE}" 2>/dev/null || echo 0)))
+        # If cache is less than 1 hour old, use it
+        if [[ ${cache_age} -lt 3600 ]]; then
+            cat "${WALLPAPER_LIST_FILE}"
+            return 0
         fi
-        sleep "$delay"
-    done
+    fi
+    
+    # Generate new list
+    local wallpapers=()
+    
+    # Using find to list files
+    while IFS= read -r -d '' img; do
+        wallpapers+=("$(basename "$img")")
+    done < <(find . -maxdepth 1 -type f \( \
+        -iname "*.jpg" -o \
+        -iname "*.jpeg" -o \
+        -iname "*.png" -o \
+        -iname "*.gif" -o \
+        -iname "*.bmp" -o \
+        -iname "*.webp" \) -print0 2>/dev/null | sort -z)
+    
+    if [[ ${#wallpapers[@]} -eq 0 ]]; then
+        return 1
+    fi
+    
+    # Save to cache
+    printf '%s\n' "${wallpapers[@]}" > "${WALLPAPER_LIST_FILE}"
+    printf '%s\n' "${wallpapers[@]}"
 }
 
-if [[ "$XDG_SESSION_TYPE" == x11 ]]; then
+# Detect and set appropriate wallpaper application
+setup_wallpaper_app() {
+    if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
+        if command -v feh >/dev/null 2>&1; then
+            WALL_APP='feh --bg-fill'
+        elif command -v nitrogen >/dev/null 2>&1; then
+            WALL_APP='nitrogen --set-auto'
+        else
+            echo "Error: No wallpaper manager found for X11"
+            echo "Install: feh or nitrogen"
+            exit 1
+        fi
+    elif [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]]; then
+        if command -v swww >/dev/null 2>&1; then
+            WALL_APP='swww img'
+            # Start daemon in background if not running
+            if ! pidof swww-daemon >/dev/null 2>&1; then
+                swww-daemon >/dev/null 2>&1 &
+                sleep 2
+            fi
+        elif command -v swayimg >/dev/null 2>&1; then
+            WALL_APP='swayimg'
+        else
+            echo "Error: No wallpaper manager found for Wayland"
+            echo "Install: swww or swayimg"
+            exit 1
+        fi
+    else
+        echo "Error: Unsupported session (${XDG_SESSION_TYPE})"
+        exit 1
+    fi
+    
+    echo "Using: ${WALL_APP}"
+}
 
-    if command -v feh; then
-		export wall_app='feh --bg-fill'
-	else
-		export wall_app='nitrogen --set-auto'
-	fi    
+# Function to set wallpaper
+set_wallpaper() {
+    local image_path="$1"
+    if [[ -f "${image_path}" ]]; then
+        eval "${WALL_APP}" "\"${image_path}\""
+    else
+        echo "File not found: ${image_path}"
+        return 1
+    fi
+}
 
-elif [[ "$XDG_SESSION_TYPE" == wayland ]]; then
-    export wall_app='swww img'
-    wall_app_wayland_check_daemon &
-fi
+sequential_set() {
+    if [[ ${CURRENT_INDEX} -ge ${#wallpapers[@]} ]]; then
+        CURRENT_INDEX=0
+        save_index
+    fi
+    
+    local current_wallpaper="${wallpapers[${CURRENT_INDEX}]}"
+    local full_path="${WALLPAPER_DIR}/${current_wallpaper}"
+    
+    echo "Setting: ${current_wallpaper}"
+    if set_wallpaper "${full_path}"; then
+        increment_index ${#wallpapers[@]}
+    else
+        echo "Error setting wallpaper"
+        # Reload list
+        wallpapers=()
+        while IFS= read -r line; do
+            [[ -n "$line" ]] && wallpapers+=("$line")
+        done < <(get_wallpaper_list)
+        CURRENT_INDEX=0
+        save_index
+    fi
+}
 
+# Sequential mode (default)
+sequential_wallpaper() {
+    local delay="${1:-${DEFAULT_DELAY}}"
+    
+    ensure_wallpaper_dir
+    
+    if ! check_wallpaper_files; then
+        exit 1
+    fi
+    
+    load_index
+    
+    # Get wallpaper list
+    local wallpapers=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && wallpapers+=("$line")
+    done < <(get_wallpaper_list)
+    
+    if [[ ${#wallpapers[@]} -eq 0 ]]; then
+        echo "Error: No wallpapers found in ${WALLPAPER_DIR}"
+        exit 1
+    fi
+    
+    echo "Total wallpapers: ${#wallpapers[@]}"
+    echo "Current index: ${CURRENT_INDEX}"
+    
+    if [[ -z "$sequential_loop" ]]; then
+        echo "Delay: ${delay}"
+        while true; do
+            sequential_set
+            sleep "${delay}"
+        done
+    else
+        sequential_set
+    fi
+}
+
+# Random mode
 random_wallpaper() {
-    while true
-        do
-            for i in "${wallpaper_dir}/${wallpapers[@]}"
-            do
-                eval "${wall_app}" "${i}" || exit 0
-                sleep "${delay}"
-            done
+    local delay="${1:-${DEFAULT_DELAY}}"
+    
+    ensure_wallpaper_dir
+    
+    if ! check_wallpaper_files; then
+        exit 1
+    fi
+    
+    echo "Random mode activated"
+    echo "Delay: ${delay}"
+    
+    while true; do
+        local random_image; random_image=$(find . -maxdepth 1 -type f \( \
+            -iname "*.jpg" -o \
+            -iname "*.jpeg" -o \
+            -iname "*.png" -o \
+            -iname "*.gif" -o \
+            -iname "*.bmp" -o \
+            -iname "*.webp" \) | shuf -n 1)
+        
+        if [[ -n "${random_image}" ]]; then
+            local basename_image; basename_image="$(basename "${random_image}")"
+            local full_path="${WALLPAPER_DIR}/${basename_image}"
+            
+            echo "Setting: ${basename_image}"
+            if ! set_wallpaper "${full_path}"; then
+                echo "Error setting wallpaper"
+            fi
+        else
+            echo "Error: No images found"
+            exit 1
+        fi
+        
+        sleep "${delay}"
     done
 }
 
-only_set_random_wallpaper() {
-	xrefresh -white
-	sleep 2
-    eval "${wall_app}" "$(find "${wallpaper_dir}" -name '*[jJpP][nNpP][gG]' | shuf -n 1)" || exit 0
+# Single mode (just set)
+only_set_wallpaper() {
+    ensure_wallpaper_dir
+    
+    if ! check_wallpaper_files; then
+        exit 1
+    fi
+    
+    local random_image; random_image=$(find . -maxdepth 1 -type f \( \
+        -iname "*.jpg" -o \
+        -iname "*.jpeg" -o \
+        -iname "*.png" -o \
+        -iname "*.gif" -o \
+        -iname "*.bmp" -o \
+        -iname "*.webp" \) | shuf -n 1)
+    
+    if [[ -n "${random_image}" ]]; then
+        local basename_image; basename_image="$(basename "${random_image}")"
+        local full_path="${WALLPAPER_DIR}/${basename_image}"
+        
+        echo "Setting wallpaper: ${basename_image}"
+        
+        # For X11, refresh the screen
+        if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
+            xrefresh -white 2>/dev/null
+            sleep 1
+        fi
+        
+        if set_wallpaper "${full_path}"; then
+            echo "Wallpaper set successfully!"
+        else
+            echo "Error setting wallpaper"
+            exit 1
+        fi
+    else
+        echo "Error: No images found in ${WALLPAPER_DIR}"
+        echo "Formats searched: JPG, JPEG, PNG"
+        exit 1
+    fi
 }
 
-while [[ $# -gt 0 ]]; do
-    case "${1}" in
-        -o)
-            only_set_random_wallpaper
-            shift
-            continue
+# Configure termination signal
+trap 'cd "${ORIGINAL_DIR}"; kill $(jobs -p) 2>/dev/null; exit 0' SIGTERM SIGINT
+
+# Argument processing
+main() {
+    local mode=""
+    local delay="${DEFAULT_DELAY}"
+    
+    # Check if there are arguments
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
+    # Set wallpaper application
+    setup_wallpaper_app
+    
+    # Process arguments
+    while [[ $# -gt 0 ]]; do
+        case "${1}" in
+            -l|--list)
+                mode="sequential"
+                shift
+                ;;
+            -lo|--list-only)
+                mode="sequential_only"
+                shift
+                ;;
+            -r|--random)
+                mode="random"
+                shift
+                ;;
+            -o|--only)
+                mode="only"
+                shift
+                ;;
+            -d|--delay)
+                if [[ -n "${2}" && "${2}" =~ ^[0-9]+[smh]$ ]]; then
+                    delay="${2}"
+                    shift 2
+                else
+                    echo "Error: Invalid time format for --delay"
+                    echo "Use: number followed by s (seconds), m (minutes) or h (hours)"
+                    exit 1
+                fi
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo "Error: Unknown argument: ${1}"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Execute selected mode
+    case "${mode}" in
+        sequential)
+            sequential_wallpaper "${delay}"
             ;;
-        -r)
-            random_wallpaper
-            shift
-            continue
+        sequential_only)
+            sequential_loop=1
+            sequential_wallpaper "${delay}"
+            ;;
+        random)
+            random_wallpaper "${delay}"
+            ;;
+        only)
+            only_set_wallpaper
             ;;
         *)
-            help
+            echo "Error: Mode not specified. Use -l, -r or -o"
+            show_help
+            exit 1
             ;;
     esac
-done
+}
 
-# Wait for all child processes to finish
-wait
+# Main entry point
+main "$@"

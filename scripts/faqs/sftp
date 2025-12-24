@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-tput setaf 11
-echo -e "sftp -P 2222 user@192.168.X.X\n\nDownload directories with: get -r\n\n"
-tput sgr0
-[[ -z "$1" ]] && sftp --help && exit 1
-sftp "$@"
+
+help() {
+    tput setaf 11
+    echo -e "sftp -P 2222 user@192.168.X.X\n\nDownload directories with: get -r\n\n"
+    tput sgr0
+}
+
+[[ -z "$1" ]] && help && sftp --help && exit 1
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+    help
+    sftp --help
+    exit 0
+}
+sftp "$*"

@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-tput setaf 11
-echo -e "ftp 192.168.X.X 2121\n\n"
-tput sgr0
-[[ -z "$1" ]] && ftp --help && exit 1
-ftp "$@"
+
+help() {
+    tput setaf 11
+    echo -e "ftp 192.168.X.X 2121\n\n"
+    tput sgr0
+}
+
+[[ -z "$1" ]] && help && ftp --help && exit 1
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+    help
+    ftp --help
+    exit 0
+}
+ftp "$*"

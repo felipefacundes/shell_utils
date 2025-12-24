@@ -4,8 +4,16 @@ dd_help() {
     ~/.shell_utils/scripts/help-shell-fzf dd_help | head -n 30
 }
 
-tput setaf 11
-dd_help
-tput sgr0
-[[ -z "$1" ]] && dd --help && exit 1
-dd "$@"
+help() {
+    tput setaf 11
+    dd_help
+    tput sgr0
+}
+
+[[ -z "$1" ]] && help && dd --help && exit 1
+[[ "$1" == "-h" || "$1" == "--help" ]] && {
+    help
+    dd --help
+    exit 0
+}
+dd "$*"
