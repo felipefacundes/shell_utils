@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+VIDEO="$1"
+MONITOR="$2"  # ex: HDMI-A-1
+
+# First apply Hyprland rules BEFORE starting mpv
+hyprctl keyword windowrule "move 0 0,title:^hyprland-wallpaper$"
+hyprctl keyword windowrule "fullscreen,title:^hyprland-wallpaper$"
+hyprctl keyword windowrule "noblur,title:^hyprland-wallpaper$"
+hyprctl keyword windowrule "nofocus,title:^hyprland-wallpaper$"
+hyprctl keyword windowrule "noinitialfocus,title:^hyprland-wallpaper$"
+hyprctl keyword windowrule "float,title:^hyprland-wallpaper$"  # Added
+hyprctl keyword windowrule "noshadow,title:^hyprland-wallpaper$"
+
+# If a specific monitor was passed, move to it
+if [ -n "$MONITOR" ]; then
+    hyprctl keyword windowrule "monitor $MONITOR,title:^hyprland-wallpaper$"
+fi
+
+# Add rule to keep on the layer below (wallpaper layer)
+hyprctl keyword windowrule "pin,title:^hyprland-wallpaper$"
+
+# Start mpv in special mode
+mpv --no-audio --loop-file --no-osd-bar --no-input-default-bindings \
+    --geometry=100%x100% --title=hyprland-wallpaper "$VIDEO" &
+
+# Wait a while for the window to appear
+sleep 0.5
+
+# Optional: force the window to the wallpaper layer
+hyprctl dispatch alterzorder bottom,title:^hyprland-wallpaper$
+hyprctl dispatch movetoworkspacesilent special,title:^hyprland-wallpaper$

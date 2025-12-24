@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+VIDEO="$1"
+OUTPUT="${2:-HDMI-A-1}"
+
+# For previous wallpapers
+pkill -f "wallpaper-video"
+
+# Start mpv with specific settings
+mpv --no-audio \
+    --loop-file \
+    --no-osd-bar \
+    --no-input-default-bindings \
+    --no-border \
+    --no-window-dragging \
+    --no-stop-screensaver \
+    --title="wallpaper-video" \
+    --geometry="100%x100%" \
+    --wid=0 \
+    --ontop=no \
+    "$VIDEO" &
+
+MPV_PID=$!
+
+# Wait longer to ensure
+sleep 2.5
+
+# Get window ID
+WINDOW_INFO=$(swaymsg -t get_tree | jq -r '.. | select(.pid? == '$MPV_PID' and .name? == "wallpaper-video") | {id, app_id}')
+WINDOW_ID=$(echo "$WINDOW_INFO" | jq -r '.id')
+APP_ID=$(echo "$WINDOW_INFO" | jq -r '.app_id')
+
+if [ -n "$WINDOW_ID" ] && [ "$WINDOW_ID" != "null" ]; then
+    echo "Configuring window $WINDOW_ID as wallpaper..."
+    
+    # 1. Basic settings
+    swaymsg "[con_id=$WINDOW_ID] floating enable"
+    swaymsg "[con_id=$WINDOW_ID] fullscreen enable"
+    swaymsg "[con_id=$WINDOW_ID] sticky enable"
+    swaymsg "[con_id=$WINDOW_ID] opacity 0.999"  # Hack to force update
+    
+    # 2. Move to correct output
+    swaymsg "[con_id=$WINDOW_ID] move to output $OUTPUT"
+    
+    # 3. Move to bottom layer (CRITICAL)
+    swaymsg "[con_id=$WINDOW_ID] move to layer bottom"
+    
+    # 4. Force wallpaper state
+    swaymsg "[con_id=$WINDOW_ID] inhibit_idle visible"
+    swaymsg "[con_id=$WINDOW_ID] no_focus"
+    
+    # 5. Add permanent rule in Sway config (if using config)
+    echo "for_window [con_id=$WINDOW_ID] move to layer bottom" >> ~/.config/sway/wallpaper_rules.tmp
+    
+    # 6. Reload Sway rules
+    swaymsg reload
+    
+    echo "✓ Wallpaper configured on $OUTPUT (PID: $MPV_PID)"
+else
+    echo "✗ Window not found. Trying by title..."
+    
+    # Alternative: search by title
+    swaymsg '[title="wallpaper-video"] floating enable'
+    swaymsg '[title="wallpaper-video"] fullscreen enable'
+    swaymsg '[title="wallpaper-video"] sticky enable'
+    swaymsg "[title=\"wallpaper-video\"] move to output $OUTPUT"
+    swaymsg '[title="wallpaper-video"] move to layer bottom'
+    swaymsg '[title="wallpaper-video"] no_focus'
+fi
+
+# Fallback
+# mpv --no-audio --loop-file --no-osd-bar --no-input-default-bindings \
+#    --fullscreen --on-all-workspaces --no-stop-screensaver \
+#    --title=wallpaper-video "$VIDEO"

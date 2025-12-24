@@ -91,4 +91,11 @@ fi
 
 # Print and copy the translated text to clipboard
 echo -e "${MESSAGES[translated]}\n\n $translated_text"
+
+printf '%s' "$translated_text" | xclip -selection clipboard
+printf '%s' "$translated_text" | xclip -selection clipboard
+printf '%s' "$translated_text" | xclip -selection clipboard
+printf '%s' "$translated_text" | xclip -selection clipboard
+printf '%s' "$translated_text" | xclip -selection clipboard
+printf '%s' "$translated_text" | xclip -selection clipboard
 printf '%s' "$translated_text" | xclip -selection clipboard
