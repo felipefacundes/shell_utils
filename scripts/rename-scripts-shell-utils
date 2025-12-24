@@ -19,13 +19,15 @@ APP_NAME="${SCRIPT_NAME%%.*}"
 
 # Directory where target scripts are located
 # SUGGESTION: Renamed from SCRIPTS_ROOT to TARGET_SCRIPTS_DIR for clarity
-TARGET_SCRIPTS_DIR="${HOME}/.shell_utils/scripts/"
-
-# Logging & Cache Configuration
-CACHE_DIR="${HOME}/.cache/${APP_NAME}"
-LOG_DIR="${CACHE_DIR}"
-OLD_NAMES_FILE="${CACHE_DIR}/old_names"
+BASE_DIR="${HOME}/.shell_utils"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+CACHE_DIR="${HOME}/.cache/${APP_NAME}"
+TARGET_SCRIPTS_DIR="${BASE_DIR}/scripts/"
+TARGET_BACKUP="${CACHE_DIR}/shell_utils-${TIMESTAMP}"
+
+# Logging Configuration
+LOG_DIR="${CACHE_DIR}"
+OLD_NAMES_FILE="${CACHE_DIR}/old_names-${TIMESTAMP}"
 LOG_FILE="${LOG_DIR}/${APP_NAME}-${TIMESTAMP}.log"
 
 # Colors for UI
@@ -42,6 +44,7 @@ FORCE=false
 
 # Enable recursive globbing for the "for" loop
 shopt -s globstar nullglob
+shopt -s dotglob
 
 # ------------------------------------------------------------------------------
 # 2. HELPER FUNCTIONS
@@ -69,19 +72,345 @@ log() {
 }
 
 show_help() {
-    echo -e "Usage: $SCRIPT_NAME [OPTIONS]"
+    echo -e "Usage: $SCRIPT_NAME [OPTIONS] [COMMAND]"
     echo ""
     echo "Normalizes filenames in $TARGET_SCRIPTS_DIR recursively."
+    echo ""
+    echo "Commands:"
+    echo "  create-backup     Create backup without renaming"
+    echo "  list-backups      List available backups with numbers"
+    echo "  restore-backup    Restore backup by number or path"
+    echo "  clean-backups     Clean old backups (keeps last 5 by default)"
+    echo ""
+    echo "Examples:"
+    echo "  $SCRIPT_NAME -v -d          # Dry run with verbose output"
+    echo "  $SCRIPT_NAME create-backup  # Create backup only"
+    echo "  $SCRIPT_NAME list-backups   # List backups"
+    echo "  $SCRIPT_NAME restore-backup 1     # Restore backup #1"
+    echo "  $SCRIPT_NAME restore-backup /path/to/backup"
+    echo "  $SCRIPT_NAME clean-backups 3      # Keep only 3 most recent backups"
     echo ""
     echo "Options:"
     echo "  -h, --help       Show this help message"
     echo "  -d, --dry-run    Simulate changes without modifying files"
     echo "  -v, --verbose    Enable verbose output"
     echo "  -f, --force      Execute without user confirmation"
-    echo ""
-    echo "Conventions applied:"
-    echo "  1. Replace underscores (_) with hyphens (-)"
-    echo "  2. Remove .sh extension"
+}
+
+backup_project() {
+    local backup_src="$1"
+    local backup_dst="$2"
+    local backup_log="${LOG_DIR}/backup-${TIMESTAMP}.log"
+    
+    if [[ -z "$backup_src" ]] || [[ -z "$backup_dst" ]]; then
+        log "ERROR" "Backup source or destination not specified"
+        return 1
+    fi
+    
+    if [[ ! -d "$backup_src" ]]; then
+        log "ERROR" "Backup source directory not found: $backup_src"
+        return 1
+    fi
+    
+    # Create backup directory if it doesn't exist
+    mkdir -p "$backup_dst" 2>/dev/null
+    
+    if [[ $? -ne 0 ]]; then
+        log "ERROR" "Cannot create backup directory: $backup_dst"
+        return 1
+    fi
+    
+    log "INFO" "Creating backup of: $backup_src"
+    log "INFO" "Backup destination: $backup_dst"
+    
+    # Calculate source size for information
+    if command -v du &>/dev/null; then
+        local source_size=$(du -sh "$backup_src" 2>/dev/null | cut -f1)
+        log "DEBUG" "Source size: $source_size"
+    fi
+    
+    # Create backup using preserves permissions, symlinks
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # SIMPLE SOLUTION: Use cp with dotglob already enabled
+        if cp -rfp "$backup_src/." "$backup_dst"/ 2>> "$LOG_FILE"; then
+            log "INFO" "Backup completed successfully using cp"
+        else
+            log "ERROR" "Backup with cp failed"
+            return 1
+        fi
+    else
+        log "INFO" "[DRY-RUN] Would create backup: $backup_src -> $backup_dst"
+        return 0
+    fi
+    
+    # Verify backup
+    if [[ "$DRY_RUN" == "false" ]]; then
+        if [[ -d "$backup_dst" ]]; then
+            # Comparação mais robusta
+            local source_count=0
+            local dest_count=0
+            
+            # Contar arquivos (incluindo ocultos)
+            source_count=$(find "$backup_src" -type f -name ".*" -o -type f ! -name ".*" 2>/dev/null | wc -l)
+            dest_count=$(find "$backup_dst" -type f -name ".*" -o -type f ! -name ".*" 2>/dev/null | wc -l)
+            
+            # Ignorar o arquivo .backup_metadata no destino (será criado depois)
+            if [[ -f "${backup_dst}/.backup_metadata" ]]; then
+                ((dest_count--))
+            fi
+            
+            log "DEBUG" "File count - Source: $source_count, Destination: $dest_count"
+            
+            if [[ "$source_count" -eq "$dest_count" ]]; then
+                log "INFO" "Backup verification: SUCCESS ($dest_count files backed up)"
+            else
+                log "WARN" "Backup verification: WARNING (source: $source_count files, backup: $dest_count files)"
+            fi
+            
+            # Create backup metadata (SEMPRE no destino, não importa o método)
+            cat > "${backup_dst}/.backup_metadata" << EOF
+Backup created: $(date)
+Source: $backup_src
+Destination: $backup_dst
+Timestamp: $TIMESTAMP
+Source file count: $source_count
+Backup file count: $dest_count
+Script: $SCRIPT_NAME
+User: $(whoami)
+Backup method: $(echo "cp -rfp" || echo "cp -rfp")
+EOF
+                
+                # Backup verification file
+                echo "$TIMESTAMP:$backup_dst" >> "${CACHE_DIR}/backup_history.txt"
+                
+        else
+            log "ERROR" "Backup destination not created: $backup_dst"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Create backup only (without renaming)
+create_backup_command() {
+    local backup_destination="${1:-${CACHE_DIR}/shell_utils-no-rename-${TIMESTAMP}}"
+    
+    log "INFO" "Creating backup only (no renaming)..."
+    log "INFO" "Source: $BASE_DIR"
+    log "INFO" "Destination: $backup_destination"
+    
+    # Confirmação (opcional)
+    if [[ "$FORCE" == "false" && "$DRY_RUN" == "false" ]]; then
+        read -rp "Create backup of $BASE_DIR? (y/N): " confirm
+        if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+            log "INFO" "Backup creation cancelled"
+            return 0
+        fi
+    fi
+    
+    # Criar backup
+    if ! backup_project "$BASE_DIR" "$backup_destination"; then
+        log "ERROR" "Failed to create backup"
+        return 1
+    fi
+    
+    log "INFO" "✅ Backup created successfully at: $backup_destination"
+    
+    # Mostrar informações do backup
+    if [[ -f "${backup_destination}/.backup_metadata" ]]; then
+        echo -e "${GREEN}=== Backup Details ===${NC}"
+        cat "${backup_destination}/.backup_metadata"
+        echo ""
+    fi
+    
+    return 0
+}
+
+# List available backups
+list_backups() {
+    if [[ ! -d "$CACHE_DIR" ]]; then
+        echo "No cache directory found"
+        return 0
+    fi
+    
+    if [[ -f "${CACHE_DIR}/backup_history.txt" ]]; then
+        echo -e "${BLUE}=== Available Backups ===${NC}"
+        echo -e "${GREEN}#  Timestamp            Size    Path${NC}"
+        echo -e "${GREEN}-- -------------------- ------- ---------------------------------${NC}"
+        
+        # Ler histórico e mostrar com números
+        local count=1
+        local total_lines=$(wc -l < "${CACHE_DIR}/backup_history.txt")
+        
+        # Mostrar do mais recente (última linha) para o mais antigo
+        tac "${CACHE_DIR}/backup_history.txt" | while IFS=: read -r timestamp path; do
+            if [[ -d "$path" ]]; then
+                local size=""
+                if command -v du &>/dev/null; then
+                    size=$(du -sh "$path" 2>/dev/null | cut -f1)
+                fi
+                # Calcular número reverso (mais recente = 1)
+                local display_num=$((total_lines - count + 1))
+                printf "${GREEN}%2d${NC} %-20s %-7s %s\n" "$display_num" "$timestamp" "${size:-N/A}" "$path"
+            fi
+            ((count++))
+        done | tac  # Para manter ordem cronológica se preferir
+        
+        echo ""
+        echo "To restore: $SCRIPT_NAME restore-backup <number>"
+        echo "Example:    $SCRIPT_NAME restore-backup 1  (most recent)"
+    else
+        echo "No backup history found"
+    fi
+}
+
+# Restore from backup
+restore_backup() {
+    local backup_input="$1"
+    local restore_path="${2:-$BASE_DIR}"
+    
+    # If backup_input is a number, fetch from history
+    if [[ "$backup_input" =~ ^[0-9]+$ ]]; then
+        local backup_number="$backup_input"
+        local backup_path=""
+        local count=1
+        
+        if [[ ! -f "${CACHE_DIR}/backup_history.txt" ]]; then
+            log "ERROR" "No backup history found"
+            return 1
+        fi
+        
+        # Read history and find backup by number
+        while IFS=: read -r timestamp path; do
+            if [[ "$count" -eq "$backup_number" ]]; then
+                backup_path="$path"
+                break
+            fi
+            ((count++))
+        done < "${CACHE_DIR}/backup_history.txt"
+        
+        if [[ -z "$backup_path" ]] || [[ ! -d "$backup_path" ]]; then
+            log "ERROR" "Backup #$backup_number not found or invalid"
+            return 1
+        fi
+    else
+        # If it is not a number, treat it as a path
+        local backup_path="$backup_input"
+    fi
+    
+    # Final path validation
+    if [[ -z "$backup_path" ]] || [[ ! -d "$backup_path" ]]; then
+        log "ERROR" "Backup path not specified or invalid: $backup_path"
+        return 1
+    fi
+    
+    log "INFO" "Restoring from: $backup_path"
+    log "INFO" "Restoring to: $restore_path"
+    
+    # Simple confirmation
+    if [[ "$FORCE" == "false" ]]; then
+        echo -e "${YELLOW}This will COMPLETELY REPLACE:${NC}"
+        echo -e "${YELLOW}  $restore_path${NC}"
+        echo -e "${YELLOW}With backup from:${NC}"
+        echo -e "${YELLOW}  $backup_path${NC}"
+        echo ""
+        read -rp "Type 'yes' to continue: " confirm
+        if [[ "$confirm" != "yes" ]]; then
+            log "INFO" "Restoration cancelled"
+            return 0
+        fi
+    fi
+    
+    if [[ "$DRY_RUN" == "false" ]]; then
+        # Remove current directory
+        if [[ -d "$restore_path" ]]; then
+            log "INFO" "Removing current directory..."
+            rm -rf "$restore_path"
+        fi
+        
+        # Create directory and restore
+        mkdir -p "$restore_path"
+        
+        log "INFO" "Restoring files..."
+        if cp -rfp "$backup_path/." "$restore_path"/ 2>> "$LOG_FILE"; then
+            log "INFO" "Restoration completed"
+            
+            # Quick check
+            if command -v md5sum &>/dev/null; then
+                local backup_hash=$(find "$backup_path" -type f ! -name ".backup_metadata" \
+                    -exec md5sum {} \; | sort -k 2 | md5sum | awk '{print $1}')
+                local restored_hash=$(find "$restore_path" -type f ! -name ".backup_metadata" \
+                    -exec md5sum {} \; | sort -k 2 | md5sum | awk '{print $1}')
+                
+                if [[ "$backup_hash" == "$restored_hash" ]]; then
+                    log "INFO" "✅ Hash verification: Perfect match"
+                else
+                    log "WARN" "⚠️  Hash mismatch (but restoration completed)"
+                fi
+            fi
+            
+        else
+            log "ERROR" "Restoration failed"
+            return 1
+        fi
+    else
+        log "INFO" "[DRY-RUN] Would restore $backup_path to $restore_path"
+    fi
+    
+    return 0
+}
+
+# Clean old backups (keep last N)
+clean_old_backups() {
+    local keep_count="${1:-5}"  # Default: keep last 5 backups
+    
+    if [[ ! -f "${CACHE_DIR}/backup_history.txt" ]]; then
+        log "INFO" "No backup history found"
+        return 0
+    fi
+    
+    local total_backups; total_backups=$(wc -l < "${CACHE_DIR}/backup_history.txt" | tr -d ' ')
+    
+    if [[ "$total_backups" -le "$keep_count" ]]; then
+        log "INFO" "Only $total_backups backups found (keeping all)"
+        return 0
+    fi
+    
+    log "INFO" "Cleaning old backups (keeping last $keep_count)"
+    
+    # Read all backup entries
+    local backups=()
+    while IFS= read -r line; do
+        backups+=("$line")
+    done < "${CACHE_DIR}/backup_history.txt"
+    
+    # Calculate how many to delete
+    local delete_count=$((total_backups - keep_count))
+    
+    for ((i=0; i<delete_count; i++)); do
+        IFS=: read -r timestamp path <<< "${backups[$i]}"
+        
+        log "INFO" "Removing old backup: $path"
+        
+        if [[ "$DRY_RUN" == "false" ]]; then
+            if rm -rf "$path"; then
+                log "DEBUG" "Successfully removed: $path"
+            else
+                log "WARN" "Failed to remove: $path"
+            fi
+        else
+            log "INFO" "[DRY-RUN] Would remove: $path"
+        fi
+    done
+    
+    # Update history file (keep only last N entries)
+    if [[ "$DRY_RUN" == "false" ]]; then
+        tail -n "$keep_count" "${CACHE_DIR}/backup_history.txt" > "${CACHE_DIR}/backup_history.tmp"
+        mv "${CACHE_DIR}/backup_history.tmp" "${CACHE_DIR}/backup_history.txt"
+    fi
+    
+    log "INFO" "Backup cleanup completed"
 }
 
 init_environment() {
@@ -120,15 +449,57 @@ register_old_name() {
 # ------------------------------------------------------------------------------
 
 # Parse Arguments
+COMMAND=""
+COMMAND_ARGS=()  
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -h|--help) show_help; exit 0 ;;
         -d|--dry-run) DRY_RUN=true; shift ;;
         -v|--verbose) VERBOSE=true; shift ;;
         -f|--force) FORCE=true; shift ;;
-        *) echo "Unknown parameter passed: $1"; show_help; exit 1 ;;
+        create-backup|list-backups|restore-backup|clean-backups)
+            COMMAND="$1"
+            shift
+            ;;
+        *)
+            if [[ -z "$COMMAND" ]]; then
+                echo "Unknown parameter passed: $1"
+                show_help
+                exit 1
+            else
+                # Additional arguments for commands
+                COMMAND_ARGS+=("$1")
+                shift
+            fi
+            ;;
     esac
 done
+
+# Execute commands if specified
+case "$COMMAND" in
+    create-backup)
+        create_backup_command "${COMMAND_ARGS[0]}"
+        exit $?
+        ;;
+    list-backups)
+        list_backups
+        exit 0
+        ;;
+    restore-backup)
+        if [[ ${#COMMAND_ARGS[@]} -eq 0 ]]; then
+            echo "Error: restore-backup requires backup number or path"
+            echo "Usage: $SCRIPT_NAME restore-backup <number|path> [destination]"
+            exit 1
+        fi
+        restore_backup "${COMMAND_ARGS[0]}" "${COMMAND_ARGS[1]}"
+        exit $?
+        ;;
+    clean-backups)
+        clean_old_backups "${COMMAND_ARGS[0]}"
+        exit $?
+        ;;
+esac
 
 init_environment
 
@@ -151,6 +522,15 @@ log "INFO" "Starting processing..."
 count_processed=0
 count_renamed=0
 count_errors=0
+
+# Create backup before renaming
+if [[ "$DRY_RUN" == "false" ]]; then
+    log "INFO" "Creating backup of scripts directory..."
+    if ! backup_project "$BASE_DIR" "$TARGET_BACKUP"; then
+        log "ERROR" "Backup failed! Aborting operation."
+        exit 1
+    fi
+fi
 
 # Recursive Loop using globstar (enabled in config)
 for file_path in "$TARGET_SCRIPTS_DIR"/**/*; do
@@ -186,12 +566,12 @@ for file_path in "$TARGET_SCRIPTS_DIR"/**/*; do
                 continue
             fi
             
-            # Step C: Rename
+            # Step B: Rename
             if [[ "$DRY_RUN" == "false" ]]; then                
                 if mv "$file_path" "$new_file_path"; then
                     log "INFO" "Successfully renamed: $file_path -> $new_file_path"
                     ((count_renamed++))
-                    # Step B: Register Old Name
+                    # Step C: Register Old Name
                     # Using only the filename relative to the project or the basename as needed?
                     # Storing the full original path for clarity.
                     register_old_name "$file_path" "$new_base_name"
