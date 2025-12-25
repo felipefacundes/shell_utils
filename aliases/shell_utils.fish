@@ -1,5 +1,7 @@
 #alias utils='ls ~/.shell_utils/scripts/utils' # Subdirectory for simpler scripts
 alias faqs='ls ~/.shell_utils/scripts/faqs'
+alias utilities='ls ~/.shell_utils/scripts/utilities/'
+alias utils='utilities'
 alias shell_utils_default_fish='cp -f ~/.shell_utils/shell_utils.fish ~/.config/fish/conf.d/'
 alias shell_utils_default_zshrc='mv -v --backup=t ~/.zshrc ~/.zshrc.shell_utils-backup-$(date +"%Y%m%d%H%M%S"); cp -f ~/.shell_utils/zshrc ~/.zshrc'
 alias shell_utils_default_bashrc='mv -v --backup=t ~/.bashrc ~/.bashrc.shell_utils-backup-$(date +"%Y%m%d%H%M%S"); cp -f ~/.shell_utils/bashrc ~/.bashrc'

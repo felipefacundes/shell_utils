@@ -72,9 +72,14 @@ log() {
 }
 
 show_help() {
+    local snake_case_count 
+    snake_case_count=$(find "$TARGET_SCRIPTS_DIR" \( -name "helps" -o -name "utilities" \) -prune \
+                        -o -type f -name "*_*" -print 2>/dev/null | wc -l)
+
     echo -e "Usage: $SCRIPT_NAME [OPTIONS] [COMMAND]"
     echo ""
     echo "Normalizes filenames in $TARGET_SCRIPTS_DIR recursively."
+    echo "There are $snake_case_count scripts named in snake_case in $TARGET_SCRIPTS_DIR"
     echo ""
     echo "Commands:"
     echo "  create-backup     Create backup without renaming"
@@ -83,12 +88,12 @@ show_help() {
     echo "  clean-backups     Clean old backups (keeps last 5 by default)"
     echo ""
     echo "Examples:"
-    echo "  $SCRIPT_NAME -v -d          # Dry run with verbose output"
-    echo "  $SCRIPT_NAME create-backup  # Create backup only"
-    echo "  $SCRIPT_NAME list-backups   # List backups"
-    echo "  $SCRIPT_NAME restore-backup 1     # Restore backup #1"
+    echo "  $SCRIPT_NAME -v -d                           # Dry run with verbose output"
+    echo "  $SCRIPT_NAME create-backup                   # Create backup only"
+    echo "  $SCRIPT_NAME list-backups                    # List backups"
+    echo "  $SCRIPT_NAME restore-backup 1                # Restore backup #1"
     echo "  $SCRIPT_NAME restore-backup /path/to/backup"
-    echo "  $SCRIPT_NAME clean-backups 3      # Keep only 3 most recent backups"
+    echo "  $SCRIPT_NAME clean-backups 3                 # Keep only 3 most recent backups"
     echo ""
     echo "Options:"
     echo "  -h, --help       Show this help message"

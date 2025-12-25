@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+config_dir=~/.config/sway/
+config_file="$config_dir/config"
+config_base=~/.shell_utils/scripts/utilities/dotfiles/sway/config
+
+# Initialize associative array for internationalization (i18n)
+declare -A MESSAGES
+
+# Translation Logic (Defaults to English)
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES[error_src]="Erro: Arquivo de origem não encontrado em"
+    MESSAGES[created]="Arquivo de configuração criado com sucesso!"
+    MESSAGES[ready]="Agora o Sway está configurado e pronto para uso!"
+    MESSAGES[overwrite]="O arquivo de configuração já existe. Deseja substituí-lo? (y/n): "
+    MESSAGES[replaced]="Arquivo substituído com sucesso."
+    MESSAGES[no_change]="Nenhuma alteração foi feita."
+else
+    MESSAGES[error_src]="Error: Source file not found at"
+    MESSAGES[created]="Configuration file successfully created!"
+    MESSAGES[ready]="Sway is now configured and ready for use!"
+    MESSAGES[overwrite]="The configuration file already exists. Do you want to overwrite it? (y/n): "
+    MESSAGES[replaced]="File successfully replaced."
+    MESSAGES[no_change]="No changes were made."
+fi
+
+# Check if the source file exists
+if [[ ! -f "$config_base" ]]; then
+    echo "${MESSAGES[error_src]} $config_base"
+    exit 1
+fi
+
+# Create directory if it doesn't exist
+[[ ! -d "$config_dir" ]] && mkdir -p "$config_dir"
+
+if [[ ! -f "$config_file" ]]; then
+    # Scenario 1: Initial setup
+    cp -f "$config_base" "$config_file"
+    clear
+    echo "${MESSAGES[created]}"
+    echo "${MESSAGES[ready]}"
+elif [[ -f "$config_file" ]]; then
+    # Scenario 2: Overwrite check
+    read -r -p "${MESSAGES[overwrite]}" option
+    
+    # Accept y, yes, s, sim (case insensitive)
+    if [[ "${option,,}" =~ ^(y|yes|s|sim)$ ]]; then
+        cp -f "$config_base" "$config_file"
+        echo "${MESSAGES[replaced]}"
+    else
+        echo "${MESSAGES[no_change]}"
+    fi
+fi

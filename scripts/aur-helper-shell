@@ -117,7 +117,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         ["remove_option"]="  %s -R, --remove <nome-do-pacote>            - Remove um pacote instalado"
         ["remove_debug_option"]="  %s -R-d, --remove-debug                     - Remove todos os pacotes debug instalados"
         ["remove_all_option"]="  %s -Rcs, --remove-all, --purge <pacote>     - Remove um pacote e suas dependências"
-        ["remove_orphans_option"]="  %s -R-t, --remove-orphans                   - Remove pacotes órfãos (dependências não usadas)"
+        ["remove_orphans_option"]="  %s -R-o, --remove-orphans                   - Remove pacotes órfãos (dependências não usadas)"
         ["remove_unused_option"]="  %s --remove-unused                   - Remove pacotes órfãos (dependências não usadas)"
         ["help_option"]="  %s -h, --help                               - Mostra esta ajuda"
         ["examples"]="Exemplos:"
@@ -239,7 +239,7 @@ else
         ["remove_option"]="  %s -R, --remove <package-name>              - Remove an installed package"
         ["remove_debug_option"]="  %s -R-d, --remove-debug                     - Remove all installed debug packages"
         ["remove_all_option"]="  %s -Rcs, --remove-all, --purge <package>    - Remove a package and its dependencies"
-        ["remove_orphans_option"]="  %s -R-t, --remove-orphans                   - Remove orphaned packages (unused dependencies)"
+        ["remove_orphans_option"]="  %s -R-o, --remove-orphans                   - Remove orphaned packages (unused dependencies)"
         ["remove_unused_option"]="  %s --remove-unused                   - Remove orphaned packages (unused dependencies)"
         ["help_option"]="  %s -h, --help                               - Show this help"
         ["examples"]="Examples:"
@@ -754,7 +754,7 @@ case "$1" in
         echo -e "${YELLOW}Removing all debug packages...${NC}"
         sudo pacman -R $(pacman -Qq | grep -E '\-debug$')
         ;;
-    -R-t|--remove-orphans|--remove-unused)
+    -R-o|--remove-orphans|--remove-unused)
         echo -e "${YELLOW}Removing orphaned packages (unused dependencies)...${NC}"
         sudo pacman -Rcs $(pacman -Qtdq)
         ;;
