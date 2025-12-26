@@ -1,0 +1,695 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# NVIDIA Vulkan ICD configuration file path
+ICD_FILE="/usr/share/vulkan/icd.d/nvidia_icd.json"
+
+# Language support
+declare -A MESSAGES
+
+messages() {
+    if [[ "${LANG,,}" =~ pt_ ]]; then
+        # Portuguese messages
+        MESSAGES=(
+            ["check_root_error"]="❌ Este script requer privilégios de superusuário (sudo)"
+            ["check_root_usage"]="   Execute com: sudo ${0##*/} $*"
+            ["run_cmd_executing"]="⚡ Executando: $1"
+            ["run_cmd_failed"]="❌ Comando falhou: $1"
+            ["find_libs_searching"]="🔍 Procurando bibliotecas NVIDIA disponíveis..."
+            ["find_libs_available"]="📚 Bibliotecas disponíveis:"
+            ["find_libs_vksc_found"]="✅ [1] libnvidia-vksc-core.so.*: $VKSC_CORE_LIB (RECOMENDADO)"
+            ["find_libs_vksc_not_found"]="❌ [1] libnvidia-vksc-core.so.*: Não encontrada"
+            ["find_libs_glcore_found"]="✅ [2] libnvidia-glcore.so.*: $GL_CORE_LIB"
+            ["find_libs_glcore_not_found"]="❌ [2] libnvidia-glcore.so.*: Não encontrada"
+            ["find_libs_gl_found"]="✅ [3] libGL.so.1: $GL_LIB (fallback genérico)"
+            ["find_libs_gl_not_found"]="❌ [3] libGL.so.1: Não encontrada"
+            ["find_libs_glx_warning"]="⚠️  [4] libGLX_nvidia.so.0: $GLX_NVIDIA_LIB (PROBLEMÁTICA - evitar)"
+            ["find_libs_glx_not_found"]="❌ [4] libGLX_nvidia.so.0: Não encontrada"
+            ["check_issue_title"]="==================================================="
+            ["check_issue_title2"]="Verificando configuração do ICD Vulkan da NVIDIA"
+            ["check_issue_file_not_found"]="❌ Arquivo não encontrado: $ICD_FILE"
+            ["check_issue_driver_error"]="   O driver Vulkan da NVIDIA pode não estar instalado corretamente."
+            ["check_issue_solutions"]="💡 Soluções possíveis:"
+            ["check_issue_solution1"]="   1. Instale os drivers NVIDIA: sudo apt install nvidia-driver-XXX"
+            ["check_issue_solution2"]="   2. Verifique se o pacote vulkan-icd-loader está instalado"
+            ["check_issue_file_content"]="📄 Conteúdo atual do arquivo $ICD_FILE:"
+            ["check_issue_problem_found"]="⚠️  PROBLEMA ENCONTRADO!"
+            ["check_issue_problem_desc"]="O arquivo contém referência problemática a 'libGLX_nvidia'"
+            ["check_issue_problem_causes"]="📌 Pode causar:"
+            ["check_issue_cause1"]="   • Erros em jogos/programas Vulkan"
+            ["check_issue_cause2"]="   • Falhas e crashes"
+            ["check_issue_cause3"]="   • Problemas de compatibilidade"
+            ["check_issue_priority"]="🎯 ORDEM DE PRIORIDADE para bibliotecas ICD:"
+            ["check_issue_priority1"]="   1. libnvidia-vksc-core.so.* (RECOMENDADO - principal para Vulkan)"
+            ["check_issue_priority2"]="   2. libnvidia-glcore.so.* (alternativa)"
+            ["check_issue_priority3"]="   3. libGL.so.1 (fallback genérico)"
+            ["check_issue_priority4"]="   4. libGLX_nvidia.so.0 (PROBLEMÁTICA - evitar)"
+            ["check_issue_problem_line"]="🔍 Linha problemática:"
+            ["check_issue_config_ok"]="✅ Configuração OK!"
+            ["check_issue_no_problem"]="Nenhuma referência problemática a 'libGLX_nvidia' encontrada."
+            ["check_issue_current_lib"]="📌 Biblioteca atualmente configurada:"
+            ["check_issue_no_library_path"]="Não encontrou 'library_path' no arquivo"
+            ["choose_lib_title"]="🎯 SELECIONE A BIBLIOTECA PARA USAR:"
+            ["choose_lib_option_vksc"]="[$option] libnvidia-vksc-core.so.* (RECOMENDADO para Vulkan)"
+            ["choose_lib_option_glcore"]="[$option] libnvidia-glcore.so.*"
+            ["choose_lib_option_gl"]="[$option] libGL.so.1 (fallback genérico)"
+            ["choose_lib_option_glx"]="[$option] libGLX_nvidia.so.0 (ATUAL - NÃO RECOMENDADO)"
+            ["choose_lib_option_cancel"]="[$option] Cancelar e sair"
+            ["choose_lib_prompt"]="Digite o número da sua escolha (1-$option): "
+            ["choose_lib_cancelled"]="Operação cancelada."
+            ["choose_lib_selected"]="✅ Selecionado: ${OPTIONS[$choice]}"
+            ["choose_lib_invalid"]="❌ Opção inválida"
+            ["fix_starting"]="🛠️  Iniciando correção..."
+            ["fix_no_libs"]="❌ Nenhuma biblioteca encontrada!"
+            ["fix_install_driver"]="💡 Instale os drivers NVIDIA corretamente:"
+            ["fix_install_cmd"]="   sudo apt update && sudo apt install nvidia-driver-XXX"
+            ["fix_backup"]="📋 Fazendo backup do arquivo original..."
+            ["fix_backup_created"]="✅ Backup criado: $BACKUP_FILE"
+            ["fix_backup_error"]="❌ Erro ao criar backup!"
+            ["fix_replacing"]="🔄 Substituindo biblioteca no arquivo de configuração..."
+            ["fix_current_lib"]="📌 Biblioteca atual: $CURRENT_LIB"
+            ["fix_new_lib"]="📌 Nova biblioteca: $NEW_LIB"
+            ["fix_temp_success"]="✅ Substituição bem sucedida no arquivo temporário"
+            ["fix_copy_success"]="✅ Arquivo de configuração atualizado!"
+            ["fix_new_config"]="📄 Nova configuração:"
+            ["fix_copy_error"]="❌ Erro ao copiar arquivo de volta!"
+            ["fix_restore_manual"]="   Restaure manualmente: cp \"$BACKUP_FILE\" \"$ICD_FILE\""
+            ["fix_temp_failed"]="❌ Substituição falhou no arquivo temporário"
+            ["fix_edit_manual"]="   Tente corrigir manualmente editando: $ICD_FILE"
+            ["fix_applied"]="✅ Correção aplicada com sucesso!"
+            ["fix_restart_apps"]="💡 Reinicie os aplicativos Vulkan para aplicar as mudanças"
+            ["auto_fix_starting"]="⚡ Correção automática não-interativa..."
+            ["auto_fix_priority1"]="✅ Usando libnvidia-vksc-core.so.* (prioridade 1)"
+            ["auto_fix_priority2"]="✅ Usando libnvidia-glcore.so.* (prioridade 2)"
+            ["auto_fix_fallback"]="✅ Usando libGL.so.1 (fallback)"
+            ["auto_fix_no_alt"]="❌ Nenhuma biblioteca alternativa encontrada!"
+            ["auto_fix_selected"]="📄 Biblioteca selecionada: $NEW_LIB"
+            ["auto_fix_backup"]="📋 Backup criado: $BACKUP_FILE"
+            ["auto_fix_no_path"]="❌ Não foi possível encontrar 'library_path' no arquivo"
+            ["auto_fix_replacing"]="🔄 Substituindo '$CURRENT_LIB' por '$NEW_LIB'"
+            ["auto_fix_applied"]="✅ Correção aplicada automaticamente!"
+            ["auto_fix_new_config"]="📄 Nova configuração:"
+            ["auto_fix_error"]="❌ Erro na correção automática!"
+            ["auto_fix_restore"]="   Restaure o backup: cp \"$BACKUP_FILE\" \"$ICD_FILE\""
+            ["check_driver_title"]="🔍 Verificando instalação do driver NVIDIA..."
+            ["check_driver_nvidia_found"]="✅ nvidia-smi encontrado"
+            ["check_driver_info"]="📊 Informações do driver:"
+            ["check_driver_nvidia_not_found"]="⚠️  nvidia-smi não encontrado"
+            ["check_driver_install_error"]="   O driver NVIDIA pode não estar instalado corretamente"
+            ["check_vulkan_title"]="🔍 Verificando pacotes Vulkan..."
+            ["check_vulkan_found"]="✅ Pacotes Vulkan encontrados"
+            ["check_vulkan_not_found"]="⚠️  Nenhum pacote Vulkan encontrado"
+            ["main_no_fix_needed"]="✅ Nenhuma correção necessária"
+            ["main_check_driver"]="✅ Sistema OK - Nenhuma ação necessária"
+            ["main_commands_title"]="==================================================="
+            ["main_commands_available"]="💡 COMANDOS DISPONÍVEIS (execute com sudo):"
+            ["main_command_fix"]="   sudo ${0##*/} --fix     - Correção interativa"
+            ["main_command_auto"]="   sudo ${0##*/} --auto    - Correção automática"
+            ["main_command_check"]="   sudo ${0##*/} --check   - Apenas verificar"
+            ["main_command_driver"]="   sudo ${0##*/} --driver  - Verificar driver"
+            ["main_priority_title"]="🔧 A correção automática usa a ordem de prioridade:"
+            ["main_priority1"]="   1. libnvidia-vksc-core.so.*"
+            ["main_priority2"]="   2. libnvidia-glcore.so.*"
+            ["main_priority3"]="   3. libGL.so.1"
+            ["help_usage"]="Uso: sudo ${0##*/} [OPÇÃO]"
+            ["help_options"]="Opções:"
+            ["help_option_check"]="  --check, -c    Apenas verificar problemas (sem sudo)"
+            ["help_option_fix"]="  --fix, -f      Verificar e corrigir interativamente (com sudo)"
+            ["help_option_auto"]="  --auto, -a     Correção automática não-interativa (com sudo)"
+            ["help_option_driver"]="  --driver, -d   Verificar instalação do driver NVIDIA"
+            ["help_option_help"]="  --help, -h     Mostrar esta ajuda"
+            ["help_note"]="⚠️  NOTA: As opções --fix e --auto requerem privilégios de sudo"
+            ["help_libs_title"]="📚 Bibliotecas recomendadas (ordem de prioridade):"
+            ["help_lib1"]="  1. libnvidia-vksc-core.so.* (principal para Vulkan)"
+            ["help_lib2"]="  2. libnvidia-glcore.so.*"
+            ["help_lib3"]="  3. libGL.so.1 (fallback genérico)"
+            ["help_lib4"]="  4. libGLX_nvidia.so.0 (PROBLEMÁTICA - evitar)"
+            ["unknown_option"]="Opção desconhecida: $1"
+            ["help_suggestion"]="Use: ${0##*/} --help para ver opções disponíveis"
+        )
+    else
+        # English messages (default)
+        MESSAGES=(
+            ["check_root_error"]="❌ This script requires superuser privileges (sudo)"
+            ["check_root_usage"]="   Run with: sudo ${0##*/} $*"
+            ["run_cmd_executing"]="⚡ Executing: $1"
+            ["run_cmd_failed"]="❌ Command failed: $1"
+            ["find_libs_searching"]="🔍 Searching for available NVIDIA libraries..."
+            ["find_libs_available"]="📚 Available libraries:"
+            ["find_libs_vksc_found"]="✅ [1] libnvidia-vksc-core.so.*: $VKSC_CORE_LIB (RECOMMENDED)"
+            ["find_libs_vksc_not_found"]="❌ [1] libnvidia-vksc-core.so.*: Not found"
+            ["find_libs_glcore_found"]="✅ [2] libnvidia-glcore.so.*: $GL_CORE_LIB"
+            ["find_libs_glcore_not_found"]="❌ [2] libnvidia-glcore.so.*: Not found"
+            ["find_libs_gl_found"]="✅ [3] libGL.so.1: $GL_LIB (generic fallback)"
+            ["find_libs_gl_not_found"]="❌ [3] libGL.so.1: Not found"
+            ["find_libs_glx_warning"]="⚠️  [4] libGLX_nvidia.so.0: $GLX_NVIDIA_LIB (PROBLEMATIC - avoid)"
+            ["find_libs_glx_not_found"]="❌ [4] libGLX_nvidia.so.0: Not found"
+            ["check_issue_title"]="==================================================="
+            ["check_issue_title2"]="Checking NVIDIA Vulkan ICD configuration"
+            ["check_issue_file_not_found"]="❌ File not found: $ICD_FILE"
+            ["check_issue_driver_error"]="   NVIDIA Vulkan driver may not be installed correctly."
+            ["check_issue_solutions"]="💡 Possible solutions:"
+            ["check_issue_solution1"]="   1. Install NVIDIA drivers: sudo apt install nvidia-driver-XXX"
+            ["check_issue_solution2"]="   2. Check if vulkan-icd-loader package is installed"
+            ["check_issue_file_content"]="📄 Current content of $ICD_FILE:"
+            ["check_issue_problem_found"]="⚠️  PROBLEM FOUND!"
+            ["check_issue_problem_desc"]="The file contains problematic reference to 'libGLX_nvidia'"
+            ["check_issue_problem_causes"]="📌 Can cause:"
+            ["check_issue_cause1"]="   • Errors in Vulkan games/programs"
+            ["check_issue_cause2"]="   • Crashes and failures"
+            ["check_issue_cause3"]="   • Compatibility issues"
+            ["check_issue_priority"]="🎯 PRIORITY ORDER for ICD libraries:"
+            ["check_issue_priority1"]="   1. libnvidia-vksc-core.so.* (RECOMMENDED - main for Vulkan)"
+            ["check_issue_priority2"]="   2. libnvidia-glcore.so.* (alternative)"
+            ["check_issue_priority3"]="   3. libGL.so.1 (generic fallback)"
+            ["check_issue_priority4"]="   4. libGLX_nvidia.so.0 (PROBLEMATIC - avoid)"
+            ["check_issue_problem_line"]="🔍 Problematic line:"
+            ["check_issue_config_ok"]="✅ Configuration OK!"
+            ["check_issue_no_problem"]="No problematic reference to 'libGLX_nvidia' found."
+            ["check_issue_current_lib"]="📌 Currently configured library:"
+            ["check_issue_no_library_path"]="Did not find 'library_path' in file"
+            ["choose_lib_title"]="🎯 SELECT LIBRARY TO USE:"
+            ["choose_lib_option_vksc"]="[$option] libnvidia-vksc-core.so.* (RECOMMENDED for Vulkan)"
+            ["choose_lib_option_glcore"]="[$option] libnvidia-glcore.so.*"
+            ["choose_lib_option_gl"]="[$option] libGL.so.1 (generic fallback)"
+            ["choose_lib_option_glx"]="[$option] libGLX_nvidia.so.0 (CURRENT - NOT RECOMMENDED)"
+            ["choose_lib_option_cancel"]="[$option] Cancel and exit"
+            ["choose_lib_prompt"]="Enter your choice number (1-$option): "
+            ["choose_lib_cancelled"]="Operation cancelled."
+            ["choose_lib_selected"]="✅ Selected: ${OPTIONS[$choice]}"
+            ["choose_lib_invalid"]="❌ Invalid option"
+            ["fix_starting"]="🛠️  Starting fix..."
+            ["fix_no_libs"]="❌ No libraries found!"
+            ["fix_install_driver"]="💡 Install NVIDIA drivers correctly:"
+            ["fix_install_cmd"]="   sudo apt update && sudo apt install nvidia-driver-XXX"
+            ["fix_backup"]="📋 Creating backup of original file..."
+            ["fix_backup_created"]="✅ Backup created: $BACKUP_FILE"
+            ["fix_backup_error"]="❌ Error creating backup!"
+            ["fix_replacing"]="🔄 Replacing library in configuration file..."
+            ["fix_current_lib"]="📌 Current library: $CURRENT_LIB"
+            ["fix_new_lib"]="📌 New library: $NEW_LIB"
+            ["fix_temp_success"]="✅ Successful replacement in temporary file"
+            ["fix_copy_success"]="✅ Configuration file updated!"
+            ["fix_new_config"]="📄 New configuration:"
+            ["fix_copy_error"]="❌ Error copying file back!"
+            ["fix_restore_manual"]="   Restore manually: cp \"$BACKUP_FILE\" \"$ICD_FILE\""
+            ["fix_temp_failed"]="❌ Replacement failed in temporary file"
+            ["fix_edit_manual"]="   Try to fix manually by editing: $ICD_FILE"
+            ["fix_applied"]="✅ Fix applied successfully!"
+            ["fix_restart_apps"]="💡 Restart Vulkan applications to apply changes"
+            ["auto_fix_starting"]="⚡ Non-interactive automatic fix..."
+            ["auto_fix_priority1"]="✅ Using libnvidia-vksc-core.so.* (priority 1)"
+            ["auto_fix_priority2"]="✅ Using libnvidia-glcore.so.* (priority 2)"
+            ["auto_fix_fallback"]="✅ Using libGL.so.1 (fallback)"
+            ["auto_fix_no_alt"]="❌ No alternative libraries found!"
+            ["auto_fix_selected"]="📄 Selected library: $NEW_LIB"
+            ["auto_fix_backup"]="📋 Backup created: $BACKUP_FILE"
+            ["auto_fix_no_path"]="❌ Could not find 'library_path' in file"
+            ["auto_fix_replacing"]="🔄 Replacing '$CURRENT_LIB' with '$NEW_LIB'"
+            ["auto_fix_applied"]="✅ Automatic fix applied!"
+            ["auto_fix_new_config"]="📄 New configuration:"
+            ["auto_fix_error"]="❌ Error in automatic fix!"
+            ["auto_fix_restore"]="   Restore backup: cp \"$BACKUP_FILE\" \"$ICD_FILE\""
+            ["check_driver_title"]="🔍 Checking NVIDIA driver installation..."
+            ["check_driver_nvidia_found"]="✅ nvidia-smi found"
+            ["check_driver_info"]="📊 Driver information:"
+            ["check_driver_nvidia_not_found"]="⚠️  nvidia-smi not found"
+            ["check_driver_install_error"]="   NVIDIA driver may not be installed correctly"
+            ["check_vulkan_title"]="🔍 Checking Vulkan packages..."
+            ["check_vulkan_found"]="✅ Vulkan packages found"
+            ["check_vulkan_not_found"]="⚠️  No Vulkan packages found"
+            ["main_no_fix_needed"]="✅ No fix needed"
+            ["main_check_driver"]="✅ System OK - No action needed"
+            ["main_commands_title"]="==================================================="
+            ["main_commands_available"]="💡 AVAILABLE COMMANDS (run with sudo):"
+            ["main_command_fix"]="   sudo ${0##*/} --fix     - Interactive fix"
+            ["main_command_auto"]="   sudo ${0##*/} --auto    - Automatic fix"
+            ["main_command_check"]="   sudo ${0##*/} --check   - Check only"
+            ["main_command_driver"]="   sudo ${0##*/} --driver  - Check driver"
+            ["main_priority_title"]="🔧 Automatic fix uses priority order:"
+            ["main_priority1"]="   1. libnvidia-vksc-core.so.*"
+            ["main_priority2"]="   2. libnvidia-glcore.so.*"
+            ["main_priority3"]="   3. libGL.so.1"
+            ["help_usage"]="Usage: sudo ${0##*/} [OPTION]"
+            ["help_options"]="Options:"
+            ["help_option_check"]="  --check, -c    Check for problems only (no sudo)"
+            ["help_option_fix"]="  --fix, -f      Check and fix interactively (with sudo)"
+            ["help_option_auto"]="  --auto, -a     Non-interactive automatic fix (with sudo)"
+            ["help_option_driver"]="  --driver, -d   Check NVIDIA driver installation"
+            ["help_option_help"]="  --help, -h     Show this help"
+            ["help_note"]="⚠️  NOTE: --fix and --auto options require sudo privileges"
+            ["help_libs_title"]="📚 Recommended libraries (priority order):"
+            ["help_lib1"]="  1. libnvidia-vksc-core.so.* (main for Vulkan)"
+            ["help_lib2"]="  2. libnvidia-glcore.so.*"
+            ["help_lib3"]="  3. libGL.so.1 (generic fallback)"
+            ["help_lib4"]="  4. libGLX_nvidia.so.0 (PROBLEMATIC - avoid)"
+            ["unknown_option"]="Unknown option: $1"
+            ["help_suggestion"]="Use: ${0##*/} --help to see available options"
+        )
+    fi
+}
+
+messages "$*"
+
+# Function to check if running as root
+check_root() {
+    if [ "$EUID" -ne 0 ]; then
+        echo "${MESSAGES[check_root_error]}"
+        echo "${MESSAGES[check_root_usage]}"
+        exit 1
+    fi
+}
+
+# Function to execute commands with feedback
+run_cmd() {
+    echo "${MESSAGES[run_cmd_executing]}"
+    eval "$1"
+    if [ $? -ne 0 ]; then
+        echo "${MESSAGES[run_cmd_failed]}"
+        return 1
+    fi
+    return 0
+}
+
+# Function to find available libraries
+find_available_libs() {
+    echo "${MESSAGES[find_libs_searching]}"
+    
+    # Priority 1: libnvidia-vksc-core (main for Vulkan)
+    VKSC_CORE_LIB=$(find /usr/lib* /usr/lib64 /usr/lib/x86_64-linux-gnu -name "libnvidia-vksc-core.so.*" 2>/dev/null | head -1)
+    
+    # Priority 2: libnvidia-glcore (alternative)
+    GL_CORE_LIB=$(find /usr/lib* /usr/lib64 /usr/lib/x86_64-linux-gnu -name "libnvidia-glcore.so.*" 2>/dev/null | head -1)
+    
+    # Fallback: libGL.so.1 (generic)
+    GL_LIB="/usr/lib/libGL.so.1"
+    if [ ! -f "$GL_LIB" ]; then
+        GL_LIB=$(find /usr/lib* /usr/lib64 -name "libGL.so.1" 2>/dev/null | head -1)
+    fi
+    
+    # Fallback 2: libGLX_nvidia.so.0 (original - if nothing else works)
+    GLX_NVIDIA_LIB=$(find /usr/lib* /usr/lib64 -name "libGLX_nvidia.so.0" 2>/dev/null | head -1)
+    
+    # Show found libraries
+    echo ""
+    echo "${MESSAGES[find_libs_available]}"
+    if [ -n "$VKSC_CORE_LIB" ] && [ -f "$VKSC_CORE_LIB" ]; then
+        echo "${MESSAGES[find_libs_vksc_found]}"
+    else
+        echo "${MESSAGES[find_libs_vksc_not_found]}"
+    fi
+    
+    if [ -n "$GL_CORE_LIB" ] && [ -f "$GL_CORE_LIB" ]; then
+        echo "${MESSAGES[find_libs_glcore_found]}"
+    else
+        echo "${MESSAGES[find_libs_glcore_not_found]}"
+    fi
+    
+    if [ -n "$GL_LIB" ] && [ -f "$GL_LIB" ]; then
+        echo "${MESSAGES[find_libs_gl_found]}"
+    else
+        echo "${MESSAGES[find_libs_gl_not_found]}"
+    fi
+    
+    if [ -n "$GLX_NVIDIA_LIB" ] && [ -f "$GLX_NVIDIA_LIB" ]; then
+        echo "${MESSAGES[find_libs_glx_warning]}"
+    else
+        echo "${MESSAGES[find_libs_glx_not_found]}"
+    fi
+    
+    echo ""
+}
+
+# Function to check the issue
+check_issue() {
+    echo "${MESSAGES[check_issue_title]}"
+    echo "${MESSAGES[check_issue_title2]}"
+    echo "${MESSAGES[check_issue_title]}"
+    
+    # Check if file exists
+    if [ ! -f "$ICD_FILE" ]; then
+        echo "${MESSAGES[check_issue_file_not_found]}"
+        echo "${MESSAGES[check_issue_driver_error]}"
+        echo ""
+        echo "${MESSAGES[check_issue_solutions]}"
+        echo "${MESSAGES[check_issue_solution1]}"
+        echo "${MESSAGES[check_issue_solution2]}"
+        return 2
+    fi
+    
+    # Show available libraries first
+    find_available_libs
+    
+    echo "${MESSAGES[check_issue_file_content]}"
+    echo "---------------------------------------------------"
+    cat "$ICD_FILE"
+    echo "---------------------------------------------------"
+    
+    if grep -q "libGLX_nvidia" "$ICD_FILE"; then
+        echo ""
+        echo "${MESSAGES[check_issue_problem_found]}"
+        echo "---------------------------------------------------"
+        echo "${MESSAGES[check_issue_problem_desc]}"
+        echo ""
+        echo "${MESSAGES[check_issue_problem_causes]}"
+        echo "${MESSAGES[check_issue_cause1]}"
+        echo "${MESSAGES[check_issue_cause2]}"
+        echo "${MESSAGES[check_issue_cause3]}"
+        echo ""
+        echo "${MESSAGES[check_issue_priority]}"
+        echo "${MESSAGES[check_issue_priority1]}"
+        echo "${MESSAGES[check_issue_priority2]}"
+        echo "${MESSAGES[check_issue_priority3]}"
+        echo "${MESSAGES[check_issue_priority4]}"
+        echo ""
+        
+        # Show problematic line
+        echo "${MESSAGES[check_issue_problem_line]}"
+        grep "libGLX_nvidia" "$ICD_FILE"
+        
+        return 1
+    else
+        echo "${MESSAGES[check_issue_config_ok]}"
+        echo "${MESSAGES[check_issue_no_problem]}"
+        echo ""
+        echo "${MESSAGES[check_issue_current_lib]}"
+        grep "library_path" "$ICD_FILE" || echo "${MESSAGES[check_issue_no_library_path]}"
+        return 0
+    fi
+}
+
+# Function to choose library
+choose_library() {
+    local vksc_core=$1
+    local gl_core=$2
+    local gl_lib=$3
+    local glx_nvidia=$4
+    
+    echo ""
+    echo "${MESSAGES[choose_lib_title]}"
+    echo ""
+    
+    local option=1
+    
+    if [ -n "$vksc_core" ] && [ -f "$vksc_core" ]; then
+        echo "${MESSAGES[choose_lib_option_vksc]}"
+        echo "      $vksc_core"
+        OPTIONS[$option]="$vksc_core"
+        ((option++))
+    fi
+    
+    if [ -n "$gl_core" ] && [ -f "$gl_core" ]; then
+        echo "${MESSAGES[choose_lib_option_glcore]}"
+        echo "      $gl_core"
+        OPTIONS[$option]="$gl_core"
+        ((option++))
+    fi
+    
+    if [ -n "$gl_lib" ] && [ -f "$gl_lib" ]; then
+        echo "${MESSAGES[choose_lib_option_gl]}"
+        echo "      $gl_lib"
+        OPTIONS[$option]="$gl_lib"
+        ((option++))
+    fi
+    
+    if [ -n "$glx_nvidia" ] && [ -f "$glx_nvidia" ]; then
+        echo "${MESSAGES[choose_lib_option_glx]}"
+        echo "      $glx_nvidia"
+        OPTIONS[$option]="$glx_nvidia"
+        ((option++))
+    fi
+    
+    echo "${MESSAGES[choose_lib_option_cancel]}"
+    OPTIONS[$option]="cancel"
+    
+    echo ""
+    read -rp "${MESSAGES[choose_lib_prompt]}" choice
+    
+    if [[ $choice =~ ^[0-9]+$ ]] && [ $choice -ge 1 ] && [ $choice -le $option ]; then
+        if [ "${OPTIONS[$choice]}" == "cancel" ]; then
+            echo "${MESSAGES[choose_lib_cancelled]}"
+            return 0
+        else
+            echo "${MESSAGES[choose_lib_selected]}"
+            NEW_LIB="${OPTIONS[$choice]}"
+            return 1
+        fi
+    else
+        echo "${MESSAGES[choose_lib_invalid]}"
+        return 0
+    fi
+}
+
+# Function to fix the issue
+fix_issue() {
+    echo ""
+    echo "${MESSAGES[fix_starting]}"
+    
+    # Find available libraries
+    VKSC_CORE_LIB=$(find /usr/lib* /usr/lib64 /usr/lib/x86_64-linux-gnu -name "libnvidia-vksc-core.so.*" 2>/dev/null | head -1)
+    GL_CORE_LIB=$(find /usr/lib* /usr/lib64 /usr/lib/x86_64-linux-gnu -name "libnvidia-glcore.so.*" 2>/dev/null | head -1)
+    GL_LIB=$(find /usr/lib* /usr/lib64 -name "libGL.so.1" 2>/dev/null | head -1)
+    GLX_NVIDIA_LIB=$(find /usr/lib* /usr/lib64 -name "libGLX_nvidia.so.0" 2>/dev/null | head -1)
+    
+    # Check if any library is available
+    if [ -z "$VKSC_CORE_LIB" ] && [ -z "$GL_CORE_LIB" ] && [ -z "$GL_LIB" ] && [ -z "$GLX_NVIDIA_LIB" ]; then
+        echo "${MESSAGES[fix_no_libs]}"
+        echo "${MESSAGES[fix_install_driver]}"
+        echo "${MESSAGES[fix_install_cmd]}"
+        exit 1
+    fi
+    
+    # Offer interactive choice
+    declare -A OPTIONS
+    choose_library "$VKSC_CORE_LIB" "$GL_CORE_LIB" "$GL_LIB" "$GLX_NVIDIA_LIB"
+    local choice_result=$?
+    
+    if [ $choice_result -eq 0 ]; then
+        exit 0
+    fi
+    
+    echo ""
+    echo "${MESSAGES[fix_backup]}"
+    
+    # Create backup
+    BACKUP_FILE="${ICD_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    run_cmd "cp \"$ICD_FILE\" \"$BACKUP_FILE\""
+    
+    if [ $? -eq 0 ]; then
+        echo "${MESSAGES[fix_backup_created]}"
+    else
+        echo "${MESSAGES[fix_backup_error]}"
+        exit 1
+    fi
+    
+    echo ""
+    echo "${MESSAGES[fix_replacing]}"
+    
+    # Create temporary backup for manipulation
+    TMP_FILE="/tmp/nvidia_icd_temp.json"
+    cp "$ICD_FILE" "$TMP_FILE"
+    
+    # Extract current library path
+    CURRENT_LIB=$(grep -o '"library_path":[[:space:]]*"[^"]*"' "$ICD_FILE" | cut -d'"' -f4)
+    
+    echo "${MESSAGES[fix_current_lib]}"
+    echo "${MESSAGES[fix_new_lib]}"
+    
+    # Replace in temporary file
+    sed -i "s|${CURRENT_LIB}|${NEW_LIB}|g" "$TMP_FILE"
+    
+    # Check if replacement worked
+    if grep -q "$NEW_LIB" "$TMP_FILE"; then
+        echo "${MESSAGES[fix_temp_success]}"
+        
+        # Copy back with original permissions
+        run_cmd "cp \"$TMP_FILE\" \"$ICD_FILE\""
+        
+        if [ $? -eq 0 ]; then
+            echo "${MESSAGES[fix_copy_success]}"
+            
+            # Restore permissions if needed
+            ORIG_PERMS=$(stat -c "%a" "$BACKUP_FILE")
+            run_cmd "chmod $ORIG_PERMS \"$ICD_FILE\""
+            
+            echo ""
+            echo "${MESSAGES[fix_new_config]}"
+            echo "---------------------------------------------------"
+            cat "$ICD_FILE"
+            echo "---------------------------------------------------"
+            
+            # Clean temporary file
+            rm -f "$TMP_FILE"
+            
+            echo ""
+            echo "${MESSAGES[fix_applied]}"
+            echo "${MESSAGES[fix_restart_apps]}"
+        else
+            echo "${MESSAGES[fix_copy_error]}"
+            echo "${MESSAGES[fix_restore_manual]}"
+            exit 1
+        fi
+    else
+        echo "${MESSAGES[fix_temp_failed]}"
+        echo "${MESSAGES[fix_edit_manual]}"
+        exit 1
+    fi
+}
+
+# Function for automatic fix (non-interactive)
+fix_auto() {
+    echo ""
+    echo "${MESSAGES[auto_fix_starting]}"
+    
+    # Find libraries in priority order
+    VKSC_CORE_LIB=$(find /usr/lib* /usr/lib64 /usr/lib/x86_64-linux-gnu -name "libnvidia-vksc-core.so.*" 2>/dev/null | head -1)
+    GL_CORE_LIB=$(find /usr/lib* /usr/lib64 /usr/lib/x86_64-linux-gnu -name "libnvidia-glcore.so.*" 2>/dev/null | head -1)
+    GL_LIB=$(find /usr/lib* /usr/lib64 -name "libGL.so.1" 2>/dev/null | head -1)
+    
+    # Choose library in priority order
+    if [ -n "$VKSC_CORE_LIB" ] && [ -f "$VKSC_CORE_LIB" ]; then
+        NEW_LIB="$VKSC_CORE_LIB"
+        echo "${MESSAGES[auto_fix_priority1]}"
+    elif [ -n "$GL_CORE_LIB" ] && [ -f "$GL_CORE_LIB" ]; then
+        NEW_LIB="$GL_CORE_LIB"
+        echo "${MESSAGES[auto_fix_priority2]}"
+    elif [ -n "$GL_LIB" ] && [ -f "$GL_LIB" ]; then
+        NEW_LIB="$GL_LIB"
+        echo "${MESSAGES[auto_fix_fallback]}"
+    else
+        echo "${MESSAGES[auto_fix_no_alt]}"
+        echo "${MESSAGES[fix_install_driver]}"
+        exit 1
+    fi
+    
+    echo "${MESSAGES[auto_fix_selected]}"
+    
+    # Create backup
+    BACKUP_FILE="${ICD_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    run_cmd "cp \"$ICD_FILE\" \"$BACKUP_FILE\""
+    echo "${MESSAGES[auto_fix_backup]}"
+    
+    # Extract current path
+    CURRENT_LIB=$(grep -o '"library_path":[[:space:]]*"[^"]*"' "$ICD_FILE" | cut -d'"' -f4)
+    
+    if [ -z "$CURRENT_LIB" ]; then
+        echo "${MESSAGES[auto_fix_no_path]}"
+        exit 1
+    fi
+    
+    # Apply fix
+    echo "${MESSAGES[auto_fix_replacing]}"
+    
+    # Use sed for replacement
+    sed -i "s|${CURRENT_LIB}|${NEW_LIB}|g" "$ICD_FILE"
+    
+    if [ $? -eq 0 ]; then
+        echo "${MESSAGES[auto_fix_applied]}"
+        echo ""
+        echo "${MESSAGES[auto_fix_new_config]}"
+        grep "library_path" "$ICD_FILE"
+    else
+        echo "${MESSAGES[auto_fix_error]}"
+        echo "${MESSAGES[auto_fix_restore]}"
+        exit 1
+    fi
+}
+
+# Function to check driver installation
+check_driver() {
+    echo "${MESSAGES[check_driver_title]}"
+    
+    if command -v nvidia-smi &> /dev/null; then
+        echo "${MESSAGES[check_driver_nvidia_found]}"
+        echo ""
+        echo "${MESSAGES[check_driver_info]}"
+        nvidia-smi --query-gpu=driver_version,name --format=csv
+    else
+        echo "${MESSAGES[check_driver_nvidia_not_found]}"
+        echo "${MESSAGES[check_driver_install_error]}"
+    fi
+    
+    echo ""
+    echo "${MESSAGES[check_vulkan_title]}"
+    
+    if dpkg -l | grep -q vulkan; then
+        echo "${MESSAGES[check_vulkan_found]}"
+        dpkg -l | grep vulkan | awk '{print "   • "$2" ("$3")"}'
+    else
+        echo "${MESSAGES[check_vulkan_not_found]}"
+    fi
+}
+
+# Main execution
+case "${1:-}" in
+    "--fix"|"-f")
+        check_root
+        check_issue
+        case $? in
+            0) echo "${MESSAGES[main_no_fix_needed]}"; exit 0 ;;
+            1) fix_issue ;;
+            2) check_driver; exit 1 ;;
+        esac
+        ;;
+    "--auto"|"-a")
+        check_root
+        check_issue
+        if [ $? -eq 1 ]; then
+            fix_auto
+        elif [ $? -eq 0 ]; then
+            echo "${MESSAGES[main_no_fix_needed]}"
+        else
+            check_driver
+        fi
+        ;;
+    "--check"|"-c"|"")
+        check_issue
+        case $? in
+            0) echo "${MESSAGES[main_check_driver]}" ;;
+            1) 
+                echo ""
+                echo "${MESSAGES[main_commands_title]}"
+                echo "${MESSAGES[main_commands_available]}"
+                echo "${MESSAGES[main_command_fix]}"
+                echo "${MESSAGES[main_command_auto]}"
+                echo "${MESSAGES[main_command_check]}"
+                echo "${MESSAGES[main_command_driver]}"
+                echo ""
+                echo "${MESSAGES[main_priority_title]}"
+                echo "${MESSAGES[main_priority1]}"
+                echo "${MESSAGES[main_priority2]}"
+                echo "${MESSAGES[main_priority3]}"
+                ;;
+            2) check_driver ;;
+        esac
+        ;;
+    "--driver"|"-d")
+        check_driver
+        ;;
+    "--help"|"-h")
+        echo "${MESSAGES[help_usage]}"
+        echo ""
+        echo "${MESSAGES[help_options]}"
+        echo "${MESSAGES[help_option_check]}"
+        echo "${MESSAGES[help_option_fix]}"
+        echo "${MESSAGES[help_option_auto]}"
+        echo "${MESSAGES[help_option_driver]}"
+        echo "${MESSAGES[help_option_help]}"
+        echo ""
+        echo "${MESSAGES[help_note]}"
+        echo ""
+        echo "${MESSAGES[help_libs_title]}"
+        echo "${MESSAGES[help_lib1]}"
+        echo "${MESSAGES[help_lib2]}"
+        echo "${MESSAGES[help_lib3]}"
+        echo "${MESSAGES[help_lib4]}"
+        ;;
+    *)
+        echo "${MESSAGES[unknown_option]}"
+        echo "${MESSAGES[help_suggestion]}"
+        exit 1
+        ;;
+esac
+
+exit 0

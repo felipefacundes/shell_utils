@@ -71,15 +71,23 @@ log() {
     fi
 }
 
-show_help() {
-    local snake_case_count 
-    snake_case_count=$(find "$TARGET_SCRIPTS_DIR" \( -name "helps" -o -name "utilities" \) -prune \
-                        -o -type f -name "*_*" -print 2>/dev/null | wc -l)
+_check() {
+    find "$TARGET_SCRIPTS_DIR" \( -name "helps" -o -name "utilities" \) -prune \
+                        -o -type f -name "*_*" -print 2>/dev/null
+}
 
+check() {
+    local snake_case_count; snake_case_count=$(_check | wc -l)
+    [[ "$check_find" == 1 ]] && _check
+    [[ "$check_msg" == 1 ]] && echo -e "\nThere are $snake_case_count scripts named in snake_case in $TARGET_SCRIPTS_DIR" && return
+    echo "There are $snake_case_count scripts named in snake_case in $TARGET_SCRIPTS_DIR"
+}
+
+show_help() {
     echo -e "Usage: $SCRIPT_NAME [OPTIONS] [COMMAND]"
     echo ""
     echo "Normalizes filenames in $TARGET_SCRIPTS_DIR recursively."
-    echo "There are $snake_case_count scripts named in snake_case in $TARGET_SCRIPTS_DIR"
+    check
     echo ""
     echo "Commands:"
     echo "  create-backup     Create backup without renaming"
@@ -97,6 +105,7 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  -h, --help       Show this help message"
+    echo "  -c, --check      Show scripts named in snake_case in $TARGET_SCRIPTS_DIR"
     echo "  -d, --dry-run    Simulate changes without modifying files"
     echo "  -v, --verbose    Enable verbose output"
     echo "  -f, --force      Execute without user confirmation"
@@ -130,7 +139,7 @@ backup_project() {
     
     # Calculate source size for information
     if command -v du &>/dev/null; then
-        local source_size=$(du -sh "$backup_src" 2>/dev/null | cut -f1)
+        local source_size; source_size=$(du -sh "$backup_src" 2>/dev/null | cut -f1)
         log "DEBUG" "Source size: $source_size"
     fi
     
@@ -246,7 +255,7 @@ list_backups() {
         
         # Ler histórico e mostrar com números
         local count=1
-        local total_lines=$(wc -l < "${CACHE_DIR}/backup_history.txt")
+        local total_lines; total_lines=$(wc -l < "${CACHE_DIR}/backup_history.txt")
         
         # Mostrar do mais recente (última linha) para o mais antigo
         tac "${CACHE_DIR}/backup_history.txt" | while IFS=: read -r timestamp path; do
@@ -343,9 +352,9 @@ restore_backup() {
             
             # Quick check
             if command -v md5sum &>/dev/null; then
-                local backup_hash=$(find "$backup_path" -type f ! -name ".backup_metadata" \
+                local backup_hash; backup_hash=$(find "$backup_path" -type f ! -name ".backup_metadata" \
                     -exec md5sum {} \; | sort -k 2 | md5sum | awk '{print $1}')
-                local restored_hash=$(find "$restore_path" -type f ! -name ".backup_metadata" \
+                local restored_hash; restored_hash=$(find "$restore_path" -type f ! -name ".backup_metadata" \
                     -exec md5sum {} \; | sort -k 2 | md5sum | awk '{print $1}')
                 
                 if [[ "$backup_hash" == "$restored_hash" ]]; then
@@ -460,6 +469,7 @@ COMMAND_ARGS=()
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -h|--help) show_help; exit 0 ;;
+        -c|--check) check_find=1; check_msg=1; check; exit 0 ;;
         -d|--dry-run) DRY_RUN=true; shift ;;
         -v|--verbose) VERBOSE=true; shift ;;
         -f|--force) FORCE=true; shift ;;

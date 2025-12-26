@@ -31,10 +31,12 @@ messages() {
             ["radeon"]="  ${GREEN}radeon${NC}       - Alias para amd"
             ["force_nvidia"]="  ${GREEN}force_nvidia${NC} - Forçar driver NVIDIA no TTY"
             ["force_nouveau"]="  ${GREEN}force_nouveau${NC}- Forçar driver Nouveau no TTY"
+            ["custom"]="  ${GREEN}custom${NC}       - Driver personalizado via arquivo JSON"
             ["examples_header"]="${CYAN}Exemplos:${NC}"
             ["example1"]="  ${0##*/} ${GREEN}nvidia${NC} glxgears"
             ["example2"]="  ${0##*/} ${GREEN}intel${NC} vulkaninfo"
             ["example3"]="  ${0##*/} ${GREEN}force_nvidia${NC}"
+            ["example4"]="  ${0##*/} ${GREEN}custom${NC} /caminho/para/arquivo.json comando"
             ["help_full"]="\nUse ${YELLOW}${0##*/} --help-full${NC} para ajuda detalhada"
             
             ["full_title"]="${GREEN}${BOLD}${0##*/} - Script para seleção de drivers gráficos${NC}"
@@ -48,6 +50,7 @@ messages() {
             ["full_nvidia"]="  ${GREEN}nvidia${NC}\n      • Usa driver NVIDIA proprietário\n      • __GLX_VENDOR_LIBRARY_NAME=nvidia\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json"
             ["full_nouveau"]="  ${GREEN}nouveau${NC}\n      • Usa driver NVIDIA open-source\n      • __GLX_VENDOR_LIBRARY_NAME=nouveau\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nouveau_icd.x86_64.json"
             ["full_amd"]="  ${GREEN}amd${NC} | ${GREEN}radeon${NC}\n      • Usa driver AMD/ATI (Radeon)\n      • __GLX_VENDOR_LIBRARY_NAME=radeon\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+            ["full_custom"]="  ${GREEN}custom${NC}\n      • Usa um arquivo JSON personalizado para configuração\n      • Deve especificar o caminho para o arquivo JSON\n      • Formato do arquivo JSON deve ser:\n        {\n            \"file_format_version\" : \"1.0.1\",\n            \"ICD\": {\n                \"library_path\": \"caminho/para/libGLX_driver.so\",\n                \"api_version\" : \"versão_api\"\n            }\n        }\n      • NOTA: Para drivers NVIDIA, a lib libGLX_nvidia.so.0 pode ser\n        problemática, causando lentidão e até travamento em alguns jogos.\n        Recomenda-se criar um JSON personalizado com outra biblioteca."
             ["full_force_modes"]="${CYAN}${BOLD}MODOS ESPECIAIS${NC}"
             ["full_force_nvidia"]="  ${YELLOW}force_nvidia${NC}\n      • Remove driver nouveau e carrega nvidia no TTY\n      • Requer: mesa-utils instalado\n      • Só funciona fora do X/Wayland (em TTY)\n      • Após executar, entre no X/Wayland e use: ${0##*/} nvidia"
             ["full_force_nouveau"]="  ${YELLOW}force_nouveau${NC}\n      • Remove driver nvidia e carrega nouveau no TTY\n      • Requer: mesa-utils instalado\n      • Só funciona fora do X/Wayland (em TTY)\n      • Após executar, entre no X/Wayland e use: ${0##*/} nouveau"
@@ -60,24 +63,31 @@ messages() {
             ["full_example2"]="  2. Testar informações Vulkan com driver Intel:\n     ${0##*/} ${GREEN}intel${NC} vulkaninfo"
             ["full_example3"]="  3. Mudar para driver NVIDIA no TTY e depois usar:\n     ${0##*/} ${YELLOW}force_nvidia${NC}\n     # Login no X/Wayland...\n     ${0##*/} ${GREEN}nvidia${NC} aplicativo"
             ["full_example4"]="  4. Executar Steam com driver AMD:\n     ${0##*/} ${GREEN}amd${NC} steam"
+            ["full_example5"]="  5. Usar driver personalizado via JSON:\n     ${0##*/} ${GREEN}custom${NC} /caminho/para/driver.json aplicativo"
             ["full_notes_header"]="${CYAN}${BOLD}NOTAS${NC}"
             ["full_note1"]="  • Os modos force_* requerem privilégios sudo"
             ["full_note2"]="  • Alguns aplicativos podem precisar de ${MAGENTA}VK_LOADER_DRIVERS_SELECT${NC}"
             ["full_note3"]="  • O fallback __GLX_VENDOR_LIBRARY_NAME=mesa é tentado se o comando falhar"
             ["full_note4"]="  • Use ${YELLOW}glxinfo | grep 'OpenGL vendor'${NC} para verificar o driver atual"
+            ["full_note5"]="  • Na opção custom, o caminho do arquivo JSON deve ser fornecido como\n    segundo argumento"
             ["full_files_header"]="${CYAN}${BOLD}ARQUIVOS IMPORTANTES${NC}"
             ["full_files_opengl"]="  • Drivers OpenGL: ${BLUE}/usr/share/glvnd/egl_vendor.d/${NC}"
             ["full_files_vulkan"]="  • Drivers Vulkan: ${BLUE}/usr/share/vulkan/icd.d/${NC}"
             ["full_license"]="${GREEN}License: GPLv3${NC}"
             
             ["video_error"]="${RED}${BOLD}ERRO:${NC} Placa de vídeo ${MAGENTA}'$video'${NC} não é suportada.${NC}"
-            ["video_options"]="${CYAN}Use uma das opções:${NC} ${GREEN}intel${NC}, ${GREEN}intel_hasvk${NC}, ${GREEN}nvidia${NC}, ${GREEN}nouveau${NC}, ${GREEN}force_nvidia${NC}, ${GREEN}force_nouveau${NC}, ${GREEN}amd${NC} ou ${GREEN}radeon${NC}."
+            ["video_options"]="${CYAN}Use uma das opções:${NC} ${GREEN}intel${NC}, ${GREEN}intel_hasvk${NC}, ${GREEN}nvidia${NC}, ${GREEN}nouveau${NC}, ${GREEN}force_nvidia${NC}, ${GREEN}force_nouveau${NC}, ${GREEN}amd${NC}, ${GREEN}radeon${NC} ou ${GREEN}custom${NC}."
             ["install_mesa"]="${YELLOW}Aviso:${NC} Instale ${CYAN}mesa-utils${NC} para usar este modo."
             ["force_nvidia_instructions"]="${GREEN}✓ Modo force_nvidia ativado${NC}\n${YELLOW}Agora entre no servidor X ou Wayland e execute:${NC}\n\n${CYAN}${0##*/} nvidia comando${NC}"
             ["force_nouveau_instructions"]="${GREEN}✓ Modo force_nouveau ativado${NC}\n${YELLOW}Agora entre no servidor X ou Wayland e execute:${NC}\n\n${CYAN}${0##*/} nouveau comando${NC}"
             ["tty_only"]="${RED}Erro:${NC} Este modo funciona apenas em ${YELLOW}TTY${NC} (fora do X/Wayland)."
             ["env_info"]="${YELLOW}Informação:${NC} Em alguns casos é necessário definir a variável de ambiente:\n${CYAN}VK_LOADER_DRIVERS_SELECT=$VK_ICD_FILENAMES${NC}\n"
             ["driver_loaded"]="${GREEN}✓ Driver carregado:${NC}\n${CYAN}__GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME}${NC}\n${CYAN}VK_ICD_FILENAMES=${VK_ICD_FILENAMES}${NC}\n"
+            ["custom_usage"]="${YELLOW}Uso correto da opção custom:${NC} ${0##*/} ${GREEN}custom${NC} /caminho/para/arquivo.json [comando...]"
+            ["json_not_found"]="${RED}Erro:${NC} Arquivo JSON ${MAGENTA}'$json_file'${NC} não encontrado."
+            ["json_not_regular"]="${RED}Erro:${NC} ${MAGENTA}'$json_file'${NC} não é um arquivo regular."
+            ["json_validation_error"]="${RED}Erro:${NC} O arquivo JSON deve seguir um formato como:\n{\n    \"file_format_version\" : \"1.0.1\",\n    \"ICD\": {\n        \"library_path\": \"caminho/para/libGLX_driver.so\",\n        \"api_version\" : \"versão_api\"\n    }\n}"
+            ["json_nvidia_warning"]="${YELLOW}Aviso:${NC} Para drivers NVIDIA, a biblioteca ${CYAN}libGLX_nvidia.so.0${NC}\npode causar lentidão e até travamento em alguns jogos.\nConsidere criar um arquivo JSON personalizado com outra biblioteca."
         )
     else
         # English messages
@@ -92,10 +102,12 @@ messages() {
             ["radeon"]="  ${GREEN}radeon${NC}       - Alias for amd"
             ["force_nvidia"]="  ${GREEN}force_nvidia${NC} - Force NVIDIA driver in TTY"
             ["force_nouveau"]="  ${GREEN}force_nouveau${NC}- Force Nouveau driver in TTY"
+            ["custom"]="  ${GREEN}custom${NC}       - Custom driver via JSON file"
             ["examples_header"]="${CYAN}Examples:${NC}"
             ["example1"]="  ${0##*/} ${GREEN}nvidia${NC} glxgears"
             ["example2"]="  ${0##*/} ${GREEN}intel${NC} vulkaninfo"
             ["example3"]="  ${0##*/} ${GREEN}force_nvidia${NC}"
+            ["example4"]="  ${0##*/} ${GREEN}custom${NC} /path/to/file.json command"
             ["help_full"]="\nUse ${YELLOW}${0##*/} --help-full${NC} for detailed help"
             
             ["full_title"]="${GREEN}${BOLD}${0##*/} - Graphics driver selection script${NC}"
@@ -109,6 +121,7 @@ messages() {
             ["full_nvidia"]="  ${GREEN}nvidia${NC}\n      • Uses proprietary NVIDIA driver\n      • __GLX_VENDOR_LIBRARY_NAME=nvidia\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json"
             ["full_nouveau"]="  ${GREEN}nouveau${NC}\n      • Uses open-source NVIDIA driver\n      • __GLX_VENDOR_LIBRARY_NAME=nouveau\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nouveau_icd.x86_64.json"
             ["full_amd"]="  ${GREEN}amd${NC} | ${GREEN}radeon${NC}\n      • Uses AMD/ATI (Radeon) driver\n      • __GLX_VENDOR_LIBRARY_NAME=radeon\n      • VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json"
+            ["full_custom"]="  ${GREEN}custom${NC}\n      • Uses a custom JSON file for configuration\n      • Must specify path to JSON file\n      • JSON file format should be:\n        {\n            \"file_format_version\" : \"1.0.1\",\n            \"ICD\": {\n                \"library_path\": \"path/to/libGLX_driver.so\",\n                \"api_version\" : \"api_version\"\n            }\n        }\n      • NOTE: For NVIDIA drivers, libGLX_nvidia.so.0 can be\n        problematic, causing slowdowns and even crashes in some games.\n        Consider creating a custom JSON with another library."
             ["full_force_modes"]="${CYAN}${BOLD}SPECIAL MODES${NC}"
             ["full_force_nvidia"]="  ${YELLOW}force_nvidia${NC}\n      • Removes nouveau driver and loads nvidia in TTY\n      • Requires: mesa-utils installed\n      • Only works outside X/Wayland (in TTY)\n      • After running, enter X/Wayland and use: ${0##*/} nvidia"
             ["full_force_nouveau"]="  ${YELLOW}force_nouveau${NC}\n      • Removes nvidia driver and loads nouveau in TTY\n      • Requires: mesa-utils installed\n      • Only works outside X/Wayland (in TTY)\n      • After running, enter X/Wayland and use: ${0##*/} nouveau"
@@ -121,24 +134,31 @@ messages() {
             ["full_example2"]="  2. Test Vulkan information with Intel driver:\n     ${0##*/} ${GREEN}intel${NC} vulkaninfo"
             ["full_example3"]="  3. Switch to NVIDIA driver in TTY and then use:\n     ${0##*/} ${YELLOW}force_nvidia${NC}\n     # Login to X/Wayland...\n     ${0##*/} ${GREEN}nvidia${NC} application"
             ["full_example4"]="  4. Run Steam with AMD driver:\n     ${0##*/} ${GREEN}amd${NC} steam"
+            ["full_example5"]="  5. Use custom driver via JSON:\n     ${0##*/} ${GREEN}custom${NC} /path/to/driver.json application"
             ["full_notes_header"]="${CYAN}${BOLD}NOTES${NC}"
             ["full_note1"]="  • force_* modes require sudo privileges"
             ["full_note2"]="  • Some applications may need ${MAGENTA}VK_LOADER_DRIVERS_SELECT${NC}"
             ["full_note3"]="  • __GLX_VENDOR_LIBRARY_NAME=mesa fallback is attempted if command fails"
             ["full_note4"]="  • Use ${YELLOW}glxinfo | grep 'OpenGL vendor'${NC} to check current driver"
+            ["full_note5"]="  • In custom mode, JSON file path must be provided as second argument"
             ["full_files_header"]="${CYAN}${BOLD}IMPORTANT FILES${NC}"
             ["full_files_opengl"]="  • OpenGL drivers: ${BLUE}/usr/share/glvnd/egl_vendor.d/${NC}"
             ["full_files_vulkan"]="  • Vulkan drivers: ${BLUE}/usr/share/vulkan/icd.d/${NC}"
             ["full_license"]="${GREEN}License: GPLv3${NC}"
             
             ["video_error"]="${RED}${BOLD}ERROR:${NC} Graphics card ${MAGENTA}'$video'${NC} is not supported.${NC}"
-            ["video_options"]="${CYAN}Use one of the following options:${NC} ${GREEN}intel${NC}, ${GREEN}intel_hasvk${NC}, ${GREEN}nvidia${NC}, ${GREEN}nouveau${NC}, ${GREEN}force_nvidia${NC}, ${GREEN}force_nouveau${NC}, ${GREEN}amd${NC} or ${GREEN}radeon${NC}."
+            ["video_options"]="${CYAN}Use one of the following options:${NC} ${GREEN}intel${NC}, ${GREEN}intel_hasvk${NC}, ${GREEN}nvidia${NC}, ${GREEN}nouveau${NC}, ${GREEN}force_nvidia${NC}, ${GREEN}force_nouveau${NC}, ${GREEN}amd${NC}, ${GREEN}radeon${NC} or ${GREEN}custom${NC}."
             ["install_mesa"]="${YELLOW}Warning:${NC} Install ${CYAN}mesa-utils${NC} to use this mode."
             ["force_nvidia_instructions"]="${GREEN}✓ force_nvidia mode activated${NC}\n${YELLOW}Now enter X or Wayland server and run:${NC}\n\n${CYAN}${0##*/} nvidia command${NC}"
             ["force_nouveau_instructions"]="${GREEN}✓ force_nouveau mode activated${NC}\n${YELLOW}Now enter X or Wayland server and run:${NC}\n\n${CYAN}${0##*/} nouveau command${NC}"
             ["tty_only"]="${RED}Error:${NC} This mode works only in ${YELLOW}TTY${NC} (outside X/Wayland)."
             ["env_info"]="${YELLOW}Info:${NC} In some cases it's necessary to set the environment variable:\n${CYAN}VK_LOADER_DRIVERS_SELECT=$VK_ICD_FILENAMES${NC}\n"
             ["driver_loaded"]="${GREEN}✓ Driver loaded:${NC}\n${CYAN}__GLX_VENDOR_LIBRARY_NAME=${__GLX_VENDOR_LIBRARY_NAME}${NC}\n${CYAN}VK_ICD_FILENAMES=${VK_ICD_FILENAMES}${NC}\n"
+            ["custom_usage"]="${YELLOW}Correct usage of custom option:${NC} ${0##*/} ${GREEN}custom${NC} /path/to/file.json [command...]"
+            ["json_not_found"]="${RED}Error:${NC} JSON file ${MAGENTA}'$json_file'${NC} not found."
+            ["json_not_regular"]="${RED}Error:${NC} ${MAGENTA}'$json_file'${NC} is not a regular file."
+            ["json_validation_error"]="${RED}Error:${NC} JSON file should follow a format like:\n{\n    \"file_format_version\" : \"1.0.1\",\n    \"ICD\": {\n        \"library_path\": \"path/to/libGLX_driver.so\",\n        \"api_version\" : \"api_version\"\n    }\n}"
+            ["json_nvidia_warning"]="${YELLOW}Warning:${NC} For NVIDIA drivers, the ${CYAN}libGLX_nvidia.so.0${NC} library\ncan cause slowdowns and even crashes in some games.\nConsider creating a custom JSON file with another library."
         )
     fi
 }
@@ -158,11 +178,13 @@ if [[ $# -eq 0 ]] || [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
     echo -e "${MESSAGES[radeon]}"
     echo -e "${MESSAGES[force_nvidia]}"
     echo -e "${MESSAGES[force_nouveau]}"
+    echo -e "${MESSAGES[custom]}"
     echo ""
     echo -e "${MESSAGES[examples_header]}"
     echo -e "${MESSAGES[example1]}"
     echo -e "${MESSAGES[example2]}"
     echo -e "${MESSAGES[example3]}"
+    echo -e "${MESSAGES[example4]}"
     echo -e "${MESSAGES[help_full]}"
     [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]] && exit 0 || exit 1
 fi
@@ -189,6 +211,8 @@ if [[ "$1" == "--help-full" ]] || [[ "$1" == "--man" ]]; then
     echo ""
     echo -e "${MESSAGES[full_amd]}"
     echo ""
+    echo -e "${MESSAGES[full_custom]}"
+    echo ""
     echo -e "${MESSAGES[full_force_modes]}"
     echo ""
     echo -e "${MESSAGES[full_force_nvidia]}"
@@ -213,11 +237,14 @@ if [[ "$1" == "--help-full" ]] || [[ "$1" == "--man" ]]; then
     echo ""
     echo -e "${MESSAGES[full_example4]}"
     echo ""
+    echo -e "${MESSAGES[full_example5]}"
+    echo ""
     echo -e "${MESSAGES[full_notes_header]}"
     echo -e "${MESSAGES[full_note1]}"
     echo -e "${MESSAGES[full_note2]}"
     echo -e "${MESSAGES[full_note3]}"
     echo -e "${MESSAGES[full_note4]}"
+    echo -e "${MESSAGES[full_note5]}"
     echo ""
     echo -e "${MESSAGES[full_files_header]}"
     echo -e "${MESSAGES[full_files_opengl]}"
@@ -233,14 +260,14 @@ if [[ "$video" =~ ^(force_nvidia|force_nouveau)$ ]] && ! command -v glxinfo >/de
     exit 1
 fi
 
-if ! [[ "$video" =~ ^(intel|intel_hasvk|nvidia|nouveau|force_nvidia|force_nouveau|amd|radeon)$ ]]; then
+if ! [[ "$video" =~ ^(intel|intel_hasvk|nvidia|nouveau|force_nvidia|force_nouveau|amd|radeon|custom)$ ]]; then
     echo -e "${MESSAGES[video_error]}"
     echo -e "${MESSAGES[video_options]}"
     exit 1
 fi
 
 # Show which driver was loaded (for all normal modes)
-if [[ "$video" =~ ^(intel|intel_hasvk|nvidia|nouveau|amd|radeon)$ ]]; then
+if [[ "$video" =~ ^(intel|intel_hasvk|nvidia|nouveau|amd|radeon|custom)$ ]]; then
     if [[ "$video" == intel ]]; then
         shift
         export __GLX_VENDOR_LIBRARY_NAME=intel
@@ -265,6 +292,48 @@ if [[ "$video" =~ ^(intel|intel_hasvk|nvidia|nouveau|amd|radeon)$ ]]; then
         shift
         export __GLX_VENDOR_LIBRARY_NAME=radeon
         export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+
+    elif [[ "$video" == custom ]]; then
+        if [[ $# -lt 2 ]]; then
+            echo -e "${MESSAGES[custom_usage]}"
+            exit 1
+        fi
+        
+        json_file="$2"
+        messages
+        
+        # Check if JSON file exists
+        if [[ ! -e "$json_file" ]]; then
+            echo -e "${MESSAGES[json_not_found]}"
+            exit 1
+        fi
+        
+        # Check if it's a regular file
+        if [[ ! -f "$json_file" ]]; then
+            echo -e "${MESSAGES[json_not_regular]}"
+            exit 1
+        fi
+        
+        # Validate JSON file has basic structure
+        if ! grep -q "file_format_version" "$json_file" || ! grep -q "library_path" "$json_file"; then
+            echo -e "${MESSAGES[json_validation_error]}"
+            exit 1
+        fi
+        
+        # Check for problematic NVIDIA library and show warning
+        if grep -q "libGLX_nvidia.so.0" "$json_file"; then
+            echo -e "${MESSAGES[json_nvidia_warning]}"
+            echo ""
+        fi
+        
+        shift 2
+        if cat "$json_file" | grep -iq nvidia; then
+            export __GLX_VENDOR_LIBRARY_NAME=nvidia
+            export VK_ICD_FILENAMES="$json_file"
+        else
+            export __GLX_VENDOR_LIBRARY_NAME=mesa
+            export VK_ICD_FILENAMES="$json_file"
+        fi
     fi
     
     messages
@@ -302,4 +371,4 @@ messages
 echo -e "${MESSAGES[env_info]}"
 
 # Execute command
-{ "$@" || __GLX_VENDOR_LIBRARY_NAME=mesa "$@"; }
+{ "$*" || __GLX_VENDOR_LIBRARY_NAME=mesa "$*"; }
