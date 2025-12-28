@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+script="${HOME}/.shell_utils/scripts/calendar-hebrew.py"
+py_venv="${HOME}/.python/calendar-hebrew"
+
+if [[ ! -d "$py_venv" ]]; then
+    python -m venv "$py_venv"
+    #shellcheck source=/dev/null
+    source "${py_venv}/bin/activate"
+    export VIRTUAL_ENV="$py_venv"
+    pip install convertdate holidays
+fi
+
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    export py_venv="${HOME}/.python/calendar-hebrew"
+    #shellcheck source=/dev/null
+    source "${py_venv}/bin/activate"
+fi
+
+"$script" "$@"

@@ -371,4 +371,4 @@ messages
 echo -e "${MESSAGES[env_info]}"
 
 # Execute command
-{ "$*" || __GLX_VENDOR_LIBRARY_NAME=mesa "$*"; }
+{ "$@" || __GLX_VENDOR_LIBRARY_NAME=mesa "$@"; }

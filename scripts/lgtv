@@ -11,15 +11,19 @@ The script provides a comprehensive help function that lists various commands av
 and it executes the 'lgtv' command with any provided arguments.
 DOCUMENTATION
 
-if [[ ! -d ~/.python/lgtv-venv ]]; then
-    python -m venv ~/.python/lgtv-venv
-    source ~/.python/lgtv-venv/bin/activate
+py_venv="${HOME}/.python/lgtv-venv"
+
+if [[ ! -d "${py_venv}" ]]; then
+    python -m venv "${py_venv}"
+    #shellcheck source=/dev/null
+    source "${py_venv}/bin/activate"
     export VIRTUAL_ENV="${HOME}/.python/lgtv-venv"
     pip install git+https://github.com/klattimer/LGWebOSRemote
 fi
 
 if [[ -z "$VIRTUAL_ENV" ]]; then
     export VIRTUAL_ENV="${HOME}/.python/lgtv-venv"
+    #shellcheck source=/dev/null
     source "${VIRTUAL_ENV}/bin/activate"
 fi
 
