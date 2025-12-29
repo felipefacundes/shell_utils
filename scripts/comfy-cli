@@ -3,26 +3,27 @@
 # Credits: Felipe Facundes
 # Source: https://github.com/comfyanonymous/ComfyUI
 # Tutorial: https://www.youtube.com/watch?v=TLE9NmN_sxw
+#           https://youtu.be/xWUddF5oMb0
 
-py_venv="${HOME}/.python/comfyui-cli"
+py_venv="${HOME}/.python/comfy-cli"
 activate="${py_venv}/bin/activate"
 
-# Função para detectar arquitetura da GPU NVIDIA
+# Function to detect NVIDIA GPU architecture
 get_cuda_version() {
-    # Extrai a capability da GPU
+    # Extract GPU capability
     local capability; capability=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
     
     if [[ -z "$capability" ]]; then
-        echo "cu130"  # Fallback padrão
+        echo "cu130"  # Default fallback
         return
     fi
     
-    # Remove o ponto (ex: 8.6 → 86)
-    local cap_int=$(echo "$capability" | tr -d '.')
+    # Remove the dot (e.g., 8.6 → 86)
+    local cap_int; cap_int=$(echo "$capability" | tr -d '.')
     
-    # Define versão CUDA baseada na capability
+    # Define CUDA version based on capability
     if [[ $cap_int -ge 90 ]]; then  # 9.x+
-        echo "cu130"  # CUDA 13.0 para GPUs muito novas
+        echo "cu130"  # CUDA 13.0 for very new GPUs
     elif [[ $cap_int -ge 86 ]]; then  # 8.6
         echo "cu130"  # CUDA 13.0
     elif [[ $cap_int -ge 80 ]]; then  # 8.0
@@ -34,64 +35,44 @@ get_cuda_version() {
     elif [[ $cap_int -ge 61 ]]; then  # 6.1
         echo "cu118"  # CUDA 11.8
     else
-        echo "cu118"  # Fallback para GPUs antigas
+        echo "cu118"  # Fallback for old GPUs
     fi
 }
 
 gpu_detect() {
     if lspci | grep -E "VGA|3D" | grep -i "NVIDIA" >/dev/null 2>&1; then
-        echo "🔍 Detectada GPU NVIDIA"
+        echo "🔍 NVIDIA GPU detected"
         
-        # Obter versão CUDA apropriada
+        # Get appropriate CUDA version
         local cuda_version; cuda_version=$(get_cuda_version)
-        echo "📊 Arquitetura da GPU requer CUDA: $cuda_version"
+        echo "📊 GPU architecture requires CUDA: $cuda_version"
         
-        # Instalar PyTorch com versão CUDA correta
+        # Install PyTorch with correct CUDA version
         case "$cuda_version" in
             "cu130")
-                echo "⬇️  Instalando PyTorch com CUDA 13.0"
+                echo "⬇️ Installing PyTorch with CUDA 13.0"
                 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
                 ;;
             "cu128")
-                echo "⬇️  Instalando PyTorch com CUDA 12.8"
+                echo "⬇️ Installing PyTorch with CUDA 12.8"
                 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu128
                 ;;
-            "cu126")
-                echo "⬇️  Instalando PyTorch com CUDA 12.6"
-                pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu126
-                ;;
-#             "cu121")
-#                 echo "⬇️  Instalando PyTorch com CUDA 12.1"
-#                 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu121
-#                 ;;
-#             "cu118")
-#                 echo "⬇️  Instalando PyTorch com CUDA 11.8"
-#                 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu118
-#                 # Ative o ambiente virtual (se já não estiver ativo)
-# source ~/.python/comfyui-cli/bin/activate
-
-# # Desinstale a versão incompatível do PyTorch
-# pip uninstall torch torchvision torchaudio -y
-
-# # Instale o PyTorch compatível com a GTX 1050 Ti (CUDA 12.6)
-# pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
-#                 ;;
             *)
-                echo "⚠️  Usando CUDA 12.6 como fallback"
-                pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu126
+                echo "⚠️ Using CUDA 12.6 as fallback"
+                pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
                 ;;
         esac
         
     elif lspci | grep -E "VGA|3D" | grep -Ei "AMD|ATI" >/dev/null 2>&1; then
-        echo "🔍 Detectada GPU AMD"
+        echo "🔍 AMD GPU detected"
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4
         
     elif lspci | grep -E "VGA|3D" | grep -i "Intel" >/dev/null 2>&1; then
-        echo "🔍 Detectada GPU Intel"
+        echo "🔍 Intel GPU detected"
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         
     else
-        echo "⚠️  GPU não detectada - instalando para CPU"
+        echo "⚠️ No GPU detected - installing for CPU"
         pip install torch torchvision torchaudio
     fi
 }
@@ -106,6 +87,8 @@ if [[ ! -d "$py_venv" ]]; then
     gpu_detect
     pip install -r requirements.txt
     pip install comfy-cli
+    echo "✅ Environment configured. Running: comfy-cli install"
+    comfy-cli install
 fi
 
 if [[ -z "$VIRTUAL_ENV" ]]; then
@@ -118,4 +101,10 @@ if ! command -v comfy-cli >/dev/null; then
     pip install comfy-cli
 fi
 
-comfy-cli "$@"
+if [[ -n "$VIRTUAL_ENV" ]] && command -v comfy-cli >/dev/null 2>&1; then
+    exec comfy-cli "$@"
+else
+    echo "❌ Error: Environment not properly configured. Check installation."
+    echo "Tip: Execute 'source $activate' manually and try again."
+    exit 1
+fi
