@@ -12,19 +12,20 @@ and it executes the 'lgtv' command with any provided arguments.
 DOCUMENTATION
 
 py_venv="${HOME}/.python/lgtv-venv"
+activate="${py_venv}/bin/activate"
 
 if [[ ! -d "${py_venv}" ]]; then
     python -m venv "${py_venv}"
     #shellcheck source=/dev/null
-    source "${py_venv}/bin/activate"
-    export VIRTUAL_ENV="${HOME}/.python/lgtv-venv"
+    source "$activate"
+    export VIRTUAL_ENV="$py_venv"
     pip install git+https://github.com/klattimer/LGWebOSRemote
 fi
 
 if [[ -z "$VIRTUAL_ENV" ]]; then
-    export VIRTUAL_ENV="${HOME}/.python/lgtv-venv"
+    export VIRTUAL_ENV="$py_venv"
     #shellcheck source=/dev/null
-    source "${VIRTUAL_ENV}/bin/activate"
+    source "$activate"
 fi
 
 complete_help() {
