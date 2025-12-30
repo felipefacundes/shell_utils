@@ -30,55 +30,136 @@ DOCUMENTATION
 trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
 
 TMPDIR="${TMPDIR:-/tmp}"
+SCRIPT_TMPDIR="${TMPDIR}/kernel_monitor"
+[[ ! -d "$SCRIPT_TMPDIR" ]] && mkdir -p "$SCRIPT_TMPDIR"
 
-delay=10
-kernel_booted_temp_file=${TMPDIR}/kernel_booted.temp_file
+CHECK_INTERVAL=10
+KERNEL_TIMESTAMP_FILE="${SCRIPT_TMPDIR}/kernel_monitor.initramfs_timestamp"
 
-if [[ ! -f "${kernel_booted_temp_file}" ]]; then
-    touch "${kernel_booted_temp_file}"
-    echo "$(LC_ALL=c ls -l /boot/initramfs-linux.img | awk '{print $6 $7 $8}')" | tee "${kernel_booted_temp_file}"
-fi
+show_help() {
+    cat <<EOF
+NAME
+    ${0##*/} - Monitors kernel updates and prompts for system reboot.
 
-beep_reboot() {
+SYNOPSIS
+    ${0##*/} [-h | --help]
+    ${0##*/} [-d | --daemon]
 
-    beep=~/.shell_utils/sounds/system_reboot_pearl.ogg
-    pactl upload-sample "$beep"
-    paplay "$beep" --volume=76767
+DESCRIPTION
+    This script continuously monitors for kernel updates on the system. When a kernel update is detected, it notifies the user graphically and prompts for a system reboot to complete the update process.
+
+OPTIONS
+    -h, --help
+        Display this help message and exit.
+
+    -d, --daemon
+        Run the script in daemon mode. This is the primary mode of operation, initiating the kernel update monitoring process.
+
+OPERATION
+    The script operates by comparing:
+    1. The currently running kernel version (via 'uname -r').
+    2. The latest installed kernel version (via 'pacman').
+    3. The timestamp of the kernel's initramfs file in /boot.
+
+    When a discrepancy between the running and installed kernel is detected, and the initramfs has been updated, the script concludes a kernel update has occurred. It then:
+    - Sends a critical desktop notification.
+    - Plays an audible alert.
+    - Displays a system tray icon with a reminder.
+    - Presents a graphical dialog (via zenity) asking the user to confirm an immediate reboot.
+
+    The script uses lock files in the system's temporary directory to prevent repeated prompts for the same update event.
+
+SIGNAL HANDLING
+    The script traps the SIGTERM signal to gracefully terminate all its background child processes upon exit.
+
+DEPENDENCIES
+    - bash
+    - zenity (for the graphical reboot dialog)
+    - notify-send (for desktop notifications, typically from 'libnotify')
+    - paplay (from PulseAudio, for playing the sound alert)
+    - pactl (from PulseAudio, for uploading the sound sample)
+    - pacman (the package manager, for querying the installed kernel version)
+    - systemctl (for initiating the reboot)
+    - A custom Python script: ~/.shell_utils/scripts/systray-icon.py
+
+FILES
+    ${SCRIPT_TMPDIR}/kernel_monitor.initramfs_timestamp
+        Stores the timestamp of the initramfs file when the script first runs or after a successful check.
+
+    ${SCRIPT_TMPDIR}/kernel_monitor.reboot_prompted.lock
+        Created after prompting the user for a reboot to prevent duplicate prompts for the same update event.
+
+    ${SCRIPT_TMPDIR}/kernel_monitor.reboot_prompted.lock.notification
+        Used to manage desktop notifications.
+
+    ~/.shell_utils/sounds/system_reboot_pearl.ogg
+        The sound file played as an alert.
+
+    ~/.shell_utils/icons/exclamation.png
+        The icon used for notifications and the system tray.
+
+NOTES
+    - The script is designed for systems using the 'pacman' package manager and a specific kernel/initramfs naming convention (/boot/initramfs-linux.img).
+    - It checks that no 'pacman' process is running before triggering the reboot prompt to avoid interference with ongoing updates.
+    - The user must run the script with the '-d' or '--daemon' option for it to start monitoring.
+
+AUTHOR
+    Felipe Facundes
+
+LICENSE
+    GPLv3
+EOF
 }
 
-ask_reboot() {
+[[ "$1" == "-h" || "$1" == "--help" ]] && show_help && exit 0
+if [[ "$1" != "-d" && "$1" != "--daemon" ]]; then
+    show_help
+    exit 1
+fi
 
-    choose=$(zenity --title='System restart?' --list --text='Kernel updated successfully, system restart?' --radiolist --column 'Choice' --radiolist --column 'Choice' False 'Yes' True 'No')
-    if [[ "$choose" == 'Yes' ]]; then
+if [[ ! -f "${KERNEL_TIMESTAMP_FILE}" ]]; then
+    touch "${KERNEL_TIMESTAMP_FILE}"
+    echo "$(LC_ALL=c ls -l /boot/initramfs-linux.img | awk '{print $6 $7 $8}')" | tee "${KERNEL_TIMESTAMP_FILE}"
+fi
+
+notify_with_sound() {
+    ALERT_SOUND_FILE=~/.shell_utils/sounds/system_reboot_pearl.ogg
+    pactl upload-sample "$ALERT_SOUND_FILE"
+    paplay "$ALERT_SOUND_FILE" --volume=76767
+}
+
+prompt_for_reboot() {
+    REBOOT_CONFIRMATION=$(zenity --title='System restart?' --list --text='Kernel updated successfully, system restart?' --radiolist --column 'Choice' --radiolist --column 'Choice' False 'Yes' True 'No')
+    if [[ "$REBOOT_CONFIRMATION" == 'Yes' ]]; then
         systemctl reboot -i 
     fi
 }
 
-has_the_kernel_been_updated() {
-    kernel_booted=$(cat "${kernel_booted_temp_file}")
-    kernel_initiated="$(uname -r | sed 's|-|.|g')"
+monitor_kernel_updates() {
+    STORED_INITRAMFS_TIMESTAMP=$(cat "${KERNEL_TIMESTAMP_FILE}")
+    CURRENT_KERNEL_VERSION="$(uname -r | sed 's|-|.|g')"
 
     while true
-        do sleep "$delay"
-        installed_kernel="$(LC_ALL=en pacman -Si linux | grep -i "^Version" | awk '{print $3}' | sed 's|-|.|g')"
-        kernel_updated="$(LC_ALL=c ls -l /boot/initramfs-linux.img | awk '{print $6 $7 $8}')"
-        lock_file="${TMPDIR}/has_the_kernel_been_updated.lock_file"
-        icon=~/.shell_utils/icons/exclamation.png
+        do sleep "$CHECK_INTERVAL"
+        INSTALLED_KERNEL_VERSION="$(LC_ALL=en pacman -Si linux | grep -i "^Version" | awk '{print $3}' | sed 's|-|.|g')"
+        CURRENT_INITRAMFS_TIMESTAMP="$(LC_ALL=c ls -l /boot/initramfs-linux.img | awk '{print $6 $7 $8}')"
+        KERNEL_UPDATE_LOCK_FILE="${SCRIPT_TMPDIR}/kernel_monitor.reboot_prompted.lock"
+        ALERT_ICON_PATH=~/.shell_utils/icons/exclamation.png
 
-        if [[ "$kernel_initiated" != "$installed_kernel" ]] && [[ "$kernel_booted" != "$kernel_updated" ]] && ! pidof pacman >/dev/null; then
-			[[ ! -f "${lock_file}.notification" ]] && notify-send -i "$icon" -u critical "Updated kernel" "Reboot system"
-			if [[ ! -f "$lock_file" ]]; then 
-				sleep 15; ~/.shell_utils/scripts/systray-icon.py -i "$icon" -t "Reboot System" -m "Updated kernel" -n "Reboot system" & #sleep 45
-				sleep 15; beep_reboot & ask_reboot & #sleep 60
-				touch "$lock_file"
+        if [[ "$CURRENT_KERNEL_VERSION" != "$INSTALLED_KERNEL_VERSION" ]] && [[ "$STORED_INITRAMFS_TIMESTAMP" != "$CURRENT_INITRAMFS_TIMESTAMP" ]] && ! pidof pacman >/dev/null; then
+			[[ ! -f "${KERNEL_UPDATE_LOCK_FILE}.notification" ]] && notify-send -i "$ALERT_ICON_PATH" -u critical "Updated kernel" "Reboot system"
+			if [[ ! -f "$KERNEL_UPDATE_LOCK_FILE" ]]; then 
+				sleep 15; ~/.shell_utils/scripts/systray-icon.py -i "$ALERT_ICON_PATH" -t "Reboot System" -m "Updated kernel" -n "Reboot system" & #sleep 45
+				sleep 15; notify_with_sound & prompt_for_reboot & #sleep 60
+				touch "$KERNEL_UPDATE_LOCK_FILE"
 			fi
 		fi
         sleep 15
     done
 }
 
-has_the_kernel_been_updated &
-pid=$!
+monitor_kernel_updates &
+BACKGROUND_PID=$!
 
 # Wait for all child processes to finish
-wait "$pid"
+wait "$BACKGROUND_PID"
