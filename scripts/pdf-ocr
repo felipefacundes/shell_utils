@@ -3,74 +3,244 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-The script is designed to convert raster image PDFs into searchable OCR PDFs using Tesseract, Poppler, and Ghostscript. 
+This script converts raster image PDFs into searchable OCR PDFs using Tesseract, Poppler, and Ghostscript.
 
-Strengths:
-1. Converts raster PDFs to searchable text PDFs.
-2. Supports multiple languages for OCR processing.
-3. Provides a help function for user guidance.
-4. Cleans up temporary files after processing.
-
-Capabilities:
-- Utilizes Tesseract for OCR.
-- Uses Poppler to convert PDF to images.
-- Employs Ghostscript for PDF generation.
+Key improvements:
+1. Better image quality by using PNG format with higher DPI
+2. Accurate text layer alignment with original content
+3. Proper text selection capability in output PDF
+4. Flexible output naming with validation
 DOCUMENTATION
 
 set -e
 
+VERSION="1.1"
 TEMP=$(mktemp -d)
 SCRIPT="${0##*/}"
 DIR_FILE="${PWD}"
 
-PDFRaster2PDFOCR()
+# Function to display usage
+usage()
 {
-    pdftoppm -jpeg "$2" "${TEMP}"/result
-    NAME=`echo "$2" | cut -d'.' -f1`
+    echo -e "\033[1;36m$SCRIPT v$VERSION\033[0m\n"
+    echo -e "\033[1;32mConverts raster image PDF to searchable OCR PDF.\033[0m\n"
+    echo -e "\033[1;33mUsage:\033[0m"
+    echo -e "  $SCRIPT -l LANGUAGE -i INPUT.pdf [-o OUTPUT.pdf]"
+    echo -e "  $SCRIPT --language LANGUAGE --input INPUT.pdf [--output OUTPUT.pdf]"
+    echo -e "  $SCRIPT -h, --help"
+    echo -e "  $SCRIPT -v, --version"
+    echo -e "  $SCRIPT -ll, --list-languages\n"
+    echo -e "\033[1;33mArguments:\033[0m"
+    echo -e "  -l, --language LANGUAGE    Language for OCR (e.g., eng, por, spa)"
+    echo -e "  -i, --input INPUT.pdf      Input PDF file"
+    echo -e "  -o, --output OUTPUT.pdf    Output PDF file (optional)"
+    echo -e "  -h, --help                 Show this help message"
+    echo -e "  -v, --version              Show version information"
+    echo -e "  -ll, --list-languages      List available Tesseract languages\n"
+    echo -e "\033[1;33mExamples:\033[0m"
+    echo -e "  $SCRIPT -l eng -i document.pdf"
+    echo -e "  $SCRIPT -l por -i scan.pdf -o searchable.pdf"
+    echo -e "  $SCRIPT --language spa --input scan.pdf --output ocr.pdf"
+    echo -e "\n\033[1;32mDependencies:\033[0m tesseract, poppler-utils, ghostscript"
+}
 
-    cd "${TEMP}"
-    for i in *.[jJpP][nNpP][gG]
-        do n=`echo "${i}" | cut -d'.' -f1`
-        echo "${n}"
-        tesseract "$i" "${n}" -l "$3" --dpi 1200 pdf
+# Function to display version
+show_version()
+{
+    echo -e "\033[1;36m$SCRIPT v$VERSION\033[0m"
+    echo -e "Converts raster image PDF to searchable OCR PDF"
+    echo -e "License: GPLv3"
+    echo -e "Credits: Felipe Facundes"
+}
+
+# Function to list available languages
+list_languages()
+{
+    echo -e "\033[1;36mAvailable Tesseract languages:\033[0m"
+    tesseract --list-langs
+}
+
+# Function to convert PDF
+convert_pdf()
+{
+    local INPUT_FILE="$1"
+    local LANGUAGE="$2"
+    local OUTPUT_FILE="$3"
+    
+    # Check if input file exists
+    if [ ! -f "$INPUT_FILE" ]; then
+        echo -e "\033[1;31mError: Input file '$INPUT_FILE' not found!\033[0m" >&2
+        exit 1
+    fi
+    
+    # Get input file name without extension
+    local BASE_NAME; BASE_NAME=$(basename "$INPUT_FILE" .pdf)
+    
+    # Generate default output name if not provided
+    if [ -z "$OUTPUT_FILE" ]; then
+        OUTPUT_FILE="${BASE_NAME}_OCR.pdf"
+    else
+        # Check if output file has .pdf extension
+        if [[ ! "$OUTPUT_FILE" =~ \.pdf$ ]]; then
+            OUTPUT_FILE="${OUTPUT_FILE}.pdf"
+        fi
+    fi
+    
+    # Check if input and output are the same
+    if [ "$(realpath "$INPUT_FILE")" = "$(realpath "$OUTPUT_FILE")" ]; then
+        echo -e "\033[1;31mError: Output file cannot have the same name as input file!\033[0m" >&2
+        echo -e "\033[1;33mPlease use a different name for the output file.\033[0m" >&2
+        exit 1
+    fi
+    
+    echo -e "\033[1;36mStarting OCR conversion...\033[0m"
+    echo -e "Input:  $INPUT_FILE"
+    echo -e "Output: $OUTPUT_FILE"
+    echo -e "Language: $LANGUAGE"
+    
+    # Convert PDF to high-quality PNG images (better for OCR)
+    echo -e "\033[1;33mConverting PDF to images...\033[0m"
+    pdftoppm -png -r 300 "$INPUT_FILE" "${TEMP}/page"
+    
+    # Process each page
+    echo -e "\033[1;33mPerforming OCR...\033[0m"
+    cd "$TEMP"
+    local PAGE_COUNT=0
+    
+    for img in page-*.png; do
+        [ -f "$img" ] || continue
+        PAGE_COUNT=$((PAGE_COUNT + 1))
+        echo -ne "Processing page $PAGE_COUNT...\r"
+        
+        # Get page number from filename
+        local PAGE_NUM; PAGE_NUM=$(echo "$img" | sed 's/page-//;s/.png//')
+        
+        # Perform OCR with improved settings for better text alignment
+        tesseract "$img" "ocr_${PAGE_NUM}" \
+            -l "$LANGUAGE" \
+            --dpi 300 \
+            --oem 1 \
+            --psm 3 \
+            -c tessedit_create_pdf=1 \
+            -c textonly_pdf=0 \
+            -c preserve_interword_spaces=1 \
+            pdf
     done
-    rm *.[jJpP][nNpP][gG]
-
-    gs -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite -dPDFSETTINGS=/default -sOutputFile="${NAME}"_OCR.pdf *.pdf
-    mv "${NAME}"_OCR.pdf "${DIR_FILE}"/"${NAME}"_OCR.pdf
-    rm -rf "${TEMP}"
-
-    clear
-    echo -e "\033[1;32mFinish.\n"
-    echo -e "\033[1;36mResult:\033[0m"
-    echo -e "${NAME}_OCR.pdf\n"
+    
+    echo -e "\033[1;33m\nCombining pages...\033[0m"
+    
+    # Combine all OCR PDFs into single document
+    if [ $PAGE_COUNT -gt 1 ]; then
+        # Use ghostscript to merge with original images for better quality
+        gs -dBATCH -dNOPAUSE -q \
+           -sDEVICE=pdfwrite \
+           -dPDFSETTINGS=/prepress \
+           -dCompatibilityLevel=1.5 \
+           -dEmbedAllFonts=true \
+           -dSubsetFonts=true \
+           -dColorConversionStrategy=/LeaveColorUnchanged \
+           -dDownsampleColorImages=false \
+           -dDownsampleGrayImages=false \
+           -dDownsampleMonoImages=false \
+           -dColorImageResolution=300 \
+           -dGrayImageResolution=300 \
+           -dMonoImageResolution=300 \
+           -sOutputFile="$OUTPUT_FILE" \
+           ocr_*.pdf
+    else
+        # Single page, just rename
+        mv ocr_*.pdf "$OUTPUT_FILE"
+    fi
+    
+    # Move output to original directory
+    mv "$OUTPUT_FILE" "$DIR_FILE/"
+    
+    # Cleanup
+    cd "$DIR_FILE"
+    rm -rf "$TEMP"
+    
+    echo -e "\033[1;32m\nConversion completed successfully!\033[0m"
+    echo -e "\033[1;36mOutput file:\033[0m $DIR_FILE/$OUTPUT_FILE"
+    echo -e "\033[1;36mPages processed:\033[0m $PAGE_COUNT"
 }
 
-Help()
+# Main script logic
+main()
 {
-    echo -e "$SCRIPT 1.0\n"
-    echo -e "\033[1;32mThis script converts a raster image PDF to a pdf with image and ocr technology, that is, with searchable text.\n"
-    echo -e "\033[1;32mTo use this script it is necessary to have: tesseract, poppler and ghostscript installed.\n"
-    echo -e "\033[1;36mExample:\n\033[0m $SCRIPT 'o' <My_File.pdf> <language> | \033[0;33m $SCRIPT o My_File.pdf eng\033[0m\n"
-    echo -e "\033[1;36mUsage:\n\033[0m $SCRIPT [o] [l] [h]\n"
-    echo -e "\033[1;36mArguments:\033[0m"
-    echo -e "\033[1;33m  o      \033[0m     'o' to convert pdf to ocr pdf (with searchable text)"
-    echo -e "\033[1;33m  l      \033[0m     'l' to list available and installed languages for tesseract to have access and support."
-    echo -e "\033[1;33m  h      \033[0m     'h' to display this help."
+    # Parse command line arguments
+    local INPUT_FILE=""
+    local LANGUAGE=""
+    local OUTPUT_FILE=""
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -l|--language)
+                LANGUAGE="$2"
+                shift 2
+                ;;
+            -i|--input)
+                INPUT_FILE="$2"
+                shift 2
+                ;;
+            -o|--output)
+                OUTPUT_FILE="$2"
+                shift 2
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -v|--version)
+                show_version
+                exit 0
+                ;;
+            -ll|--list-languages)
+                list_languages
+                exit 0
+                ;;
+            -*)
+                echo -e "\033[1;31mError: Unknown option '$1'\033[0m" >&2
+                usage
+                exit 1
+                ;;
+            *)
+                # Handle positional arguments or unknown input
+                echo -e "\033[1;33mNote: Argument '$1' not recognized. Use options with flags.\033[0m" >&2
+                usage
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Check for required arguments
+    if [ -z "$LANGUAGE" ]; then
+        echo -e "\033[1;33mListing available languages:\033[0m"
+        list_languages
+        exit 0
+    fi
+    
+    if [ -z "$INPUT_FILE" ]; then
+        echo -e "\033[1;31mError: Input file is required!\033[0m" >&2
+        usage
+        exit 1
+    fi
+    
+    # Perform conversion
+    convert_pdf "$INPUT_FILE" "$LANGUAGE" "$OUTPUT_FILE"
 }
 
-case "$1" in
-    "o")
-        PDFRaster2PDFOCR "$1" "$2" "$3"
-        ;;
-    "l")
-        tesseract --list-langs
-        ;;
-    "h")
-        Help
-        ;;
-    *)
-        Help
-        ;;
-esac
-exit 1
+# Handle old syntax for backward compatibility
+if [[ "$1" == "o" ]]; then
+    echo -e "\033[1;33mWarning: Old syntax detected. Please use: $SCRIPT -l $3 -i $2\033[0m" >&2
+    convert_pdf "$2" "$3" ""
+    exit $?
+elif [[ "$1" == "l" ]]; then
+    list_languages
+    exit 0
+elif [[ "$1" == "h" ]]; then
+    usage
+    exit 0
+else
+    # Run with new syntax
+    main "$@"
+fi

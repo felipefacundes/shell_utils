@@ -28,9 +28,9 @@ xwayland enable
 #              man sway-input
 
 # Keyboard
+input * xkb_numlock enabled
 # input * xkb_layout "en"
-# input * xkb_numlock enabled
-# Or swaymsg 'input * xkb_layout "en"' && swaymsg 'input * xkb_numlock enabled'
+# Or swaymsg 'input * xkb_layout "en"'
 exec bash -c 'test -x ~/.layouts/sway-layout.sh && ~/.layouts/sway-layout.sh &' &
 
 #input * xkb_variant "colemak,,typewriter"
