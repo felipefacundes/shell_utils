@@ -72,7 +72,7 @@ restore_persistent_volume_tv_lg() {
 }
 
 has_the_kernel_been_updated() {
-    exec "${scripts}"/kernel-check-update
+    exec "${scripts}"/kernel-check-update -d
 }
 
 battery_check() {

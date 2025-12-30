@@ -653,7 +653,7 @@ mode "$mode_gaps_outer" {
 # screen before suspend. Use loginctl lock-session to lock your screen.
 
 # Kernel Update
-exec bash -c '~/.shell_utils/scripts/kernel-check-update &' &
+exec bash -c '~/.shell_utils/scripts/kernel-check-update -d &' &
 
 # Simple Battery Manager
 exec bash -c '~/.shell_utils/scripts/simple-battery-manager &' &
