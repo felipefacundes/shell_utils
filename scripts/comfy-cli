@@ -7,7 +7,7 @@
 
 py_venv="${HOME}/.python/comfy-cli"
 activate="${py_venv}/bin/activate"
-arg="$1"
+arg="$*"
 
 if [[ "$arg" == "-nu" || "$arg" == "--nvidia-universal" ]]; then
     export nv_universal=1
@@ -54,7 +54,7 @@ gpu_detect() {
     if lspci | grep -E "VGA|3D" | grep -i "NVIDIA" >/dev/null 2>&1; then
         echo "🔍 NVIDIA GPU detected"
         
-        [[ "$nv_universal" == 1 ]] && nvidia_universal && unset arg && return
+        [[ "$nv_universal" == 1 ]] && nvidia_universal && arg="" && return
 
         # Get appropriate CUDA version
         local cuda_version; cuda_version=$(get_cuda_version)
@@ -115,7 +115,7 @@ if ! command -v comfy-cli >/dev/null; then
 fi
 
 if [[ -n "$VIRTUAL_ENV" ]] && command -v comfy-cli >/dev/null 2>&1; then
-    exec comfy-cli "$@"
+    exec comfy-cli "$arg"
 else
     echo "❌ Error: Environment not properly configured. Check installation."
     echo "Tip: Execute 'source $activate' manually and try again."
