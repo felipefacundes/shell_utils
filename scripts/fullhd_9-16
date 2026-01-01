@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Default values
+INPUT_FILE=""
+OUTPUT_FILE=""
+VIDEO_CODEC="hevc_nvenc"
+DEFAULT_SUFFIX="_FullHD_9-16"
+PROCESS_ALL=false
+
+# Function to display help
+show_help() {
+    echo "Usage: ${0##*/} [OPTIONS] input_video"
+    echo ""
+    echo "Options:"
+    echo "  -o OUTPUT    Specify output filename"
+    echo "  -c CODEC     Specify video codec (default: hevc_nvenc)"
+    echo "  -l           Process all video files in the current directory"
+    echo "  -h           Show this help message"
+    echo ""
+    echo "Example:"
+    echo "  ${0##*/} video.mp4"
+    echo "  ${0##*/} -o converted.mp4 -c h264_nvenc video.mp4"
+    echo "  ${0##*/} -l -c libsvtav1  # Process all videos in current dir with AV1 codec"
+    exit 0
+}
+
+# Parse command line arguments
+while getopts "o:c:lh" opt; do
+    case $opt in
+        o) OUTPUT_FILE="$OPTARG" ;;
+        c) VIDEO_CODEC="$OPTARG" ;;
+        l) PROCESS_ALL=true ;;
+        h) show_help ;;
+        *) echo "Invalid option: -$OPTARG" >&2; exit 1 ;;
+    esac
+done
+
+# Shift to get the input file (only needed if not using -l)
+shift $((OPTIND-1))
+
+# Function to process a single video file
+process_video() {
+    local INPUT_FILE="$1"
+    
+    # Check if input file exists
+    if [ ! -f "$INPUT_FILE" ]; then
+        echo "Error: Input file '$INPUT_FILE' not found"
+        return 1
+    fi
+    
+    # Get video dimensions using ffprobe
+    DIMENSIONS=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "$INPUT_FILE" 2>/dev/null)
+    
+    if [ -z "$DIMENSIONS" ]; then
+        echo "Error: Could not get video dimensions from '$INPUT_FILE'"
+        return 1
+    fi
+    
+    # Extract width and height
+    WIDTH=$(echo "$DIMENSIONS" | cut -d'x' -f1)
+    HEIGHT=$(echo "$DIMENSIONS" | cut -d'x' -f2)
+    
+    # Check if video is portrait (height > width)
+    if [ "$HEIGHT" -gt "$WIDTH" ]; then
+        echo "Video is portrait (${WIDTH}x${HEIGHT})"
+        echo "Starting conversion..."
+    else
+        echo "Video is not portrait (${WIDTH}x${HEIGHT})"
+        echo "Skipping conversion..."
+        return 0
+    fi
+    
+    # Generate output filename if not specified
+    local OUTPUT_FILE_LOCAL=""
+    if [ -z "$OUTPUT_FILE" ]; then
+        # Remove extension
+        FILENAME="${INPUT_FILE%.*}"
+        EXTENSION="${INPUT_FILE##*.}"
+        OUTPUT_FILE_LOCAL="${FILENAME}${DEFAULT_SUFFIX}.${EXTENSION}"
+    else
+        # If processing multiple files with -l, we need to generate unique names
+        if [ "$PROCESS_ALL" = true ]; then
+            FILENAME="${INPUT_FILE%.*}"
+            EXTENSION="${INPUT_FILE##*.}"
+            OUTPUT_FILE_LOCAL="${FILENAME}${DEFAULT_SUFFIX}.${EXTENSION}"
+        else
+            OUTPUT_FILE_LOCAL="$OUTPUT_FILE"
+        fi
+    fi
+    
+    # Build ffmpeg command using array (safer than eval)
+    if [[ "$VIDEO_CODEC" == "hevc_nvenc" ]]; then
+        FFMPEG_CMD=(
+            ffmpeg
+            -i "$INPUT_FILE"
+            -ab "384k"
+            -acodec "aac"
+            -aspect "0.5625"
+            -color_range "pc"
+            -cq "0"
+            -f "mp4"
+            -map_metadata "-1"
+            -movflags "+faststart"
+            -preset "p7"
+            -r "30"
+            -rc "constqp"
+            -s "1080x1920"
+            -threads "0"
+            -vcodec "$VIDEO_CODEC"
+            -y
+            "$OUTPUT_FILE_LOCAL"
+        )
+    elif [[ "$VIDEO_CODEC" == "libsvtav1" ]]; then
+        FFMPEG_CMD=(
+            ffmpeg
+            -i "$INPUT_FILE"
+            -ab "384k"
+            -acodec "aac"
+            -aspect "0.5625"
+            -color_range "pc"
+            -preset "13"
+            -crf "0"
+            -f "mp4"
+            -map_metadata "-1"
+            -movflags "+faststart"
+            -r "30"
+            -s "1080x1920"
+            -threads "0"
+            -vcodec "$VIDEO_CODEC"
+            -svtav1-params "tune=0:enable-overlays=0:enable-qm=1:qm-min=0:qm-max=15"
+            -y
+            "$OUTPUT_FILE_LOCAL"
+        )
+    else
+        FFMPEG_CMD=(
+            ffmpeg
+            -i "$INPUT_FILE"
+            -ab "384k"
+            -acodec "aac"
+            -aspect "0.5625"
+            -color_range "pc"
+            -f "mp4"
+            -map_metadata "-1"
+            -movflags "+faststart"
+            -preset "veryslow"
+            -r "30"
+            -s "1080x1920"
+            -threads "0"
+            -vcodec "$VIDEO_CODEC"
+            -crf "0"
+            -y
+            "$OUTPUT_FILE_LOCAL"
+        )
+    fi
+    
+    echo "Running command:"
+    echo "${FFMPEG_CMD[@]}"
+    echo ""
+    
+    # Execute the command
+    if "${FFMPEG_CMD[@]}"; then
+        echo -e "\nConversion completed successfully!"
+        echo "Output file: $OUTPUT_FILE_LOCAL"
+        echo "----------------------------------------"
+        return 0
+    else
+        echo -e "\nError during conversion of '$INPUT_FILE'"
+        echo "----------------------------------------"
+        return 1
+    fi
+}
+
+# Main execution logic
+if [ "$PROCESS_ALL" = true ]; then
+    echo "Processing all video files in current directory..."
+    echo "Video codec: $VIDEO_CODEC"
+    echo "----------------------------------------"
+    
+    # Find video files (common extensions)
+    VIDEO_FILES=()
+    while IFS= read -r -d $'\0' file; do
+        VIDEO_FILES+=("$file")
+    done < <(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" \
+        -o -iname "*.mov" -o -iname "*.webm" -o -iname "*.flv" -o -iname "*.wmv" \
+        -o -iname "*.m4v" -o -iname "*.3gp" \) -print0 2>/dev/null)
+    
+    if [ ${#VIDEO_FILES[@]} -eq 0 ]; then
+        echo "No video files found in current directory."
+        exit 1
+    fi
+    
+    echo "Found ${#VIDEO_FILES[@]} video file(s) to process:"
+    for file in "${VIDEO_FILES[@]}"; do
+        echo "  - $file"
+    done
+    echo "----------------------------------------"
+    
+    # Process each video file
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    
+    for video_file in "${VIDEO_FILES[@]}"; do
+        echo "Processing: $video_file"
+        
+        # Reset OUTPUT_FILE to ensure each file gets unique output name
+        ORIG_OUTPUT="$OUTPUT_FILE"
+        OUTPUT_FILE=""
+        
+        if process_video "$video_file"; then
+            ((SUCCESS_COUNT++))
+        else
+            ((FAIL_COUNT++))
+        fi
+        
+        # Restore OUTPUT_FILE if it was set (though not used in -l mode)
+        OUTPUT_FILE="$ORIG_OUTPUT"
+    done
+    
+    echo "========================================"
+    echo "Processing completed!"
+    echo "Successfully converted: $SUCCESS_COUNT file(s)"
+    echo "Failed: $FAIL_COUNT file(s)"
+    exit $((FAIL_COUNT > 0 ? 1 : 0))
+    
+else
+    # Single file processing mode (original behavior)
+    
+    # Check if input file is provided
+    if [ -z "$1" ]; then
+        echo "Error: No input file specified"
+        echo "Usage: $0 [OPTIONS] input_video"
+        exit 1
+    fi
+    
+    INPUT_FILE="$1"
+    process_video "$INPUT_FILE"
+fi

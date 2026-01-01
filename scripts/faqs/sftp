@@ -12,4 +12,4 @@ help() {
     sftp --help
     exit 0
 }
-sftp "$*"
+sftp "$@"

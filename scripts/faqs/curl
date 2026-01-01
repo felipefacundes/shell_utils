@@ -12,4 +12,4 @@ help() {
     curl --help
     exit 0
 }
-curl "$*"
+curl "$@"

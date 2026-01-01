@@ -16,4 +16,4 @@ help() {
     dd --help
     exit 0
 }
-dd "$*"
+dd "$@"

@@ -89,6 +89,7 @@ if [[ ! -d "$py_venv" ]]; then
     pip install comfy-cli
     echo "✅ Environment configured. Running: comfy-cli install"
     comfy-cli install
+    [[ ! -d "$py_venv" ]] && mkdir -p "$py_venv"
 fi
 
 if [[ -z "$VIRTUAL_ENV" ]]; then

@@ -12,4 +12,4 @@ help() {
     ftp --help
     exit 0
 }
-ftp "$*"
+ftp "$@"
