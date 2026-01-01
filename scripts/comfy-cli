@@ -7,7 +7,7 @@
 
 py_venv="${HOME}/.python/comfy-cli"
 activate="${py_venv}/bin/activate"
-arg="$*"
+arg="$1"
 
 if [[ "$arg" == "-nu" || "$arg" == "--nvidia-universal" ]]; then
     export nv_universal=1
@@ -114,9 +114,10 @@ if ! command -v comfy-cli >/dev/null; then
     pip install comfy-cli
 fi
 
-if [[ -n "$VIRTUAL_ENV" ]] && command -v comfy-cli >/dev/null 2>&1; then
-    exec comfy-cli "$arg"
-else
+if [[ -n "$VIRTUAL_ENV" ]] && [[ "$nv_universal" != "1" ]] && \
+    command -v comfy-cli >/dev/null 2>&1; then
+    exec comfy-cli "$@"
+elif [[ "$nv_universal" != "1" ]]; then
     echo "❌ Error: Environment not properly configured. Check installation."
     echo "Tip: Execute 'source $activate' manually and try again."
     exit 1
