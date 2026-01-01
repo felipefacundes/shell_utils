@@ -7,8 +7,9 @@
 
 py_venv="${HOME}/.python/comfy-cli"
 activate="${py_venv}/bin/activate"
+arg="$1"
 
-if [[ "$1" == "-nu" || "$1" == "--nvidia-universal" ]]; then
+if [[ "$arg" == "-nu" || "$arg" == "--nvidia-universal" ]]; then
     export nv_universal=1
 fi
 
@@ -53,7 +54,7 @@ gpu_detect() {
     if lspci | grep -E "VGA|3D" | grep -i "NVIDIA" >/dev/null 2>&1; then
         echo "🔍 NVIDIA GPU detected"
         
-        [[ "$nv_universal" == 1 ]] && nvidia_universal && return
+        [[ "$nv_universal" == 1 ]] && nvidia_universal && unset arg && return
 
         # Get appropriate CUDA version
         local cuda_version; cuda_version=$(get_cuda_version)
