@@ -8,6 +8,10 @@
 py_venv="${HOME}/.python/comfy-cli"
 activate="${py_venv}/bin/activate"
 
+if [[ "$1" == "-nu" || "$1" == "--nvidia-universal" ]]; then
+    export nv_universal=1
+fi
+
 # Function to detect NVIDIA GPU architecture
 get_cuda_version() {
     # Extract GPU capability
@@ -39,10 +43,18 @@ get_cuda_version() {
     fi
 }
 
+nvidia_universal() {
+    echo "⚠️ Using CUDA 12.6 as fallback"
+    pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+    return 0
+}
+
 gpu_detect() {
     if lspci | grep -E "VGA|3D" | grep -i "NVIDIA" >/dev/null 2>&1; then
         echo "🔍 NVIDIA GPU detected"
         
+        [[ "$nv_universal" == 1 ]] && nvidia_universal && return
+
         # Get appropriate CUDA version
         local cuda_version; cuda_version=$(get_cuda_version)
         echo "📊 GPU architecture requires CUDA: $cuda_version"
@@ -58,8 +70,7 @@ gpu_detect() {
                 pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu128
                 ;;
             *)
-                echo "⚠️ Using CUDA 12.6 as fallback"
-                pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+                nvidia_universal
                 ;;
         esac
         
