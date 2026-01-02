@@ -1,0 +1,124 @@
+#!/bin/bash
+# Anti-hibernation script for Linux systems
+# Simulates user activity to prevent automatic sleep/hibernation
+
+TOUCH_FILE="/tmp/keepalive"
+LOG_FILE="/tmp/keepalive.log"
+
+# Function to simulate CPU activity using floating point operations
+simulate_cpu_activity() {
+    local start_time; start_time=$(date +%s.%N)
+    local duration; duration=$(awk "BEGIN {print $RANDOM/32767*0.15 + 0.05}")  # 0.05-0.2 seconds
+    local end_time; end_time=$(awk "BEGIN {print $start_time + $duration}")
+    local operations=0
+    
+    while true; do
+        current_time=$(date +%s.%N)
+        if (( $(awk "BEGIN {print $current_time >= $end_time}") )); then
+            break
+        fi
+        
+        # Simulate CPU operations without storing result
+        awk "BEGIN {12345.67 * 67890.12}" > /dev/null 2>&1
+        ((operations++))
+    done
+    
+    echo $operations
+}
+
+# Function to simulate keyboard activity using xdotool
+simulate_keyboard_activity() {
+    local safe_keys=("shift" "ctrl" "alt" "super")
+    local key=${safe_keys[$RANDOM % ${#safe_keys[@]}]}
+    
+    # Check if xdotool is available
+    if command -v xdotool &> /dev/null; then
+        xdotool key "$key" > /dev/null 2>&1
+    fi
+}
+
+# Function to simulate disk activity
+simulate_disk_activity() {
+    touch "$TOUCH_FILE" 2>/dev/null
+}
+
+# Function to simulate network activity
+simulate_network_activity() {
+    if command -v ping &> /dev/null; then
+        ping -c 1 8.8.8.8 > /dev/null 2>&1 &
+    fi
+}
+
+# Function to write to log file
+write_log_entry() {
+    local operations=$1
+    echo "$(date): Cycle OK (CPU ops: $operations)" >> "$LOG_FILE"
+}
+
+# Main function that simulates all activities
+simulate_activity() {
+    # 1. CPU activity
+    local cpu_ops;cpu_ops=$(simulate_cpu_activity)
+    
+    # 2. Keyboard activity
+    simulate_keyboard_activity
+    
+    # 3. Disk activity
+    simulate_disk_activity
+    
+    # 4. Occasional network activity (every 3 cycles)
+    local network_rand=$((RANDOM % 3))
+    if [ $network_rand -eq 0 ]; then
+        simulate_network_activity
+    fi
+    
+    # 5. Occasional log generation (every 10 cycles)
+    local log_rand=$((RANDOM % 10))
+    if [ $log_rand -eq 0 ]; then
+        write_log_entry "$cpu_ops"
+    fi
+    
+    echo "$cpu_ops"
+}
+
+# Main function with error handling
+main() {
+    echo "Starting anti-hibernation script at $(date)"
+    echo "Press Ctrl+C to exit"
+    
+    local cycle_count=0
+    
+    # Trap signals for graceful shutdown
+    trap 'echo -e "\nScript interrupted by user"; exit 0' INT
+    trap 'echo "Script finished"; exit' EXIT
+    
+    while true; do
+        local operations; operations=$(simulate_activity)
+        ((cycle_count++))
+        
+        # Console log every 5 cycles
+        if [ $((cycle_count % 5)) -eq 0 ]; then
+            echo "Cycle $cycle_count: Simulated activity (CPU ops: $operations)"
+        fi
+        
+        # Variable interval between 4-6 minutes (240-360 seconds)
+        local sleep_time; sleep_time=$(awk "BEGIN {print $RANDOM/32767*120 + 240}")
+        
+        # Sleep with sub-second precision if available
+        if command -v sleep &> /dev/null && [[ $sleep_time =~ ^[0-9.]+$ ]]; then
+            sleep "$sleep_time"
+        else
+            # Fallback to integer sleep
+            sleep_int=$(printf "%.0f" "$sleep_time")
+            sleep "$sleep_int"
+        fi
+    done
+}
+
+# Check if running with appropriate permissions
+if [ "$EUID" -eq 0 ]; then
+    echo "Warning: Running as root may cause unexpected behavior with xdotool"
+fi
+
+# Run main function
+main
