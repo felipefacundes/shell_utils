@@ -171,8 +171,8 @@ client.placeholder      #000000  #0c0c0c #ffffff    #000000    #0c0c0c
 
 # Set your preferred terminal emulator# Give it a title (for dropdown terminal)
 set $title QuakeTerminal
-set $Qterm alacritty
 set $term terminator
+set $Qterm $term
 set $QuakeTerminal $Qterm -T $title
 # Execute your preferred terminal emulator in scratchpad (for dropdown terminal)
 #exec $QuakeTerminal
@@ -659,7 +659,7 @@ exec bash -c '~/.shell_utils/scripts/kernel-check-update -d &' &
 exec bash -c '~/.shell_utils/scripts/simple-battery-manager &' &
 
 # QuakeTerminal daemon
-#exec bash -c '~/.shell_utils/scripts/sway-dropdown-terminal-daemon &' &
+#exec bash -c '~/.shell_utils/scripts/sway-dropdown-terminal -d &' &
 
 # Set a random wallpaper
 exec bash -c '~/.shell_utils/scripts/random-wallpaper -lo &' &
