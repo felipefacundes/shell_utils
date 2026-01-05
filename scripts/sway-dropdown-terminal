@@ -37,7 +37,114 @@ DOCUMENTATION
 
 # Terminal title
 title="QuakeTerminal"
-term='alacritty -T "$title"'
+term='terminator -T "$title"'
+
+filter() {                     
+    "$@" | grep '"QuakeTerminal"'
+}
+
+help() {
+    cat << EOF
+${0##*/} - Quake-style dropdown terminal for Sway
+
+SYNOPSIS
+    ${0##*/} [OPTION]
+
+DESCRIPTION
+    This script creates and manages a Quake-style dropdown terminal in the Sway
+    window manager. The terminal appears from the top of the screen and can be
+    toggled on/off with a keyboard shortcut. When hidden, it moves to the 
+    scratchpad, keeping your workspace clean.
+
+    The terminal window is automatically sized to 55.559% of screen height and
+    almost full width (with a 1.02% margin on each side for aesthetics).
+
+    Features:
+    • Auto-creation: If terminal is closed, it automatically reopens
+    • Scratchpad integration: Terminal hides in scratchpad when not in use
+    • Proper sizing: Optimized dimensions for readability and screen space
+    • Daemon mode: Background process that monitors terminal state
+
+USAGE EXAMPLES
+    Basic usage (show/hide toggle):
+        ${0##*/}
+    
+    Run as background daemon (auto-reopens if closed):
+        ${0##*/} --daemon
+    
+    Add to Sway config for keyboard shortcut:
+        bindsym \$mod+grave exec ${0##*/}
+
+OPTIONS
+    -d, --daemon    Run in daemon mode (monitors and maintains terminal)
+    -h, --help      Display this help message and exit
+    --version       Display version information
+
+TERMINAL SPECIFICS
+    • Title: "QuakeTerminal" (used for window identification)
+    • Terminal emulator: Terminator (can be modified in script)
+    • Default position: Top of screen, full width
+    • Default height: ~55% of screen height
+
+ENVIRONMENT
+    This script requires:
+    • Sway window manager
+    • Terminator terminal emulator
+    • jq (for JSON parsing of Sway output)
+
+FILES
+    The script itself contains all configuration. Key variables to customize:
+    • \$title: Window title (default: "QuakeTerminal")
+    • \$term: Terminal command (default: terminator)
+    • Dimensions: Adjust width/height calculations as needed
+
+BUGS/ISSUES
+    • If terminal doesn't appear, ensure no other window has title "QuakeTerminal"
+    • Daemon mode may conflict with other instances of the script
+    • Screen dimension calculations assume single monitor setup
+
+AUTHOR
+    Felipe Facundes
+    License: GPLv3
+
+SEE ALSO
+    sway(1), terminator(1), jq(1)
+
+VERSION
+    1.0.0
+EOF
+    exit 0
+}
+
+daemon() {
+    while true; do
+        # Checking interval in seconds
+        sleep 1.5
+
+        check_string=$(filter swaymsg -t get_tree)
+        # Check if there is a window with the title QuakeTerminal
+        if [[ -z "$check_string" ]]; then
+            if ! filter swaymsg -t get_tree; then
+                # Open Terminator with the title QuakeTerminal
+                eval "$term" &
+                
+                # Wait a brief moment to ensure Terminator has been opened
+                sleep 0.3
+                
+                # Move the terminal to the scratchpad
+                swaymsg [title="$title"] move container to scratchpad
+                echo "Terminal $title opened and moved to scratchpad."
+            fi
+        fi
+    done
+}
+
+[[ "$1" == "-h" || "$1" == "--help" ]] && help
+
+if [[ "$1" == "-d" || "$1" == "--daemon" ]]; then
+    daemon
+    exit 0
+fi
 
 raw_width=$(swaymsg -t get_outputs | jq '.[0].rect.width')
 raw_height=$(swaymsg -t get_outputs | jq '.[0].rect.height')
