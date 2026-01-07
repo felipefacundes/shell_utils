@@ -4,6 +4,7 @@ alias ffp_leg='ffp_sub'
 alias ffp='ffp_sub'
 alias yd="yt-dlp -i"
 alias yt="yd"
+alias yda='yd -f 140'
 alias mpvl='mpv --loop'
 alias record_screen='~/.shell_utils/scripts/screen-record'
 alias gravar_tela='record_screen'
