@@ -94,7 +94,7 @@ if [[ ! -d "$py_venv" ]]; then
     cd "$py_venv" || true
     wget https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
     #shellcheck source=/dev/null
-    source "$activate"
+    [[ -f "$activate" ]] && source "$activate"
     export VIRTUAL_ENV="$py_venv"
     gpu_detect
     pip install -r requirements.txt
@@ -104,7 +104,7 @@ if [[ ! -d "$py_venv" ]]; then
     [[ ! -d "$py_venv" ]] && mkdir -p "$py_venv"
 fi
 
-if [[ -z "$VIRTUAL_ENV" ]]; then
+if [[ -z "$VIRTUAL_ENV" ]] && [[ -f "$activate" ]]; then
     export VIRTUAL_ENV="$py_venv"
     #shellcheck source=/dev/null
     source "$activate"

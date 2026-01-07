@@ -27,6 +27,7 @@ AUTO_FIX=0
 OPTIMIZE=0
 HELP=0
 DIRECTORY="."
+no_backup=0
 
 # Function to process arguments
 process_arguments() {
@@ -37,6 +38,9 @@ process_arguments() {
                 ;;
             -fix)
                 AUTO_FIX=1
+                ;;
+            -nb|--no-backup)
+                no_backup=1
                 ;;
             -opt)
                 OPTIMIZE=1
@@ -49,7 +53,7 @@ process_arguments() {
                 elif [ -d "$arg" ]; then
                     DIRECTORY="$arg"
                 # If not a directory nor number, check if it's a relative path
-                elif [[ "$arg" != -* ]] && [[ "$arg" != "" ]]; then
+                elif [[ $arg != -* && $arg != "" ]]; then
                     echo -e "${YELLOW}Warning: '$arg' is not a valid directory. Using current directory.${RESET}"
                 fi
                 ;;
@@ -75,10 +79,11 @@ show_help() {
     echo "  ${0##*/} [options] [directory]"
     echo ""
     echo "OPTIONS:"
-    echo "  -h, --help    Show this help message"
-    echo "  -fix          Automatically resize without asking"
-    echo "  -opt          Optimize images after resizing"
-    echo "  [number]      Set custom limit (ex: 1920)"
+    echo "  -h, --help        Show this help message"
+    echo "  -nb, --no-backup  Don't create backup files"
+    echo "  -fix              Automatically resize without asking"
+    echo "  -opt              Optimize images after resizing"
+    echo "  [number]          Set custom limit (ex: 1920)"
     echo ""
     echo "EXAMPLES:"
     echo "  ${0##*/}                       # Check current directory"
@@ -94,8 +99,13 @@ show_help() {
 }
 
 # If help was requested, show and exit
-if [ $HELP -eq 1 ]; then
+if (( HELP == 1 )); then
     show_help
+fi
+
+if [[ ! -d "$DIRECTORY" ]]; then
+    echo -e "${RED}Error: Directory '$DIRECTORY' does not exist${RESET}"
+    exit 1
 fi
 
 # Check if ImageMagick is installed
@@ -109,7 +119,7 @@ if ! command -v identify &> /dev/null; then
 fi
 
 # Check if optipng is installed (if optimization is requested)
-if [ $OPTIMIZE -eq 1 ] && ! command -v optipng &> /dev/null; then
+if (( OPTIMIZE == 1 )) && ! command -v optipng &> /dev/null; then
     echo -e "${YELLOW}Warning: optipng is not installed.${RESET}"
     echo "PNG optimization will not be available."
     echo "Install with:"
@@ -121,10 +131,10 @@ fi
 echo "================================================"
 echo "Searching for images larger than ${LIMIT}x${LIMIT}px"
 echo "Directory: $DIRECTORY"
-if [ $AUTO_FIX -eq 1 ]; then
+if (( AUTO_FIX == 1 )); then
     echo -e "${BLUE}Mode: Automatic resizing activated${RESET}"
 fi
-if [ $OPTIMIZE -eq 1 ]; then
+if (( OPTIMIZE == 1 )); then
     echo -e "${BLUE}Mode: Optimization activated${RESET}"
 fi
 echo "================================================"
@@ -148,7 +158,7 @@ resize_image() {
     echo -e "${BLUE}Resizing: $file${RESET}"
     
     # Calculate new dimensions maintaining aspect ratio
-    if [ $width -gt $height ]; then
+    if (( width > height )); then
         # Landscape image
         new_width=$LIMIT
         new_height=$(( (height * LIMIT + width/2) / width ))
@@ -165,7 +175,8 @@ resize_image() {
     # Resize using ImageMagick
     if magick "$file" -resize "${new_width}x${new_height}>" "$file"; then
         echo -e "  ${GREEN}✓ Resized to: ${new_width}x${new_height}px${RESET}"
-        echo -e "  ${YELLOW}  Backup saved at: $backup_file${RESET}"
+        [[ "$no_backup" == 0 ]] && echo -e "  ${YELLOW}  Backup saved at: $backup_file${RESET}"
+        [[ "$no_backup" == 1 ]] && rm "$backup_file"
         return 0
     else
         echo -e "  ${RED}✗ Failed to resize${RESET}"
@@ -225,18 +236,15 @@ while IFS= read -r -d '' file; do
     ((TOTAL_IMAGES++))
     
     # Get image dimensions using ImageMagick
-    dimensions=$(identify -format "%w %h" "$file" 2>/dev/null)
-    
-    if [ $? -ne 0 ]; then
+    if ! dimensions=$(identify -format "%w %h" "$file" 2>/dev/null); then
         echo -e "${YELLOW}Warning: Could not read $file${RESET}"
         continue
     fi
     
-    width=$(echo $dimensions | cut -d' ' -f1)
-    height=$(echo $dimensions | cut -d' ' -f2)
+    read -r width height <<< "$dimensions"
     
     # Check if image exceeds the limit
-    if [ $width -gt $LIMIT ] || [ $height -gt $LIMIT ]; then
+    if (( width > LIMIT || height > LIMIT )); then
         ((EXCEEDING_IMAGES++))
         
         # Store data for possible resizing
@@ -247,9 +255,9 @@ while IFS= read -r -d '' file; do
         
         # Determine which dimension is problematic
         problems=""
-        if [ $width -gt $LIMIT ] && [ $height -gt $LIMIT ]; then
+        if (( width > LIMIT && height > LIMIT )); then
             problems="WIDTH and HEIGHT"
-        elif [ $width -gt $LIMIT ]; then
+        elif (( width > LIMIT )); then
             problems="WIDTH"
         else
             problems="HEIGHT"
@@ -263,9 +271,9 @@ while IFS= read -r -d '' file; do
         echo ""
         
         # If -fix is activated, resize automatically
-        if [ $AUTO_FIX -eq 1 ]; then
+        if (( AUTO_FIX == 1 )); then
             resize_image "$file" "$width" "$height"
-            if [ $OPTIMIZE -eq 1 ]; then
+            if (( OPTIMIZE == 1 )); then
                 optimize_image "$file"
             fi
         fi
@@ -278,7 +286,7 @@ echo "SUMMARY:"
 echo "  Total images analyzed: $TOTAL_IMAGES"
 echo "  Images exceeding ${LIMIT}px: $EXCEEDING_IMAGES"
 
-if [ $EXCEEDING_IMAGES -eq 0 ]; then
+if (( EXCEEDING_IMAGES == 0 )); then
     echo -e "${GREEN}✓ No images exceed the ${LIMIT}px limit.${RESET}"
     echo "================================================"
     exit 0
@@ -287,13 +295,13 @@ else
     echo "================================================"
     
     # If not in -fix mode, ask the user
-    if [ $AUTO_FIX -eq 0 ] && [ $EXCEEDING_IMAGES -gt 0 ]; then
+    if (( AUTO_FIX == 0 && EXCEEDING_IMAGES > 0 )); then
         echo ""
-        read -p "Do you want to resize all images to the ${LIMIT}px limit? (y/N): " response
+        read -rp "Do you want to resize all images to the ${LIMIT}px limit? (y/N): " response
         
         if [[ "$response" =~ ^[Yy]([Ee][Ss])?$ ]]; then
             echo ""
-            read -p "Do you also want to optimize images after resizing? (y/N): " optimize_response
+            read -rp "Do you also want to optimize images after resizing? (y/N): " optimize_response
             
             OPTIMIZE_NOW=0
             if [[ "$optimize_response" =~ ^[Yy]([Ee][Ss])?$ ]]; then
@@ -312,7 +320,7 @@ else
                 
                 resize_image "$file" "$width" "$height"
                 
-                if [ $OPTIMIZE_NOW -eq 1 ]; then
+                if (( OPTIMIZE_NOW == 1 )); then
                     optimize_image "$file"
                 fi
                 
