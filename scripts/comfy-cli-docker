@@ -20,7 +20,7 @@ DESCRIPTION:
     with Python 3.13, automatic GPU detection, and persistent storage.
 
 USAGE:
-    ${0##*/} [COMMAND] [OPTIONS]
+    $0 [COMMAND] [OPTIONS]
 
 COMMANDS:
     run         Start ComfyUI CLI in Docker container (default if no command)
@@ -37,31 +37,47 @@ OPTIONS for 'run' command:
     -p, --port PORT    Map container port to host (default: 8188)
     -n, --name NAME    Container name (default: comfy-cli)
     -v, --volume DIR   Mount host directory as volume
+    -nu, --nvidia-universal  Force CUDA 12.6 for NVIDIA (compatibility mode)
 
 EXAMPLES:
-    # Run with GPU support
-    ${0##*/} run --gpu
+    # Run with GPU support and CUDA 12.6 (compatibility mode)
+    $0 run --gpu -nu
+    
+    # Run with GPU detection (auto)
+    $0 run --gpu
     
     # Run with custom port and volume
-    ${0##*/} run --port 8080 --volume ./models:/app/models
+    $0 run --port 8080 --volume ./models:/app/models
     
     # Build the Docker image
-    ${0##*/} build
+    $0 build
     
     # Open shell in container
-    ${0##*/} shell
+    $0 shell
     
     # View logs
-    ${0##*/} logs
+    $0 logs
 
 DOCKER IMAGE FEATURES:
     • Python 3.13 with latest pip
     • Automatic GPU detection and PyTorch installation
+    • NVIDIA Universal mode (-nu) for CUDA 12.6 compatibility
     • Persistent data volume: comfy-cli-data
     • CUDA support for NVIDIA GPUs
     • ROCm support for AMD GPUs
     • XPU support for Intel GPUs
     • CPU fallback mode
+
+PYTORCH INSTALLATION MODES:
+    ┌──────────────────┬─────────────────────────────────────────┐
+    │ Mode             │ PyTorch Version                         │
+    ├──────────────────┼─────────────────────────────────────────┤
+    │ NVIDIA (auto)    │ Based on driver version detection       │
+    │ NVIDIA (-nu)     │ CUDA 12.6 (torch==2.9.0)                │
+    │ AMD              │ ROCm 6.4                                │
+    │ Intel            │ XPU                                     │
+    │ CPU              │ CPU-only version                        │
+    └──────────────────┴─────────────────────────────────────────┘
 
 VOLUME STRUCTURE:
     • /app/comfy-ui          - ComfyUI installation
@@ -89,7 +105,8 @@ TROUBLESHOOTING:
     • Check Docker is running: docker info
     • Test GPU access: docker run --gpus all nvidia/cuda:13.0-base nvidia-smi
     • Check container status: docker ps -a
-    • View detailed logs: ${0##*/} logs
+    • View detailed logs: $0 logs
+    • Use -nu flag for NVIDIA compatibility issues
 
 PERSISTENT DATA:
     Data is preserved in Docker volume 'comfy-cli-data'
@@ -108,6 +125,7 @@ HOST_PORT="8188"
 CONTAINER_PORT="8188"
 USE_GPU=false
 HOST_VOLUME=""
+FORCE_CUDA126=false
 
 # Parse command line arguments
 parse_arguments() {
@@ -126,6 +144,10 @@ parse_arguments() {
         case "$1" in
             -g|--gpu)
                 USE_GPU=true
+                shift
+                ;;
+            -nu|--nvidia-universal)
+                FORCE_CUDA126=true
                 shift
                 ;;
             -p|--port)
@@ -173,6 +195,7 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     ocl-icd-libopencl1 \
     clinfo \
+    pciutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories for persistence
@@ -182,6 +205,8 @@ RUN mkdir -p /app/comfy-ui /app/models /app/output /app/config
 COPY --chmod=755 << 'EOF' /app/detect_gpu.sh
 #!/bin/bash
 
+FORCE_CUDA126="${FORCE_CUDA126:-false}"
+
 detect_and_install_pytorch() {
     echo "🔍 Detecting GPU hardware..."
     
@@ -189,19 +214,42 @@ detect_and_install_pytorch() {
     if command -v nvidia-smi &> /dev/null && nvidia-smi > /dev/null 2>&1; then
         echo "✅ NVIDIA GPU detected"
         
-        # Get CUDA version from nvidia-smi
-        CUDA_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)
-        
-        if [[ "$CUDA_VERSION" -ge 12 ]]; then
-            echo "⬇️ Installing PyTorch with CUDA 12.6"
+        # NVIDIA Universal mode (force CUDA 12.6)
+        if [ "$FORCE_CUDA126" = "true" ]; then
+            echo "🔧 Using NVIDIA Universal mode (CUDA 12.6)"
+            echo "⬇️ Installing PyTorch 2.9.0 with CUDA 12.6"
             pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
                 --index-url https://download.pytorch.org/whl/cu126
-        elif [[ "$CUDA_VERSION" -ge 11 ]]; then
-            echo "⬇️ Installing PyTorch with CUDA 11.8"
-            pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
-                --index-url https://download.pytorch.org/whl/cu118
+            return
+        fi
+        
+        # Auto-detect CUDA version based on driver
+        if command -v nvidia-smi &> /dev/null; then
+            DRIVER_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
+            echo "📊 NVIDIA Driver version: $DRIVER_VERSION"
+            
+            # Extract major version
+            DRIVER_MAJOR=$(echo "$DRIVER_VERSION" | cut -d. -f1)
+            
+            if [ "$DRIVER_MAJOR" -ge 535 ]; then  # Driver 535+
+                echo "⬇️ Installing PyTorch with CUDA 12.6 (latest)"
+                pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+                    --index-url https://download.pytorch.org/whl/cu126
+            elif [ "$DRIVER_MAJOR" -ge 525 ]; then  # Driver 525-534
+                echo "⬇️ Installing PyTorch with CUDA 11.8"
+                pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+                    --index-url https://download.pytorch.org/whl/cu118
+            elif [ "$DRIVER_MAJOR" -ge 470 ]; then  # Driver 470-524
+                echo "⬇️ Installing PyTorch with CUDA 11.3"
+                pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+                    --index-url https://download.pytorch.org/whl/cu113
+            else
+                echo "⚠️ Old NVIDIA driver, using CUDA 12.6 as fallback"
+                pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+                    --index-url https://download.pytorch.org/whl/cu126
+            fi
         else
-            echo "⬇️ Installing PyTorch with CUDA 12.6 (fallback)"
+            echo "⬇️ Installing PyTorch with CUDA 12.6 (auto-fallback)"
             pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
                 --index-url https://download.pytorch.org/whl/cu126
         fi
@@ -232,6 +280,13 @@ EOF
 # Copy requirements and setup script
 COPY --chmod=755 << 'EOF' /app/setup_comfy.sh
 #!/bin/bash
+
+# Set FORCE_CUDA126 from environment variable
+export FORCE_CUDA126="${FORCE_CUDA126:-false}"
+
+echo "🔧 Configuration:"
+echo "   - FORCE_CUDA126: $FORCE_CUDA126"
+echo "   - NVIDIA Universal mode: $( [ "$FORCE_CUDA126" = "true" ] && echo "ENABLED" || echo "DISABLED" )"
 
 # Source GPU detection script
 source /app/detect_gpu.sh
@@ -265,29 +320,47 @@ pip install \
     aiohttp
 
 echo "✅ ComfyUI setup complete!"
+echo "📊 Installed PyTorch version: $(python -c "import torch; print(torch.__version__)")"
+if command -v nvidia-smi &> /dev/null; then
+    echo "🎮 CUDA available: $(python -c "import torch; print(torch.cuda.is_available())")"
+fi
 EOF
 
 # Copy entrypoint script
 COPY --chmod=755 << 'EOF' /app/entrypoint.sh
 #!/bin/bash
 
+# Export environment variables for GPU detection
+export FORCE_CUDA126="${FORCE_CUDA126:-false}"
+
+echo "🚀 Starting ComfyUI Docker Container"
+echo "===================================="
+echo "Python version: $(python --version)"
+echo "FORCE_CUDA126: $FORCE_CUDA126"
+echo "Working directory: $(pwd)"
+echo ""
+
 # Initialize ComfyUI if not already done
 if [ ! -d "/app/comfy-ui" ] || [ ! "$(ls -A /app/comfy-ui)" ]; then
-    echo "🔄 Initializing ComfyUI..."
+    echo "🔄 Initializing ComfyUI for the first time..."
     comfy-cli install /app/comfy-ui
 fi
 
 # Run setup script
 source /app/setup_comfy.sh
 
-echo "🚀 Starting ComfyUI..."
-echo "📊 Environment: Python $(python --version)"
-echo "📁 Working directory: /app/comfy-ui"
+echo ""
+echo "✅ Environment ready!"
+echo "🌐 Web UI accessible at: http://localhost:${HOST_PORT:-8188}"
+echo "💡 Use 'docker exec -it ${CONTAINER_NAME:-comfy-cli} /bin/bash' for shell access"
+echo ""
 
 # Execute passed command or start comfy-cli
 if [ $# -gt 0 ]; then
+    echo "⚡ Executing: $@"
     exec "$@"
 else
+    echo "⚡ Starting ComfyUI CLI..."
     exec comfy-cli "$@"
 fi
 EOF
@@ -299,6 +372,9 @@ ENV PIP_NO_CACHE_DIR=1
 ENV COMFYUI_PATH=/app/comfy-ui
 ENV MODEL_PATH=/app/models
 ENV OUTPUT_PATH=/app/output
+ENV HOST_PORT=8188
+ENV CONTAINER_NAME=comfy-cli
+ENV FORCE_CUDA126=false
 
 # Set entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]
@@ -308,6 +384,11 @@ DOCKERFILE
     # Build the Docker image
     if docker build -t "$IMAGE_NAME" .; then
         echo "✅ Docker image built successfully: $IMAGE_NAME"
+        echo "📦 Image includes:"
+        echo "   • Python 3.13"
+        echo "   • NVIDIA Universal mode support (-nu flag)"
+        echo "   • Automatic GPU detection"
+        echo "   • ComfyUI CLI pre-configured"
     else
         echo "❌ Failed to build Docker image"
         exit 1
@@ -359,6 +440,13 @@ run_container() {
     # Build GPU arguments
     GPU_ARGS=$(build_gpu_args)
     
+    # Set environment variables
+    ENV_VARS=""
+    if [ "$FORCE_CUDA126" = true ]; then
+        ENV_VARS="$ENV_VARS -e FORCE_CUDA126=true"
+        echo "🔧 NVIDIA Universal mode enabled (CUDA 12.6)"
+    fi
+    
     # Check if container already exists
     if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "⚠️ Container '$CONTAINER_NAME' already exists"
@@ -368,10 +456,23 @@ run_container() {
             docker rm "$CONTAINER_NAME" 2>/dev/null
         else
             echo "Starting existing container..."
+            # Update environment if needed
+            if [ "$FORCE_CUDA126" = true ]; then
+                echo "⚠️ Note: FORCE_CUDA126 requires container restart to take effect"
+            fi
             docker start -ai "$CONTAINER_NAME"
             return
         fi
     fi
+    
+    echo "📋 Container configuration:"
+    echo "   Name: $CONTAINER_NAME"
+    echo "   Port: $HOST_PORT:$CONTAINER_PORT"
+    echo "   GPU: $( [ "$USE_GPU" = true ] && echo "Enabled" || echo "Disabled" )"
+    echo "   NVIDIA Universal: $( [ "$FORCE_CUDA126" = true ] && echo "Enabled (CUDA 12.6)" || echo "Disabled" )"
+    echo "   Volume: $DATA_VOLUME"
+    [ -n "$HOST_VOLUME" ] && echo "   Host Volume: $HOST_VOLUME"
+    echo ""
     
     # Run the container
     docker run -it --rm \
@@ -381,8 +482,12 @@ run_container() {
         $VOLUME_MOUNTS \
         -e HOST_UID=$(id -u) \
         -e HOST_GID=$(id -g) \
+        -e HOST_PORT="$HOST_PORT" \
+        -e CONTAINER_NAME="$CONTAINER_NAME" \
+        -e FORCE_CUDA126="$FORCE_CUDA126" \
         -e NVIDIA_VISIBLE_DEVICES=all \
         -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+        $ENV_VARS \
         "$IMAGE_NAME"
 }
 
@@ -454,11 +559,45 @@ purge_all() {
     echo "✅ All resources purged"
 }
 
+# Test NVIDIA Universal mode
+test_nvidia_universal() {
+    echo "🧪 Testing NVIDIA Universal mode..."
+    if command -v nvidia-smi &> /dev/null; then
+        echo "✅ NVIDIA GPU detected"
+        echo "📊 Running test with CUDA 12.6..."
+        
+        # Create a test container
+        docker run --rm --gpus all \
+            -e FORCE_CUDA126=true \
+            python:3.13-slim \
+            bash -c "
+            pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+                --index-url https://download.pytorch.org/whl/cu126 &&
+            python -c \"
+import torch
+print(f'PyTorch version: {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+if torch.cuda.is_available():
+    print(f'CUDA version: {torch.version.cuda}')
+    print(f'GPU: {torch.cuda.get_device_name(0)}')
+\"
+            "
+    else
+        echo "⚠️ No NVIDIA GPU detected"
+    fi
+}
+
 # Main execution
 main() {
     # Show help if requested
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
         show_help
+    fi
+    
+    # Special test command
+    if [[ "$1" == "test-nu" ]]; then
+        test_nvidia_universal
+        exit 0
     fi
     
     parse_arguments "$@"
