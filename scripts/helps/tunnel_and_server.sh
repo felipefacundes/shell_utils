@@ -10,7 +10,8 @@ tunnel_and_server() {
 		Exemplos:
 
 		# Servidor do ComfyManager:
-        
+
+		ssh-keygen -t rsa -b 4096 -C "seu_email@exemplo.com"
 		comfy-cli launch --background
 		ssh -p 443 -R0:localhost:8188 a.pinggy.io
 
@@ -26,6 +27,7 @@ tunnel_and_server() {
 
 		# ComfyManager server:
 
+		ssh-keygen -t rsa -b 4096 -C "seu_email@exemplo.com"
 		comfy-cli launch --background
 		ssh -p 443 -R0:localhost:8188 a.pinggy.io
 

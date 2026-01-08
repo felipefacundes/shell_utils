@@ -94,12 +94,13 @@ gpu_detect() {
 if [[ ! -d "$py_venv" ]]; then
     python -m venv "$py_venv"
     if [[ ! -d "$py_venv" ]]; then
-        mkdir -p "$py_root"
-        cp -f ~/.shell_utils/scripts/utilities/python/python_venv.tar.zst "$py_root"
-        cd "$py_root" || true
-        tar -xf python_venv.tar.zst
-        mv python_venv "$py_base"
-        rm python_venv.tar.zst
+        mkdir -p "$py_venv"
+        # mkdir -p "$py_root"
+        # cp -f ~/.shell_utils/scripts/utilities/python/python_venv.tar.zst "$py_root"
+        # cd "$py_root" || true
+        # tar -xf python_venv.tar.zst
+        # mv python_venv "$py_base"
+        # rm python_venv.tar.zst
     fi
     cd "$py_venv" || true
     wget https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
