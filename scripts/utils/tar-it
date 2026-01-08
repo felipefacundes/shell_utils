@@ -6,12 +6,12 @@
 A utility to facilitate the use of the TAR command
 DOCUMENTATION
 
-file="$1"
+directory="$1"
 
-if [[ ! -d "$1" ]]; then
+if [[ ! -d "$directory" ]]; then
 	echo "${0##*/} file or directory"
 	echo "Or"
     echo 'tar -cf file_name.tar file_or_dir'
 else
-    tar -cf "${file%.*}.tar" "$file"
+    tar -cf "${directory%.*}.tar" "$directory"
 fi

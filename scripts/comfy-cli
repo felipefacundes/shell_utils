@@ -11,6 +11,93 @@ py_venv="${py_root}/${py_base}"
 activate="${py_venv}/bin/activate"
 arg="$1"
 
+# Function to display help menu
+show_help() {
+    cat << EOF
+
+╔══════════════════════════════════════════════════════════════╗
+║                  COMFY-CLI INSTALLATION SCRIPT               ║
+║                     Automated Setup Helper                   ║
+╚══════════════════════════════════════════════════════════════╝
+
+DESCRIPTION:
+    This script automates the installation of ComfyUI CLI with
+    automatic GPU detection and appropriate PyTorch installation.
+
+USAGE:
+    ${0##*/} [OPTION]
+
+OPTIONS:
+    -h, --help              Display this help menu
+    -nu, --nvidia-universal Use CUDA 12.6 as universal fallback for NVIDIA
+                            (Useful for compatibility issues)
+    [no arguments]          Normal installation with auto GPU detection
+
+FUNCTIONS:
+    • Creates Python virtual environment at: ~/.python/comfy-cli/
+    • Automatically detects GPU type (NVIDIA/AMD/Intel/CPU)
+    • Installs appropriate PyTorch version for your hardware
+    • Installs ComfyUI CLI and dependencies
+    • Launches comfy-cli after installation
+
+GPU SUPPORT:
+    ┌──────────────────┬─────────────────────────────┐
+    │ GPU Type         │ PyTorch Version             │
+    ├──────────────────┼─────────────────────────────┤
+    │ NVIDIA (new)     │ CUDA 13.0                   │
+    │ NVIDIA (medium)  │ CUDA 12.8                   │
+    │ NVIDIA (fallback)│ CUDA 12.6 (with -nu flag)  │
+    │ AMD              │ ROCm 6.4                    │
+    │ Intel            │ XPU                         │
+    │ CPU only         │ CPU version                 │
+    └──────────────────┴─────────────────────────────┘
+
+EXAMPLES:
+    # Normal installation with auto-detection
+    ${0##*/}
+    
+    # Force CUDA 12.6 for NVIDIA (compatibility mode)
+    ${0##*/} -nu
+    
+    # Show help
+    ${0##*/} --help
+
+INSTALLATION LOCATION:
+    • Virtual Environment: ${py_venv}
+    • Activation script: ${activate}
+    • To activate manually: source ${activate}
+
+TROUBLESHOOTING:
+    • If installation fails, remove the directory and retry:
+      rm -rf ${py_venv}
+    
+    • To check GPU detection:
+      lspci | grep -E "VGA|3D"
+    
+    • Manual environment activation:
+      source ${activate}
+      comfy-cli --help
+
+NOTES:
+    • Requires: python3, pip, wget
+    • First run creates virtual environment (takes a few minutes)
+    • Subsequent runs will directly launch comfy-cli
+    • All dependencies are installed in isolated virtual environment
+
+LINKS:
+    • ComfyUI GitHub: https://github.com/comfyanonymous/ComfyUI
+    • Tutorial Video: https://www.youtube.com/watch?v=TLE9NmN_sxw
+
+EOF
+    exit 0
+}
+
+# Check for help argument
+if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+    show_help
+fi
+
+# Rest of the original script continues here...
 if [[ "$arg" == "-nu" || "$arg" == "--nvidia-universal" ]]; then
     export nv_universal=1
 fi
@@ -95,12 +182,6 @@ if [[ ! -d "$py_venv" ]]; then
     python -m venv "$py_venv"
     if [[ ! -d "$py_venv" ]]; then
         mkdir -p "$py_venv"
-        # mkdir -p "$py_root"
-        # cp -f ~/.shell_utils/scripts/utilities/python/python_venv.tar.zst "$py_root"
-        # cd "$py_root" || true
-        # tar -xf python_venv.tar.zst
-        # mv python_venv "$py_base"
-        # rm python_venv.tar.zst
     fi
     cd "$py_venv" || true
     wget https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
