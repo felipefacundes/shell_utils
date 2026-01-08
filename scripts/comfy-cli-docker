@@ -23,15 +23,16 @@ USAGE:
     $0 [COMMAND] [OPTIONS]
 
 COMMANDS:
-    run         Start ComfyUI CLI in Docker container (default if no command)
+    run         Start ComfyUI CLI in Docker container (first-time setup)
     build       Build Docker image with Python 3.13
-    shell       Open interactive shell in container
+    shell       Open interactive shell in running container
     stop        Stop running container
     logs        View container logs
     clean       Remove container and images (keeps data volume)
     purge       Remove everything including data volume
     status      Check container status
     exec        Execute comfy-cli command in running container
+    launch      Launch ComfyUI in background (convenience command)
     help        Show this help message
 
 OPTIONS for 'run' command:
@@ -50,6 +51,9 @@ EXAMPLES:
     $0 exec --help
     $0 exec install some-custom-node
     
+    # Convenience command to launch ComfyUI
+    $0 launch --gpu
+    
     # Mount custom models directory
     $0 run --gpu -nu --volume ./my-models:/app/models
     
@@ -59,43 +63,11 @@ EXAMPLES:
     # Open shell in running container
     $0 shell
 
-USAGE AFTER INSTALLATION:
-    Once the container is set up, use these commands:
-    
-    • Start ComfyUI in background: $0 exec launch --background
-    • Show comfy-cli help:         $0 exec --help
-    • Install custom nodes:        $0 exec install <node-name>
-    • Update ComfyUI:              $0 exec update
-    • Open shell:                  $0 shell
-    • View logs:                   $0 logs
-    • Stop:                        $0 stop
-
-DOCKER IMAGE FEATURES:
-    • Python 3.13 with latest pip
-    • Automatic GPU detection and PyTorch installation
-    • NVIDIA Universal mode (-nu) for CUDA 12.6 compatibility
-    • Persistent data volume: comfy-cli-data
-    • CUDA support for NVIDIA GPUs
-    • ROCm support for AMD GPUs
-    • XPU support for Intel GPUs
-    • CPU fallback mode
-
-PYTORCH INSTALLATION MODES:
-    ┌──────────────────┬─────────────────────────────────────────┐
-    │ Mode             │ PyTorch Version                         │
-    ├──────────────────┼─────────────────────────────────────────┤
-    │ NVIDIA (auto)    │ Based on driver version detection       │
-    │ NVIDIA (-nu)     │ CUDA 12.6 (torch==2.9.0)                │
-    │ AMD              │ ROCm 6.4                                │
-    │ Intel            │ XPU                                     │
-    │ CPU              │ CPU-only version                        │
-    └──────────────────┴─────────────────────────────────────────┘
-
-VOLUME STRUCTURE:
-    • /app/comfy-ui          - ComfyUI installation
-    • /app/models            - AI models storage
-    • /app/output            - Generated outputs
-    • /app/config            - Configuration files
+WORKFLOW:
+    1. First time: $0 run --gpu -nu            (installs everything)
+    2. After:      $0 exec launch --background (starts ComfyUI)
+    3. Or use:     $0 launch --gpu             (convenience command)
+    4. Manage:     $0 status, $0 shell, $0 stop
 
 EOF
     exit 0
@@ -112,13 +84,14 @@ HOST_VOLUME=""
 FORCE_CUDA126=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_CONTEXT="${SCRIPT_DIR}/docker-context"
+CACHE_DIR="${HOME}/.cache/comfy-cli-docker"
 
 # Parse command line arguments
 parse_arguments() {
     COMMAND="${1:-run}"
     
     case "$COMMAND" in
-        run|build|shell|stop|logs|clean|purge|status|exec|help)
+        run|build|shell|stop|logs|clean|purge|status|exec|launch|help)
             shift
             ;;
         *)
@@ -162,6 +135,45 @@ parse_arguments() {
     done
 }
 
+# Create cache directory
+create_cache_dir() {
+    mkdir -p "$CACHE_DIR"
+}
+
+# Save installation state to cache
+save_installation_state() {
+    create_cache_dir
+    echo "✅ Saving installation state to cache..."
+    echo "INSTALLATION_COMPLETE=true" > "$CACHE_DIR/state"
+    echo "IMAGE_NAME=$IMAGE_NAME" >> "$CACHE_DIR/state"
+    echo "DATA_VOLUME=$DATA_VOLUME" >> "$CACHE_DIR/state"
+    echo "CONTAINER_NAME=$CONTAINER_NAME" >> "$CACHE_DIR/state"
+    echo "INSTALLED_AT=$(date)" >> "$CACHE_DIR/state"
+}
+
+# Check if installation is complete (from cache)
+is_installation_complete() {
+    if [[ -f "$CACHE_DIR/state" ]]; then
+        source "$CACHE_DIR/state" 2>/dev/null
+        if [[ "$INSTALLATION_COMPLETE" == "true" ]]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Check if Docker volume contains ComfyUI installation
+is_comfyui_installed_in_volume() {
+    # Create a temporary container to check volume contents
+    if docker volume inspect "$DATA_VOLUME" &>/dev/null; then
+        # Check if comfy-ui directory exists in volume
+        if docker run --rm -v "${DATA_VOLUME}:/app" alpine ls -la /app/comfy-ui 2>/dev/null | grep -q "requirements.txt"; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # Check if container is running
 is_container_running() {
     docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"
@@ -172,6 +184,13 @@ show_status() {
     echo "📊 ComfyUI Docker Status"
     echo "========================"
     
+    # Check cache
+    if is_installation_complete; then
+        echo "✅ Installation: COMPLETE (cached)"
+    else
+        echo "⚠️ Installation: NOT COMPLETE"
+    fi
+    
     # Check if image exists
     if docker image inspect "$IMAGE_NAME" &> /dev/null; then
         echo "✅ Docker image: $IMAGE_NAME"
@@ -179,9 +198,13 @@ show_status() {
         echo "⚠️ Docker image: $IMAGE_NAME (not built)"
     fi
     
-    # Check if volume exists
+    # Check if volume exists and has ComfyUI
     if docker volume inspect "$DATA_VOLUME" &> /dev/null; then
-        echo "✅ Data volume: $DATA_VOLUME"
+        if is_comfyui_installed_in_volume; then
+            echo "✅ Data volume: $DATA_VOLUME (ComfyUI installed)"
+        else
+            echo "⚠️ Data volume: $DATA_VOLUME (empty)"
+        fi
     else
         echo "⚠️ Data volume: $DATA_VOLUME (not created)"
     fi
@@ -196,18 +219,22 @@ show_status() {
         echo ""
         echo "🚀 Available commands:"
         echo "   $0 exec launch --background    # Start ComfyUI"
+        echo "   $0 launch --gpu                # Convenience command"
         echo "   $0 shell                       # Open shell"
         echo "   $0 logs                        # View logs"
-        echo "   $0 exec --help                 # Show comfy-cli help"
         echo "   $0 stop                        # Stop container"
     elif docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "⏸️  Container: $CONTAINER_NAME (STOPPED)"
         echo ""
-        echo "💡 Start it with: $0 run --gpu"
+        echo "💡 Start it with: $0 run --gpu (or $0 launch --gpu)"
     else
         echo "❌ Container: $CONTAINER_NAME (NOT CREATED)"
         echo ""
-        echo "💡 Create it with: $0 run --gpu -nu"
+        if is_installation_complete; then
+            echo "💡 Start it with: $0 run --gpu (quick start, no reinstall)"
+        else
+            echo "💡 Install it with: $0 run --gpu -nu"
+        fi
     fi
 }
 
@@ -215,13 +242,110 @@ show_status() {
 exec_comfy_cli() {
     if ! is_container_running; then
         echo "❌ Container '$CONTAINER_NAME' is not running"
-        echo "💡 Start it first with: $0 run --gpu"
+        echo ""
+        if is_installation_complete; then
+            echo "💡 Quick start (no reinstall): $0 launch --gpu"
+        else
+            echo "💡 First install with: $0 run --gpu -nu"
+        fi
         exit 1
     fi
     
     echo "🚀 Executing: comfy-cli $COMFY_CLI_ARGS"
     echo ""
     docker exec -it "$CONTAINER_NAME" comfy-cli $COMFY_CLI_ARGS
+}
+
+# Convenience command to launch ComfyUI
+launch_comfyui() {
+    echo "🚀 Launching ComfyUI..."
+    
+    # Check if installation is complete
+    if ! is_installation_complete && ! is_comfyui_installed_in_volume; then
+        echo "❌ ComfyUI is not installed yet!"
+        echo "💡 First run: $0 run --gpu -nu"
+        exit 1
+    fi
+    
+    # Check if container is already running
+    if is_container_running; then
+        echo "✅ ComfyUI is already running!"
+        show_status
+        return
+    fi
+    
+    # Start container in background (detached)
+    echo "🐳 Starting container in background mode..."
+    
+    # Build volume mounts
+    VOLUME_MOUNTS="-v ${DATA_VOLUME}:/app"
+    
+    if [ -n "$HOST_VOLUME" ]; then
+        if [ -d "$HOST_VOLUME" ]; then
+            VOLUME_MOUNTS="$VOLUME_MOUNTS -v $(realpath "$HOST_VOLUME"):/app/shared"
+            echo "📂 Mounting host directory: $HOST_VOLUME → /app/shared"
+        else
+            echo "⚠️ Host volume directory does not exist: $HOST_VOLUME"
+        fi
+    fi
+    
+    # Build GPU arguments
+    GPU_ARGS=$(build_gpu_args)
+    
+    # Set environment variables
+    ENV_VARS=""
+    if [ "$FORCE_CUDA126" = true ]; then
+        ENV_VARS="$ENV_VARS -e FORCE_CUDA126=true"
+        echo "🔧 NVIDIA Universal mode enabled (CUDA 12.6)"
+    fi
+    
+    # Remove existing stopped container
+    if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        echo "🧹 Removing old container..."
+        docker rm "$CONTAINER_NAME" 2>/dev/null
+    fi
+    
+    # Create data volume if it doesn't exist
+    if ! docker volume inspect "$DATA_VOLUME" &> /dev/null; then
+        echo "📁 Creating data volume: $DATA_VOLUME"
+        docker volume create "$DATA_VOLUME"
+    fi
+    
+    echo "📋 Launch configuration:"
+    echo "   Name: $CONTAINER_NAME"
+    echo "   Port: $HOST_PORT → $CONTAINER_PORT"
+    echo "   GPU: $( [ "$USE_GPU" = true ] && echo "Enabled" || echo "Disabled" )"
+    echo "   Mode: Quick start (no reinstall)"
+    echo ""
+    
+    # Run container in detached mode with comfy-cli launch command
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        -p "$HOST_PORT:$CONTAINER_PORT" \
+        $GPU_ARGS \
+        $VOLUME_MOUNTS \
+        -e HOST_UID=$(id -u) \
+        -e HOST_GID=$(id -g) \
+        -e HOST_PORT="$HOST_PORT" \
+        -e CONTAINER_NAME="$CONTAINER_NAME" \
+        -e FORCE_CUDA126="$FORCE_CUDA126" \
+        -e INSTALLATION_COMPLETE=true \
+        -e NVIDIA_VISIBLE_DEVICES=all \
+        -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+        $ENV_VARS \
+        "$IMAGE_NAME" \
+        comfy-cli launch --background
+    
+    # Wait a bit for startup
+    echo "⏳ Waiting for ComfyUI to start..."
+    sleep 3
+    
+    # Show status
+    show_status
+    
+    echo ""
+    echo "✅ ComfyUI launched!"
+    echo "🌐 Open your browser to: http://localhost:$HOST_PORT"
 }
 
 # Create Docker context directory
@@ -372,24 +496,41 @@ detect_and_install_pytorch() {
 detect_and_install_pytorch
 SCRIPT_EOF
     
-    # Create setup_comfy.sh (WITH CACHE CHECK)
+    # Create setup_comfy.sh (OPTIMIZED - checks volume cache)
     cat > "$DOCKER_CONTEXT/scripts/setup_comfy.sh" << 'SCRIPT_EOF'
 #!/bin/bash
 
-# Check if installation is already complete
-if [ -f "/app/.installation_complete" ] && [ "$(cat /app/.installation_complete)" = "true" ]; then
-    echo "✅ Installation already complete. Skipping setup."
-    echo "📊 Installed PyTorch version: $(python -c "import torch; print(torch.__version__)")"
-    if command -v nvidia-smi &> /dev/null; then
-        echo "🎮 CUDA available: $(python -c "import torch; print(torch.cuda.is_available())")"
+# Check if INSTALLATION_COMPLETE is set to true
+if [ "$INSTALLATION_COMPLETE" = "true" ]; then
+    echo "✅ Skipping installation (INSTALLATION_COMPLETE=true)"
+    echo "📊 Checking existing installation..."
+    
+    # Verify PyTorch is installed
+    if python -c "import torch; print(f'PyTorch: {torch.__version__}')" &>/dev/null; then
+        echo "✅ PyTorch already installed"
+    else
+        echo "⚠️ PyTorch not found, installing..."
+        source /app/detect_gpu.sh
     fi
+    
+    # Verify comfy-cli is installed
+    if command -v comfy-cli &>/dev/null; then
+        echo "✅ comfy-cli already installed"
+    else
+        echo "⚠️ comfy-cli not found, installing..."
+        pip install comfy-cli
+    fi
+    
     exit 0
 fi
+
+# First-time installation
+echo "🔧 First-time ComfyUI installation..."
 
 # Set FORCE_CUDA126 from environment variable
 export FORCE_CUDA126="${FORCE_CUDA126:-false}"
 
-echo "🔧 Configuration:"
+echo "📊 Configuration:"
 echo "   - FORCE_CUDA126: $FORCE_CUDA126"
 echo "   - NVIDIA Universal mode: $( [ "$FORCE_CUDA126" = "true" ] && echo "ENABLED" || echo "DISABLED" )"
 
@@ -437,10 +578,6 @@ pip install \
     kornia \
     rich
 
-# Mark installation as complete
-echo "true" > /app/.installation_complete
-chmod 644 /app/.installation_complete
-
 echo "✅ ComfyUI setup complete!"
 echo "📊 Installed PyTorch version: $(python -c "import torch; print(torch.__version__)")"
 if command -v nvidia-smi &> /dev/null; then
@@ -454,9 +591,12 @@ if torch.cuda.is_available():
     print(f'GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB')
 "
 fi
+
+# Mark installation as complete in container
+export INSTALLATION_COMPLETE=true
 SCRIPT_EOF
     
-    # Create entrypoint.sh (OPTIMIZED - doesn't reinstall)
+    # Create entrypoint.sh (OPTIMIZED - checks installation state)
     cat > "$DOCKER_CONTEXT/scripts/entrypoint.sh" << 'SCRIPT_EOF'
 #!/bin/bash
 
@@ -467,26 +607,16 @@ echo "🚀 ComfyUI Docker Container"
 echo "==========================="
 echo "Python version: $(python --version)"
 echo "FORCE_CUDA126: $FORCE_CUDA126"
-echo "Working directory: $(pwd)"
+echo "INSTALLATION_COMPLETE: ${INSTALLATION_COMPLETE:-false}"
 echo ""
 
-# Check for GPU
-if command -v nvidia-smi &> /dev/null; then
-    echo "✅ NVIDIA GPU detected"
-elif [[ -d "/dev/dri" ]]; then
-    echo "✅ AMD/Intel GPU available"
-else
-    echo "ℹ️  Running in CPU mode"
-fi
-
-# Check if ComfyUI is installed
+# Check if ComfyUI directory exists in volume
 if [ ! -d "/app/comfy-ui" ] || [ ! "$(ls -A /app/comfy-ui)" ]; then
-    echo ""
     echo "🔄 First-time setup: Installing ComfyUI..."
     comfy-cli install /app/comfy-ui --force
 fi
 
-# Run setup script (will skip if already installed)
+# Run setup script (will skip if INSTALLATION_COMPLETE=true)
 source /app/setup_comfy.sh
 
 echo ""
@@ -499,9 +629,13 @@ echo ""
 echo "🌐 Once started, access at: http://localhost:${HOST_PORT:-8188}"
 echo ""
 
-# If no arguments, show help
+# If no arguments, show help and start bash
 if [ $# -eq 0 ]; then
-    echo "⚡ To start ComfyUI, run: comfy-cli launch --background"
+    if [ "$INSTALLATION_COMPLETE" = "true" ]; then
+        echo "⚡ Quick start: comfy-cli launch --background"
+    else
+        echo "⚡ Installation complete! You can now run comfy-cli commands"
+    fi
     echo "📚 For more options: comfy-cli --help"
     echo ""
     # Start bash shell
@@ -527,12 +661,7 @@ build_image() {
     echo "🔨 Building image '$IMAGE_NAME'..."
     if docker build --progress=plain -t "$IMAGE_NAME" "$DOCKER_CONTEXT"; then
         echo "✅ Docker image built successfully: $IMAGE_NAME"
-        echo "📦 Image includes:"
-        echo "   • Python 3.13"
-        echo "   • NVIDIA Universal mode support (-nu flag)"
-        echo "   • Automatic GPU detection"
-        echo "   • ComfyUI CLI pre-configured"
-        echo "   • Installation caching (won't reinstall)"
+        echo "📦 Image includes smart installation caching"
         
         # Show image details
         echo ""
@@ -565,9 +694,26 @@ build_gpu_args() {
     fi
 }
 
-# Run container (interactive mode - for first-time setup)
+# Run container (first-time setup)
 run_container() {
-    echo "🚀 Starting ComfyUI container..."
+    echo "🚀 ComfyUI Docker Setup"
+    echo "======================"
+    
+    # Check if already installed
+    if is_installation_complete || is_comfyui_installed_in_volume; then
+        echo "✅ ComfyUI is already installed!"
+        echo ""
+        echo "💡 Use these commands instead:"
+        echo "   $0 launch --gpu               # Quick start"
+        echo "   $0 exec launch --background   # Start ComfyUI"
+        echo "   $0 shell                      # Open shell"
+        echo ""
+        read -p "Continue with fresh installation? (y/N): " response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            echo "Operation cancelled."
+            return
+        fi
+    fi
     
     # Check if image exists
     if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
@@ -590,45 +736,22 @@ run_container() {
     # Build GPU arguments
     GPU_ARGS=$(build_gpu_args)
     
-    # Set environment variables
+    # Set environment variables (FORCE installation)
     ENV_VARS=""
     if [ "$FORCE_CUDA126" = true ]; then
         ENV_VARS="$ENV_VARS -e FORCE_CUDA126=true"
         echo "🔧 NVIDIA Universal mode enabled (CUDA 12.6)"
     fi
     
-    # Check if container already exists and is stopped
-    if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        if is_container_running; then
-            echo "✅ Container '$CONTAINER_NAME' is already running"
-            echo ""
-            echo "💡 Use these commands:"
-            echo "   $0 exec launch --background    # Start ComfyUI"
-            echo "   $0 shell                       # Open shell"
-            echo "   $0 status                      # Check status"
-            return
-        else
-            echo "⚠️ Container '$CONTAINER_NAME' exists but is stopped"
-            read -p "Start it? (Y/n): " response
-            if [[ "$response" =~ ^[Yy]$ ]] || [[ -z "$response" ]]; then
-                echo "Starting existing container..."
-                docker start -ai "$CONTAINER_NAME"
-                return
-            else
-                echo "Removing old container..."
-                docker rm "$CONTAINER_NAME" 2>/dev/null
-            fi
-        fi
-    fi
+    # Always set INSTALLATION_COMPLETE=false for first run
+    ENV_VARS="$ENV_VARS -e INSTALLATION_COMPLETE=false"
     
-    echo "📋 Container configuration:"
-    echo "   Name: $CONTAINER_NAME"
-    echo "   Port: $HOST_PORT:$CONTAINER_PORT"
-    echo "   GPU: $( [ "$USE_GPU" = true ] && echo "Enabled" || echo "Disabled" )"
-    echo "   NVIDIA Universal: $( [ "$FORCE_CUDA126" = true ] && echo "Enabled (CUDA 12.6)" || echo "Disabled" )"
-    echo "   Volume: $DATA_VOLUME"
-    [ -n "$HOST_VOLUME" ] && echo "   Host Volume: $HOST_VOLUME"
-    echo ""
+    # Remove existing container if any
+    if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        echo "🧹 Removing existing container..."
+        docker stop "$CONTAINER_NAME" 2>/dev/null
+        docker rm "$CONTAINER_NAME" 2>/dev/null
+    fi
     
     # Create data volume if it doesn't exist
     if ! docker volume inspect "$DATA_VOLUME" &> /dev/null; then
@@ -636,12 +759,26 @@ run_container() {
         docker volume create "$DATA_VOLUME"
     fi
     
-    echo "🐳 Starting Docker container..."
-    echo "💡 This will set up ComfyUI (first time only)"
-    echo "   After setup, use '$0 exec' to run comfy-cli commands"
     echo ""
+    echo "📋 Setup configuration:"
+    echo "   Name: $CONTAINER_NAME"
+    echo "   Port: $HOST_PORT:$CONTAINER_PORT"
+    echo "   GPU: $( [ "$USE_GPU" = true ] && echo "Enabled" || echo "Disabled" )"
+    echo "   NVIDIA Universal: $( [ "$FORCE_CUDA126" = true ] && echo "Enabled" || echo "Disabled" )"
+    echo "   Mode: First-time installation"
+    echo ""
+    echo "⚠️ This will install ComfyUI, PyTorch, and all dependencies."
+    echo "   It may take several minutes."
+    echo ""
+    read -p "Continue? (Y/n): " response
+    if [[ "$response" =~ ^[Nn]$ ]]; then
+        echo "Operation cancelled."
+        return
+    fi
     
-    # Run the container
+    echo "🐳 Starting installation..."
+    
+    # Run the container for installation
     docker run -it --rm \
         --name "$CONTAINER_NAME" \
         -p "$HOST_PORT:$CONTAINER_PORT" \
@@ -652,10 +789,26 @@ run_container() {
         -e HOST_PORT="$HOST_PORT" \
         -e CONTAINER_NAME="$CONTAINER_NAME" \
         -e FORCE_CUDA126="$FORCE_CUDA126" \
+        -e INSTALLATION_COMPLETE=false \
         -e NVIDIA_VISIBLE_DEVICES=all \
         -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
         $ENV_VARS \
         "$IMAGE_NAME"
+    
+    # Save installation state to cache
+    if [ $? -eq 0 ]; then
+        save_installation_state
+        echo ""
+        echo "🎉 Installation complete!"
+        echo "💡 Now you can use:"
+        echo "   $0 launch --gpu               # Quick start"
+        echo "   $0 exec launch --background   # Start ComfyUI"
+        echo "   $0 shell                      # Open shell"
+    else
+        echo ""
+        echo "⚠️ Installation may have encountered issues."
+        echo "   Check logs with: $0 logs"
+    fi
 }
 
 # Open shell in container
@@ -665,9 +818,10 @@ shell_container() {
         docker exec -it "$CONTAINER_NAME" /bin/bash
     else
         echo "⚠️ Container '$CONTAINER_NAME' is not running"
-        read -p "Start it first? (Y/n): " response
-        if [[ "$response" =~ ^[Yy]$ ]] || [[ -z "$response" ]]; then
-            run_container
+        if is_installation_complete; then
+            echo "💡 Quick start: $0 launch --gpu"
+        else
+            echo "💡 First install with: $0 run --gpu -nu"
         fi
     fi
 }
@@ -707,6 +861,9 @@ cleanup() {
         echo "ℹ️  Image not found"
     fi
     
+    # Clean up cache
+    rm -rf "$CACHE_DIR" 2>&1
+    
     # Clean up Docker context
     rm -rf "$DOCKER_CONTEXT" 2>&1
     
@@ -731,6 +888,9 @@ purge_all() {
         echo "ℹ️  Data volume not found"
     fi
     
+    # Clean up cache
+    rm -rf "$CACHE_DIR" 2>&1
+    
     # Clean up Docker context
     rm -rf "$DOCKER_CONTEXT" 2>&1
     
@@ -739,6 +899,9 @@ purge_all() {
 
 # Main execution
 main() {
+    # Create cache directory
+    create_cache_dir
+    
     # Show help if requested
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
         show_help
@@ -767,6 +930,9 @@ main() {
             ;;
         exec)
             exec_comfy_cli
+            ;;
+        launch)
+            launch_comfyui
             ;;
         clean)
             cleanup
