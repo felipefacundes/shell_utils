@@ -8,7 +8,7 @@ DOCUMENTATION
 
 file="$1"
 
-if [[ -z "$1" ]]; then
+if [[ ! -d "$1" ]]; then
 	echo "${0##*/} file or directory"
 	echo "Or"
     echo 'tar -cf file_name.tar file_or_dir'
