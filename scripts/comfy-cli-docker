@@ -20,7 +20,7 @@ DESCRIPTION:
     with Python 3.13, automatic GPU detection, and persistent storage.
 
 USAGE:
-    $0 [COMMAND] [OPTIONS]
+    ${0##*/} [COMMAND] [OPTIONS]
 
 COMMANDS:
     run         Start ComfyUI CLI in Docker container (first-time setup)
@@ -44,30 +44,30 @@ OPTIONS for 'run' command:
 
 EXAMPLES:
     # First time: Run container and install everything
-    $0 run --gpu -nu
+    ${0##*/} run --gpu -nu
     
     # After installation: Use comfy-cli commands
-    $0 exec launch --background
-    $0 exec --help
-    $0 exec install some-custom-node
+    ${0##*/} exec launch --background
+    ${0##*/} exec --help
+    ${0##*/} exec install some-custom-node
     
     # Convenience command to launch ComfyUI
-    $0 launch --gpu
+    ${0##*/} launch --gpu
     
     # Mount custom models directory
-    $0 run --gpu -nu --volume ./my-models:/app/models
+    ${0##*/} run --gpu -nu --volume ./my-models:/app/models
     
     # Check status
-    $0 status
+    ${0##*/} status
     
     # Open shell in running container
-    $0 shell
+    ${0##*/} shell
 
 WORKFLOW:
-    1. First time: $0 run --gpu -nu            (installs everything)
-    2. After:      $0 exec launch --background (starts ComfyUI)
-    3. Or use:     $0 launch --gpu             (convenience command)
-    4. Manage:     $0 status, $0 shell, $0 stop
+    1. First time: ${0##*/} run --gpu -nu            (installs everything)
+    2. After:      ${0##*/} exec launch --background (starts ComfyUI)
+    3. Or use:     ${0##*/} launch --gpu             (convenience command)
+    4. Manage:     ${0##*/} status, ${0##*/} shell, ${0##*/} stop
 
 EOF
     exit 0
@@ -218,22 +218,22 @@ show_status() {
         echo "🌐 Access ComfyUI at: http://localhost:$HOST_PORT"
         echo ""
         echo "🚀 Available commands:"
-        echo "   $0 exec launch --background    # Start ComfyUI"
-        echo "   $0 launch --gpu                # Convenience command"
-        echo "   $0 shell                       # Open shell"
-        echo "   $0 logs                        # View logs"
-        echo "   $0 stop                        # Stop container"
+        echo "   ${0##*/} exec launch --background    # Start ComfyUI"
+        echo "   ${0##*/} launch --gpu                # Convenience command"
+        echo "   ${0##*/} shell                       # Open shell"
+        echo "   ${0##*/} logs                        # View logs"
+        echo "   ${0##*/} stop                        # Stop container"
     elif docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "⏸️  Container: $CONTAINER_NAME (STOPPED)"
         echo ""
-        echo "💡 Start it with: $0 run --gpu (or $0 launch --gpu)"
+        echo "💡 Start it with: ${0##*/} run --gpu (or ${0##*/} launch --gpu)"
     else
         echo "❌ Container: $CONTAINER_NAME (NOT CREATED)"
         echo ""
         if is_installation_complete; then
-            echo "💡 Start it with: $0 run --gpu (quick start, no reinstall)"
+            echo "💡 Start it with: ${0##*/} run --gpu (quick start, no reinstall)"
         else
-            echo "💡 Install it with: $0 run --gpu -nu"
+            echo "💡 Install it with: ${0##*/} run --gpu -nu"
         fi
     fi
 }
@@ -244,9 +244,9 @@ exec_comfy_cli() {
         echo "❌ Container '$CONTAINER_NAME' is not running"
         echo ""
         if is_installation_complete; then
-            echo "💡 Quick start (no reinstall): $0 launch --gpu"
+            echo "💡 Quick start (no reinstall): ${0##*/} launch --gpu"
         else
-            echo "💡 First install with: $0 run --gpu -nu"
+            echo "💡 First install with: ${0##*/} run --gpu -nu"
         fi
         exit 1
     fi
@@ -263,7 +263,7 @@ launch_comfyui() {
     # Check if installation is complete
     if ! is_installation_complete && ! is_comfyui_installed_in_volume; then
         echo "❌ ComfyUI is not installed yet!"
-        echo "💡 First run: $0 run --gpu -nu"
+        echo "💡 First run: ${0##*/} run --gpu -nu"
         exit 1
     fi
     
@@ -704,9 +704,9 @@ run_container() {
         echo "✅ ComfyUI is already installed!"
         echo ""
         echo "💡 Use these commands instead:"
-        echo "   $0 launch --gpu               # Quick start"
-        echo "   $0 exec launch --background   # Start ComfyUI"
-        echo "   $0 shell                      # Open shell"
+        echo "   ${0##*/} launch --gpu               # Quick start"
+        echo "   ${0##*/} exec launch --background   # Start ComfyUI"
+        echo "   ${0##*/} shell                      # Open shell"
         echo ""
         read -p "Continue with fresh installation? (y/N): " response
         if [[ ! "$response" =~ ^[Yy]$ ]]; then
@@ -801,13 +801,13 @@ run_container() {
         echo ""
         echo "🎉 Installation complete!"
         echo "💡 Now you can use:"
-        echo "   $0 launch --gpu               # Quick start"
-        echo "   $0 exec launch --background   # Start ComfyUI"
-        echo "   $0 shell                      # Open shell"
+        echo "   ${0##*/} launch --gpu               # Quick start"
+        echo "   ${0##*/} exec launch --background   # Start ComfyUI"
+        echo "   ${0##*/} shell                      # Open shell"
     else
         echo ""
         echo "⚠️ Installation may have encountered issues."
-        echo "   Check logs with: $0 logs"
+        echo "   Check logs with: ${0##*/} logs"
     fi
 }
 
@@ -819,9 +819,9 @@ shell_container() {
     else
         echo "⚠️ Container '$CONTAINER_NAME' is not running"
         if is_installation_complete; then
-            echo "💡 Quick start: $0 launch --gpu"
+            echo "💡 Quick start: ${0##*/} launch --gpu"
         else
-            echo "💡 First install with: $0 run --gpu -nu"
+            echo "💡 First install with: ${0##*/} run --gpu -nu"
         fi
     fi
 }
