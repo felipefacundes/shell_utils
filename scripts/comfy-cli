@@ -5,7 +5,9 @@
 # Tutorial: https://www.youtube.com/watch?v=TLE9NmN_sxw
 #           https://youtu.be/xWUddF5oMb0
 
-py_venv="${HOME}/.python/comfy-cli"
+py_base="comfy-cli"
+py_root="${HOME}/.python"
+py_venv="${py_root}/${py_base}"
 activate="${py_venv}/bin/activate"
 arg="$1"
 
@@ -91,6 +93,14 @@ gpu_detect() {
 
 if [[ ! -d "$py_venv" ]]; then
     python -m venv "$py_venv"
+    if [[ ! -d "$py_venv" ]]; then
+        mkdir -p "$py_root"
+        cp -f ~/.shell_utils/scripts/utilities/python/python_venv.tar.zst "$py_root"
+        cd "$py_root" || true
+        tar -xf python_venv.tar.zst
+        mv python_venv "$py_base"
+        rm python_venv.tar.zst
+    fi
     cd "$py_venv" || true
     wget https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
     #shellcheck source=/dev/null
@@ -101,7 +111,6 @@ if [[ ! -d "$py_venv" ]]; then
     pip install comfy-cli
     echo "✅ Environment configured. Running: comfy-cli install"
     comfy-cli install
-    [[ ! -d "$py_venv" ]] && mkdir -p "$py_venv"
 fi
 
 if [[ -z "$VIRTUAL_ENV" ]] && [[ -f "$activate" ]]; then
