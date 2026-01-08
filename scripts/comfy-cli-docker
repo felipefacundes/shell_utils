@@ -189,32 +189,22 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install system dependencies for Debian Trixie/Sid
+# Install system dependencies (fixed for Debian Trixie/Python 3.13)
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     git \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender1 \
-    libgl1 \
     libgomp1 \
     ocl-icd-libopencl1 \
     clinfo \
     pciutils \
-    libglvnd0 \
-    libglx0 \
-    libegl1 \
-    && rm -rf /var/lib/apt/lists/*
-
-# For NVIDIA GPU support in container
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config \
-    libxcursor-dev \
-    libxrandr-dev \
-    libxinerama-dev \
-    libxi-dev \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories for persistence
@@ -236,7 +226,6 @@ ENV OUTPUT_PATH=/app/output
 ENV HOST_PORT=8188
 ENV CONTAINER_NAME=comfy-cli
 ENV FORCE_CUDA126=false
-ENV DEBIAN_FRONTEND=noninteractive
 
 # Set entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]
@@ -333,34 +322,32 @@ echo "🔧 Configuration:"
 echo "   - FORCE_CUDA126: $FORCE_CUDA126"
 echo "   - NVIDIA Universal mode: $( [ "$FORCE_CUDA126" = "true" ] && echo "ENABLED" || echo "DISABLED" )"
 
-# Source GPU detection script
-source /app/detect_gpu.sh
+# Check if PyTorch is already installed
+if python -c "import torch" 2>/dev/null; then
+    echo "✅ PyTorch already installed: $(python -c "import torch; print(torch.__version__)")"
+else
+    echo "📦 Installing PyTorch..."
+    source /app/detect_gpu.sh
+fi
 
 echo "📦 Installing ComfyUI requirements..."
 cd /app/comfy-ui
 
 # Download requirements if not present
 if [ ! -f "requirements.txt" ]; then
-    echo "⬇️ Downloading ComfyUI requirements..."
-    wget -q https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt || \
-    curl -s -o requirements.txt https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
+    wget -q https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
 fi
 
 # Install requirements
-if [ -f "requirements.txt" ]; then
-    echo "📥 Installing from requirements.txt..."
-    pip install -r requirements.txt
-else
-    echo "⚠️ requirements.txt not found, installing basic packages..."
+pip install -r requirements.txt
+
+# Install comfy-cli if not present
+if ! command -v comfy-cli &> /dev/null; then
+    echo "📦 Installing comfy-cli..."
+    pip install comfy-cli
 fi
 
-# Install comfy-cli
-echo "📦 Installing comfy-cli..."
-pip install comfy-cli
-
 # Install additional useful packages
-echo "📦 Installing additional packages..."
-pip install --upgrade pip
 pip install \
     pillow \
     numpy \
@@ -372,23 +359,16 @@ pip install \
     accelerate \
     safetensors \
     websockets \
-    aiohttp \
-    torchsde \
-    kornia \
-    rich
+    aiohttp
 
 echo "✅ ComfyUI setup complete!"
 echo "📊 Installed PyTorch version: $(python -c "import torch; print(torch.__version__)")"
 if command -v nvidia-smi &> /dev/null; then
-    echo "🎮 Checking CUDA availability..."
-    python -c "
-import torch
-print(f'CUDA available: {torch.cuda.is_available()}')
-if torch.cuda.is_available():
-    print(f'CUDA version: {torch.version.cuda}')
-    print(f'GPU: {torch.cuda.get_device_name(0)}')
-    print(f'GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB')
-"
+    echo "🎮 CUDA available: $(python -c "import torch; print(torch.cuda.is_available())")"
+    if python -c "import torch; print(torch.cuda.is_available())" | grep -q "True"; then
+        echo "🎯 CUDA version: $(python -c "import torch; print(torch.version.cuda)")"
+        echo "🖥️  GPU: $(python -c "import torch; print(torch.cuda.get_device_name(0))")"
+    fi
 fi
 SCRIPT_EOF
     
@@ -406,24 +386,12 @@ echo "FORCE_CUDA126: $FORCE_CUDA126"
 echo "Working directory: $(pwd)"
 echo ""
 
-# Check for GPU
-echo "🔍 Checking system configuration..."
-if command -v nvidia-smi &> /dev/null; then
-    echo "✅ NVIDIA GPU detected in container"
-    nvidia-smi --query-gpu=name,driver_version --format=csv
-elif [[ -d "/dev/dri" ]]; then
-    echo "✅ AMD/Intel GPU detected (OpenGL available)"
-else
-    echo "ℹ️  Running in CPU mode"
-fi
-echo ""
-
 # Initialize ComfyUI if not already done
-if [ ! -d "/app/comfy-ui" ] || [ ! "$(ls -A /app/comfy-ui)" ]; then
+if [ ! -d "/app/comfy-ui/ComfyUI" ]; then
     echo "🔄 Initializing ComfyUI for the first time..."
-    comfy-cli install /app/comfy-ui --force
-else
-    echo "✅ ComfyUI already installed"
+    mkdir -p /app/comfy-ui
+    cd /app/comfy-ui
+    comfy-cli install .
 fi
 
 # Run setup script
@@ -441,6 +409,7 @@ if [ $# -gt 0 ]; then
     exec "$@"
 else
     echo "⚡ Starting ComfyUI CLI..."
+    cd /app/comfy-ui
     exec comfy-cli "$@"
 fi
 SCRIPT_EOF
@@ -456,8 +425,7 @@ build_image() {
     create_docker_context
     
     # Build the Docker image
-    echo "🔨 Building image '$IMAGE_NAME'..."
-    if docker build --progress=plain -t "$IMAGE_NAME" "$DOCKER_CONTEXT"; then
+    if docker build -t "$IMAGE_NAME" "$DOCKER_CONTEXT"; then
         echo "✅ Docker image built successfully: $IMAGE_NAME"
         echo "📦 Image includes:"
         echo "   • Python 3.13"
@@ -465,10 +433,8 @@ build_image() {
         echo "   • Automatic GPU detection"
         echo "   • ComfyUI CLI pre-configured"
         
-        # Show image details
-        echo ""
-        echo "📊 Image details:"
-        docker images "$IMAGE_NAME"
+        # Clean up context (optional)
+        # rm -rf "$DOCKER_CONTEXT"
     else
         echo "❌ Failed to build Docker image"
         exit 1
@@ -512,7 +478,6 @@ run_container() {
     if [ -n "$HOST_VOLUME" ]; then
         if [ -d "$HOST_VOLUME" ]; then
             VOLUME_MOUNTS="$VOLUME_MOUNTS -v $(realpath "$HOST_VOLUME"):/app/shared"
-            echo "📂 Mounting host directory: $HOST_VOLUME → /app/shared"
         else
             echo "⚠️ Host volume directory does not exist: $HOST_VOLUME"
         fi
@@ -535,10 +500,8 @@ run_container() {
         if [[ "$response" =~ ^[Yy]$ ]]; then
             docker stop "$CONTAINER_NAME" 2>/dev/null
             docker rm "$CONTAINER_NAME" 2>/dev/null
-            echo "✅ Container removed"
         else
             echo "Starting existing container..."
-            # Update environment if needed
             if [ "$FORCE_CUDA126" = true ]; then
                 echo "⚠️ Note: FORCE_CUDA126 requires container restart to take effect"
             fi
@@ -556,14 +519,7 @@ run_container() {
     [ -n "$HOST_VOLUME" ] && echo "   Host Volume: $HOST_VOLUME"
     echo ""
     
-    # Create data volume if it doesn't exist
-    if ! docker volume inspect "$DATA_VOLUME" &> /dev/null; then
-        echo "📁 Creating data volume: $DATA_VOLUME"
-        docker volume create "$DATA_VOLUME"
-    fi
-    
     # Run the container
-    echo "🐳 Starting Docker container..."
     docker run -it --rm \
         --name "$CONTAINER_NAME" \
         -p "$HOST_PORT:$CONTAINER_PORT" \
@@ -575,7 +531,7 @@ run_container() {
         -e CONTAINER_NAME="$CONTAINER_NAME" \
         -e FORCE_CUDA126="$FORCE_CUDA126" \
         -e NVIDIA_VISIBLE_DEVICES=all \
-        -e NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics \
+        -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
         $ENV_VARS \
         "$IMAGE_NAME"
 }
@@ -597,18 +553,14 @@ shell_container() {
 # Stop container
 stop_container() {
     echo "🛑 Stopping container..."
-    if docker stop "$CONTAINER_NAME" 2>/dev/null; then
-        echo "✅ Container stopped"
-    else
-        echo "⚠️ Container not running or doesn't exist"
-    fi
+    docker stop "$CONTAINER_NAME" 2>/dev/null && echo "✅ Container stopped"
 }
 
 # View logs
 view_logs() {
     if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "📋 Container logs:"
-        docker logs "$CONTAINER_NAME"
+        docker logs -f "$CONTAINER_NAME"
     else
         echo "⚠️ Container '$CONTAINER_NAME' does not exist"
     fi
@@ -620,17 +572,15 @@ cleanup() {
     
     # Stop and remove container
     docker stop "$CONTAINER_NAME" 2>/dev/null
-    docker rm "$CONTAINER_NAME" 2>/dev/null 2>&1
+    docker rm "$CONTAINER_NAME" 2>/dev/null
     
     # Remove image
     if docker image inspect "$IMAGE_NAME" &> /dev/null; then
         docker rmi "$IMAGE_NAME" && echo "✅ Image removed"
-    else
-        echo "ℹ️  Image not found"
     fi
     
     # Clean up Docker context
-    rm -rf "$DOCKER_CONTEXT" 2>&1
+    rm -rf "$DOCKER_CONTEXT"
     
     echo "📁 Data volume '${DATA_VOLUME}' preserved"
 }
@@ -639,22 +589,26 @@ cleanup() {
 purge_all() {
     echo "🔥 Purging all Docker resources..."
     
+    read -p "⚠️ This will DELETE ALL DATA! Continue? (y/N): " response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+        echo "❌ Cancelled"
+        return
+    fi
+    
     # Stop and remove container
     docker stop "$CONTAINER_NAME" 2>/dev/null
-    docker rm "$CONTAINER_NAME" 2>/dev/null 2>&1
+    docker rm "$CONTAINER_NAME" 2>/dev/null
     
     # Remove image
-    docker rmi "$IMAGE_NAME" 2>/dev/null 2>&1
+    docker rmi "$IMAGE_NAME" 2>/dev/null
     
     # Remove volume
     if docker volume inspect "$DATA_VOLUME" &> /dev/null; then
         docker volume rm "$DATA_VOLUME" && echo "✅ Data volume removed"
-    else
-        echo "ℹ️  Data volume not found"
     fi
     
     # Clean up Docker context
-    rm -rf "$DOCKER_CONTEXT" 2>&1
+    rm -rf "$DOCKER_CONTEXT"
     
     echo "✅ All resources purged"
 }
@@ -687,46 +641,6 @@ if torch.cuda.is_available():
     fi
 }
 
-# Quick build with minimal dependencies (for testing)
-quick_build() {
-    echo "⚡ Quick build with minimal dependencies..."
-    
-    # Create minimal Dockerfile
-    cat > /tmp/Dockerfile.comfy << 'EOF'
-FROM python:3.13-slim
-
-WORKDIR /app
-
-# Install minimal dependencies
-RUN apt-get update && apt-get install -y \
-    wget \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create directories
-RUN mkdir -p /app/comfy-ui
-
-# Set environment
-ENV PYTHONUNBUFFERED=1
-ENV PIP_NO_CACHE_DIR=1
-
-# Install PyTorch with CUDA 12.6 (universal)
-RUN pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
-    --index-url https://download.pytorch.org/whl/cu126
-
-# Install comfy-cli
-RUN pip install comfy-cli
-
-CMD ["comfy-cli", "--help"]
-EOF
-    
-    if docker build -t "comfy-cli-quick" -f /tmp/Dockerfile.comfy .; then
-        echo "✅ Quick build successful!"
-        echo "Test with: docker run --rm --gpus all comfy-cli-quick"
-    fi
-}
-
 # Main execution
 main() {
     # Show help if requested
@@ -737,12 +651,6 @@ main() {
     # Special test command
     if [[ "$1" == "test-nu" ]]; then
         test_nvidia_universal
-        exit 0
-    fi
-    
-    # Quick build command
-    if [[ "$1" == "quick-build" ]]; then
-        quick_build
         exit 0
     fi
     
