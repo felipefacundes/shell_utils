@@ -8,6 +8,8 @@ alias swap_help='help swap_help'
 
 alias video_clear_metadata='help video_clear_metadata'
 
+alias tunnel_and_server='help tunnel_and_server'
+
 alias windows_to_go='help windows_to_go'
 alias windows_on_pendrive='help windows_to_go'
 
