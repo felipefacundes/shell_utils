@@ -126,6 +126,8 @@ CONTAINER_PORT="8188"
 USE_GPU=false
 HOST_VOLUME=""
 FORCE_CUDA126=false
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DOCKER_CONTEXT="${SCRIPT_DIR}/docker-context"
 
 # Parse command line arguments
 parse_arguments() {
@@ -173,12 +175,16 @@ parse_arguments() {
     done
 }
 
-# Build Docker image with Python 3.13
-build_image() {
-    echo "🚀 Building Docker image with Python 3.13..."
+# Create Docker context directory
+create_docker_context() {
+    echo "📁 Creating Docker build context..."
+    
+    # Create directory
+    rm -rf "$DOCKER_CONTEXT"
+    mkdir -p "$DOCKER_CONTEXT"
     
     # Create Dockerfile
-    cat > Dockerfile << 'EOF'
+    cat > "$DOCKER_CONTEXT/Dockerfile" << 'EOF'
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -202,8 +208,33 @@ RUN apt-get update && apt-get install -y \
 # Create directories for persistence
 RUN mkdir -p /app/comfy-ui /app/models /app/output /app/config
 
-# Create detect_gpu.sh script
-RUN cat > /app/detect_gpu.sh << 'SCRIPT_EOF'
+# Copy scripts
+COPY scripts/ /app/
+
+# Set permissions
+RUN chmod +x /app/*.sh
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV COMFYUI_PATH=/app/comfy-ui
+ENV MODEL_PATH=/app/models
+ENV OUTPUT_PATH=/app/output
+ENV HOST_PORT=8188
+ENV CONTAINER_NAME=comfy-cli
+ENV FORCE_CUDA126=false
+
+# Set entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD []
+EOF
+    
+    # Create scripts directory
+    mkdir -p "$DOCKER_CONTEXT/scripts"
+    
+    # Create detect_gpu.sh
+    cat > "$DOCKER_CONTEXT/scripts/detect_gpu.sh" << 'SCRIPT_EOF'
 #!/bin/bash
 
 FORCE_CUDA126="${FORCE_CUDA126:-false}"
@@ -277,11 +308,9 @@ detect_and_install_pytorch() {
 
 detect_and_install_pytorch
 SCRIPT_EOF
-
-RUN chmod +x /app/detect_gpu.sh
-
-# Create setup_comfy.sh script
-RUN cat > /app/setup_comfy.sh << 'SCRIPT_EOF'
+    
+    # Create setup_comfy.sh
+    cat > "$DOCKER_CONTEXT/scripts/setup_comfy.sh" << 'SCRIPT_EOF'
 #!/bin/bash
 
 # Set FORCE_CUDA126 from environment variable
@@ -326,13 +355,15 @@ echo "✅ ComfyUI setup complete!"
 echo "📊 Installed PyTorch version: $(python -c "import torch; print(torch.__version__)")"
 if command -v nvidia-smi &> /dev/null; then
     echo "🎮 CUDA available: $(python -c "import torch; print(torch.cuda.is_available())")"
+    if python -c "import torch; print(torch.cuda.is_available())" | grep -q "True"; then
+        echo "🎯 CUDA version: $(python -c "import torch; print(torch.version.cuda)")"
+        echo "🖥️  GPU: $(python -c "import torch; print(torch.cuda.get_device_name(0))")"
+    fi
 fi
 SCRIPT_EOF
-
-RUN chmod +x /app/setup_comfy.sh
-
-# Create entrypoint script
-RUN cat > /app/entrypoint.sh << 'SCRIPT_EOF'
+    
+    # Create entrypoint.sh
+    cat > "$DOCKER_CONTEXT/scripts/entrypoint.sh" << 'SCRIPT_EOF'
 #!/bin/bash
 
 # Export environment variables for GPU detection
@@ -369,33 +400,28 @@ else
     exec comfy-cli "$@"
 fi
 SCRIPT_EOF
+    
+    echo "✅ Docker context created at: $DOCKER_CONTEXT"
+}
 
-RUN chmod +x /app/entrypoint.sh
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PIP_NO_CACHE_DIR=1
-ENV COMFYUI_PATH=/app/comfy-ui
-ENV MODEL_PATH=/app/models
-ENV OUTPUT_PATH=/app/output
-ENV HOST_PORT=8188
-ENV CONTAINER_NAME=comfy-cli
-ENV FORCE_CUDA126=false
-
-# Set entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD []
-EOF
-
+# Build Docker image with Python 3.13
+build_image() {
+    echo "🚀 Building Docker image with Python 3.13..."
+    
+    # Create Docker context
+    create_docker_context
+    
     # Build the Docker image
-    if docker build -t "$IMAGE_NAME" .; then
+    if docker build -t "$IMAGE_NAME" "$DOCKER_CONTEXT"; then
         echo "✅ Docker image built successfully: $IMAGE_NAME"
         echo "📦 Image includes:"
         echo "   • Python 3.13"
         echo "   • NVIDIA Universal mode support (-nu flag)"
         echo "   • Automatic GPU detection"
         echo "   • ComfyUI CLI pre-configured"
+        
+        # Clean up context (optional)
+        # rm -rf "$DOCKER_CONTEXT"
     else
         echo "❌ Failed to build Docker image"
         exit 1
@@ -541,6 +567,9 @@ cleanup() {
         docker rmi "$IMAGE_NAME" && echo "✅ Image removed"
     fi
     
+    # Clean up Docker context
+    rm -rf "$DOCKER_CONTEXT"
+    
     echo "📁 Data volume '${DATA_VOLUME}' preserved"
 }
 
@@ -560,8 +589,8 @@ purge_all() {
         docker volume rm "$DATA_VOLUME" && echo "✅ Data volume removed"
     fi
     
-    # Remove Dockerfile
-    [ -f "Dockerfile" ] && rm -f Dockerfile
+    # Clean up Docker context
+    rm -rf "$DOCKER_CONTEXT"
     
     echo "✅ All resources purged"
 }
