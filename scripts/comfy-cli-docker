@@ -177,7 +177,8 @@ parse_arguments() {
 build_image() {
     echo "🚀 Building Docker image with Python 3.13..."
     
-    cat > Dockerfile << 'DOCKERFILE'
+    # Create Dockerfile
+    cat > Dockerfile << 'EOF'
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -201,8 +202,8 @@ RUN apt-get update && apt-get install -y \
 # Create directories for persistence
 RUN mkdir -p /app/comfy-ui /app/models /app/output /app/config
 
-# Function to detect and install appropriate PyTorch
-COPY --chmod=755 << 'EOF' /app/detect_gpu.sh
+# Create detect_gpu.sh script
+RUN cat > /app/detect_gpu.sh << 'SCRIPT_EOF'
 #!/bin/bash
 
 FORCE_CUDA126="${FORCE_CUDA126:-false}"
@@ -275,10 +276,12 @@ detect_and_install_pytorch() {
 }
 
 detect_and_install_pytorch
-EOF
+SCRIPT_EOF
 
-# Copy requirements and setup script
-COPY --chmod=755 << 'EOF' /app/setup_comfy.sh
+RUN chmod +x /app/detect_gpu.sh
+
+# Create setup_comfy.sh script
+RUN cat > /app/setup_comfy.sh << 'SCRIPT_EOF'
 #!/bin/bash
 
 # Set FORCE_CUDA126 from environment variable
@@ -324,10 +327,12 @@ echo "📊 Installed PyTorch version: $(python -c "import torch; print(torch.__v
 if command -v nvidia-smi &> /dev/null; then
     echo "🎮 CUDA available: $(python -c "import torch; print(torch.cuda.is_available())")"
 fi
-EOF
+SCRIPT_EOF
 
-# Copy entrypoint script
-COPY --chmod=755 << 'EOF' /app/entrypoint.sh
+RUN chmod +x /app/setup_comfy.sh
+
+# Create entrypoint script
+RUN cat > /app/entrypoint.sh << 'SCRIPT_EOF'
 #!/bin/bash
 
 # Export environment variables for GPU detection
@@ -363,7 +368,9 @@ else
     echo "⚡ Starting ComfyUI CLI..."
     exec comfy-cli "$@"
 fi
-EOF
+SCRIPT_EOF
+
+RUN chmod +x /app/entrypoint.sh
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -379,7 +386,7 @@ ENV FORCE_CUDA126=false
 # Set entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD []
-DOCKERFILE
+EOF
 
     # Build the Docker image
     if docker build -t "$IMAGE_NAME" .; then
