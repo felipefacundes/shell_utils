@@ -19,11 +19,6 @@ DESCRIPTION:
     This script creates and manages a Docker container for ComfyUI CLI
     with Python 3.13, automatic GPU detection, and persistent storage.
 
-INSTALLATION LOCATIONS:
-    • Docker Volume (default): comfy-cli-data
-    • Host Directory: Use --data-dir to specify custom location
-    • Inside Container: /app/
-
 USAGE:
     $0 [COMMAND] [OPTIONS]
 
@@ -35,52 +30,88 @@ COMMANDS:
     logs        View container logs
     clean       Remove container and images (keeps data volume)
     purge       Remove everything including data volume
-    path        Show where data is stored
     help        Show this help message
 
 OPTIONS for 'run' command:
     -g, --gpu          Use GPU acceleration (NVIDIA/AMD)
     -p, --port PORT    Map container port to host (default: 8188)
     -n, --name NAME    Container name (default: comfy-cli)
-    -d, --data-dir DIR Use host directory instead of Docker volume
-    -v, --volume DIR   Mount additional host directory as /app/shared
+    -v, --volume DIR   Mount host directory as volume
     -nu, --nvidia-universal  Force CUDA 12.6 for NVIDIA (compatibility mode)
 
 EXAMPLES:
-    # Run with GPU support and CUDA 12.6 (uses Docker volume)
+    # Run with GPU support and CUDA 12.6 (compatibility mode)
     $0 run --gpu -nu
     
-    # Run with custom data directory on host
-    $0 run --gpu --data-dir ~/comfy-data
+    # Run with GPU detection (auto)
+    $0 run --gpu
     
-    # Run with custom port and additional volume
+    # Run with custom port and volume
     $0 run --port 8080 --volume ./models:/app/models
-    
-    # Show where data is stored
-    $0 path
     
     # Build the Docker image
     $0 build
+    
+    # Open shell in container
+    $0 shell
+    
+    # View logs
+    $0 logs
 
-DATA LOCATIONS:
-    ┌──────────────────────┬─────────────────────────────────────────┐
-    │ Location Type        │ Path                                    │
-    ├──────────────────────┼─────────────────────────────────────────┤
-    │ Docker Volume        │ comfy-cli-data                          │
-    │                      │ (Host: /var/lib/docker/volumes/...)     │
-    ├──────────────────────┼─────────────────────────────────────────┤
-    │ Host Directory       │ User specified with --data-dir          │
-    ├──────────────────────┼─────────────────────────────────────────┤
-    │ Inside Container     │ /app/                                   │
-    └──────────────────────┴─────────────────────────────────────────┘
+DOCKER IMAGE FEATURES:
+    • Python 3.13 with latest pip
+    • Automatic GPU detection and PyTorch installation
+    • NVIDIA Universal mode (-nu) for CUDA 12.6 compatibility
+    • Persistent data volume: comfy-cli-data
+    • CUDA support for NVIDIA GPUs
+    • ROCm support for AMD GPUs
+    • XPU support for Intel GPUs
+    • CPU fallback mode
 
-CONTAINER STRUCTURE:
-    /app/
-    ├── comfy-ui/          # ComfyUI installation
-    ├── models/            # AI models (recommended to mount)
-    ├── output/            # Generated images/outputs
-    ├── config/            # Configuration files
-    └── shared/            # Additional mounted volumes
+PYTORCH INSTALLATION MODES:
+    ┌──────────────────┬─────────────────────────────────────────┐
+    │ Mode             │ PyTorch Version                         │
+    ├──────────────────┼─────────────────────────────────────────┤
+    │ NVIDIA (auto)    │ Based on driver version detection       │
+    │ NVIDIA (-nu)     │ CUDA 12.6 (torch==2.9.0)                │
+    │ AMD              │ ROCm 6.4                                │
+    │ Intel            │ XPU                                     │
+    │ CPU              │ CPU-only version                        │
+    └──────────────────┴─────────────────────────────────────────┘
+
+VOLUME STRUCTURE:
+    • /app/comfy-ui          - ComfyUI installation
+    • /app/models            - AI models storage
+    • /app/output            - Generated outputs
+    • /app/config            - Configuration files
+
+GPU SUPPORT IN DOCKER:
+    ┌──────────────────┬─────────────────────────────────────┐
+    │ GPU Type         │ Docker Runtime / Requirements       │
+    ├──────────────────┼─────────────────────────────────────┤
+    │ NVIDIA           | --gpus all (requires nvidia-docker2)│
+    │ AMD              | --device /dev/kfd --device /dev/dri │
+    │ Intel            | --device /dev/dri                   │
+    │ CPU              | No special flags needed             │
+    └──────────────────┴─────────────────────────────────────┘
+
+PREREQUISITES:
+    • Docker Engine 20.10+
+    • For NVIDIA: nvidia-docker2 and NVIDIA drivers
+    • For AMD: ROCm Docker support
+    • 10GB+ free disk space
+
+TROUBLESHOOTING:
+    • Check Docker is running: docker info
+    • Test GPU access: docker run --gpus all nvidia/cuda:13.0-base nvidia-smi
+    • Check container status: docker ps -a
+    • View detailed logs: $0 logs
+    • Use -nu flag for NVIDIA compatibility issues
+
+PERSISTENT DATA:
+    Data is preserved in Docker volume 'comfy-cli-data'
+    To backup: docker run --rm -v comfy-cli-data:/source -v \$(pwd):/backup \\
+                alpine tar czf /backup/comfy-backup.tar.gz -C /source .
 
 EOF
     exit 0
@@ -94,7 +125,6 @@ HOST_PORT="8188"
 CONTAINER_PORT="8188"
 USE_GPU=false
 HOST_VOLUME=""
-HOST_DATA_DIR=""
 FORCE_CUDA126=false
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_CONTEXT="${SCRIPT_DIR}/docker-context"
@@ -104,7 +134,7 @@ parse_arguments() {
     COMMAND="${1:-run}"
     
     case "$COMMAND" in
-        run|build|shell|stop|logs|clean|purge|path|help)
+        run|build|shell|stop|logs|clean|purge|help)
             shift
             ;;
         *)
@@ -130,10 +160,6 @@ parse_arguments() {
                 CONTAINER_NAME="$2"
                 shift 2
                 ;;
-            -d|--data-dir)
-                HOST_DATA_DIR="$2"
-                shift 2
-                ;;
             -v|--volume)
                 HOST_VOLUME="$2"
                 shift 2
@@ -147,43 +173,6 @@ parse_arguments() {
                 ;;
         esac
     done
-}
-
-# Show data path
-show_data_path() {
-    echo "📁 Data Storage Locations"
-    echo "========================"
-    
-    # Check Docker volume
-    if docker volume inspect "$DATA_VOLUME" &> /dev/null; then
-        echo "✅ Docker Volume: $DATA_VOLUME"
-        VOLUME_PATH=$(docker volume inspect "$DATA_VOLUME" | grep "Mountpoint" | cut -d'"' -f4)
-        echo "   Host Path: $VOLUME_PATH"
-        echo "   Container Path: /app/"
-    else
-        echo "⚠️ Docker volume '$DATA_VOLUME' not created yet"
-    fi
-    
-    # Check if running with host directory
-    if [ -n "$HOST_DATA_DIR" ] && [ -d "$HOST_DATA_DIR" ]; then
-        echo ""
-        echo "✅ Host Directory:"
-        echo "   Host Path: $(realpath "$HOST_DATA_DIR")"
-        echo "   Container Path: /app/"
-    fi
-    
-    # Show running container info
-    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        echo ""
-        echo "📦 Running Container: $CONTAINER_NAME"
-        echo "   Port: $(docker port "$CONTAINER_NAME" | grep "$CONTAINER_PORT")"
-        echo "   Status: $(docker ps --filter "name=$CONTAINER_NAME" --format "{{.Status}}")"
-    fi
-    
-    echo ""
-    echo "💡 To access data:"
-    echo "   docker exec -it $CONTAINER_NAME ls -la /app/"
-    echo "   docker exec -it $CONTAINER_NAME /bin/bash"
 }
 
 # Create Docker context directory
@@ -228,8 +217,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create directory structure
-RUN mkdir -p /app/comfy-ui /app/models /app/output /app/config /app/shared
+# Create directories for persistence
+RUN mkdir -p /app/comfy-ui /app/models /app/output /app/config
 
 # Copy scripts
 COPY scripts/ /app/
@@ -244,8 +233,6 @@ ENV PIP_NO_CACHE_DIR=1
 ENV COMFYUI_PATH=/app/comfy-ui
 ENV MODEL_PATH=/app/models
 ENV OUTPUT_PATH=/app/output
-ENV CONFIG_PATH=/app/config
-ENV SHARED_PATH=/app/shared
 ENV HOST_PORT=8188
 ENV CONTAINER_NAME=comfy-cli
 ENV FORCE_CUDA126=false
@@ -403,18 +390,6 @@ if torch.cuda.is_available():
     print(f'GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB')
 "
 fi
-
-# Show directory structure
-echo ""
-echo "📁 Directory structure in /app/:"
-ls -la /app/
-echo ""
-echo "💾 Data locations:"
-echo "   ComfyUI: /app/comfy-ui"
-echo "   Models:  /app/models"
-echo "   Output:  /app/output"
-echo "   Config:  /app/config"
-echo "   Shared:  /app/shared"
 SCRIPT_EOF
     
     # Create entrypoint.sh
@@ -429,7 +404,6 @@ echo "===================================="
 echo "Python version: $(python --version)"
 echo "FORCE_CUDA126: $FORCE_CUDA126"
 echo "Working directory: $(pwd)"
-echo "Data location: /app/"
 echo ""
 
 # Check for GPU
@@ -448,9 +422,8 @@ echo ""
 if [ ! -d "/app/comfy-ui" ] || [ ! "$(ls -A /app/comfy-ui)" ]; then
     echo "🔄 Initializing ComfyUI for the first time..."
     comfy-cli install /app/comfy-ui --force
-    echo "✅ ComfyUI installed to /app/comfy-ui"
 else
-    echo "✅ ComfyUI already installed in /app/comfy-ui"
+    echo "✅ ComfyUI already installed"
 fi
 
 # Run setup script
@@ -459,7 +432,6 @@ source /app/setup_comfy.sh
 echo ""
 echo "✅ Environment ready!"
 echo "🌐 Web UI accessible at: http://localhost:${HOST_PORT:-8188}"
-echo "💾 Data stored in: /app/"
 echo "💡 Use 'docker exec -it ${CONTAINER_NAME:-comfy-cli} /bin/bash' for shell access"
 echo ""
 
@@ -503,39 +475,6 @@ build_image() {
     fi
 }
 
-# Build volume mounts based on configuration
-build_volume_mounts() {
-    local mounts=""
-    
-    # Use host directory if specified
-    if [ -n "$HOST_DATA_DIR" ]; then
-        # Create directory if it doesn't exist
-        mkdir -p "$HOST_DATA_DIR"
-        mounts="-v $(realpath "$HOST_DATA_DIR"):/app"
-        echo "📂 Using host directory: $HOST_DATA_DIR → /app"
-    else
-        # Use Docker volume
-        if ! docker volume inspect "$DATA_VOLUME" &> /dev/null; then
-            echo "📁 Creating Docker volume: $DATA_VOLUME"
-            docker volume create "$DATA_VOLUME"
-        fi
-        mounts="-v ${DATA_VOLUME}:/app"
-        echo "📂 Using Docker volume: $DATA_VOLUME → /app"
-    fi
-    
-    # Add additional volumes if specified
-    if [ -n "$HOST_VOLUME" ]; then
-        if [ -d "$HOST_VOLUME" ]; then
-            mounts="$mounts -v $(realpath "$HOST_VOLUME"):/app/shared"
-            echo "📂 Mounting additional volume: $HOST_VOLUME → /app/shared"
-        else
-            echo "⚠️ Additional volume directory does not exist: $HOST_VOLUME"
-        fi
-    fi
-    
-    echo "$mounts"
-}
-
 # Build GPU arguments for docker run
 build_gpu_args() {
     if [ "$USE_GPU" = true ]; then
@@ -568,7 +507,16 @@ run_container() {
     fi
     
     # Build volume mounts
-    VOLUME_MOUNTS=$(build_volume_mounts)
+    VOLUME_MOUNTS="-v ${DATA_VOLUME}:/app"
+    
+    if [ -n "$HOST_VOLUME" ]; then
+        if [ -d "$HOST_VOLUME" ]; then
+            VOLUME_MOUNTS="$VOLUME_MOUNTS -v $(realpath "$HOST_VOLUME"):/app/shared"
+            echo "📂 Mounting host directory: $HOST_VOLUME → /app/shared"
+        else
+            echo "⚠️ Host volume directory does not exist: $HOST_VOLUME"
+        fi
+    fi
     
     # Build GPU arguments
     GPU_ARGS=$(build_gpu_args)
@@ -604,13 +552,15 @@ run_container() {
     echo "   Port: $HOST_PORT:$CONTAINER_PORT"
     echo "   GPU: $( [ "$USE_GPU" = true ] && echo "Enabled" || echo "Disabled" )"
     echo "   NVIDIA Universal: $( [ "$FORCE_CUDA126" = true ] && echo "Enabled (CUDA 12.6)" || echo "Disabled" )"
-    if [ -n "$HOST_DATA_DIR" ]; then
-        echo "   Data: Host directory: $(realpath "$HOST_DATA_DIR")"
-    else
-        echo "   Data: Docker volume: $DATA_VOLUME"
-    fi
-    [ -n "$HOST_VOLUME" ] && echo "   Additional Volume: $HOST_VOLUME → /app/shared"
+    echo "   Volume: $DATA_VOLUME"
+    [ -n "$HOST_VOLUME" ] && echo "   Host Volume: $HOST_VOLUME"
     echo ""
+    
+    # Create data volume if it doesn't exist
+    if ! docker volume inspect "$DATA_VOLUME" &> /dev/null; then
+        echo "📁 Creating data volume: $DATA_VOLUME"
+        docker volume create "$DATA_VOLUME"
+    fi
     
     # Run the container
     echo "🐳 Starting Docker container..."
@@ -682,12 +632,7 @@ cleanup() {
     # Clean up Docker context
     rm -rf "$DOCKER_CONTEXT" 2>&1
     
-    # Don't remove data volume/directory
-    if [ -n "$HOST_DATA_DIR" ]; then
-        echo "📁 Host data directory preserved: $(realpath "$HOST_DATA_DIR")"
-    else
-        echo "📁 Docker volume preserved: $DATA_VOLUME"
-    fi
+    echo "📁 Data volume '${DATA_VOLUME}' preserved"
 }
 
 # Purge everything including volume
@@ -701,25 +646,85 @@ purge_all() {
     # Remove image
     docker rmi "$IMAGE_NAME" 2>/dev/null 2>&1
     
-    # Remove Docker volume (if not using host directory)
-    if [ -z "$HOST_DATA_DIR" ]; then
-        if docker volume inspect "$DATA_VOLUME" &> /dev/null; then
-            docker volume rm "$DATA_VOLUME" && echo "✅ Data volume removed"
-        else
-            echo "ℹ️  Data volume not found"
-        fi
+    # Remove volume
+    if docker volume inspect "$DATA_VOLUME" &> /dev/null; then
+        docker volume rm "$DATA_VOLUME" && echo "✅ Data volume removed"
     else
-        echo "⚠️ Host directory NOT removed: $(realpath "$HOST_DATA_DIR")"
-        read -p "Remove host directory? (y/N): " response
-        if [[ "$response" =~ ^[Yy]$ ]]; then
-            rm -rf "$HOST_DATA_DIR" && echo "✅ Host directory removed"
-        fi
+        echo "ℹ️  Data volume not found"
     fi
     
     # Clean up Docker context
     rm -rf "$DOCKER_CONTEXT" 2>&1
     
-    echo "✅ All Docker resources purged"
+    echo "✅ All resources purged"
+}
+
+# Test NVIDIA Universal mode
+test_nvidia_universal() {
+    echo "🧪 Testing NVIDIA Universal mode..."
+    if command -v nvidia-smi &> /dev/null; then
+        echo "✅ NVIDIA GPU detected"
+        echo "📊 Running test with CUDA 12.6..."
+        
+        # Create a test container
+        docker run --rm --gpus all \
+            -e FORCE_CUDA126=true \
+            python:3.13-slim \
+            bash -c "
+            pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+                --index-url https://download.pytorch.org/whl/cu126 &&
+            python -c \"
+import torch
+print(f'PyTorch version: {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+if torch.cuda.is_available():
+    print(f'CUDA version: {torch.version.cuda}')
+    print(f'GPU: {torch.cuda.get_device_name(0)}')
+\"
+            "
+    else
+        echo "⚠️ No NVIDIA GPU detected"
+    fi
+}
+
+# Quick build with minimal dependencies (for testing)
+quick_build() {
+    echo "⚡ Quick build with minimal dependencies..."
+    
+    # Create minimal Dockerfile
+    cat > /tmp/Dockerfile.comfy << 'EOF'
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install minimal dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directories
+RUN mkdir -p /app/comfy-ui
+
+# Set environment
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+
+# Install PyTorch with CUDA 12.6 (universal)
+RUN pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+    --index-url https://download.pytorch.org/whl/cu126
+
+# Install comfy-cli
+RUN pip install comfy-cli
+
+CMD ["comfy-cli", "--help"]
+EOF
+    
+    if docker build -t "comfy-cli-quick" -f /tmp/Dockerfile.comfy .; then
+        echo "✅ Quick build successful!"
+        echo "Test with: docker run --rm --gpus all comfy-cli-quick"
+    fi
 }
 
 # Main execution
@@ -729,9 +734,15 @@ main() {
         show_help
     fi
     
-    # Special command to show data path
-    if [[ "$1" == "path" ]]; then
-        show_data_path
+    # Special test command
+    if [[ "$1" == "test-nu" ]]; then
+        test_nvidia_universal
+        exit 0
+    fi
+    
+    # Quick build command
+    if [[ "$1" == "quick-build" ]]; then
+        quick_build
         exit 0
     fi
     
@@ -758,9 +769,6 @@ main() {
             ;;
         purge)
             purge_all
-            ;;
-        path)
-            show_data_path
             ;;
         help)
             show_help
