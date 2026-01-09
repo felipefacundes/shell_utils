@@ -134,8 +134,9 @@ RUN useradd -m -G wheel -s /bin/zsh comfy && \
 USER comfy
 WORKDIR /home/comfy
 
-# Cria o diretório ~/.local/bin ANTES de copiar o arquivo
-RUN mkdir -p /home/comfy/.local/bin
+# Cria e configura o diretório .local/bin
+RUN mkdir -p /home/comfy/.local/bin && \
+    chown -R comfy:comfy /home/comfy/.local
 
 # Configura o PATH para incluir ~/.local/bin
 ENV PATH="/home/comfy/.local/bin:${PATH}"
@@ -146,7 +147,7 @@ RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
 RUN pipx ensurepath
 
 # Copia o script comfy-cli para ~/.local/bin e torna executável
-COPY comfy-cli.sh /home/comfy/.local/bin/comfy-cli
+COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
 # Mantém o container em execução com ZSH
@@ -159,8 +160,9 @@ install_container() {
         mkdir -p "$docker_base"
         create_docker_context
         echo "🔨 Building Docker image..."
+        docker build -t "$container" -f "$docker_file" "$docker_base"
         
-        if docker build -t "$container" -f "$docker_file" "$docker_base"; then
+        if [[ $? -eq 0 ]]; then
             echo "✅ Container created successfully!"
             echo "🔑 Login: comfy | Password: 123"
             echo "📦 Comfy-cli installed at: /home/comfy/.local/bin/comfy-cli"
