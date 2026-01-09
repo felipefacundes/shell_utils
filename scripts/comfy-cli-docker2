@@ -10,8 +10,6 @@ docker_root="${HOME}/.dockers"
 docker_base="${docker_root}/${container}"
 docker_file="${docker_base}/Dockerfile"
 
-arg="$1"
-
 # Function to display help menu
 show_help() {
     cat << EOF
@@ -59,9 +57,6 @@ WORKDIR /home/comfy
 ENV PATH="/home/comfy/.local/bin:${PATH}"
 RUN pipx ensurepath && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc
-
-# Configura o ZSH como shell padrão
-RUN sudo chsh -s /bin/zsh comfy
 
 # Instala a framework shell_utils
 RUN curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh | bash
