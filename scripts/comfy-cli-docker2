@@ -2,14 +2,11 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 # Source: https://github.com/comfyanonymous/ComfyUI
-# Tutorial: https://www.youtube.com/watch?v=TLE9NmN_sxw
-#           https://youtu.be/xWUddF5oMb0
 
 container="comfy"
 docker_root="${HOME}/.dockers"
 docker_base="${docker_root}/${container}"
 docker_file="${docker_base}/Dockerfile"
-comfy_script="/home/comfy/comfy-cli"
 
 # Function to display help menu
 show_help() {
@@ -34,14 +31,12 @@ EOF
 }
 
 create_comfy_script() {
-    # Cria o script comfy-cli dentro do container
-    cat > /tmp/comfy-cli.sh << 'EOF'
+    # Cria o script comfy-cli
+    cat > "$docker_base/comfy-cli.sh" << 'EOF'
 #!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
 # Source: https://github.com/comfyanonymous/ComfyUI
-# Tutorial: https://www.youtube.com/watch?v=TLE9NmN_sxw
-#           https://youtu.be/xWUddF5oMb0
 
 py_base="comfy-cli"
 py_root="${HOME}/.python"
@@ -115,6 +110,9 @@ create_docker_context() {
     echo "📁 Creating Docker build context..."
     [[ -f "$docker_file" ]] && return
     
+    # Cria o script primeiro
+    create_comfy_script
+    
     # Create Dockerfile
     cat > "$docker_file" << 'EOF'
 FROM archlinux:latest
@@ -136,26 +134,21 @@ RUN useradd -m -G wheel -s /bin/zsh comfy && \
 USER comfy
 WORKDIR /home/comfy
 
-# Configura o pipx
+# Configura o PATH para incluir ~/.local/bin
 ENV PATH="/home/comfy/.local/bin:${PATH}"
-RUN pipx ensurepath && \
-    echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc
+RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
+    echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc
 
-# Instala shell_utils
-RUN curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/main/install.sh | bash
+# Instala o pipx e configura
+RUN pipx ensurepath
 
-# Copia e executa o script comfy-cli
-COPY comfy-cli.sh /home/comfy/comfy-cli
-RUN chmod +x /home/comfy/comfy-cli && \
-    /home/comfy/comfy-cli
+# Copia o script comfy-cli para ~/.local/bin
+COPY comfy-cli.sh /home/comfy/.local/bin/comfy-cli
+RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
 # Mantém o container em execução com ZSH
 CMD ["/bin/zsh"]
 EOF
-    
-    # Copia o script comfy-cli para o contexto do Docker
-    create_comfy_script
-    cp /tmp/comfy-cli.sh "$docker_base/comfy-cli.sh"
 }
 
 install_container() {
@@ -168,6 +161,7 @@ install_container() {
         if [[ $? -eq 0 ]]; then
             echo "✅ Container created successfully!"
             echo "🔑 Login: comfy | Password: 123"
+            echo "📦 Comfy-cli installed at: /home/comfy/.local/bin/comfy-cli"
         else
             echo "❌ Failed to create container"
             exit 1
@@ -180,22 +174,23 @@ install_container() {
 run_container() {
     if docker images | grep -q "^$container "; then
         echo "🚀 Starting container..."
-        # Verifica se container já está rodando
-        if docker ps -a | grep -q "$container"; then
-            echo "📦 Container exists, starting..."
-            docker start "$container"
+        
+        # Verifica se container já existe
+        if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+            echo "📦 Starting existing container..."
+            docker start "$container" >/dev/null 2>&1
         else
             echo "🐳 Creating new container..."
-            docker run -it \
+            docker run -d \
                 --name "$container" \
                 -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
                 -e DISPLAY="$DISPLAY" \
                 --device /dev/dri \
-                --privileged \
-                "$container"
+                "$container" >/dev/null 2>&1
         fi
         
         # Entra no container
+        echo "🔧 Entering container..."
         docker exec -it "$container" zsh
     else
         echo "❌ Container '$container' not found"
