@@ -113,7 +113,7 @@ create_docker_context() {
     # Cria o script primeiro
     create_comfy_script
     
-    # Create Dockerfile
+    # Create Dockerfile - VERSÃO CORRIGIDA
     cat > "$docker_file" << 'EOF'
 FROM archlinux:latest
 
@@ -134,6 +134,9 @@ RUN useradd -m -G wheel -s /bin/zsh comfy && \
 USER comfy
 WORKDIR /home/comfy
 
+# Cria o diretório ~/.local/bin ANTES de copiar o arquivo
+RUN mkdir -p /home/comfy/.local/bin
+
 # Configura o PATH para incluir ~/.local/bin
 ENV PATH="/home/comfy/.local/bin:${PATH}"
 RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
@@ -142,7 +145,7 @@ RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
 # Instala o pipx e configura
 RUN pipx ensurepath
 
-# Copia o script comfy-cli para ~/.local/bin
+# Copia o script comfy-cli para ~/.local/bin e torna executável
 COPY comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
@@ -156,9 +159,8 @@ install_container() {
         mkdir -p "$docker_base"
         create_docker_context
         echo "🔨 Building Docker image..."
-        docker build -t "$container" -f "$docker_file" "$docker_base"
         
-        if [[ $? -eq 0 ]]; then
+        if docker build -t "$container" -f "$docker_file" "$docker_base"; then
             echo "✅ Container created successfully!"
             echo "🔑 Login: comfy | Password: 123"
             echo "📦 Comfy-cli installed at: /home/comfy/.local/bin/comfy-cli"
@@ -168,6 +170,7 @@ install_container() {
         fi
     else
         echo "ℹ️  Container already exists at: $docker_base"
+        echo "💡 To rebuild, remove directory first: rm -rf $docker_base"
     fi
 }
 
@@ -177,8 +180,12 @@ run_container() {
         
         # Verifica se container já existe
         if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
-            echo "📦 Starting existing container..."
-            docker start "$container" >/dev/null 2>&1
+            if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+                echo "📦 Starting existing container..."
+                docker start "$container" >/dev/null 2>&1
+            else
+                echo "📦 Container already running..."
+            fi
         else
             echo "🐳 Creating new container..."
             docker run -d \
@@ -191,6 +198,7 @@ run_container() {
         
         # Entra no container
         echo "🔧 Entering container..."
+        echo "💡 Type 'comfy-cli' to use the comfy-cli command"
         docker exec -it "$container" zsh
     else
         echo "❌ Container '$container' not found"
