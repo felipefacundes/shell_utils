@@ -154,6 +154,7 @@ save_installation_state() {
 # Check if installation is complete (from cache)
 is_installation_complete() {
     if [[ -f "$CACHE_DIR/state" ]]; then
+        # shellcheck source=/dev/null
         source "$CACHE_DIR/state" 2>/dev/null
         if [[ "$INSTALLATION_COMPLETE" == "true" ]]; then
             return 0
