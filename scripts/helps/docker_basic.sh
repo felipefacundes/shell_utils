@@ -1,105 +1,109 @@
 docker_basic() {
-	cat <<-'EOF'
+    local biblack_on_cyan='\033[90;1;46m'
+    local bigreen_on_bblack='\033[92;1;40m'
+    local nc='\033[0m'
+    
+	cat <<-EOF | { echo -e "$(cat)"; }
 	# Docker - Basic Quick Guide
 	EOF
 	clear
 	if [[ "${LANG,,}" =~ pt_ ]]; then
-		cat <<-'EOF'
+		cat <<-EOF | { echo -e "$(cat)"; }
 		# Docker - Guia Básico Rápido
 	
 		Exemplos:
 
-		# Cria e inicia um container interativamente
-		docker run -it --name meu-container archlinux:latest bash
-		# Ao sair de um container. Verificar se o container está ativo
-		docker ps
-		# Verificar containers parados
-		docker ps -a
-		# Iniciar o container parado
-		docker start meu-container
-		# E depois acessá-lo
-		docker exec -it meu-container bash
-		# Remover o container antigo
-		docker rm meu-container
-		# Ver quais imagens tem
-		docker images
-		# Remover a imagem
-		docker rmi archlinux:latest
-		# Remove todos containers parados
-		docker container prune
-		# Remove todas imagens não usadas
-		docker image prune -a
-		# Remove volumes não usados
-		docker volume prune
-		# Limpeza completa de tudo não usado
-		docker system prune -a
-		# Remover tudo de uma vez (nuclear option):
-		# Para TODOS containers (cuidado!):
-		docker rm -f $(docker ps -aq)
-		# Para TODAS imagens (cuidado!):
-		docker rmi -f $(docker images -q)
-		# Ou o comando mais agressivo:
-		docker system prune -a --volumes
-		# Se quer testar algo temporário, use --rm para auto-remover ao sair:
-		# Quando sair com exit, o container é automaticamente removido
-		docker run -it --rm --name meu-container-temp archlinux:latest bash
-		# Se quiser que o container continue rodando mesmo após sair do bash, inicie-o com um processo que não termine:
-		docker run -d --name meu-container archlinux:latest tail -f /dev/null
-		docker exec -it meu-container bash
+		${biblack_on_cyan}# Cria e inicia um container interativamente${nc}
+		${bigreen_on_bblack}docker run -it --name meu-container archlinux:latest bash${nc}
+		${biblack_on_cyan}# Ao sair de um container. Verificar se o container está ativo${nc}
+		${bigreen_on_bblack}docker ps${nc}
+		${biblack_on_cyan}# Verificar containers parados${nc}
+		${bigreen_on_bblack}docker ps -a${nc}
+		${biblack_on_cyan}# Iniciar o container parado${nc}
+		${bigreen_on_bblack}docker start meu-container${nc}
+		${biblack_on_cyan}# E depois acessá-lo${nc}
+		${bigreen_on_bblack}docker exec -it meu-container bash${nc}
+		${biblack_on_cyan}# Remover o container antigo${nc}
+		${bigreen_on_bblack}docker rm meu-container${nc}
+		${biblack_on_cyan}# Ver quais imagens tem${nc}
+		${bigreen_on_bblack}docker images${nc}
+		${biblack_on_cyan}# Remover a imagem${nc}
+		${bigreen_on_bblack}docker rmi archlinux:latest${nc}
+		${biblack_on_cyan}# Remove todos containers parados${nc}
+		${bigreen_on_bblack}docker container prune${nc}
+		${biblack_on_cyan}# Remove todas imagens não usadas${nc}
+		${bigreen_on_bblack}docker image prune -a${nc}
+		${biblack_on_cyan}# Remove volumes não usados${nc}
+		${bigreen_on_bblack}docker volume prune${nc}
+		${biblack_on_cyan}# Limpeza completa de tudo não usado${nc}
+		${bigreen_on_bblack}docker system prune -a${nc}
+		${biblack_on_cyan}# Remover tudo de uma vez (nuclear option):${nc}
+		${biblack_on_cyan}# Para TODOS containers (cuidado!):${nc}
+		${bigreen_on_bblack}docker rm -f \$(docker ps -aq)${nc}
+		${biblack_on_cyan}# Para TODAS imagens (cuidado!):${nc}
+		${bigreen_on_bblack}docker rmi -f \$(docker images -q)${nc}
+		${biblack_on_cyan}# Ou o comando mais agressivo:${nc}
+		${bigreen_on_bblack}docker system prune -a --volumes${nc}
+		${biblack_on_cyan}# Se quer testar algo temporário, use --rm para auto-remover ao sair:${nc}
+		${biblack_on_cyan}# Quando sair com exit, o container é automaticamente removido${nc}
+		${bigreen_on_bblack}docker run -it --rm --name meu-container-temp archlinux:latest bash${nc}
+		${biblack_on_cyan}# Se quiser que o container continue rodando mesmo após sair do bash, inicie-o com um processo que não termine:${nc}
+		${bigreen_on_bblack}docker run -d --name meu-container archlinux:latest tail -f /dev/null${nc}
+		${bigreen_on_bblack}docker exec -it meu-container bash${nc}
 
-		# Para executar o container com todas as permissões mas como usuário comum, você tem algumas opções:
-		docker run -it --name meu-container --user $(id -u):$(id -g) archlinux:latest bash
+		${biblack_on_cyan}# Para executar o container com todas as permissões mas como usuário comum, você tem algumas opções:${nc}
+		${bigreen_on_bblack}docker run -it --name meu-container --user \$(id -u):\$(id -g) archlinux:latest bash${nc}
 
 		EOF
 
 		read -s -n 1 -rp "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
 		markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/basico_de_docker.md
 	else
-		cat <<-'EOF'
+		cat <<-EOF | { echo -e "$(cat)"; }
 		# Docker - Quick Basic Guide
 
 		Examples:
 
-		# Create and start a container interactively
-		docker run -it --name my-container archlinux:latest bash
-		# After exiting a container. Check if container is active
-		docker ps
-		# Check stopped containers
-		docker ps -a
-		# Start a stopped container
-		docker start my-container
-		# And then access it
-		docker exec -it my-container bash
-		# Remove old container
-		docker rm my-container
-		# Check which images you have
-		docker images
-		# Remove an image
-		docker rmi archlinux:latest
-		# Remove all stopped containers
-		docker container prune
-		# Remove all unused images
-		docker image prune -a
-		# Remove unused volumes
-		docker volume prune
-		# Complete cleanup of everything unused
-		docker system prune -a
-		# Remove everything at once (nuclear option):
-		# For ALL containers (be careful!):
-		docker rm -f $(docker ps -aq)
-		# For ALL images (be careful!):
-		docker rmi -f $(docker images -q)
-		# Or the most aggressive command:
-		docker system prune -a --volumes
-		# If you want to test something temporarily, use --rm to auto-remove on exit:
-		# When you exit with exit, the container is automatically removed
-		docker run -it --rm --name my-container-temp archlinux:latest bash
-		# If you want the container to keep running even after exiting bash, start it with a process that doesn't terminate:
-		docker run -d --name my-container archlinux:latest tail -f /dev/null
-		docker exec -it my-container bash
+		${biblack_on_cyan}# Create and start a container interactively${nc}
+		${bigreen_on_bblack}docker run -it --name my-container archlinux:latest bash${nc}
+		${biblack_on_cyan}# After exiting a container. Check if container is active${nc}
+		${bigreen_on_bblack}docker ps${nc}
+		${biblack_on_cyan}# Check stopped containers${nc}
+		${bigreen_on_bblack}docker ps -a${nc}
+		${biblack_on_cyan}# Start a stopped container${nc}
+		${bigreen_on_bblack}docker start my-container${nc}
+		${biblack_on_cyan}# And then access it${nc}
+		${bigreen_on_bblack}docker exec -it my-container bash${nc}
+		${biblack_on_cyan}# Remove old container${nc}
+		${bigreen_on_bblack}docker rm my-container${nc}
+		${biblack_on_cyan}# Check which images you have${nc}
+		${bigreen_on_bblack}docker images${nc}
+		${biblack_on_cyan}# Remove an image${nc}
+		${bigreen_on_bblack}docker rmi archlinux:latest${nc}
+		${biblack_on_cyan}# Remove all stopped containers${nc}
+		${bigreen_on_bblack}docker container prune${nc}
+		${biblack_on_cyan}# Remove all unused images${nc}
+		${bigreen_on_bblack}docker image prune -a${nc}
+		${biblack_on_cyan}# Remove unused volumes${nc}
+		${bigreen_on_bblack}docker volume prune${nc}
+		${biblack_on_cyan}# Complete cleanup of everything unused${nc}
+		${bigreen_on_bblack}docker system prune -a${nc}
+		${biblack_on_cyan}# Remove everything at once (nuclear option):${nc}
+		${biblack_on_cyan}# For ALL containers (be careful!):${nc}
+		${bigreen_on_bblack}docker rm -f \$(docker ps -aq)${nc}
+		${biblack_on_cyan}# For ALL images (be careful!):${nc}
+		${bigreen_on_bblack}docker rmi -f \$(docker images -q)${nc}
+		${biblack_on_cyan}# Or the most aggressive command:${nc}
+		${bigreen_on_bblack}docker system prune -a --volumes${nc}
+		${biblack_on_cyan}# If you want to test something temporarily, use --rm to auto-remove on exit:${nc}
+		${biblack_on_cyan}# When you exit with exit, the container is automatically removed${nc}
+		${bigreen_on_bblack}docker run -it --rm --name my-container-temp archlinux:latest bash${nc}
+		${biblack_on_cyan}# If you want the container to keep running even after exiting bash, start it with a process that doesn't terminate:${nc}
+		${bigreen_on_bblack}docker run -d --name my-container archlinux:latest tail -f /dev/null${nc}
+		${bigreen_on_bblack}docker exec -it my-container bash${nc}
 
-		# To run the container with all permissions but as a regular user, you have some options:
-		docker run -it --name my-container --user $(id -u):$(id -g) archlinux:latest bash
+		${biblack_on_cyan}# To run the container with all permissions but as a regular user, you have some options:${nc}
+		${bigreen_on_bblack}docker run -it --name my-container --user \$(id -u):\$(id -g) archlinux:latest bash${nc}
 
 		EOF
 

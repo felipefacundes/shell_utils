@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Script to copy shell_utils installation command, perfect for installing this framework on virtual machines
+# Script para copiar comando de instalação do shell_utils, perfeito para instalar essa framework em máquinas virtuais
+
+# Command to be copied
+COMMAND='bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"'
+
+# Function to detect graphical environment
+detect_environment() {
+    if [[ -n "$WAYLAND_DISPLAY" ]]; then
+        echo "wayland"
+    elif [[ -n "$DISPLAY" ]]; then
+        echo "x11"
+    else
+        echo "unknown"
+    fi
+}
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Main function to copy
+copy_command() {
+    local environment=$(detect_environment)
+    
+    case "$environment" in
+        "wayland")
+            if command_exists "wl-copy"; then
+                echo -n "$COMMAND" | wl-copy
+                echo "✓ Command copied to clipboard (Wayland - wl-copy)"
+            elif command_exists "wcopy"; then
+                echo -n "$COMMAND" | wcopy
+                echo "✓ Command copied to clipboard (Wayland - wcopy)"
+            else
+                echo "Error: wl-copy or wcopy not found on Wayland"
+                echo "Install with: sudo apt install wl-clipboard (or similar for your distro)"
+                return 1
+            fi
+            ;;
+        "x11")
+            if command_exists "xclip"; then
+                echo -n "$COMMAND" | xclip -selection clipboard
+                echo "✓ Command copied to clipboard (X11 - xclip)"
+            elif command_exists "xsel"; then
+                echo -n "$COMMAND" | xsel --clipboard --input
+                echo "✓ Command copied to clipboard (X11 - xsel)"
+            else
+                echo "Error: xclip or xsel not found on X11"
+                echo "Install with: sudo apt install xclip (or similar for your distro)"
+                return 1
+            fi
+            ;;
+        "unknown")
+            echo "Graphical environment not detected. Trying alternative methods..."
+            
+            # Try various methods
+            if command_exists "wl-copy"; then
+                echo -n "$COMMAND" | wl-copy
+                echo "✓ Command copied to clipboard (wl-copy)"
+            elif command_exists "xclip"; then
+                echo -n "$COMMAND" | xclip -selection clipboard
+                echo "✓ Command copied to clipboard (xclip)"
+            elif command_exists "xsel"; then
+                echo -n "$COMMAND" | xsel --clipboard --input
+                echo "✓ Command copied to clipboard (xsel)"
+            elif command_exists "pbcopy"; then
+                # For macOS
+                echo -n "$COMMAND" | pbcopy
+                echo "✓ Command copied to clipboard (macOS - pbcopy)"
+            else
+                echo "Error: No clipboard tool found."
+                echo "Showing command for manual copy:"
+                echo ""
+                echo "$COMMAND"
+                echo ""
+                echo "Copy the command above manually."
+                return 1
+            fi
+            ;;
+    esac
+    
+    return 0
+}
+
+# Execute the copy
+copy_command

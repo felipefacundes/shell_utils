@@ -32,7 +32,7 @@ Este repositório tem como objetivo estender o shell e conter funções úteis e
 - Recursos educacionais e tutoriais
 - **Estrutura de pastas persistente** para customizações do usuário que não são afetadas pelas atualizações do framework
 
-📌 O script `help_shell` lista funções como `sed_info` (para auxiliar no uso do sed), fornecendo tutoriais rápidos sobre comandos do Linux. Para criar uma função simples, basta criar um arquivo `função.sh` e armazená-lo em `~/.local/shell_utils/scripts/helps/`. O script `help_shell` será capaz de lê-los e mostrar uma lista completa de funções pedagógicas e muito mais.
+📌 O script `help_shell` lista funções como `docker_help` (para auxiliar no uso do docker), fornecendo tutoriais rápidos sobre comandos do Linux. Para criar uma função simples, basta criar um arquivo `função.sh` e armazená-lo em `~/.local/shell_utils/scripts/helps/`. O script `help_shell` será capaz de lê-los e mostrar uma lista completa de funções pedagógicas e muito mais.
 
 ## 📁 Estrutura de Diretórios
 

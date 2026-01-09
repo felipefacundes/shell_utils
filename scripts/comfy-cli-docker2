@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+# Source: https://github.com/comfyanonymous/ComfyUI
+# Tutorial: https://www.youtube.com/watch?v=TLE9NmN_sxw
+#           https://youtu.be/xWUddF5oMb0
+
+py_base="comfy-cli"
+py_root="${HOME}/.python"
+py_venv="${py_root}/${py_base}"
+activate="${py_venv}/bin/activate"
+arg="$1"
+
+# Function to display help menu
+show_help() {
+    cat << EOF
+
+╔══════════════════════════════════════════════════════════════╗
+║                  COMFY-CLI INSTALLATION SCRIPT               ║
+║                     Automated Setup Helper                   ║
+╚══════════════════════════════════════════════════════════════╝
+
+DESCRIPTION:
+    This script automates the installation of ComfyUI CLI with
+    automatic GPU detection and appropriate PyTorch installation.
+
+USAGE:
+    ${0##*/} [OPTION]
+
+OPTIONS:
+    -h, --help              Display this help menu
+    -nu, --nvidia-universal Use CUDA 12.6 as universal fallback for NVIDIA
+                            (Useful for compatibility issues)
+    [no arguments]          Normal installation with auto GPU detection
+
+FUNCTIONS:
+    • Creates Python virtual environment at: ~/.python/comfy-cli/
+    • Automatically detects GPU type (NVIDIA/AMD/Intel/CPU)
+    • Installs appropriate PyTorch version for your hardware
+    • Installs ComfyUI CLI and dependencies
+    • Launches comfy-cli after installation
+
+GPU SUPPORT:
+    ┌──────────────────┬─────────────────────────────┐
+    │ GPU Type         │ PyTorch Version             │
+    ├──────────────────┼─────────────────────────────┤
+    │ NVIDIA (new)     │ CUDA 13.0                   │
+    │ NVIDIA (medium)  │ CUDA 12.8                   │
+    │ NVIDIA (fallback)│ CUDA 12.6 (with -nu flag)  │
+    │ AMD              │ ROCm 6.4                    │
+    │ Intel            │ XPU                         │
+    │ CPU only         │ CPU version                 │
+    └──────────────────┴─────────────────────────────┘
+
+EXAMPLES:
+    # Normal installation with auto-detection
+    ${0##*/}
+    
+    # Force CUDA 12.6 for NVIDIA (compatibility mode)
+    ${0##*/} -nu
+    
+    # Show help
+    ${0##*/} --help
+
+INSTALLATION LOCATION:
+    • Virtual Environment: ${py_venv}
+    • Activation script: ${activate}
+    • To activate manually: source ${activate}
+
+TROUBLESHOOTING:
+    • If installation fails, remove the directory and retry:
+      rm -rf ${py_venv}
+    
+    • To check GPU detection:
+      lspci | grep -E "VGA|3D"
+    
+    • Manual environment activation:
+      source ${activate}
+      comfy-cli --help
+
+NOTES:
+    • Requires: python3, pip, wget
+    • First run creates virtual environment (takes a few minutes)
+    • Subsequent runs will directly launch comfy-cli
+    • All dependencies are installed in isolated virtual environment
+
+LINKS:
+    • ComfyUI GitHub: https://github.com/comfyanonymous/ComfyUI
+    • Tutorial Video: https://www.youtube.com/watch?v=TLE9NmN_sxw
+
+EOF
+    exit 0
+}
+
+# Check for help argument
+if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+    show_help
+fi
+
+# Rest of the original script continues here...
+if [[ "$arg" == "-nu" || "$arg" == "--nvidia-universal" ]]; then
+    export nv_universal=1
+fi
+
+# Function to detect NVIDIA GPU architecture
+get_cuda_version() {
+    # Extract GPU capability
+    local capability; capability=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1)
+    
+    if [[ -z "$capability" ]]; then
+        echo "cu130"  # Default fallback
+        return
+    fi
+    
+    # Remove the dot (e.g., 8.6 → 86)
+    local cap_int; cap_int=$(echo "$capability" | tr -d '.')
+    
+    # Define CUDA version based on capability
+    if [[ $cap_int -ge 90 ]]; then  # 9.x+
+        echo "cu130"  # CUDA 13.0 for very new GPUs
+    elif [[ $cap_int -ge 86 ]]; then  # 8.6
+        echo "cu130"  # CUDA 13.0
+    elif [[ $cap_int -ge 80 ]]; then  # 8.0
+        echo "cu130"  # CUDA 13.0
+    elif [[ $cap_int -ge 75 ]]; then  # 7.5
+        echo "cu121"  # CUDA 12.1
+    elif [[ $cap_int -ge 70 ]]; then  # 7.0
+        echo "cu121"  # CUDA 12.1
+    elif [[ $cap_int -ge 61 ]]; then  # 6.1
+        echo "cu118"  # CUDA 11.8
+    else
+        echo "cu118"  # Fallback for old GPUs
+    fi
+}
+
+nvidia_universal() {
+    echo "⚠️ Using CUDA 12.6 as fallback"
+    pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+    return 0
+}
+
+gpu_detect() {
+    if lspci | grep -E "VGA|3D" | grep -i "NVIDIA" >/dev/null 2>&1; then
+        echo "🔍 NVIDIA GPU detected"
+        
+        [[ "$nv_universal" == 1 ]] && nvidia_universal && arg="" && return
+
+        # Get appropriate CUDA version
+        local cuda_version; cuda_version=$(get_cuda_version)
+        echo "📊 GPU architecture requires CUDA: $cuda_version"
+        
+        # Install PyTorch with correct CUDA version
+        case "$cuda_version" in
+            "cu130")
+                echo "⬇️ Installing PyTorch with CUDA 13.0"
+                pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu130
+                ;;
+            "cu128")
+                echo "⬇️ Installing PyTorch with CUDA 12.8"
+                pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu128
+                ;;
+            *)
+                nvidia_universal
+                ;;
+        esac
+        
+    elif lspci | grep -E "VGA|3D" | grep -Ei "AMD|ATI" >/dev/null 2>&1; then
+        echo "🔍 AMD GPU detected"
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4
+        
+    elif lspci | grep -E "VGA|3D" | grep -i "Intel" >/dev/null 2>&1; then
+        echo "🔍 Intel GPU detected"
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+        
+    else
+        echo "⚠️ No GPU detected - installing for CPU"
+        pip install torch torchvision torchaudio
+    fi
+}
+
+if [[ ! -d "$py_venv" ]]; then
+    python -m venv "$py_venv"
+    if [[ ! -d "$py_venv" ]]; then
+        mkdir -p "$py_venv"
+    fi
+    cd "$py_venv" || true
+    wget https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
+    #shellcheck source=/dev/null
+    [[ -f "$activate" ]] && source "$activate"
+    export VIRTUAL_ENV="$py_venv"
+    gpu_detect
+    pip install -r requirements.txt
+    pip install comfy-cli
+    echo "✅ Environment configured. Running: comfy-cli install"
+    comfy-cli install
+fi
+
+if [[ -z "$VIRTUAL_ENV" ]] && [[ -f "$activate" ]]; then
+    export VIRTUAL_ENV="$py_venv"
+    #shellcheck source=/dev/null
+    source "$activate"
+fi
+
+if ! command -v comfy-cli >/dev/null; then
+    pip install comfy-cli
+fi
+
+if [[ -n "$VIRTUAL_ENV" ]] && [[ "$nv_universal" != "1" ]] && \
+    command -v comfy-cli >/dev/null 2>&1; then
+    exec comfy-cli "$@"
+elif [[ "$nv_universal" != "1" ]]; then
+    echo "❌ Error: Environment not properly configured. Check installation."
+    echo "Tip: Execute 'source $activate' manually and try again."
+    exit 1
+fi
