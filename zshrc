@@ -76,3 +76,9 @@ fzf_zsh
 # !! Contents within this block are managed by 'conda init' !!
 # conda_setup # Uncomment this line
 
+if [ -d ~/.local/share/zsh/site-functions/ ]; then
+    for completion in ~/.local/share/zsh/site-functions/*.zsh; do
+        [ -f "$completion" ] && source "$completion"
+    done
+fi
+

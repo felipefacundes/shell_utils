@@ -6,6 +6,8 @@ alias sed_help='help sed_help'
 
 alias swap_help='help swap_help'
 
+alias docker_help='help docker_basic'
+
 alias video_clear_metadata='help video_clear_metadata'
 
 alias tunnel_and_server='help tunnel_and_server'

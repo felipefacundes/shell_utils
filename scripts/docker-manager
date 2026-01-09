@@ -1,0 +1,1356 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        # General messages
+        [docker_required]="Para rodar esse shell script é necessário instalar o docker."
+        [image_not_specified]="Imagem não especificada"
+        [error_specify_image]="Erro: Especifique a imagem"
+        [example]="Ex:"
+        [unknown_option]="Opção desconhecida:"
+        [executing]="Executando:"
+        [starting_container]="Iniciando container..."
+        [command]="Comando:"
+        [creating_temp_container]="Criando container temporário..."
+        [temp_will_be_removed]="Container será automaticamente removido ao sair"
+        [starting_daemon]="Iniciando container como daemon..."
+        [daemon_running_background]="Container continuará rodando em background"
+        [daemon_started]="Daemon iniciado. Use '"
+        [to_access]="' para acessar"
+        [running_as_current_user]="Executando como usuário atual ("
+        [connecting_to_container]="Conectando ao container '"
+        [container_not_found]="Erro: Container '"
+        [not_found]="' não encontrado"
+        [available_containers]="Containers disponíveis:"
+        [starting_container2]="Iniciando container "
+        [container_started_entering]="Container iniciado. Entrando..."
+        [failed_to_start]="Falha ao iniciar container"
+        [logs_of_container]="Logs do container '"
+        [removing_container]="Removendo container '"
+        [container_is_running_stopping]="Container está rodando. Parando primeiro..."
+        [container_removed_successfully]="Container removido com sucesso"
+        # Clean messages
+        [smart_clean_title]="=== LIMPEZA INTELIGENTE DE DOCKER ==="
+        [stopped_containers_found]="Encontrados"
+        [stopped_containers]="containers parados"
+        [remove_stopped_containers]="Remover containers parados? (s/N):"
+        [removing_stopped_containers]="Removendo containers parados..."
+        [no_stopped_containers]="Nenhum container parado encontrado"
+        [unused_images_found]="Encontradas"
+        [unused_images]="imagens não utilizadas"
+        [remove_unused_images]="Remover imagens não utilizadas? (s/N):"
+        [removing_unused_images]="Removendo imagens não utilizadas..."
+        [no_unused_images]="Nenhuma imagem não utilizada encontrada"
+        [unused_volumes_found]="Encontrados"
+        [unused_volumes]="volumes não utilizados"
+        [remove_unused_volumes]="Remover volumes não utilizados? (s/N):"
+        [removing_unused_volumes]="Removendo volumes não utilizados..."
+        [no_unused_volumes]="Nenhum volume não utilizado encontrado"
+        [clean_completed]="Limpeza concluída!"
+        # Clean-all messages
+        [clean_all_warning]="=== ATENÇÃO: LIMPEZA COMPLETA ==="
+        [clean_all_will_remove]="Esta ação irá remover:"
+        [all_stopped_containers]="• Todos containers PARADOS"
+        [all_unused_images]="• Todas imagens NÃO USADAS"
+        [all_unused_volumes]="• Todos volumes NÃO USADOS"
+        [all_unused_networks]="• Todas networks NÃO USADAS"
+        [cannot_be_undone]="Esta ação NÃO PODE ser desfeita!"
+        [confirm_to_continue]="Tem certeza que deseja continuar? (digite 'SIM' para confirmar):"
+        [operation_cancelled]="Operação cancelada"
+        [starting_complete_clean]="Iniciando limpeza completa..."
+        [complete_clean_finished]="Limpeza completa concluída!"
+        # Nuke messages
+        [nuke_warning]="                        ⚠️  OPÇÃO NUCLEAR ⚠️"
+        [nuke_will_remove]="ESTA AÇÃO IRÁ REMOVER:"
+        [nuke_all_containers]="• TODOS os containers (rodando e parados)"
+        [nuke_all_images]="• TODAS as imagens"
+        [nuke_all_volumes]="• TODOS os volumes"
+        [nuke_all_networks]="• TODAS as networks"
+        [nuke_all_caches]="• TODOS os caches"
+        [nuke_will_destroy]="⛔ ISSO DESTRUIRÁ COMPLETAMENTE SEU AMBIENTE DOCKER ⛔"
+        [nuke_need_redownload]="Você precisará baixar todas as imagens novamente"
+        [nuke_lose_unnamed_data]="Você perderá todos os dados em volumes não nomeados"
+        [nuke_confirm]="Digite 'DESTRUIR-TUDO' para confirmar:"
+        [nuke_cancelled_phew]="Operação cancelada. Ufa!"
+        [nuke_last_chance]="ÚLTIMA CHANCE: Isso irá apagar TUDO mesmo!"
+        [nuke_absolutely_sure]="Tem absoluta certeza? (s/N):"
+        [nuke_cancelled_last_second]="Operação cancelada no último segundo!"
+        [nuke_starting_destruction]="Iniciando destruição total..."
+        [nuke_stopping_removing_all]="Parando e removendo todos containers..."
+        [nuke_removing_all_images]="Removendo todas imagens..."
+        [nuke_cleaning_whole_system]="Limpando todo o sistema..."
+        [nuke_completely_reset]="✅ Ambiente Docker completamente resetado!"
+        [nuke_restart_daemon]="Reinicie o Docker daemon se necessário"
+        # Other commands
+        [real_time_stats]="Estatísticas em tempo real dos containers:"
+        [press_ctrl_c]="Pressione Ctrl+C para sair"
+        [processes_in_container]="Processes no container '"
+        [active_containers]="CONTAINERS ATIVOS:"
+        [stopped_containers2]="CONTAINERS PARADOS:"
+        [summary]="RESUMO:"
+        [total]="Total:"
+        [running]="Rodando:"
+        [stopped]="Parados:"
+        [get_container_ip]="IP do container '"
+        [container_has_no_ip]="Container não tem IP atribuído"
+        [mapped_ports_for]="Portas mapeadas para '"
+        [container_info]="=== Informações do container '"
+        [basic_status]="Status:"
+        [created]="Criado:"
+        [image]="Imagem:"
+        [command2]="Comando:"
+        [entrypoint]="Entrypoint:"
+        [ports]="Portas:"
+        [networks]="Networks:"
+        [mounts]="Montagens:"
+        [env_vars_first5]="Variáveis de ambiente (primeiras 5):"
+        [images_available]="IMAGENS DISPONÍVEIS:"
+        [images_summary]="RESUMO:"
+        [total_images]="Total de imagens:"
+        [space_used]="Espaço usado:"
+        [removing_image]="Removendo imagem '"
+        [downloading_image]="Baixando imagem '"
+        [searching_for]="Buscando por '"
+        [on_docker_hub]="' no Docker Hub..."
+        [renaming_container]="Renomeando container '"
+        [to]="' para '"
+        [renamed_successfully]="Container renomeado com sucesso"
+        [docker_health_check]="=== VERIFICAÇÃO DE SAÚDE DO DOCKER ==="
+        [docker_daemon]="1. Docker Daemon:"
+        [running_check]="✓ Rodando"
+        [not_running]="✗ Não está rodando"
+        [containers_status]="2. Containers:"
+        [images_status]="3. Imagens:"
+        [disk_usage]="4. Uso de disco:"
+        [docker_compose_status]="5. Docker Compose:"
+        [installed]="✓ Instalado"
+        [not_installed]="⚠ Não instalado"
+        [check_completed]="Verificação concluída!"
+        [docker_versions]="=== VERSÕES DO DOCKER ==="
+        [docker_client]="Docker Client:"
+        [docker_server]="Docker Server:"
+        [docker_compose]="Docker Compose:"
+        [last_executed_commands]="Últimos comandos executados:"
+        [no_history]="Nenhum histórico encontrado"
+        [executing_prune]="Executando docker system prune..."
+        [prune_will_remove]="Isso removerá:"
+        [stopped_containers3]="• Containers parados"
+        [untagged_images]="• Imagens sem tag"
+        [build_cache]="• Build cache"
+        [unused_networks]="• Networks não usadas"
+        [continue_question]="Continuar? (s/N):"
+        [prune_executed]="Prune executado com sucesso"
+        [operation_cancelled2]="Operação cancelada"
+        # Usage messages
+        [error_specify_container]="Erro: Especifique o nome do container"
+        [error_specify_image2]="Erro: Especifique o nome da imagem"
+        [usage]="Uso:"
+        [error_specify_search_term]="Erro: Especifique o termo de busca"
+        [rename_usage]="Erro: Uso:"
+        [comando_nao_reconhecido]="Comando não reconhecido:"
+        [use_help]="Use"
+        [para_ver_comandos]="para ver os comandos disponíveis"
+        [container_not_found_generic]="Container não encontrado"
+        [space_used_colon]="Espaço usado:"
+        [container_stopping]="Parando container '$2'..."
+        [stop_container]="Parando container"
+        [enter_container_name]="Especifique o nome do container"
+        [exec_usage]="Uso: ${0##*/} exec <container> <comando>"
+        [no_command_specified]="Erro: Especifique o nome do container"
+        # Usage text messages
+        [title]="=== Docker Manager - Controle Completo de Docker ==="
+        [usage_line]="Uso:"
+        [command_format]="  ${0##*/} [COMANDO] [OPÇÕES]"
+        [main_commands]="COMANDOS PRINCIPAIS:"
+        [run_command]="run <imagem> [opções]  - Criar e iniciar novo container"
+        [enter_command]="enter <container>      - Entrar em container em execução"
+        [start_command]="start <container>      - Iniciar e entrar no container"
+        [temp_command]="temp <imagem>          - Criar container temporário (--rm)"
+        [container_management]="GERENCIAMENTO DE CONTAINERS:"
+        [ls_command]="ls                     - Listar containers (formato customizado)"
+        [stop_command]="stop <container>       - Parar container"
+        [restart_command]="restart <container>    - Reiniciar container"
+        [rm_command]="rm <container>         - Remover container"
+        [rename_command]="rename <old> <new>     - Renomear container"
+        [exec_command]="exec <container> <cmd> - Executar comando específico"
+        [monitoring_info]="MONITORAMENTO E INFORMAÇÕES:"
+        [logs_command]="logs <container>       - Ver logs do container"
+        [stats_command]="stats                  - Mostrar estatísticas em tempo real"
+        [top_command]="top <container>        - Processos dentro do container"
+        [info_command]="info <container>       - Informações detalhadas"
+        [ip_command]="ip <container>         - Mostrar IP do container"
+        [ports_command]="ports <container>      - Mostrar portas mapeadas"
+        [inspect_command]="inspect <container>    - Inspect completo do container"
+        [image_management]="GERENCIAMENTO DE IMAGENS:"
+        [images_command]="images                 - Listar imagens (formato customizado)"
+        [rmi_command]="rmi <imagem>           - Remover imagem"
+        [pull_command]="pull <imagem>          - Baixar imagem"
+        [search_command]="search <termo>         - Buscar imagens no Docker Hub"
+        [cleanup_maintenance]="LIMPEZA E MANUTENÇÃO:"
+        [clean_command]="clean                  - Limpeza inteligente (segura)"
+        [clean_all_command]="clean-all              - Limpeza completa (cuidado!)"
+        [prune_command]="prune                  - Remove tudo não usado"
+        [nuke_command]="nuke                   - Opção nuclear (remove TUDO)"
+        [utilities]="UTILITÁRIOS:"
+        [daemon_command]="daemon <container>     - Rodar como daemon (tail -f /dev/null)"
+        [user_command]="user <container>       - Executar como usuário atual"
+        [health_command]="health                 - Verificar saúde do Docker"
+        [version_command]="version                - Versões do Docker e Docker-compose"
+        [history_command]="history                - Histórico de comandos executados"
+        [examples]="EXEMPLOS:"
+        [example1]="  ${0##*/} run ubuntu:latest"
+        [example2]="  ${0##*/} temp alpine:latest"
+        [example3]="  ${0##*/} enter meu-container"
+        [example4]="  ${0##*/} clean"
+        [example5]="  ${0##*/} daemon meu-servico"
+        [help_usage]="Use '${0##*/} help <comando>' para ajuda específica"
+        # Command help messages
+        [run_help_title]="${0##*/} run <imagem> [opções]"
+        [run_help_desc]="Cria e inicia um novo container interativamente"
+        [run_help_options]="Opções adicionais:"
+        [run_help_name]="  --name <nome>      Nome do container"
+        [run_help_port]="  --port <host:cont> Mapeamento de portas"
+        [run_help_volume]="  --volume <host:cont> Volume bind mount"
+        [run_help_env]="  --env <KEY=VAL>    Variável de ambiente"
+        [run_help_network]="  --network <rede>   Rede do container"
+        [run_help_user]="  --user <user>      Usuário dentro do container"
+        [run_help_examples]="Exemplos:"
+        [run_help_example1]="  ${0##*/} run ubuntu:latest"
+        [run_help_example2]="  ${0##*/} run nginx:alpine --name web --port 80:80"
+        [temp_help_title]="${0##*/} temp <imagem>"
+        [temp_help_desc]="Cria container temporário que será removido automaticamente ao sair"
+        [temp_help_example]="Exemplo:"
+        [temp_help_example1]="  ${0##*/} temp archlinux:latest"
+        [clean_all_help_warning]="ATENÇÃO: Este comando é perigoso!"
+        [clean_all_help_desc]="Remove todos containers parados e todas imagens não usadas"
+        [clean_all_help_caution]="Use com extrema cautela!"
+        [nuke_help_danger]="PERIGO: OPÇÃO NUCLEAR"
+        [nuke_help_desc]="Remove ABSOLUTAMENTE TUDO:"
+        [nuke_help_containers]="  • Todos containers (rodando e parados)"
+        [nuke_help_images]="  • Todas imagens"
+        [nuke_help_volumes]="  • Todos volumes"
+        [nuke_help_networks]="  • Todas networks"
+        [nuke_help_cannot_undo]="Não pode ser desfeito!"
+    )
+else
+    MESSAGES=(
+        # General messages
+        [docker_required]="Docker is required to run this shell script."
+        [image_not_specified]="Image not specified"
+        [error_specify_image]="Error: Specify the image"
+        [example]="Ex:"
+        [unknown_option]="Unknown option:"
+        [executing]="Executing:"
+        [starting_container]="Starting container..."
+        [command]="Command:"
+        [creating_temp_container]="Creating temporary container..."
+        [temp_will_be_removed]="Container will be automatically removed when exiting"
+        [starting_daemon]="Starting container as daemon..."
+        [daemon_running_background]="Container will continue running in background"
+        [daemon_started]="Daemon started. Use '"
+        [to_access]="' to access"
+        [running_as_current_user]="Running as current user ("
+        [connecting_to_container]="Connecting to container '"
+        [container_not_found]="Error: Container '"
+        [not_found]="' not found"
+        [available_containers]="Available containers:"
+        [starting_container2]="Starting container "
+        [container_started_entering]="Container started. Entering..."
+        [failed_to_start]="Failed to start container"
+        [logs_of_container]="Logs of container '"
+        [removing_container]="Removing container '"
+        [container_is_running_stopping]="Container is running. Stopping first..."
+        [container_removed_successfully]="Container removed successfully"
+        # Clean messages
+        [smart_clean_title]="=== DOCKER SMART CLEAN ==="
+        [stopped_containers_found]="Found"
+        [stopped_containers]="stopped containers"
+        [remove_stopped_containers]="Remove stopped containers? (y/N):"
+        [removing_stopped_containers]="Removing stopped containers..."
+        [no_stopped_containers]="No stopped containers found"
+        [unused_images_found]="Found"
+        [unused_images]="unused images"
+        [remove_unused_images]="Remove unused images? (y/N):"
+        [removing_unused_images]="Removing unused images..."
+        [no_unused_images]="No unused images found"
+        [unused_volumes_found]="Found"
+        [unused_volumes]="unused volumes"
+        [remove_unused_volumes]="Remove unused volumes? (y/N):"
+        [removing_unused_volumes]="Removing unused volumes..."
+        [no_unused_volumes]="No unused volumes found"
+        [clean_completed]="Clean completed!"
+        # Clean-all messages
+        [clean_all_warning]="=== WARNING: COMPLETE CLEAN ==="
+        [clean_all_will_remove]="This action will remove:"
+        [all_stopped_containers]="• All STOPPED containers"
+        [all_unused_images]="• All UNUSED images"
+        [all_unused_volumes]="• All UNUSED volumes"
+        [all_unused_networks]="• All UNUSED networks"
+        [cannot_be_undone]="This action CANNOT be undone!"
+        [confirm_to_continue]="Are you sure you want to continue? (type 'YES' to confirm):"
+        [operation_cancelled]="Operation cancelled"
+        [starting_complete_clean]="Starting complete clean..."
+        [complete_clean_finished]="Complete clean finished!"
+        # Nuke messages
+        [nuke_warning]="                        ⚠️  NUCLEAR OPTION ⚠️"
+        [nuke_will_remove]="THIS ACTION WILL REMOVE:"
+        [nuke_all_containers]="• ALL containers (running and stopped)"
+        [nuke_all_images]="• ALL images"
+        [nuke_all_volumes]="• ALL volumes"
+        [nuke_all_networks]="• ALL networks"
+        [nuke_all_caches]="• ALL caches"
+        [nuke_will_destroy]="⛔ THIS WILL COMPLETELY DESTROY YOUR DOCKER ENVIRONMENT ⛔"
+        [nuke_need_redownload]="You will need to download all images again"
+        [nuke_lose_unnamed_data]="You will lose all data in unnamed volumes"
+        [nuke_confirm]="Type 'DESTROY-EVERYTHING' to confirm:"
+        [nuke_cancelled_phew]="Operation cancelled. Phew!"
+        [nuke_last_chance]="LAST CHANCE: This will delete EVERYTHING for real!"
+        [nuke_absolutely_sure]="Are you absolutely sure? (y/N):"
+        [nuke_cancelled_last_second]="Operation cancelled at the last second!"
+        [nuke_starting_destruction]="Starting total destruction..."
+        [nuke_stopping_removing_all]="Stopping and removing all containers..."
+        [nuke_removing_all_images]="Removing all images..."
+        [nuke_cleaning_whole_system]="Cleaning the whole system..."
+        [nuke_completely_reset]="✅ Docker environment completely reset!"
+        [nuke_restart_daemon]="Restart Docker daemon if needed"
+        # Other commands
+        [real_time_stats]="Real-time container statistics:"
+        [press_ctrl_c]="Press Ctrl+C to exit"
+        [processes_in_container]="Processes in container '"
+        [active_containers]="ACTIVE CONTAINERS:"
+        [stopped_containers2]="STOPPED CONTAINERS:"
+        [summary]="SUMMARY:"
+        [total]="Total:"
+        [running]="Running:"
+        [stopped]="Stopped:"
+        [get_container_ip]="IP of container '"
+        [container_has_no_ip]="Container has no IP assigned"
+        [mapped_ports_for]="Mapped ports for '"
+        [container_info]="=== Container information '"
+        [basic_status]="Status:"
+        [created]="Created:"
+        [image]="Image:"
+        [command2]="Command:"
+        [entrypoint]="Entrypoint:"
+        [ports]="Ports:"
+        [networks]="Networks:"
+        [mounts]="Mounts:"
+        [env_vars_first5]="Environment variables (first 5):"
+        [images_available]="AVAILABLE IMAGES:"
+        [images_summary]="SUMMARY:"
+        [total_images]="Total images:"
+        [space_used]="Space used:"
+        [removing_image]="Removing image '"
+        [downloading_image]="Downloading image '"
+        [searching_for]="Searching for '"
+        [on_docker_hub]="' on Docker Hub..."
+        [renaming_container]="Renaming container '"
+        [to]="' to '"
+        [renamed_successfully]="Container renamed successfully"
+        [docker_health_check]="=== DOCKER HEALTH CHECK ==="
+        [docker_daemon]="1. Docker Daemon:"
+        [running_check]="✓ Running"
+        [not_running]="✗ Not running"
+        [containers_status]="2. Containers:"
+        [images_status]="3. Images:"
+        [disk_usage]="4. Disk usage:"
+        [docker_compose_status]="5. Docker Compose:"
+        [installed]="✓ Installed"
+        [not_installed]="⚠ Not installed"
+        [check_completed]="Check completed!"
+        [docker_versions]="=== DOCKER VERSIONS ==="
+        [docker_client]="Docker Client:"
+        [docker_server]="Docker Server:"
+        [docker_compose]="Docker Compose:"
+        [last_executed_commands]="Last executed commands:"
+        [no_history]="No history found"
+        [executing_prune]="Executing docker system prune..."
+        [prune_will_remove]="This will remove:"
+        [stopped_containers3]="• Stopped containers"
+        [untagged_images]="• Untagged images"
+        [build_cache]="• Build cache"
+        [unused_networks]="• Unused networks"
+        [continue_question]="Continue? (y/N):"
+        [prune_executed]="Prune executed successfully"
+        [operation_cancelled2]="Operation cancelled"
+        # Usage messages
+        [error_specify_container]="Error: Specify container name"
+        [error_specify_image2]="Error: Specify image name"
+        [usage]="Usage:"
+        [error_specify_search_term]="Error: Specify search term"
+        [rename_usage]="Error: Usage:"
+        [comando_nao_reconhecido]="Command not recognized:"
+        [use_help]="Use"
+        [para_ver_comandos]="to see available commands"
+        [container_not_found_generic]="Container not found"
+        [space_used_colon]="Space used:"
+        [container_stopping]="Stopping container '$2'..."
+        [stop_container]="Stopping container"
+        [enter_container_name]="Specify container name"
+        [exec_usage]="Usage: ${0##*/} exec <container> <command>"
+        [no_command_specified]="Error: Specify container name"
+        # Usage text messages
+        [title]="=== Docker Manager - Complete Docker Control ==="
+        [usage_line]="Usage:"
+        [command_format]="  ${0##*/} [COMMAND] [OPTIONS]"
+        [main_commands]="MAIN COMMANDS:"
+        [run_command]="run <image> [options] - Create and start new container"
+        [enter_command]="enter <container>      - Enter running container"
+        [start_command]="start <container>      - Start and enter container"
+        [temp_command]="temp <image>           - Create temporary container (--rm)"
+        [container_management]="CONTAINER MANAGEMENT:"
+        [ls_command]="ls                     - List containers (custom format)"
+        [stop_command]="stop <container>       - Stop container"
+        [restart_command]="restart <container>    - Restart container"
+        [rm_command]="rm <container>         - Remove container"
+        [rename_command]="rename <old> <new>     - Rename container"
+        [exec_command]="exec <container> <cmd> - Execute specific command"
+        [monitoring_info]="MONITORING AND INFORMATION:"
+        [logs_command]="logs <container>       - View container logs"
+        [stats_command]="stats                  - Show real-time statistics"
+        [top_command]="top <container>        - Processes inside container"
+        [info_command]="info <container>       - Detailed information"
+        [ip_command]="ip <container>         - Show container IP"
+        [ports_command]="ports <container>      - Show mapped ports"
+        [inspect_command]="inspect <container>    - Complete container inspection"
+        [image_management]="IMAGE MANAGEMENT:"
+        [images_command]="images                 - List images (custom format)"
+        [rmi_command]="rmi <image>            - Remove image"
+        [pull_command]="pull <image>           - Download image"
+        [search_command]="search <term>          - Search images on Docker Hub"
+        [cleanup_maintenance]="CLEANUP AND MAINTENANCE:"
+        [clean_command]="clean                  - Smart cleanup (safe)"
+        [clean_all_command]="clean-all              - Complete cleanup (danger!)"
+        [prune_command]="prune                  - Remove everything unused"
+        [nuke_command]="nuke                   - Nuclear option (remove EVERYTHING)"
+        [utilities]="UTILITIES:"
+        [daemon_command]="daemon <container>     - Run as daemon (tail -f /dev/null)"
+        [user_command]="user <container>       - Execute as current user"
+        [health_command]="health                 - Check Docker health"
+        [version_command]="version                - Docker and Docker-compose versions"
+        [history_command]="history                - Command execution history"
+        [examples]="EXAMPLES:"
+        [example1]="  ${0##*/} run ubuntu:latest"
+        [example2]="  ${0##*/} temp alpine:latest"
+        [example3]="  ${0##*/} enter meu-container"
+        [example4]="  ${0##*/} clean"
+        [example5]="  ${0##*/} daemon meu-servico"
+        [help_usage]="Use '${0##*/} help <command>' for specific help"
+        # Command help messages
+        [run_help_title]="${0##*/} run <image> [options]"
+        [run_help_desc]="Creates and starts a new container interactively"
+        [run_help_options]="Additional options:"
+        [run_help_name]="  --name <name>      Container name"
+        [run_help_port]="  --port <host:cont> Port mapping"
+        [run_help_volume]="  --volume <host:cont> Volume bind mount"
+        [run_help_env]="  --env <KEY=VAL>    Environment variable"
+        [run_help_network]="  --network <network> Container network"
+        [run_help_user]="  --user <user>      User inside container"
+        [run_help_examples]="Examples:"
+        [run_help_example1]="  ${0##*/} run ubuntu:latest"
+        [run_help_example2]="  ${0##*/} run nginx:alpine --name web --port 80:80"
+        [temp_help_title]="${0##*/} temp <image>"
+        [temp_help_desc]="Creates temporary container that will be automatically removed when exiting"
+        [temp_help_example]="Example:"
+        [temp_help_example1]="  ${0##*/} temp archlinux:latest"
+        [clean_all_help_warning]="WARNING: This command is dangerous!"
+        [clean_all_help_desc]="Removes all stopped containers and all unused images"
+        [clean_all_help_caution]="Use with extreme caution!"
+        [nuke_help_danger]="DANGER: NUCLEAR OPTION"
+        [nuke_help_desc]="Removes ABSOLUTELY EVERYTHING:"
+        [nuke_help_containers]="  • All containers (running and stopped)"
+        [nuke_help_images]="  • All images"
+        [nuke_help_volumes]="  • All volumes"
+        [nuke_help_networks]="  • All networks"
+        [nuke_help_cannot_undo]="Cannot be undone!"
+    )
+fi
+
+if ! command -v docker &>/dev/null; then
+    echo "${MESSAGES[docker_required]}"
+    exit 1
+fi
+
+# Configurations
+LOG_FILE="${HOME}/.docker-manager.log"
+DEFAULT_SHELL="bash"
+TEMPORARY_PREFIX="temp-"
+
+# Logging function
+log_message() {
+    local level="$1"
+    local message="$2"
+    local timestamp; timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    case "$level" in
+        "INFO") echo -e "${GREEN}[INFO]${NC} $message" ;;
+        "WARN") echo -e "${YELLOW}[WARN]${NC} $message" ;;
+        "ERROR") echo -e "${RED}[ERROR]${NC} $message" ;;
+        "DEBUG") echo -e "${BLUE}[DEBUG]${NC} $message" ;;
+    esac
+    
+    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+}
+
+# Usage function
+show_usage() {
+    echo -e "${BOLD}${CYAN}${MESSAGES[title]}${NC}"
+    echo ""
+    echo -e "${BLUE}${MESSAGES[usage_line]}${NC}"
+    echo "${MESSAGES[command_format]}"
+    echo ""
+    echo -e "${CYAN}${BOLD}${MESSAGES[main_commands]}${NC}"
+    echo -e "  ${GREEN}run${NC} ${MESSAGES[run_command]}"
+    echo -e "  ${GREEN}enter${NC} ${MESSAGES[enter_command]}"
+    echo -e "  ${GREEN}start${NC} ${MESSAGES[start_command]}"
+    echo -e "  ${GREEN}temp${NC} ${MESSAGES[temp_command]}"
+    echo ""
+    echo -e "${CYAN}${BOLD}${MESSAGES[container_management]}${NC}"
+    echo -e "  ${GREEN}ls${NC} ${MESSAGES[ls_command]}"
+    echo -e "  ${GREEN}stop${NC} ${MESSAGES[stop_command]}"
+    echo -e "  ${GREEN}restart${NC} ${MESSAGES[restart_command]}"
+    echo -e "  ${GREEN}rm${NC} ${MESSAGES[rm_command]}"
+    echo -e "  ${GREEN}rename${NC} ${MESSAGES[rename_command]}"
+    echo -e "  ${GREEN}exec${NC} ${MESSAGES[exec_command]}"
+    echo ""
+    echo -e "${CYAN}${BOLD}${MESSAGES[monitoring_info]}${NC}"
+    echo -e "  ${GREEN}logs${NC} ${MESSAGES[logs_command]}"
+    echo -e "  ${GREEN}stats${NC} ${MESSAGES[stats_command]}"
+    echo -e "  ${GREEN}top${NC} ${MESSAGES[top_command]}"
+    echo -e "  ${GREEN}info${NC} ${MESSAGES[info_command]}"
+    echo -e "  ${GREEN}ip${NC} ${MESSAGES[ip_command]}"
+    echo -e "  ${GREEN}ports${NC} ${MESSAGES[ports_command]}"
+    echo -e "  ${GREEN}inspect${NC} ${MESSAGES[inspect_command]}"
+    echo ""
+    echo -e "${CYAN}${BOLD}${MESSAGES[image_management]}${NC}"
+    echo -e "  ${GREEN}images${NC} ${MESSAGES[images_command]}"
+    echo -e "  ${GREEN}rmi${NC} ${MESSAGES[rmi_command]}"
+    echo -e "  ${GREEN}pull${NC} ${MESSAGES[pull_command]}"
+    echo -e "  ${GREEN}search${NC} ${MESSAGES[search_command]}"
+    echo ""
+    echo -e "${CYAN}${BOLD}${MESSAGES[cleanup_maintenance]}${NC}"
+    echo -e "  ${GREEN}clean${NC} ${MESSAGES[clean_command]}"
+    echo -e "  ${GREEN}clean-all${NC} ${MESSAGES[clean_all_command]}"
+    echo -e "  ${GREEN}prune${NC} ${MESSAGES[prune_command]}"
+    echo -e "  ${GREEN}nuke${NC} ${MESSAGES[nuke_command]}"
+    echo ""
+    echo -e "${CYAN}${BOLD}${MESSAGES[utilities]}${NC}"
+    echo -e "  ${GREEN}daemon${NC} ${MESSAGES[daemon_command]}"
+    echo -e "  ${GREEN}user${NC} ${MESSAGES[user_command]}"
+    echo -e "  ${GREEN}health${NC} ${MESSAGES[health_command]}"
+    echo -e "  ${GREEN}version${NC} ${MESSAGES[version_command]}"
+    echo -e "  ${GREEN}history${NC} ${MESSAGES[history_command]}"
+    echo ""
+    echo -e "${CYAN}${BOLD}${MESSAGES[examples]}${NC}"
+    echo "${MESSAGES[example1]}"
+    echo "${MESSAGES[example2]}"
+    echo "${MESSAGES[example3]}"
+    echo "${MESSAGES[example4]}"
+    echo "${MESSAGES[example5]}"
+    echo ""
+    echo -e "${YELLOW}${MESSAGES[help_usage]}${NC}"
+}
+
+# Function for specific help
+show_command_help() {
+    case "$1" in
+        "run")
+            echo -e "${CYAN}${MESSAGES[run_help_title]}${NC}"
+            echo "${MESSAGES[run_help_desc]}"
+            echo ""
+            echo "${MESSAGES[run_help_options]}"
+            echo "${MESSAGES[run_help_name]}"
+            echo "${MESSAGES[run_help_port]}"
+            echo "${MESSAGES[run_help_volume]}"
+            echo "${MESSAGES[run_help_env]}"
+            echo "${MESSAGES[run_help_network]}"
+            echo "${MESSAGES[run_help_user]}"
+            echo ""
+            echo "${MESSAGES[run_help_examples]}"
+            echo "${MESSAGES[run_help_example1]}"
+            echo "${MESSAGES[run_help_example2]}"
+            ;;
+        "temp")
+            echo -e "${CYAN}${MESSAGES[temp_help_title]}${NC}"
+            echo "${MESSAGES[temp_help_desc]}"
+            echo ""
+            echo "${MESSAGES[temp_help_example]}"
+            echo "${MESSAGES[temp_help_example1]}"
+            ;;
+        "clean-all")
+            echo -e "${RED}${BOLD}${MESSAGES[clean_all_help_warning]}${NC}"
+            echo "${MESSAGES[clean_all_help_desc]}"
+            echo "${MESSAGES[clean_all_help_caution]}"
+            ;;
+        "nuke")
+            echo -e "${RED}${BOLD}${MESSAGES[nuke_help_danger]}${NC}"
+            echo "${MESSAGES[nuke_help_desc]}"
+            echo "${MESSAGES[nuke_help_containers]}"
+            echo "${MESSAGES[nuke_help_images]}"
+            echo "${MESSAGES[nuke_help_volumes]}"
+            echo "${MESSAGES[nuke_help_networks]}"
+            echo ""
+            echo -e "${BOLD}${MESSAGES[nuke_help_cannot_undo]}${NC}"
+            ;;
+        *) show_usage ;;
+    esac
+}
+
+# Function to create and execute container
+docker_run() {
+    if [ -z "$1" ]; then
+        log_message "ERROR" "${MESSAGES[image_not_specified]}"
+        echo -e "${RED}${MESSAGES[error_specify_image]}${NC}"
+        echo "${MESSAGES[example]} ${0##*/} run ubuntu:latest"
+        return 1
+    fi
+    
+    local IMAGE="$1"
+    shift
+    local NAME=""
+    local PORT=""
+    local VOLUME=""
+    local ENV_VARS=()
+    local NETWORK=""
+    local USER_OPT=""
+    
+    # Parse additional options
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --name)
+                NAME="$2"
+                shift 2
+                ;;
+            --port)
+                PORT="$2"
+                shift 2
+                ;;
+            --volume)
+                VOLUME="$2"
+                shift 2
+                ;;
+            --env)
+                ENV_VARS+=("-e" "$2")
+                shift 2
+                ;;
+            --network)
+                NETWORK="$2"
+                shift 2
+                ;;
+            --user)
+                USER_OPT="--user $2"
+                shift 2
+                ;;
+            *)
+                log_message "WARN" "${MESSAGES[unknown_option]} $1"
+                shift
+                ;;
+        esac
+    done
+    
+    # Build docker run command
+    local DOCKER_CMD="docker run -it"
+    
+    if [ -n "$NAME" ]; then
+        DOCKER_CMD="$DOCKER_CMD --name $NAME"
+    else
+        local timestamp; timestamp="container-$(date +%s)"
+        DOCKER_CMD="$DOCKER_CMD --name $RANDOM_NAME"
+    fi
+    
+    if [ -n "$PORT" ]; then
+        DOCKER_CMD="$DOCKER_CMD -p $PORT"
+    fi
+    
+    if [ -n "$VOLUME" ]; then
+        DOCKER_CMD="$DOCKER_CMD -v $VOLUME"
+    fi
+    
+    if [ ${#ENV_VARS[@]} -gt 0 ]; then
+        DOCKER_CMD="$DOCKER_CMD ${ENV_VARS[*]}"
+    fi
+    
+    if [ -n "$NETWORK" ]; then
+        DOCKER_CMD="$DOCKER_CMD --network $NETWORK"
+    fi
+    
+    if [ -n "$USER_OPT" ]; then
+        DOCKER_CMD="$DOCKER_CMD $USER_OPT"
+    fi
+    
+    DOCKER_CMD="$DOCKER_CMD $IMAGE $DEFAULT_SHELL"
+    
+    log_message "INFO" "${MESSAGES[executing]} $DOCKER_CMD"
+    echo -e "${GREEN}${MESSAGES[starting_container]}${NC}"
+    echo -e "${YELLOW}${MESSAGES[command]}${NC} $DOCKER_CMD"
+    
+    eval "$DOCKER_CMD"
+}
+
+# Function for temporary container
+docker_temp() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_image]}${NC}"
+        return 1
+    fi
+    
+    local IMAGE="$1"
+    local TEMP_NAME; TEMP_NAME="${TEMPORARY_PREFIX}$(date +%s)"
+    
+    echo -e "${CYAN}${MESSAGES[creating_temp_container]}${NC}"
+    echo -e "${YELLOW}${MESSAGES[temp_will_be_removed]}${NC}"
+    
+    docker run -it --rm --name "$TEMP_NAME" "$IMAGE" "$DEFAULT_SHELL"
+}
+
+# Function to run as daemon
+docker_daemon() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    local CONTAINER="$1"
+    
+    echo -e "${CYAN}${MESSAGES[starting_daemon]}${NC}"
+    echo -e "${YELLOW}${MESSAGES[daemon_running_background]}${NC}"
+        
+    if docker run -d --name "$CONTAINER" "$CONTAINER" tail -f /dev/null; then
+        echo -e "${GREEN}${MESSAGES[daemon_started]}${0##*/} enter $CONTAINER${MESSAGES[to_access]}${NC}"
+    fi
+}
+
+# Function to execute as current user
+docker_user() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    local CONTAINER="$1"
+    local USER_ID; USER_ID=$(id -u)
+    local GROUP_ID; GROUP_ID=$(id -g)
+    
+    echo -e "${CYAN}${MESSAGES[running_as_current_user]}$USER_ID:$GROUP_ID)...${NC}"
+    
+    docker exec -it --user "$USER_ID:$GROUP_ID" "$CONTAINER" "$DEFAULT_SHELL"
+}
+
+# Function to enter container
+docker_enter() {
+    if [ -z "$1" ]; then
+        log_message "ERROR" "${MESSAGES[image_not_specified]}"
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        echo -e "${MESSAGES[available_containers]}:"
+        docker ps --format "{{.Names}}" | while read name; do
+            echo "  • $name"
+        done
+        return 1
+    fi
+    
+    # Check if container exists
+    if ! docker inspect "$1" &>/dev/null; then
+        echo -e "${RED}${MESSAGES[container_not_found]}$1${MESSAGES[not_found]}${NC}"
+        return 1
+    fi
+    
+    # Try to execute bash, if not, sh
+    echo -e "${CYAN}${MESSAGES[connecting_to_container]}$1'...${NC}"
+    docker exec -it "$1" bash 2>/dev/null || docker exec -it "$1" sh
+}
+
+# Function to start and enter
+docker_start_and_enter() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}${MESSAGES[starting_container2]}$1...${NC}"
+    
+    if docker start "$1"; then
+        echo -e "${GREEN}${MESSAGES[container_started_entering]}${NC}"
+        sleep 1
+        docker_enter "$1"
+    else
+        echo -e "${RED}${MESSAGES[failed_to_start]}${NC}"
+    fi
+}
+
+# Function to view logs
+docker_logs() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}${MESSAGES[logs_of_container]}$1':${NC}"
+    docker logs -f --tail=100 "$1"
+}
+
+# Function to remove container
+docker_remove() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}${MESSAGES[removing_container]}$1'...${NC}"
+    
+    # Check if it's running
+    if docker ps --format "{{.Names}}" | grep -q "^$1$"; then
+        echo -e "${YELLOW}${MESSAGES[container_is_running_stopping]}${NC}"
+        docker stop "$1"
+    fi
+       
+    if docker rm "$1"; then
+        echo -e "${GREEN}${MESSAGES[container_removed_successfully]}${NC}"
+    fi
+}
+
+# Function for smart cleanup
+docker_clean() {
+    echo -e "${CYAN}${MESSAGES[smart_clean_title]}${NC}"
+    echo ""
+    
+    # Stopped containers
+    local STOPPED_COUNT; STOPPED_COUNT=$(docker ps -aq -f status=exited | wc -l)
+    if [ "$STOPPED_COUNT" -gt 0 ]; then
+        echo -e "${YELLOW}${MESSAGES[stopped_containers_found]} $STOPPED_COUNT ${MESSAGES[stopped_containers]}${NC}"
+        read -rp "${MESSAGES[remove_stopped_containers]} " choice
+        if [[ $choice == "s" || $choice == "S" ]]; then
+            echo -e "${YELLOW}${MESSAGES[removing_stopped_containers]}${NC}"
+            docker container prune -f
+        fi
+    else
+        echo -e "${GREEN}${MESSAGES[no_stopped_containers]}${NC}"
+    fi
+    
+    echo ""
+    
+    # Unused images
+    local DANGLING_IMAGES; DANGLING_IMAGES=$(docker images -f "dangling=true" -q | wc -l)
+    if [ "$DANGLING_IMAGES" -gt 0 ]; then
+        echo -e "${YELLOW}${MESSAGES[unused_images_found]} $DANGLING_IMAGES ${MESSAGES[unused_images]}${NC}"
+        read -rp "${MESSAGES[remove_unused_images]} " choice
+        if [[ $choice == "s" || $choice == "S" ]]; then
+            echo -e "${YELLOW}${MESSAGES[removing_unused_images]}${NC}"
+            docker image prune -f
+        fi
+    else
+        echo -e "${GREEN}${MESSAGES[no_unused_images]}${NC}"
+    fi
+    
+    echo ""
+    
+    # Unused volumes
+    local DANGLING_VOLUMES; DANGLING_VOLUMES=$(docker volume ls -qf dangling=true | wc -l)
+    if [ "$DANGLING_VOLUMES" -gt 0 ]; then
+        echo -e "${YELLOW}${MESSAGES[unused_volumes_found]} $DANGLING_VOLUMES ${MESSAGES[unused_volumes]}${NC}"
+        read -rp "${MESSAGES[remove_unused_volumes]} " choice
+        if [[ $choice == "s" || $choice == "S" ]]; then
+            echo -e "${YELLOW}${MESSAGES[removing_unused_volumes]}${NC}"
+            docker volume prune -f
+        fi
+    else
+        echo -e "${GREEN}${MESSAGES[no_unused_volumes]}${NC}"
+    fi
+    
+    echo -e "${GREEN}${BOLD}${MESSAGES[clean_completed]}${NC}"
+    log_message "INFO" "Smart cleanup executed"
+}
+
+# Function for complete cleanup (dangerous)
+docker_clean_all() {
+    echo -e "${RED}${BOLD}${MESSAGES[clean_all_warning]}${NC}"
+    echo -e "${RED}${MESSAGES[clean_all_will_remove]}${NC}"
+    echo "  ${MESSAGES[all_stopped_containers]}"
+    echo "  ${MESSAGES[all_unused_images]}"
+    echo "  ${MESSAGES[all_unused_volumes]}"
+    echo "  ${MESSAGES[all_unused_networks]}"
+    echo ""
+    echo -e "${BOLD}${MESSAGES[cannot_be_undone]}${NC}"
+    echo ""
+    
+    read -rp "${MESSAGES[confirm_to_continue]} " confirmation
+    
+    if [[ "$confirmation" != "SIM" ]]; then
+        echo -e "${GREEN}${MESSAGES[operation_cancelled]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}${MESSAGES[starting_complete_clean]}${NC}"
+    
+    # Remove everything unused
+    docker system prune -af
+    
+    echo -e "${GREEN}${BOLD}${MESSAGES[complete_clean_finished]}${NC}"
+    log_message "WARN" "Complete cleanup executed"
+}
+
+# Function for nuclear option (remove EVERYTHING)
+docker_nuke() {
+    echo -e "${RED}${BOLD}════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${RED}${BOLD}${MESSAGES[nuke_warning]}${NC}"
+    echo -e "${RED}${BOLD}════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${RED}${BOLD}${MESSAGES[nuke_will_remove]}${NC}"
+    echo -e "${RED}${MESSAGES[nuke_all_containers]}${NC}"
+    echo -e "${RED}${MESSAGES[nuke_all_images]}${NC}"
+    echo -e "${RED}${MESSAGES[nuke_all_volumes]}${NC}"
+    echo -e "${RED}${MESSAGES[nuke_all_networks]}${NC}"
+    echo -e "${RED}${MESSAGES[nuke_all_caches]}${NC}"
+    echo ""
+    echo -e "${BOLD}${RED}${MESSAGES[nuke_will_destroy]}${NC}"
+    echo ""
+    echo -e "${YELLOW}${MESSAGES[nuke_need_redownload]}${NC}"
+    echo -e "${YELLOW}${MESSAGES[nuke_lose_unnamed_data]}${NC}"
+    echo ""
+    
+    read -rp "${MESSAGES[nuke_confirm]} " confirmation
+    
+    if [[ "$confirmation" != "DESTRUIR-TUDO" ]]; then
+        echo -e "${GREEN}${MESSAGES[nuke_cancelled_phew]}${NC}"
+        return 1
+    fi
+    
+    # Last chance
+    echo ""
+    echo -e "${RED}${MESSAGES[nuke_last_chance]}${NC}"
+    read -rp "${MESSAGES[nuke_absolutely_sure]} " final_confirmation
+    
+    if [[ $final_confirmation != "s" && $final_confirmation != "S" ]]; then
+        echo -e "${GREEN}${MESSAGES[nuke_cancelled_last_second]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${RED}${MESSAGES[nuke_starting_destruction]}${NC}"
+    
+    # Stop and remove all containers
+    echo -e "${YELLOW}${MESSAGES[nuke_stopping_removing_all]}${NC}"
+    docker rm -f "$(docker ps -aq)" 2>/dev/null || true
+    
+    # Remove all images
+    echo -e "${YELLOW}${MESSAGES[nuke_removing_all_images]}${NC}"
+    docker rmi -f "$(docker images -q)" 2>/dev/null || true
+    
+    # Remove everything
+    echo -e "${YELLOW}${MESSAGES[nuke_cleaning_whole_system]}${NC}"
+    docker system prune -a --volumes -f
+    
+    echo ""
+    echo -e "${GREEN}${BOLD}${MESSAGES[nuke_completely_reset]}${NC}"
+    echo -e "${YELLOW}${MESSAGES[nuke_restart_daemon]}${NC}"
+    
+    log_message "ERROR" "NUCLEAR OPTION EXECUTED - Docker environment destroyed"
+}
+
+# Function for stats
+docker_stats() {
+    echo -e "${CYAN}${MESSAGES[real_time_stats]}${NC}"
+    echo -e "${YELLOW}${MESSAGES[press_ctrl_c]}${NC}"
+    echo ""
+    docker stats
+}
+
+# Function for top (processes)
+docker_top() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}${MESSAGES[processes_in_container]}$1':${NC}"
+    docker top "$1"
+}
+
+# Function to list containers custom format
+docker_ls() {
+    echo -e "${CYAN}${BOLD}${MESSAGES[active_containers]}${NC}"
+    docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+    
+    echo -e "\n${YELLOW}${BOLD}${MESSAGES[stopped_containers2]}${NC}"
+    docker ps -a --filter "status=exited" --format "table {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.CreatedAt}}"
+    
+    echo -e "\n${BLUE}${BOLD}${MESSAGES[summary]}${NC}"
+    local TOTAL; TOTAL=$(docker ps -aq | wc -l)
+    local RUNNING; RUNNING=$(docker ps -q | wc -l)
+    local STOPPED=$((TOTAL - RUNNING))
+    echo -e "${MESSAGES[total]} $TOTAL | ${GREEN}${MESSAGES[running]} $RUNNING${NC} | ${RED}${MESSAGES[stopped]} $STOPPED${NC}"
+}
+
+# Function to get container IP
+docker_ip() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    local IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1")
+    if [ -z "$IP" ]; then
+        echo -e "${YELLOW}${MESSAGES[container_has_no_ip]}${NC}"
+    else
+        echo -e "${GREEN}${MESSAGES[get_container_ip]}$1': $IP${NC}"
+    fi
+}
+
+# Function to show ports
+docker_ports() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}${MESSAGES[mapped_ports_for]}$1':${NC}"
+    docker port "$1"
+}
+
+# Function for detailed information
+docker_info() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}${BOLD}${MESSAGES[container_info]}$1' ===${NC}"
+    echo ""
+    
+    # Basic status
+    local STATUS
+    if ! STATUS=$(docker inspect -f '{{.State.Status}}' "$1" 2>/dev/null); then
+        echo -e "${RED}Container not found${NC}"
+        return 1
+    fi
+    
+    echo -e "${BLUE}${MESSAGES[basic_status]}${NC} $STATUS"
+    echo -e "${BLUE}${MESSAGES[basic_status]}${NC} $(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1")"
+    echo -e "${BLUE}${MESSAGES[created]}${NC} $(docker inspect -f '{{.Created}}' "$1")"
+    echo -e "${BLUE}${MESSAGES[image]}${NC} $(docker inspect -f '{{.Config.Image}}' "$1")"
+    echo -e "${BLUE}${MESSAGES[command2]}${NC} $(docker inspect -f '{{.Config.Cmd}}' "$1")"
+    echo -e "${BLUE}${MESSAGES[entrypoint]}${NC} $(docker inspect -f '{{.Config.Entrypoint}}' "$1")"
+    echo -e "${BLUE}${MESSAGES[ports]}${NC}"
+    docker port "$1" | while read -r line; do echo "  $line"; done
+    
+    # Networks
+    echo -e "${BLUE}${MESSAGES[networks]}${NC}"
+    docker inspect -f '{{range $key, $value := .NetworkSettings.Networks}}{{$key}}: {{$value.IPAddress}}{{end}}' "$1"
+    
+    # Mounts
+    local MOUNTS; MOUNTS=$(docker inspect -f '{{range .Mounts}}{{.Source}} -> {{.Destination}} ({{.Type}})\n{{end}}' "$1")
+    if [ -n "$MOUNTS" ]; then
+        echo -e "${BLUE}${MESSAGES[mounts]}${NC}"
+        echo "$MOUNTS" | while read -r line; do echo "  $line"; done
+    fi
+    
+    # Environment variables (first 5)
+    echo -e "${BLUE}${MESSAGES[env_vars_first5]}${NC}"
+    docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" | head -5
+}
+
+# Function for complete inspection
+docker_inspect() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        return 1
+    fi
+    
+    docker inspect "$1" | less
+}
+
+# Function to list images
+docker_images_list() {
+    echo -e "${CYAN}${BOLD}${MESSAGES[images_available]}${NC}"
+    docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}"
+    
+    echo -e "\n${BLUE}${BOLD}${MESSAGES[images_summary]}${NC}"
+    local TOTAL; TOTAL=$(docker images -q | wc -l)
+    echo -e "${MESSAGES[total_images]} $TOTAL"
+    echo -e "${MESSAGES[space_used]} $(docker system df --format '{{.Size}}')"
+}
+
+# Function to remove image
+docker_remove_image() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_image2]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${YELLOW}${MESSAGES[removing_image]}$1'...${NC}"
+    docker rmi "$1"
+}
+
+# Function to download image
+docker_pull() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_image2]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}${MESSAGES[downloading_image]}$1'...${NC}"
+    docker pull "$1"
+}
+
+# Function to search images
+docker_search() {
+    if [ -z "$1" ]; then
+        echo -e "${RED}${MESSAGES[error_specify_search_term]}${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}${MESSAGES[searching_for]}$1${MESSAGES[on_docker_hub]}${NC}"
+    docker search "$1" --limit 10
+}
+
+# Function to rename container
+docker_rename() {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        echo -e "${RED}${MESSAGES[rename_usage]} ${0##*/} rename <old-name> <new-name>${NC}"
+        return 1
+    fi
+    
+    echo -e "${CYAN}${MESSAGES[renaming_container]}$1${MESSAGES[to]}$2'...${NC}"
+    
+    if docker rename "$1" "$2"; then
+        echo -e "${GREEN}${MESSAGES[renamed_successfully]}${NC}"
+    fi
+}
+
+# Function to check Docker health
+docker_health() {
+    echo -e "${CYAN}${BOLD}${MESSAGES[docker_health_check]}${NC}"
+    echo ""
+    
+    # Docker daemon
+    echo -e "${BLUE}${MESSAGES[docker_daemon]}${NC}"
+    if docker version &>/dev/null; then
+        echo -e "  ${GREEN}${MESSAGES[running_check]}${NC}"
+    else
+        echo -e "  ${RED}${MESSAGES[not_running]}${NC}"
+        return 1
+    fi
+    
+    # Containers
+    echo -e "\n${BLUE}${MESSAGES[containers_status]}${NC}"
+    local TOTAL_CONTAINERS; TOTAL_CONTAINERS=$(docker ps -aq | wc -l)
+    local RUNNING_CONTAINERS; RUNNING_CONTAINERS=$(docker ps -q | wc -l)
+    echo -e "  ${MESSAGES[total]}: $TOTAL_CONTAINERS"
+    echo -e "  ${MESSAGES[running]}: ${GREEN}$RUNNING_CONTAINERS${NC}"
+    echo -e "  ${MESSAGES[stopped]}: $((TOTAL_CONTAINERS - RUNNING_CONTAINERS))"
+    
+    # Images
+    echo -e "\n${BLUE}${MESSAGES[images_status]}${NC}"
+    local TOTAL_IMAGES; TOTAL_IMAGES=$(docker images -q | wc -l)
+    echo -e "  ${MESSAGES[total]}: $TOTAL_IMAGES"
+    
+    # Disk space
+    echo -e "\n${BLUE}${MESSAGES[disk_usage]}${NC}"
+    docker system df --format "table {{.Type}}\t{{.TotalCount}}\t{{.Size}}" | while read line; do
+        echo "  $line"
+    done
+    
+    # Docker compose
+    echo -e "\n${BLUE}${MESSAGES[docker_compose_status]}${NC}"
+    if command -v docker-compose &>/dev/null; then
+        echo -e "  ${GREEN}${MESSAGES[installed]}${NC}"
+    else
+        echo -e "  ${YELLOW}${MESSAGES[not_installed]}${NC}"
+    fi
+    
+    echo -e "\n${GREEN}${BOLD}${MESSAGES[check_completed]}${NC}"
+}
+
+# Function to show versions
+docker_version_info() {
+    echo -e "${CYAN}${BOLD}${MESSAGES[docker_versions]}${NC}"
+    echo ""
+    
+    docker version --format '{{.Client.Version}}' | while read line; do
+        echo -e "${BLUE}${MESSAGES[docker_client]}${NC} $line"
+    done
+    
+    docker version --format '{{.Server.Version}}' | while read line; do
+        echo -e "${BLUE}${MESSAGES[docker_server]}${NC} $line"
+    done
+    
+    if command -v docker-compose &>/dev/null; then
+        echo -e "${BLUE}${MESSAGES[docker_compose]}${NC} $(docker-compose version --short)"
+    fi
+}
+
+# Function for history
+docker_history() {
+    echo -e "${CYAN}${MESSAGES[last_executed_commands]}${NC}"
+    if [ -f "$LOG_FILE" ]; then
+        tail -20 "$LOG_FILE"
+    else
+        echo -e "${YELLOW}${MESSAGES[no_history]}${NC}"
+    fi
+}
+
+# Function for prune (docker system prune)
+docker_prune() {
+    echo -e "${CYAN}${MESSAGES[executing_prune]}${NC}"
+    echo -e "${YELLOW}${MESSAGES[prune_will_remove]}${NC}"
+    echo "  ${MESSAGES[stopped_containers3]}"
+    echo "  ${MESSAGES[untagged_images]}"
+    echo "  ${MESSAGES[build_cache]}"
+    echo "  ${MESSAGES[unused_networks]}"
+    echo ""
+    
+    read -rp "${MESSAGES[continue_question]} " choice
+    if [[ $choice == "s" || $choice == "S" ]]; then
+        docker system prune
+        echo -e "${GREEN}${MESSAGES[prune_executed]}${NC}"
+    else
+        echo -e "${YELLOW}${MESSAGES[operation_cancelled2]}${NC}"
+    fi
+}
+
+# Main menu
+case "$1" in
+    # Main commands
+    "run")
+        shift
+        docker_run "$@"
+        ;;
+    "enter")
+        docker_enter "$2"
+        ;;
+    "start")
+        docker_start_and_enter "$2"
+        ;;
+    "temp")
+        docker_temp "$2"
+        ;;
+    
+    # Container management
+    "ls"|"ps")
+        docker_ls
+        ;;
+    "stop")
+        if [ -z "$2" ]; then
+            echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        else
+            echo -e "${YELLOW}Stopping container '$2'...${NC}"
+            docker stop "$2"
+        fi
+        ;;
+    "restart")
+        if [ -z "$2" ]; then
+            echo -e "${RED}${MESSAGES[error_specify_container]}${NC}"
+        else
+            docker restart "$2"
+        fi
+        ;;
+    "rm")
+        docker_remove "$2"
+        ;;
+    "rename")
+        docker_rename "$2" "$3"
+        ;;
+    "exec")
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo -e "${RED}${MESSAGES[usage]} ${0##*/} exec <container> <command>${NC}"
+        else
+            docker exec -it "$2" "$3"
+        fi
+        ;;
+    
+    # Monitoring and information
+    "logs")
+        docker_logs "$2"
+        ;;
+    "stats")
+        docker_stats
+        ;;
+    "top")
+        docker_top "$2"
+        ;;
+    "info")
+        docker_info "$2"
+        ;;
+    "ip")
+        docker_ip "$2"
+        ;;
+    "ports")
+        docker_ports "$2"
+        ;;
+    "inspect")
+        docker_inspect "$2"
+        ;;
+    
+    # Image management
+    "images")
+        docker_images_list
+        ;;
+    "rmi")
+        docker_remove_image "$2"
+        ;;
+    "pull")
+        docker_pull "$2"
+        ;;
+    "search")
+        docker_search "$2"
+        ;;
+    
+    # Cleanup and maintenance
+    "clean")
+        docker_clean
+        ;;
+    "clean-all")
+        docker_clean_all
+        ;;
+    "prune")
+        docker_prune
+        ;;
+    "nuke")
+        docker_nuke
+        ;;
+    
+    # Utilities
+    "daemon")
+        docker_daemon "$2"
+        ;;
+    "user")
+        docker_user "$2"
+        ;;
+    "health")
+        docker_health
+        ;;
+    "version")
+        docker_version_info
+        ;;
+    "history")
+        docker_history
+        ;;
+    
+    # Help
+    "help"|"-h"|"--help")
+        if [ -n "$2" ]; then
+            show_command_help "$2"
+        else
+            show_usage
+        fi
+        ;;
+    "")
+        show_usage
+        ;;
+    *)
+        echo -e "${RED}${MESSAGES[comando_nao_reconhecido]}: $1${NC}"
+        echo -e "${MESSAGES[use_help]} ${GREEN}${0##*/} help${NC} ${MESSAGES[para_ver_comandos]}"
+        ;;
+esac

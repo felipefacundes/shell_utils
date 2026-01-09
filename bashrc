@@ -271,6 +271,7 @@ fzf_bash() {
     if ! test -f "$file" && command -v fzf &>/dev/null; then
         fzf --bash | tee "$file" &>/dev/null
     fi
+    # shellcheck source=/dev/null
     test -f "$file" && source "$file"
     return 0
 }
@@ -286,4 +287,12 @@ fzf_bash
 # conda_setup # Uncomment this line 
 
 # Bash SmartCD 
+# shellcheck source=/dev/null
 source ~/.shell_utils/scripts/utils/zbash-smartcd-with-fzf
+
+if [ -d ~/.local/share/bash-completion/completions/ ]; then
+    for completion in ~/.local/share/bash-completion/completions/*.bash; do
+        # shellcheck source=/dev/null
+        [ -f "$completion" ] && source "$completion"
+    done
+fi

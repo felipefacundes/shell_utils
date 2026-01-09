@@ -15,6 +15,17 @@ tunnel_and_server() {
 		comfy-cli launch --background
 		ssh -p 443 -R0:localhost:8188 a.pinggy.io
 
+		########################################
+
+		# Servidor HTTP Básico:
+
+		# Navegue até a pasta que deseja compartilhar
+		cd ~/meu-projeto
+		python3 -m http.server 8080
+
+		# PASSO 2: Em OUTRO terminal, criar túnel
+		ssh -p 443 -R0:localhost:8080 a.pinggy.io
+
 		EOF
 
 		read -s -n 1 -rp "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
@@ -30,6 +41,17 @@ tunnel_and_server() {
 		ssh-keygen -t rsa -b 4096 -C "seu_email@exemplo.com"
 		comfy-cli launch --background
 		ssh -p 443 -R0:localhost:8188 a.pinggy.io
+
+		########################################
+
+		# Basic HTTP Server:
+
+		# Navigate to the folder you want to share
+		cd ~/my-project
+		python3 -m http.server 8080
+
+		# STEP 2: In ANOTHER terminal, create tunnel
+		ssh -p 443 -R0:localhost:8080 a.pinggy.io
 
 		EOF
 
