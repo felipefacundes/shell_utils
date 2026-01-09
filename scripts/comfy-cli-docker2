@@ -59,7 +59,7 @@ RUN pipx ensurepath && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc
 
 # Instala a framework shell_utils
-RUN curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh | bash
+RUN bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"
 
 RUN /home/comfy/.shell_utils/scripts/comfy-cli -nu
 
