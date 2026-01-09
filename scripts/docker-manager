@@ -2,6 +2,14 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+: <<'DOCUMENTATION'
+Docker Manager Script - A comprehensive Docker management tool with multi-language support.
+Features: Container lifecycle management, smart cleanup, real-time monitoring, and maintenance utilities.
+Safety: Includes intelligent cleanup, complete cleanup, and nuclear options with confirmation prompts.
+Localization: Supports Portuguese (pt) and English with automatic language detection.
+Usage: Provides colored output, logging, and help system for all Docker operations.
+DOCUMENTATION
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
