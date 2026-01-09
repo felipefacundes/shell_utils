@@ -9,47 +9,130 @@ container="comfy"
 docker_root="${HOME}/.dockers"
 docker_base="${docker_root}/${container}"
 docker_file="${docker_base}/Dockerfile"
+comfy_script="/home/comfy/comfy-cli"
 
 # Function to display help menu
 show_help() {
     cat << EOF
 
 ╔══════════════════════════════════════════════════════════════╗
-
+   COMFYUI DOCKER INSTALLER
 ╚══════════════════════════════════════════════════════════════╝
 
 DESCRIPTION:
-    This script automates the installation of ComfyUI CLI 
+    Instala e executa ComfyUI em container Docker
 
 USAGE:
-    ${0##*/} [OPTION]
+    ${0##*/} [install|run|help]
 
-
+EXAMPLES:
+    ${0##*/} install   # Cria o container
+    ${0##*/} run       # Executa o container
 
 EOF
     exit 0
 }
 
+create_comfy_script() {
+    # Cria o script comfy-cli dentro do container
+    cat > /tmp/comfy-cli.sh << 'EOF'
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+# Source: https://github.com/comfyanonymous/ComfyUI
+# Tutorial: https://www.youtube.com/watch?v=TLE9NmN_sxw
+#           https://youtu.be/xWUddF5oMb0
+
+py_base="comfy-cli"
+py_root="${HOME}/.python"
+py_venv="${py_root}/${py_base}"
+activate="${py_venv}/bin/activate"
+
+nvidia_universal() {
+    echo "⚠️ Using CUDA 12.6 as fallback"
+    pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+    return 0
+}
+
+gpu_detect() {
+    if lspci | grep -E "VGA|3D" | grep -i "NVIDIA" >/dev/null 2>&1; then
+        echo "🔍 NVIDIA GPU detected"        
+        nvidia_universal && return
+        
+    elif lspci | grep -E "VGA|3D" | grep -Ei "AMD|ATI" >/dev/null 2>&1; then
+        echo "🔍 AMD GPU detected"
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4
+        
+    elif lspci | grep -E "VGA|3D" | grep -i "Intel" >/dev/null 2>&1; then
+        echo "🔍 Intel GPU detected"
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+        
+    else
+        echo "⚠️ No GPU detected - installing for CPU"
+        pip install torch torchvision torchaudio
+    fi
+}
+
+if [[ ! -d "$py_venv" ]]; then
+    python -m venv "$py_venv"
+    if [[ ! -d "$py_venv" ]]; then
+        mkdir -p "$py_venv"
+    fi
+    cd "$py_venv" || true
+    wget https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
+    #shellcheck source=/dev/null
+    [[ -f "$activate" ]] && source "$activate"
+    export VIRTUAL_ENV="$py_venv"
+    gpu_detect
+    pip install -r requirements.txt
+    pip install comfy-cli
+    echo "✅ Environment configured. Running: comfy-cli install"
+    comfy-cli install
+fi
+
+if [[ -z "$VIRTUAL_ENV" ]] && [[ -f "$activate" ]]; then
+    export VIRTUAL_ENV="$py_venv"
+    #shellcheck source=/dev/null
+    source "$activate"
+fi
+
+if ! command -v comfy-cli >/dev/null; then
+    pip install comfy-cli
+fi
+
+if [[ -n "$VIRTUAL_ENV" ]] && [[ "$nv_universal" != "1" ]] && \
+    command -v comfy-cli >/dev/null 2>&1; then
+    exec comfy-cli "$@"
+elif [[ "$nv_universal" != "1" ]]; then
+    echo "❌ Error: Environment not properly configured. Check installation."
+    echo "Tip: Execute 'source $activate' manually and try again."
+    exit 1
+fi
+EOF
+}
+
 create_docker_context() {
     echo "📁 Creating Docker build context..."
     [[ -f "$docker_file" ]] && return
+    
     # Create Dockerfile
     cat > "$docker_file" << 'EOF'
 FROM archlinux:latest
 
 # Atualiza o sistema e instala pacotes essenciais
 RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm sudo wget base libsm libxext libxrender mesa clinfo pkgconf libxrandr libxinerama \
-    libxi libxcursor libglvnd pciutils ocl-icd base-devel python python-pip python-pipx git zsh && \
+    pacman -S --noconfirm sudo wget base libsm libxext libxrender mesa clinfo \
+    pkgconf libxrandr libxinerama libxi libxcursor libglvnd pciutils ocl-icd \
+    base-devel python python-pip python-pipx git zsh pciutils && \
     pacman -Scc --noconfirm
 
-# Cria usuário comfy com todas as permissões
+# Cria usuário comfy
 RUN useradd -m -G wheel -s /bin/zsh comfy && \
     echo "comfy:123" | chpasswd && \
-    echo "comfy ALL=(ALL:ALL) ALL" >> /etc/sudoers.d/comfy && \
+    echo "comfy ALL=(ALL:ALL) NOPASSWD:ALL" >> /etc/sudoers.d/comfy && \
     chmod 0440 /etc/sudoers.d/comfy
 
-# Configurações adicionais para o usuário comfy
+# Configurações do usuário comfy
 USER comfy
 WORKDIR /home/comfy
 
@@ -58,22 +141,83 @@ ENV PATH="/home/comfy/.local/bin:${PATH}"
 RUN pipx ensurepath && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc
 
-# Instala a framework shell_utils
-RUN bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"
+# Instala shell_utils
+RUN curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/main/install.sh | bash
 
-RUN /home/comfy/.shell_utils/scripts/comfy-cli -nu
+# Copia e executa o script comfy-cli
+COPY comfy-cli.sh /home/comfy/comfy-cli
+RUN chmod +x /home/comfy/comfy-cli && \
+    /home/comfy/comfy-cli
 
 # Mantém o container em execução com ZSH
 CMD ["/bin/zsh"]
 EOF
+    
+    # Copia o script comfy-cli para o contexto do Docker
+    create_comfy_script
+    cp /tmp/comfy-cli.sh "$docker_base/comfy-cli.sh"
 }
 
-if [[ ! -d "$docker_base" ]]; then
-    mkdir -p "$docker_base"
-    create_docker_context
-    docker build -t "$container" -f "$docker_file" "$docker_base"
-fi
+install_container() {
+    if [[ ! -d "$docker_base" ]]; then
+        mkdir -p "$docker_base"
+        create_docker_context
+        echo "🔨 Building Docker image..."
+        docker build -t "$container" -f "$docker_file" "$docker_base"
+        
+        if [[ $? -eq 0 ]]; then
+            echo "✅ Container created successfully!"
+            echo "🔑 Login: comfy | Password: 123"
+        else
+            echo "❌ Failed to create container"
+            exit 1
+        fi
+    else
+        echo "ℹ️  Container already exists at: $docker_base"
+    fi
+}
 
-if docker images | grep -q archlinux; then
-    docker start "$container" && docker exec -it "$container" zsh
-fi
+run_container() {
+    if docker images | grep -q "^$container "; then
+        echo "🚀 Starting container..."
+        # Verifica se container já está rodando
+        if docker ps -a | grep -q "$container"; then
+            echo "📦 Container exists, starting..."
+            docker start "$container"
+        else
+            echo "🐳 Creating new container..."
+            docker run -it \
+                --name "$container" \
+                -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+                -e DISPLAY="$DISPLAY" \
+                --device /dev/dri \
+                --privileged \
+                "$container"
+        fi
+        
+        # Entra no container
+        docker exec -it "$container" zsh
+    else
+        echo "❌ Container '$container' not found"
+        echo "💡 Run first: ${0##*/} install"
+        exit 1
+    fi
+}
+
+# Processa argumentos
+case "${1:-}" in
+    "install"|"i")
+        install_container
+        ;;
+    "run"|"r")
+        run_container
+        ;;
+    "help"|"h"|""|"--help")
+        show_help
+        ;;
+    *)
+        echo "❌ Invalid option: $1"
+        echo "💡 Use: ${0##*/} help"
+        exit 1
+        ;;
+esac
