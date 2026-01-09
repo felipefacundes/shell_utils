@@ -113,7 +113,7 @@ create_docker_context() {
     # Cria o script primeiro
     create_comfy_script
     
-    # Create Dockerfile - VERSÃO CORRIGIDA
+    # Create Dockerfile
     cat > "$docker_file" << 'EOF'
 FROM archlinux:latest
 
@@ -163,15 +163,16 @@ install_container() {
         docker build -t "$container" -f "$docker_file" "$docker_base"
         
         if [[ $? -eq 0 ]]; then
-            echo "✅ Container created successfully!"
+            echo "✅ Container image created successfully!"
             echo "🔑 Login: comfy | Password: 123"
             echo "📦 Comfy-cli installed at: /home/comfy/.local/bin/comfy-cli"
+            echo "💡 Run: ${0##*/} run  # to start and enter the container"
         else
             echo "❌ Failed to create container"
             exit 1
         fi
     else
-        echo "ℹ️  Container already exists at: $docker_base"
+        echo "ℹ️  Container image already exists at: $docker_base"
         echo "💡 To rebuild, remove directory first: rm -rf $docker_base"
     fi
 }
@@ -182,26 +183,40 @@ run_container() {
         
         # Verifica se container já existe
         if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
-            if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-                echo "📦 Starting existing container..."
-                docker start "$container" >/dev/null 2>&1
-            else
-                echo "📦 Container already running..."
-            fi
-        else
-            echo "🐳 Creating new container..."
+            echo "🗑️  Removing old container (to recreate with proper devices)..."
+            docker rm -f "$container" 2>/dev/null
+        fi
+        
+        echo "🐳 Creating new container with GPU support..."
+        
+        # Verifica se /dev/dri existe no host
+        if [[ -d "/dev/dri" ]]; then
+            echo "🎮 GPU device detected, enabling GPU support..."
             docker run -d \
                 --name "$container" \
                 -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
                 -e DISPLAY="$DISPLAY" \
                 --device /dev/dri \
                 "$container" >/dev/null 2>&1
+        else
+            echo "⚠️  No GPU device found, running in CPU mode..."
+            docker run -d \
+                --name "$container" \
+                "$container" >/dev/null 2>&1
         fi
         
-        # Entra no container
-        echo "🔧 Entering container..."
-        echo "💡 Type 'comfy-cli' to use the comfy-cli command"
-        docker exec -it "$container" zsh
+        if [[ $? -eq 0 ]]; then
+            echo "✅ Container started successfully!"
+            echo "🔧 Entering container..."
+            echo "💡 Commands available inside:"
+            echo "   - comfy-cli     : Main ComfyUI CLI"
+            echo "   - exit          : Exit container"
+            echo ""
+            docker exec -it "$container" zsh
+        else
+            echo "❌ Failed to start container"
+            exit 1
+        fi
     else
         echo "❌ Container '$container' not found"
         echo "💡 Run first: ${0##*/} install"
