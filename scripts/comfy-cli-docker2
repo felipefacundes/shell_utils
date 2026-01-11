@@ -195,8 +195,7 @@ FROM archlinux:latest
 RUN pacman -Syu --noconfirm && \
     pacman -S --noconfirm sudo wget base libsm libxext libxrender mesa clinfo \
     pkgconf libxrandr libxinerama libxi libxcursor libglvnd pciutils ocl-icd \
-    base-devel git zsh pciutils curl tar gcc make openssl libffi bzip2 readline \
-    sqlite tk zlib xz which patch && \
+    base-devel python python-pip python-pipx git zsh pciutils pyenv && \
     pacman -Scc --noconfirm
 
 # Cria usuário comfy
@@ -208,17 +207,6 @@ RUN useradd -m -G wheel -s /bin/bash comfy && \
 # Configurações do usuário comfy
 USER comfy
 WORKDIR /home/comfy
-
-# Instala pyenv
-RUN curl -L https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer | bash && \
-    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc && \
-    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc && \
-    echo 'eval "$(pyenv init --path)"' >> ~/.bashrc && \
-    echo 'eval "$(pyenv init -)"' >> ~/.bashrc && \
-    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc && \
-    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc && \
-    echo 'eval "$(pyenv init --path)"' >> ~/.zshrc && \
-    echo 'eval "$(pyenv init -)"' >> ~/.zshrc
 
 # Configura environment para pyenv
 ENV PYENV_ROOT="/home/comfy/.pyenv"
@@ -239,14 +227,22 @@ ENV PATH="/home/comfy/.local/bin:${PATH}"
 RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc
 
-# Instala o pipx e configura (usando python do pyenv)
+# Instala Python 3.13 via pyenv
+RUN export PYENV_ROOT="$HOME/.pyenv" && \
+    export PATH="$PYENV_ROOT/bin:$PATH" && \
+    eval "$(pyenv init -)" && \
+    pyenv install 3.13.1 && \
+    pyenv global 3.13.1 && \
+    pip install --upgrade pip
+    
+# Instala o pipx e configura
 RUN pipx ensurepath
 
 # Copia o script comfy-cli para ~/.local/bin e torna executável
 COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
-# Mantém o container em execução
+# CORREÇÃO IMPORTANTE: Mantém o container rodando com processo infinito
 CMD ["tail", "-f", "/dev/null"]
 EOF
 }
