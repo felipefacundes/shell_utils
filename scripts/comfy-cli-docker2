@@ -20,11 +20,20 @@ DESCRIPTION:
     Instala e executa ComfyUI em container Docker
 
 USAGE:
-    ${0##*/} [install|run|help]
+    ${0##*/} [install|run|stop|status|help]
+
+COMMANDS:
+    install   - Cria a imagem Docker
+    run       - Inicia o container em background e entra nele
+    stop      - Para o container
+    status    - Mostra status do container
+    shell     - Entra no container se já estiver rodando
+    help      - Mostra esta ajuda
 
 EXAMPLES:
     ${0##*/} install   # Cria o container
-    ${0##*/} run       # Executa o container
+    ${0##*/} run       # Inicia o container
+    ${0##*/} status    # Verifica status
 
 EOF
     exit 0
@@ -151,7 +160,6 @@ COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
 # CORREÇÃO IMPORTANTE: Mantém o container rodando com processo infinito
-# Isso evita que o container termine imediatamente após iniciar
 CMD ["tail", "-f", "/dev/null"]
 EOF
 }
@@ -166,7 +174,7 @@ install_container() {
             echo "✅ Container image created successfully!"
             echo "🔑 Login: comfy | Password: 123"
             echo "📦 Comfy-cli installed at: /home/comfy/.local/bin/comfy-cli"
-            echo "💡 Run: ${0##*/} run  # to start and enter the container"
+            echo "💡 Run: ${0##*/} run  # to start the container"
         else
             echo "❌ Failed to create container"
             exit 1
@@ -181,75 +189,142 @@ run_container() {
     if docker images | grep -q "^$container "; then
         echo "🚀 Starting container..."
         
-        # Verifica se container já existe
-        if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
-            echo "ℹ️  Container '$container' already exists"
-            echo "🔁 Restarting container..."
-            
-            # Se já está rodando, para e remove
-            if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-                docker stop "$container" 2>/dev/null
+        # Verifica se container já existe e está rodando
+        if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+            echo "✅ Container '$container' is already running!"
+            echo "💡 Use '${0##*/} shell' to enter or '${0##*/} stop' to stop it"
+            read -p "Enter container now? [Y/n] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                docker exec -it "$container" bash
             fi
-            docker rm -f "$container" 2>/dev/null
+            return
         fi
         
-        echo "🐳 Creating new container..."
+        # Se existe mas está parado, remove para recriar
+        if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+            echo "🔄 Removing stopped container..."
+            docker rm "$container" 2>/dev/null
+        fi
         
-        # Monta variáveis para configurações de GPU
+        # Monta variáveis para configurações
         local gpu_args=""
         local display_args=""
         
-        # Verifica se tem DISPLAY disponível
+        # Verifica NVIDIA
+        if command -v nvidia-smi >/dev/null 2>&1; then
+            echo "🎮 NVIDIA GPU detected, enabling GPU support..."
+            gpu_args="--gpus all"
+        # Verifica AMD/Intel
+        elif [[ -d "/dev/dri" ]]; then
+            echo "🎮 GPU device detected (/dev/dri), enabling GPU support..."
+            gpu_args="--device /dev/dri"
+        fi
+        
+        # Verifica X11
         if [[ -n "$DISPLAY" ]] && [[ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]]; then
             display_args="-v /tmp/.X11-unix:/tmp/.X11-unix:rw -e DISPLAY=$DISPLAY"
             echo "🎨 X11 display enabled: $DISPLAY"
         fi
         
-        # Verifica se tem GPU NVIDIA
-        if command -v nvidia-smi >/dev/null 2>&1; then
-            echo "🎮 NVIDIA GPU detected, enabling GPU support..."
-            gpu_args="--gpus all"
-        # Verifica se tem GPU AMD/Intel (via /dev/dri)
-        elif [[ -d "/dev/dri" ]]; then
-            echo "🎮 GPU device detected (/dev/dri), enabling GPU support..."
-            gpu_args="--device /dev/dri"
-        else
-            echo "⚠️  No GPU detected, running in CPU mode..."
-        fi
-        
-        # Cria e inicia o container em background
+        # CRÍTICO: Roda em background com -d (detached)
+        echo "🐳 Creating container in background mode..."
         if docker run -d \
             --name "$container" \
             --hostname "$container" \
+            --restart unless-stopped \
             $gpu_args \
             $display_args \
-            "$container"; then
+            "$container" >/dev/null 2>&1; then
             
-            echo "✅ Container started successfully!"
-            echo ""
-            echo "📊 Container status:"
-            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep "$container"
-            echo ""
-            echo "🔧 You can now enter the container with:"
-            echo "   docker exec -it $container bash"
-            echo ""
-            echo "💡 Commands available inside container:"
-            echo "   - comfy-cli     : Main ComfyUI CLI"
-            echo "   - exit          : Exit shell (container keeps running)"
-            echo ""
+            sleep 2  # Aguarda container iniciar
             
-            # Pergunta se quer entrar no container agora
-            read -p "Enter container now? [Y/n] " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Nn]$ ]]; then
-                echo "✅ Container running in background. Use 'docker exec -it $container bash' to enter later."
+            # Verifica se realmente está rodando
+            if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+                echo "✅ Container '$container' started successfully in background!"
+                echo ""
+                echo "📊 Container status:"
+                docker ps --filter "name=$container" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+                echo ""
+                echo "🔧 Available commands:"
+                echo "   ${0##*/} shell    - Enter container"
+                echo "   ${0##*/} stop     - Stop container"
+                echo "   ${0##*/} status   - Check status"
+                echo "   docker logs $container  - View logs"
+                echo ""
+                
+                read -p "Enter container now? [Y/n] " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                    docker exec -it "$container" bash
+                fi
             else
-                echo "🚪 Entering container..."
-                docker exec -it "$container" bash
+                echo "❌ Container failed to start in background"
+                echo "Checking logs..."
+                docker logs "$container" 2>&1 | tail -20
+                exit 1
             fi
         else
             echo "❌ Failed to start container"
             exit 1
+        fi
+    else
+        echo "❌ Container image '$container' not found"
+        echo "💡 Run first: ${0##*/} install"
+        exit 1
+    fi
+}
+
+stop_container() {
+    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "🛑 Stopping container '$container'..."
+        docker stop "$container"
+        echo "✅ Container stopped"
+    elif docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "ℹ️  Container '$container' is already stopped"
+    else
+        echo "❌ Container '$container' not found"
+    fi
+}
+
+status_container() {
+    echo "📊 Docker containers status:"
+    echo ""
+    
+    # Mostra container específico se existir
+    if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "Container '$container':"
+        docker ps -a --filter "name=$container" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}"
+        echo ""
+        
+        # Se estiver rodando, mostra mais informações
+        if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+            echo "📈 Resource usage:"
+            docker stats "$container" --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
+            echo ""
+            echo "📝 Last logs (tail):"
+            docker logs "$container" --tail 10 2>/dev/null || echo "No logs available"
+        fi
+    else
+        echo "❌ Container '$container' not found"
+        echo ""
+        echo "All containers:"
+        docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}"
+    fi
+}
+
+shell_container() {
+    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "🚪 Entering container '$container'..."
+        docker exec -it "$container" bash
+    elif docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "❌ Container '$container' exists but is not running"
+        read -p "Start it now? [Y/n] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            docker start "$container"
+            sleep 2
+            docker exec -it "$container" bash
         fi
     else
         echo "❌ Container '$container' not found"
@@ -265,6 +340,15 @@ case "${1:-}" in
         ;;
     "run"|"r")
         run_container
+        ;;
+    "stop")
+        stop_container
+        ;;
+    "status")
+        status_container
+        ;;
+    "shell"|"sh")
+        shell_container
         ;;
     "help"|"h"|""|"--help")
         show_help
