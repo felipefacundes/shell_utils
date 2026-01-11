@@ -189,14 +189,36 @@ create_docker_context() {
     
     # Create Dockerfile corrigido
     cat > "$docker_file" << 'EOF'
-FROM archlinux:latest
+FROM debian:trixie-slim
 
-# Atualiza o sistema e instala pacotes essenciais
-RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm sudo wget base libsm libxext libxrender mesa clinfo \
-    pkgconf libxrandr libxinerama libxi libxcursor libglvnd pciutils ocl-icd \
-    base-devel python python-pip python-pipx git zsh pciutils pyenv && \
-    pacman -Scc --noconfirm
+# Install system dependencies for Debian Trixie/Sid
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgl1 \
+    libgomp1 \
+    ocl-icd-libopencl1 \
+    clinfo \
+    pciutils \
+    libglvnd0 \
+    libglx0 \
+    libegl1 \
+    python3.13 \
+    && rm -rf /var/lib/apt/lists/*
+
+# For NVIDIA GPU support in container
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libxcursor-dev \
+    libxrandr-dev \
+    libxinerama-dev \
+    libxi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Cria usuário comfy
 RUN useradd -m -G wheel -s /bin/bash comfy && \
@@ -208,16 +230,6 @@ RUN useradd -m -G wheel -s /bin/bash comfy && \
 USER comfy
 WORKDIR /home/comfy
 
-# Configura environment para pyenv
-ENV PYENV_ROOT="/home/comfy/.pyenv"
-ENV PATH="$PYENV_ROOT/bin:$PATH"
-
-# Instala Python 3.13 via pyenv
-RUN export PYENV_ROOT="$HOME/.pyenv" && eval "$(pyenv init - bash)" && \
-    pyenv install 3.13.1 -v && \
-    pyenv global 3.13.1 && \
-    pip install --upgrade pip setuptools wheel
-
 # Cria e configura o diretório .local/bin
 RUN mkdir -p /home/comfy/.local/bin && \
     chown -R comfy:comfy /home/comfy/.local
@@ -226,18 +238,7 @@ RUN mkdir -p /home/comfy/.local/bin && \
 ENV PATH="/home/comfy/.local/bin:${PATH}"
 RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc
-
-# Instala Python 3.13 via pyenv
-RUN export PYENV_ROOT="$HOME/.pyenv" && \
-    export PATH="$PYENV_ROOT/bin:$PATH" && \
-    eval "$(pyenv init -)" && \
-    pyenv install 3.13.1 && \
-    pyenv global 3.13.1 && \
-    pip install --upgrade pip
-    
-# Instala o pipx e configura
-RUN pipx ensurepath
-
+ 
 # Copia o script comfy-cli para ~/.local/bin e torna executável
 COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
