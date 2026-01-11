@@ -125,7 +125,7 @@ RUN pacman -Syu --noconfirm && \
     pacman -Scc --noconfirm
 
 # Cria usuário comfy
-RUN useradd -m -G wheel -s /bin/zsh comfy && \
+RUN useradd -m -G wheel -s /bin/bash comfy && \
     echo "comfy:123" | chpasswd && \
     echo "comfy ALL=(ALL:ALL) NOPASSWD:ALL" >> /etc/sudoers.d/comfy && \
     chmod 0440 /etc/sudoers.d/comfy
@@ -151,7 +151,7 @@ COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
 # Mantém o container em execução com ZSH
-CMD ["/bin/zsh"]
+CMD ["/bin/bash"]
 EOF
 }
 
@@ -160,9 +160,8 @@ install_container() {
         mkdir -p "$docker_base"
         create_docker_context
         echo "🔨 Building Docker image..."
-        docker build -t "$container" -f "$docker_file" "$docker_base"
         
-        if [[ $? -eq 0 ]]; then
+        if docker build -t "$container" -f "$docker_file" "$docker_base"; then
             echo "✅ Container image created successfully!"
             echo "🔑 Login: comfy | Password: 123"
             echo "📦 Comfy-cli installed at: /home/comfy/.local/bin/comfy-cli"
@@ -212,7 +211,7 @@ run_container() {
             echo "   - comfy-cli     : Main ComfyUI CLI"
             echo "   - exit          : Exit container"
             echo ""
-            docker exec -it "$container" zsh
+            docker exec -it "$container" bash
         else
             echo "❌ Failed to start container"
             exit 1
