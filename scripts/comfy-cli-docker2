@@ -174,9 +174,6 @@ ENV PATH="/home/comfy/.local/bin:${PATH}"
 RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc
 
-# Instala o pipx e configura
-RUN pipx ensurepath
-
 # Copia o script comfy-cli para ~/.local/bin e torna executável
 COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
