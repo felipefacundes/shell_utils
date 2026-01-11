@@ -124,27 +124,15 @@ create_docker_context() {
     
     # Create Dockerfile corrigido
     cat > "$docker_file" << 'EOF'
-FROM debian:trixie-slim
+FROM python:3.13-slim
 
 # Install system dependencies for Debian Trixie/Sid
 RUN apt-get update && apt-get install -y \
-    wget \
-    curl \
-    git \
-    sudo \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    libgl1 \
-    libgomp1 \
-    ocl-icd-libopencl1 \
-    clinfo \
-    pciutils \
-    libglvnd0 \
-    libglx0 \
-    libegl1 \
-    python3.13 \
+    wget curl git sudo libglib2.0-0 \
+    libsm6 libxext6 libxrender1 \
+    libgl1 libgomp1 ocl-icd-libopencl1 \
+    clinfo pciutils libglvnd0 libglx0 \
+    libegl1 screen tmux \
     && rm -rf /var/lib/apt/lists/*
 
 # For NVIDIA GPU support in container
