@@ -255,6 +255,7 @@ run_container() {
             $gpu_args \
             $display_args \
             -p 8188:8188 \
+            -p 443:443 \
             "$container" >/dev/null 2>&1; then
             
             sleep 2  # Aguarda container iniciar
