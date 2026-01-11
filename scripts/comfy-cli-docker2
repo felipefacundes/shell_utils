@@ -124,13 +124,14 @@ create_docker_context() {
     
     # Create Dockerfile corrigido
     cat > "$docker_file" << 'EOF'
-FROM debian:trixie-slim
+FROM python:3.13-slim
 
 # Install system dependencies for Debian Trixie/Sid
 RUN apt-get update && apt-get install -y \
     wget \
     curl \
     git \
+    sudo \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -143,7 +144,6 @@ RUN apt-get update && apt-get install -y \
     libglvnd0 \
     libglx0 \
     libegl1 \
-    python3.13 \
     && rm -rf /var/lib/apt/lists/*
 
 # For NVIDIA GPU support in container
@@ -155,8 +155,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Cria usuário comfy
-RUN useradd -m -G wheel -s /bin/bash comfy && \
+# Cria usuário comfy - CORREÇÃO: usa grupo 'sudo' em vez de 'wheel'
+RUN useradd -m -G sudo -s /bin/bash comfy && \
     echo "comfy:123" | chpasswd && \
     echo "comfy ALL=(ALL:ALL) NOPASSWD:ALL" >> /etc/sudoers.d/comfy && \
     chmod 0440 /etc/sudoers.d/comfy
