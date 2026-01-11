@@ -52,9 +52,47 @@ py_root="${HOME}/.python"
 py_venv="${py_root}/${py_base}"
 activate="${py_venv}/bin/activate"
 
+# Configura pyenv se disponível
+setup_pyenv() {
+    if [[ -f "$HOME/.pyenv/bin/pyenv" ]]; then
+        export PYENV_ROOT="$HOME/.pyenv"
+        export PATH="$PYENV_ROOT/bin:$PATH"
+        eval "$(pyenv init --path)"
+        eval "$(pyenv init -)"
+        
+        # Verifica se Python 3.13 está instalado
+        if pyenv versions | grep -q "3.13"; then
+            echo "🐍 Python 3.13 available via pyenv"
+            PYTHON_CMD="python"
+            return 0
+        else
+            echo "⚠️ Python 3.13 not installed in pyenv, installing..."
+            pyenv install 3.13.1 -s
+            pyenv global 3.13.1
+            PYTHON_CMD="python"
+            return 0
+        fi
+    fi
+    
+    return 1
+}
+
+# Tenta usar pyenv primeiro
+if setup_pyenv; then
+    echo "✅ Using pyenv Python"
+else
+    # Fallback para system python
+    echo "⚠️ pyenv not found, using system Python"
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_CMD="python3"
+    else
+        PYTHON_CMD="python"
+    fi
+fi
+
 nvidia_universal() {
     echo "⚠️ Using CUDA 12.6 as fallback"
-    pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
+    python -m pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 --index-url https://download.pytorch.org/whl/cu126
     return 0
 }
 
@@ -65,32 +103,59 @@ gpu_detect() {
         
     elif lspci | grep -E "VGA|3D" | grep -Ei "AMD|ATI" >/dev/null 2>&1; then
         echo "🔍 AMD GPU detected"
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4
+        python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4
         
     elif lspci | grep -E "VGA|3D" | grep -i "Intel" >/dev/null 2>&1; then
         echo "🔍 Intel GPU detected"
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+        python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         
     else
         echo "⚠️ No GPU detected - installing for CPU"
-        pip install torch torchvision torchaudio
+        python -m pip install torch torchvision torchaudio
     fi
 }
 
 if [[ ! -d "$py_venv" ]]; then
-    python -m venv "$py_venv"
+    echo "🔧 Creating Python virtual environment..."
+    
+    # Usa o Python disponível (do pyenv ou system)
+    $PYTHON_CMD -m venv "$py_venv"
+    
     if [[ ! -d "$py_venv" ]]; then
+        echo "❌ Failed to create venv, trying alternative method..."
         mkdir -p "$py_venv"
+        
+        # Tenta usar virtualenv como fallback
+        if $PYTHON_CMD -m pip install virtualenv --quiet; then
+            $PYTHON_CMD -m virtualenv "$py_venv"
+        fi
     fi
+    
+    if [[ ! -f "$activate" ]]; then
+        echo "❌ Failed to create virtual environment"
+        exit 1
+    fi
+    
     cd "$py_venv" || true
-    wget https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
+    wget -q https://raw.githubusercontent.com/comfyanonymous/ComfyUI/refs/heads/master/requirements.txt
+    
     #shellcheck source=/dev/null
-    [[ -f "$activate" ]] && source "$activate"
+    source "$activate"
+    
     export VIRTUAL_ENV="$py_venv"
+    
+    # Atualiza pip primeiro
+    python -m pip install --upgrade pip setuptools wheel
+    
     gpu_detect
+    
     pip install -r requirements.txt
+    
+    # Instala versão compatível do comfy-cli
     pip install comfy-cli
-    echo "✅ Environment configured. Running: comfy-cli install"
+    
+    echo "✅ Environment configured with Python $(python --version | cut -d' ' -f2)"
+    echo "📦 Running: comfy-cli install"
     comfy-cli install
 fi
 
@@ -130,7 +195,8 @@ FROM archlinux:latest
 RUN pacman -Syu --noconfirm && \
     pacman -S --noconfirm sudo wget base libsm libxext libxrender mesa clinfo \
     pkgconf libxrandr libxinerama libxi libxcursor libglvnd pciutils ocl-icd \
-    base-devel python python-pip python-pipx git zsh pciutils && \
+    base-devel git zsh pciutils curl tar gcc make openssl libffi bzip2 readline \
+    sqlite tk zlib xz which patch && \
     pacman -Scc --noconfirm
 
 # Cria usuário comfy
@@ -143,6 +209,27 @@ RUN useradd -m -G wheel -s /bin/bash comfy && \
 USER comfy
 WORKDIR /home/comfy
 
+# Instala pyenv
+RUN curl -L https://github.com/pyenv/pyenv-installer/raw/master/bin/pyenv-installer | bash && \
+    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc && \
+    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc && \
+    echo 'eval "$(pyenv init --path)"' >> ~/.bashrc && \
+    echo 'eval "$(pyenv init -)"' >> ~/.bashrc && \
+    echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc && \
+    echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc && \
+    echo 'eval "$(pyenv init --path)"' >> ~/.zshrc && \
+    echo 'eval "$(pyenv init -)"' >> ~/.zshrc
+
+# Configura environment para pyenv
+ENV PYENV_ROOT="/home/comfy/.pyenv"
+ENV PATH="$PYENV_ROOT/bin:$PATH"
+
+# Instala Python 3.13 via pyenv
+RUN eval "$(pyenv init -)" && \
+    pyenv install 3.13.1 -v && \
+    pyenv global 3.13.1 && \
+    pip install --upgrade pip setuptools wheel
+
 # Cria e configura o diretório .local/bin
 RUN mkdir -p /home/comfy/.local/bin && \
     chown -R comfy:comfy /home/comfy/.local
@@ -152,14 +239,14 @@ ENV PATH="/home/comfy/.local/bin:${PATH}"
 RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc
 
-# Instala o pipx e configura
+# Instala o pipx e configura (usando python do pyenv)
 RUN pipx ensurepath
 
 # Copia o script comfy-cli para ~/.local/bin e torna executável
 COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
-# CORREÇÃO IMPORTANTE: Mantém o container rodando com processo infinito
+# Mantém o container em execução
 CMD ["tail", "-f", "/dev/null"]
 EOF
 }
