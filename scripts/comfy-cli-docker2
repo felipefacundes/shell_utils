@@ -113,7 +113,7 @@ create_docker_context() {
     # Cria o script primeiro
     create_comfy_script
     
-    # Create Dockerfile
+    # Create Dockerfile corrigido
     cat > "$docker_file" << 'EOF'
 FROM archlinux:latest
 
@@ -150,8 +150,9 @@ RUN pipx ensurepath
 COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
-# Mantém o container em execução com ZSH
-CMD ["/bin/bash"]
+# CORREÇÃO IMPORTANTE: Mantém o container rodando com processo infinito
+# Isso evita que o container termine imediatamente após iniciar
+CMD ["tail", "-f", "/dev/null"]
 EOF
 }
 
@@ -182,36 +183,70 @@ run_container() {
         
         # Verifica se container já existe
         if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
-            echo "🗑️  Removing old container (to recreate with proper devices)..."
+            echo "ℹ️  Container '$container' already exists"
+            echo "🔁 Restarting container..."
+            
+            # Se já está rodando, para e remove
+            if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+                docker stop "$container" 2>/dev/null
+            fi
             docker rm -f "$container" 2>/dev/null
         fi
         
-        echo "🐳 Creating new container with GPU support..."
+        echo "🐳 Creating new container..."
         
-        # Verifica se /dev/dri existe no host
-        if [[ -d "/dev/dri" ]]; then
-            echo "🎮 GPU device detected, enabling GPU support..."
-            docker run -d \
-                --name "$container" \
-                -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-                -e DISPLAY="$DISPLAY" \
-                --device /dev/dri \
-                "$container" >/dev/null 2>&1
-        else
-            echo "⚠️  No GPU device found, running in CPU mode..."
-            docker run -d \
-                --name "$container" \
-                "$container" >/dev/null 2>&1
+        # Monta variáveis para configurações de GPU
+        local gpu_args=""
+        local display_args=""
+        
+        # Verifica se tem DISPLAY disponível
+        if [[ -n "$DISPLAY" ]] && [[ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]]; then
+            display_args="-v /tmp/.X11-unix:/tmp/.X11-unix:rw -e DISPLAY=$DISPLAY"
+            echo "🎨 X11 display enabled: $DISPLAY"
         fi
         
-        if [[ $? -eq 0 ]]; then
+        # Verifica se tem GPU NVIDIA
+        if command -v nvidia-smi >/dev/null 2>&1; then
+            echo "🎮 NVIDIA GPU detected, enabling GPU support..."
+            gpu_args="--gpus all"
+        # Verifica se tem GPU AMD/Intel (via /dev/dri)
+        elif [[ -d "/dev/dri" ]]; then
+            echo "🎮 GPU device detected (/dev/dri), enabling GPU support..."
+            gpu_args="--device /dev/dri"
+        else
+            echo "⚠️  No GPU detected, running in CPU mode..."
+        fi
+        
+        # Cria e inicia o container em background
+        if docker run -d \
+            --name "$container" \
+            --hostname "$container" \
+            $gpu_args \
+            $display_args \
+            "$container"; then
+            
             echo "✅ Container started successfully!"
-            echo "🔧 Entering container..."
-            echo "💡 Commands available inside:"
-            echo "   - comfy-cli     : Main ComfyUI CLI"
-            echo "   - exit          : Exit container"
             echo ""
-            docker exec -it "$container" bash
+            echo "📊 Container status:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep "$container"
+            echo ""
+            echo "🔧 You can now enter the container with:"
+            echo "   docker exec -it $container bash"
+            echo ""
+            echo "💡 Commands available inside container:"
+            echo "   - comfy-cli     : Main ComfyUI CLI"
+            echo "   - exit          : Exit shell (container keeps running)"
+            echo ""
+            
+            # Pergunta se quer entrar no container agora
+            read -p "Enter container now? [Y/n] " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Nn]$ ]]; then
+                echo "✅ Container running in background. Use 'docker exec -it $container bash' to enter later."
+            else
+                echo "🚪 Entering container..."
+                docker exec -it "$container" bash
+            fi
         else
             echo "❌ Failed to start container"
             exit 1
