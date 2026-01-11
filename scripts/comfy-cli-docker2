@@ -235,6 +235,7 @@ run_container() {
             --restart unless-stopped \
             $gpu_args \
             $display_args \
+            -p 8188:8188 \
             "$container" >/dev/null 2>&1; then
             
             sleep 2  # Aguarda container iniciar
