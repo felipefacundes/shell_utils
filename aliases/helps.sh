@@ -8,6 +8,10 @@ alias swap_help='help swap_help'
 
 alias docker_help='help docker_basic'
 
+alias screen_help='help screen_help'
+
+alias tmux_help='help tmux_help'
+
 alias video_clear_metadata='help video_clear_metadata'
 
 alias tunnel_and_server='help tunnel_and_server'
