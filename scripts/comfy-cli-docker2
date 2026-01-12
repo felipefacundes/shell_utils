@@ -160,8 +160,28 @@ RUN mkdir -p /home/comfy/.local/bin && \
 
 # Configura o PATH para incluir ~/.local/bin
 ENV PATH="/home/comfy/.local/bin:${PATH}"
+
+# Adiciona as configurações de shell_utils .bashrc e .zshrc
 RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
-    echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc
+    echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc && \
+    echo '' >> /home/comfy/.bashrc && \
+    echo '# Shell Utils Installation' >> /home/comfy/.bashrc && \
+    echo 'shell_utils_dir=~/.shell_utils/' >> /home/comfy/.bashrc && \
+    echo 'if ! test -d "${shell_utils_dir}"; then' >> /home/comfy/.bashrc && \
+    echo '    bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"' >> /home/comfy/.bashrc && \
+    echo 'fi' >> /home/comfy/.bashrc && \
+    echo '' >> /home/comfy/.bashrc && \
+    echo 'echo "Starting ComfyUI in background. Please wait..."' >> /home/comfy/.bashrc && \
+    echo 'comfy-cli launch --background' >> /home/comfy/.bashrc && \
+    echo '' >> /home/comfy/.zshrc && \
+    echo '# Shell Utils Installation' >> /home/comfy/.zshrc && \
+    echo 'shell_utils_dir=~/.shell_utils/' >> /home/comfy/.zshrc && \
+    echo 'if ! test -d "${shell_utils_dir}"; then' >> /home/comfy/.zshrc && \
+    echo '    bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"' >> /home/comfy/.zshrc && \
+    echo 'fi' >> /home/comfy/.zshrc && \
+    echo '' >> /home/comfy/.zshrc && \
+    echo 'echo "Starting ComfyUI in background. Please wait..."' >> /home/comfy/.zshrc && \
+    echo 'comfy-cli launch --background' >> /home/comfy/.zshrc
 
 # Copia o script comfy-cli para ~/.local/bin e torna executável
 COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
