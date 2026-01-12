@@ -332,8 +332,18 @@ fi
 
 # Check for running update
 if [ -f "$UPDATE_LOCK_FILE" ]; then
-    if [ $(($(date +%s) - $(stat -c %Y "$UPDATE_LOCK_FILE"))) -lt 300 ]; then
-        exit 0 # Exit if an update was checked in the last 5 minutes
+    # Get the modification time with error handling
+    if stat_output=$(stat -c %Y "$UPDATE_LOCK_FILE" 2>/dev/null); then
+        lock_time=$stat_output
+        current_time=$(date +%s)
+        time_diff=$((current_time - lock_time))
+        
+        if [ $time_diff -lt 300 ]; then
+            exit 0 # Exit if an update was checked in the last 5 minutes
+        fi
+    else
+        # If stat fails, the file might have been removed, continue normally
+        rm -f "$UPDATE_LOCK_FILE" 2>/dev/null
     fi
 fi
 

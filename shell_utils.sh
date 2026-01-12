@@ -20,20 +20,22 @@ fi
 # Loops through all .sh files in the source directory and its subdirectories
 sourced() {
     local source_dir="$1"
+    local output_file="${source_dir}.sh"
     
-    [[ -f "${source_dir}.sh" ]] && rm "${source_dir}.sh"
-
-    # Checks if the directory exists and has .sh files
-    if [[ ! -d "$source_dir" ]] || [[ -z $(find "$source_dir" -name "*.sh" -type f -print -quit 2>/dev/null) ]]; then
+    # If directory does not exist, remove file and exit
+    if [[ ! -d "$source_dir" ]]; then
+        [[ -f "$output_file" ]] && rm -f "$output_file"
         return
     fi
-        
-    for file in "${source_dir}"/**/*.sh; do
-        if [[ -f "$file" ]]; then
-            file="${file/#$HOME/\"\${HOME\}\"}"
-            echo ". $file" >> "${source_dir}.sh"
-        fi
-    done >/dev/null 2>&1
+    
+    # Generate new content and overwrite with tee
+    find "$source_dir" -name "*.sh" -type f 2>/dev/null | \
+        while IFS= read -r file; do
+            [[ -f "$file" ]] && echo ". \"$file\""
+        done | tee "$output_file" >/dev/null
+    
+    # If tee didn't write anything (empty pipe), remove empty file
+    [[ ! -s "$output_file" ]] && rm -f "$output_file"
 }
 
 # Priority
