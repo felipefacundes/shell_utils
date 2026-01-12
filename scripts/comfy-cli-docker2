@@ -17,30 +17,32 @@ show_help() {
 ╚══════════════════════════════════════════════════════════════╝
 
 DESCRIPTION:
-    Instala e executa ComfyUI em container Docker
+    Install and run ComfyUI in a Docker container
 
 USAGE:
-    ${0##*/} [install|run|stop|status|help]
+    ${0##*/} [install|run|stop|status|clean|shell|help]
 
 COMMANDS:
-    install   - Cria a imagem Docker
-    run       - Inicia o container em background e entra nele
-    stop      - Para o container
-    status    - Mostra status do container
-    shell     - Entra no container se já estiver rodando
-    help      - Mostra esta ajuda
+    install   - Build the Docker image
+    run       - Start the container in background and enter it
+    stop      - Stop the container
+    status    - Show container status
+    clean     - Remove container and image (keeps build context)
+    shell     - Enter the container if it's already running
+    help      - Show this help
 
 EXAMPLES:
-    ${0##*/} install   # Cria o container
-    ${0##*/} run       # Inicia o container
-    ${0##*/} status    # Verifica status
+    ${0##*/} install   # Build the container
+    ${0##*/} run       # Start the container
+    ${0##*/} status    # Check status
+    ${0##*/} clean     # Remove container and image
 
 EOF
     exit 0
 }
 
 create_comfy_script() {
-    # Cria o script comfy-cli
+    # Create the comfy-cli script
     cat > "$docker_base/comfy-cli.sh" << 'EOF'
 #!/usr/bin/env bash
 # License: GPLv3
@@ -119,10 +121,10 @@ create_docker_context() {
     echo "📁 Creating Docker build context..."
     [[ -f "$docker_file" ]] && return
     
-    # Cria o script primeiro
+    # Create the script first
     create_comfy_script
     
-    # Create Dockerfile corrigido
+    # Create fixed Dockerfile
     cat > "$docker_file" << 'EOF'
 FROM python:3.13-slim
 
@@ -132,7 +134,7 @@ RUN apt-get update && apt-get install -y \
     libsm6 libxext6 libxrender1 \
     libgl1 libgomp1 ocl-icd-libopencl1 \
     clinfo pciutils libglvnd0 libglx0 \
-    libegl1 screen tmux \
+    libegl1 zsh screen tmux \
     && rm -rf /var/lib/apt/lists/*
 
 # For NVIDIA GPU support in container
@@ -144,24 +146,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Cria usuário comfy - CORREÇÃO: usa grupo 'sudo' em vez de 'wheel'
-RUN useradd -m -G sudo -s /bin/bash comfy && \
+# Create comfy user - FIX: use 'sudo' group instead of 'wheel'
+RUN useradd -m -G sudo -s /bin/zsh comfy && \
     echo "comfy:123" | chpasswd && \
     echo "comfy ALL=(ALL:ALL) NOPASSWD:ALL" >> /etc/sudoers.d/comfy && \
     chmod 0440 /etc/sudoers.d/comfy
 
-# Configurações do usuário comfy
+# comfy user settings
 USER comfy
 WORKDIR /home/comfy
 
-# Cria e configura o diretório .local/bin
+# Create and configure .local/bin directory
 RUN mkdir -p /home/comfy/.local/bin && \
     chown -R comfy:comfy /home/comfy/.local
 
-# Configura o PATH para incluir ~/.local/bin
+# Configure PATH to include ~/.local/bin
 ENV PATH="/home/comfy/.local/bin:${PATH}"
 
-# Adiciona as configurações de shell_utils .bashrc e .zshrc
+# Add shell_utils settings to .bashrc and .zshrc
 RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
     echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.bashrc && \
     echo '' >> /home/comfy/.bashrc && \
@@ -169,6 +171,9 @@ RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
     echo 'shell_utils_dir=~/.shell_utils/' >> /home/comfy/.bashrc && \
     echo 'if ! test -d "${shell_utils_dir}"; then' >> /home/comfy/.bashrc && \
     echo '    bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"' >> /home/comfy/.bashrc && \
+    echo 'fi' >> /home/comfy/.bashrc && \
+    echo 'if ! test -f "${shell_utils_dir}/scripts/comfy-cli"; then' >> /home/comfy/.bashrc && \
+    echo '    rm "${shell_utils_dir}/scripts/comfy-cli"' >> /home/comfy/.bashrc && \
     echo 'fi' >> /home/comfy/.bashrc && \
     echo '' >> /home/comfy/.bashrc && \
     echo 'echo "Starting ComfyUI in background. Please wait..."' >> /home/comfy/.bashrc && \
@@ -179,15 +184,18 @@ RUN echo 'export PATH="/home/comfy/.local/bin:$PATH"' >> /home/comfy/.zshrc && \
     echo 'if ! test -d "${shell_utils_dir}"; then' >> /home/comfy/.zshrc && \
     echo '    bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"' >> /home/comfy/.zshrc && \
     echo 'fi' >> /home/comfy/.zshrc && \
+    echo 'if ! test -f "${shell_utils_dir}/scripts/comfy-cli"; then' >> /home/comfy/.zshrc && \
+    echo '    rm "${shell_utils_dir}/scripts/comfy-cli"' >> /home/comfy/.zshrc && \
+    echo 'fi' >> /home/comfy/.zshrc && \
     echo '' >> /home/comfy/.zshrc && \
     echo 'echo "Starting ComfyUI in background. Please wait..."' >> /home/comfy/.zshrc && \
     echo 'comfy-cli launch --background' >> /home/comfy/.zshrc
 
-# Copia o script comfy-cli para ~/.local/bin e torna executável
+# Copy comfy-cli script to ~/.local/bin and make executable
 COPY --chown=comfy:comfy comfy-cli.sh /home/comfy/.local/bin/comfy-cli
 RUN chmod +x /home/comfy/.local/bin/comfy-cli
 
-# CORREÇÃO IMPORTANTE: Mantém o container rodando com processo infinito
+# IMPORTANT FIX: Keep container running with infinite process
 CMD ["tail", "-f", "/dev/null"]
 EOF
 }
@@ -217,45 +225,45 @@ run_container() {
     if docker images | grep -q "^$container "; then
         echo "🚀 Starting container..."
         
-        # Verifica se container já existe e está rodando
+        # Check if container already exists and is running
         if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
             echo "✅ Container '$container' is already running!"
             echo "💡 Use '${0##*/} shell' to enter or '${0##*/} stop' to stop it"
             read -p "Enter container now? [Y/n] " -n 1 -r
             echo
             if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-                docker exec -it "$container" bash
+                docker exec -it "$container" zsh
             fi
             return
         fi
         
-        # Se existe mas está parado, remove para recriar
+        # If exists but stopped, remove to recreate
         if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
             echo "🔄 Removing stopped container..."
             docker rm "$container" 2>/dev/null
         fi
         
-        # Monta variáveis para configurações
+        # Mount variables for configuration
         local gpu_args=""
         local display_args=""
         
-        # Verifica NVIDIA
+        # Check NVIDIA
         if command -v nvidia-smi >/dev/null 2>&1; then
             echo "🎮 NVIDIA GPU detected, enabling GPU support..."
             gpu_args="--gpus all"
-        # Verifica AMD/Intel
+        # Check AMD/Intel
         elif [[ -d "/dev/dri" ]]; then
             echo "🎮 GPU device detected (/dev/dri), enabling GPU support..."
             gpu_args="--device /dev/dri"
         fi
         
-        # Verifica X11
+        # Check X11
         if [[ -n "$DISPLAY" ]] && [[ -S "/tmp/.X11-unix/X${DISPLAY#*:}" ]]; then
             display_args="-v /tmp/.X11-unix:/tmp/.X11-unix:rw -e DISPLAY=$DISPLAY"
             echo "🎨 X11 display enabled: $DISPLAY"
         fi
         
-        # CRÍTICO: Roda em background com -d (detached)
+        # CRITICAL: Run in background with -d (detached)
         echo "🐳 Creating container in background mode..."
         if docker run -d \
             --name "$container" \
@@ -267,9 +275,9 @@ run_container() {
             -p 443:443 \
             "$container" >/dev/null 2>&1; then
             
-            sleep 2  # Aguarda container iniciar
+            sleep 2  # Wait for container to start
             
-            # Verifica se realmente está rodando
+            # Check if it's actually running
             if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
                 echo "✅ Container '$container' started successfully in background!"
                 echo ""
@@ -283,11 +291,7 @@ run_container() {
                 echo "   docker logs $container  - View logs"
                 echo ""
                 
-                read -p "Enter container now? [Y/n] " -n 1 -r
-                echo
-                if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-                    docker exec -it "$container" bash
-                fi
+                docker exec -it "$container" zsh
             else
                 echo "❌ Container failed to start in background"
                 echo "Checking logs..."
@@ -321,13 +325,13 @@ status_container() {
     echo "📊 Docker containers status:"
     echo ""
     
-    # Mostra container específico se existir
+    # Show specific container if exists
     if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
         echo "Container '$container':"
         docker ps -a --filter "name=$container" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}\t{{.Ports}}"
         echo ""
         
-        # Se estiver rodando, mostra mais informações
+        # If running, show more information
         if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
             echo "📈 Resource usage:"
             docker stats "$container" --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"
@@ -346,7 +350,7 @@ status_container() {
 shell_container() {
     if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
         echo "🚪 Entering container '$container'..."
-        docker exec -it "$container" bash
+        docker exec -it "$container" zsh
     elif docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
         echo "❌ Container '$container' exists but is not running"
         read -p "Start it now? [Y/n] " -n 1 -r
@@ -354,7 +358,7 @@ shell_container() {
         if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             docker start "$container"
             sleep 2
-            docker exec -it "$container" bash
+            docker exec -it "$container" zsh
         fi
     else
         echo "❌ Container '$container' not found"
@@ -363,7 +367,39 @@ shell_container() {
     fi
 }
 
-# Processa argumentos
+clean_container() {
+    echo "🧹 Cleaning up container and image..."
+    
+    # Stop container if running
+    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "🛑 Stopping container..."
+        docker stop "$container"
+    fi
+    
+    # Remove container if exists
+    if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
+        echo "🗑️  Removing container..."
+        docker rm "$container"
+        echo "✅ Container removed"
+    else
+        echo "ℹ️  Container not found"
+    fi
+    
+    # Remove image if exists
+    if docker images | grep -q "^$container "; then
+        echo "🗑️  Removing image..."
+        docker rmi "$container"
+        echo "✅ Image removed"
+    else
+        echo "ℹ️  Image not found"
+    fi
+    
+    echo ""
+    echo "📁 Build context is preserved at: $docker_base"
+    echo "💡 To completely remove everything: rm -rf $docker_base"
+}
+
+# Process arguments
 case "${1:-}" in
     "install"|"i")
         install_container
@@ -371,11 +407,18 @@ case "${1:-}" in
     "run"|"r")
         run_container
         ;;
+    "install_run"|"ir")
+        install_container
+        run_container
+        ;;
     "stop")
         stop_container
         ;;
     "status")
         status_container
+        ;;
+    "clean")
+        clean_container
         ;;
     "shell"|"sh")
         shell_container
