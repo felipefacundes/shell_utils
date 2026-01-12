@@ -23,19 +23,21 @@ USAGE:
     ${0##*/} [install|run|stop|status|clean|shell|help]
 
 COMMANDS:
-    install   - Build the Docker image
-    run       - Start the container in background and enter it
-    stop      - Stop the container
-    status    - Show container status
-    clean     - Remove container and image (keeps build context)
-    shell     - Enter the container if it's already running
-    help      - Show this help
+    install, i       - Build the Docker image
+    run, r           - Start the container in background and enter it
+    install_run, ir  - Build and Start the container in background and enter it
+    stop, s          - Stop the container
+    status, st       - Show container status
+    clean, c         - Remove container and image (keeps build context)
+    shell, sh        - Enter the container if it's already running
+    help, h          - Show this help
 
 EXAMPLES:
-    ${0##*/} install   # Build the container
-    ${0##*/} run       # Start the container
-    ${0##*/} status    # Check status
-    ${0##*/} clean     # Remove container and image
+    ${0##*/} install, i       # Build the container
+    ${0##*/} run, r           # Start the container
+    ${0##*/} install_run, ir  # Build and Start the container
+    ${0##*/} status, st       # Check status
+    ${0##*/} clean, c         # Remove container and image
 
 EOF
     exit 0
@@ -411,13 +413,13 @@ case "${1:-}" in
         install_container
         run_container
         ;;
-    "stop")
+    "stop"|"s")
         stop_container
         ;;
-    "status")
+    "status"|"st")
         status_container
         ;;
-    "clean")
+    "clean"|"c")
         clean_container
         ;;
     "shell"|"sh")
