@@ -33,7 +33,7 @@ secondary_argument="$2"
 
 create_config_file() {
     [[ ! -d "${config_dir}" ]] && mkdir -p "${config_dir}"
-    if [ ! -f "${config_file}" ]; then
+    if [[ ! -f "${config_file}" ]]; then
         touch "${config_file}"
         echo "# Choose a theme number or 'n' for no theme." | tee "${config_file}"
         echo 'ASCII Theme Index = 10' | tee -a "${config_file}"
@@ -78,7 +78,7 @@ elif ! command -v less &> /dev/null; then
     exit 1
 fi
 
-export ascii_arts_folder="${HOME}/.shell_utils/ascii_arts_themes"
+ascii_arts_folder="${HOME}/.shell_utils/ascii_arts_themes"
 cd "${ascii_arts_folder}" || exit
 ascii_theme_list=(*.[tT][xX][tT])
 cd - >/dev/null || exit
@@ -112,14 +112,14 @@ else
     load_ascii_art_theme
 fi
 
-leng_theme_list(){
-    number=0
-    for list in "${ascii_theme_list[@]}";
-        do
-            (( number++ )) || true
-            echo "${number}"
-    done
-}
+# leng_theme_list(){
+#     number=0
+#     for list in "${ascii_theme_list[@]}";
+#         do
+#             (( number++ )) || true
+#             echo "${number}"
+#     done
+# }
 
 leng_color_index(){
     number=0
@@ -150,7 +150,8 @@ print_theme_list() {
     return 0
 }
 
-leng=$(($(leng_theme_list | wc -l)-1))
+# leng=$(($(leng_theme_list | wc -l)-1))
+leng=$((${#ascii_theme_list[@]} - 1))
 leng_color=$(leng_color_index | wc -l)
 
 color_shell_select(){

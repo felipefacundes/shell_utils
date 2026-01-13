@@ -1,0 +1,483 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+ASCII Theme Manager - Refactored
+================================
+
+This script manages and displays ASCII art themes in terminal, allowing
+complete customization of colors and display methods.
+
+Features:
+1. Configuration management: Creates and manages configuration file
+2. Dynamic loading: Displays ASCII themes with different methods (less, ccat, lolcat)
+3. Interactive interface: Menu for theme and color selection with validation
+4. Color customization: 367 colors available for foreground and background
+5. Documentation: Integrated help system
+
+Display methods:
+- 0: less (default) - basic terminal colors
+- 1: ccat - syntax highlighting for code
+- 2: lolcat - rainbow effect
+
+Available commands:
+  h, help         - Shows this help
+  t, theme        - Lists/manages ASCII themes
+  c, color        - Sets text color
+  b, background   - Sets background color
+  reader          - Sets display method
+  r, reload       - Reloads current theme
+DOCUMENTATION
+
+# shellcheck source=/dev/null
+source ~/.shell_utils/variables/shell_colors.sh
+# shellcheck source=/dev/null
+source ~/.shell_utils/variables/shell_colors_indexed_array.sh
+
+# Global variables
+readonly CONFIG_DIR="${HOME}/.shell_utils_configs"
+readonly CONFIG_FILE="${CONFIG_DIR}/ascii_themes_select.conf"
+readonly ASCII_ARTS_FOLDER="${HOME}/.shell_utils/ascii_arts_themes"
+
+# State variables
+primary_argument="$1"
+secondary_argument="$2"
+list_index=""
+color_index=""
+default_read=""
+ascii_theme_list=()
+
+# Message colors (fallback if source fails)
+declare -A msg_colors
+msg_colors=(
+    ["error"]="\e[1;31m"
+    ["success"]="\e[1;32m"
+    ["warning"]="\e[1;33m"
+    ["info"]="\e[1;34m"
+    ["title"]="\e[1;36m"
+    ["reset"]="\e[0m"
+)
+
+# Utility functions
+print_message() {
+    local type="$1"
+    local message="$2"
+    local color="${msg_colors[$type]:-${msg_colors[info]}}"
+    echo -e "${color}${message}${msg_colors[reset]}"
+}
+
+validate_number() {
+    [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+validate_alpha() {
+    [[ "$1" =~ ^[[:alpha:]]+$ ]]
+}
+
+# Configuration
+setup_configuration() {
+    [[ ! -d "${CONFIG_DIR}" ]] && mkdir -p "${CONFIG_DIR}"
+    
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        cat > "${CONFIG_FILE}" << EOF
+# ASCII Theme Manager Configuration
+# Choose a theme number or 'n' for no theme
+ASCII Theme Index = 10
+
+# Choose a theme color (1-367)
+ASCII Theme Color Index = 41
+
+# Display method: 0=less, 1=ccat, 2=lolcat
+READER = 0
+EOF
+        print_message "success" "Configuration file created: ${CONFIG_FILE}"
+    fi
+}
+
+load_configuration() {
+    # Extract values from configuration file
+    list_index=$(grep "ASCII Theme Index" "${CONFIG_FILE}" | cut -d= -f2 | xargs)
+    color_index=$(grep "ASCII Theme Color Index" "${CONFIG_FILE}" | cut -d= -f2 | xargs)
+    default_read=$(grep "READER" "${CONFIG_FILE}" | cut -d= -f2 | xargs)
+    
+    # Validations and automatic corrections
+    if validate_alpha "${list_index}" && [[ "${list_index}" != "n" ]]; then
+        sed -i "2cASCII Theme Index = 339" "${CONFIG_FILE}"
+        list_index="339"
+    fi
+    
+    if validate_alpha "${color_index}"; then
+        sed -i "4cASCII Theme Color Index = 41" "${CONFIG_FILE}"
+        color_index="41"
+    fi
+    
+    if validate_alpha "${default_read}" || [[ -z "${default_read}" ]] || 
+       { validate_number "${default_read}" && (( default_read > 2 )); }; then
+        sed -i "6cREADER = 0" "${CONFIG_FILE}"
+        default_read="0"
+    fi
+    
+    export list_index color_index default_read
+}
+
+load_ascii_themes() {
+    if [[ -d "${ASCII_ARTS_FOLDER}" ]]; then
+        cd "${ASCII_ARTS_FOLDER}" || return 1
+        mapfile -t ascii_theme_list < <(find . -maxdepth 1 -name "*.txt" -type f | sort -V)
+        cd - >/dev/null || return 1
+        readonly ascii_theme_list
+    else
+        print_message "error" "Themes directory not found: ${ASCII_ARTS_FOLDER}"
+        exit 1
+    fi
+}
+
+# Dependency checking
+check_dependencies() {
+    local missing_deps=()
+    
+    case "${default_read}" in
+        2) [[ ! $(command -v lolcat) ]] && missing_deps+=("lolcat") ;;
+        1) [[ ! $(command -v ccat) ]] && missing_deps+=("ccat") ;;
+    esac
+    
+    [[ ! $(command -v less) ]] && missing_deps+=("less")
+    
+    if (( ${#missing_deps[@]} > 0 )); then
+        print_message "error" "Missing dependencies: ${missing_deps[*]}"
+        print_message "info" "Install with: sudo apt install ${missing_deps[*]//lolcat/} ruby-lolcat"
+        exit 1
+    fi
+}
+
+# Display functions
+display_ascii_art() {
+    clear -T "${TERM}"
+    local theme_file="${ASCII_ARTS_FOLDER}/${ascii_theme_list[${list_index}]}"
+    
+    if [[ ! -f "${theme_file}" ]]; then
+        print_message "error" "Theme file not found: ${theme_file}"
+        return 1
+    fi
+    
+    case "${default_read}" in
+        2) # lolcat
+            echo && lolcat -f "${theme_file}" && echo
+            ;;
+        1) # ccat
+            echo && ccat "${theme_file}" && echo
+            ;;
+        0) # less with colors
+            echo -e "${shell_color_palette_index[${color_index}]}"
+            cat "${theme_file}"
+            echo -e "${shell_color_palette[color_off]}"
+            ;;
+        *) # fallback
+            cat "${theme_file}"
+            ;;
+    esac
+    echo
+}
+
+# Workaround for color leakage
+safe_display_ascii_art() {
+    if [[ "${color_index}" -ge 366 ]] && [[ "${default_read}" -lt 1 ]]; then
+        display_ascii_art
+        sleep 0.2
+        display_ascii_art
+    else
+        display_ascii_art
+    fi
+}
+
+# Listing functions
+list_themes() {
+    print_message "title" "=== Available ASCII Themes ==="
+    echo -e "${msg_colors[info]}Usage:${msg_colors[reset]}"
+    echo -e "  ${0##*/} theme <number>"
+    echo -e "  ${0##*/} theme n (for no theme)"
+    echo
+    
+    echo "n) No theme"
+    
+    for i in "${!ascii_theme_list[@]}"; do
+        echo -e "\n\n--- Theme $((i+1)): ${ascii_theme_list[$i]##*/} ---\n"
+        
+        # Show preview if small
+        if [[ $(wc -l < "${ASCII_ARTS_FOLDER}/${ascii_theme_list[$i]}") -lt 20 ]]; then
+            head -n 10 "${ASCII_ARTS_FOLDER}/${ascii_theme_list[$i]}"
+            echo "..."
+        fi
+        
+        echo -e "\n${i}) ${ascii_theme_list[$i]##*/}"
+    done
+    
+    echo -e "\n${msg_colors[warning]}Type 'q' to exit${msg_colors[reset]}"
+}
+
+list_colors() {
+    local type="$1"
+    local start="$2"
+    local end="$3"
+    
+    print_message "title" "=== Available Colors ==="
+    echo -e "${msg_colors[info]}Usage:${msg_colors[reset]}"
+    echo -e "  ${0##*/} ${type} <number>"
+    echo
+    
+    for ((i=start; i<=end; i++)); do
+        if [[ -n "${shell_color_palette_index[$i]}" ]]; then
+            # CORRIGIDO: Mostrar cor corretamente com echo -e
+            echo -e "${i})    ${shell_color_palette_index[$i]}Color: '\\${shell_color_palette[color_off]}'"
+        fi
+    done
+    
+    echo -e "\n${msg_colors[warning]}Type 'q' to exit${msg_colors[reset]}"
+}
+
+# Interactive functions
+interactive_theme_selection() {
+    while true; do
+        clear -T "${TERM}"
+        list_themes | less -Ri
+        
+        echo -e "\n${msg_colors[info]}Choose a theme (0-$(( ${#ascii_theme_list[@]} - 1 ))) or 'n' for none:${msg_colors[reset]} "
+        read -r choice
+        
+        case "${choice}" in
+            [0-9]*)
+                if (( choice >= 0 && choice < ${#ascii_theme_list[@]} )); then
+                    sed -i "2cASCII Theme Index = ${choice}" "${CONFIG_FILE}"
+                    safe_display_ascii_art
+                    return 0
+                else
+                    print_message "error" "Invalid number! Choose between 0 and $(( ${#ascii_theme_list[@]} - 1 ))"
+                    sleep 2
+                fi
+                ;;
+            n|N)
+                sed -i "2cASCII Theme Index = n" "${CONFIG_FILE}"
+                clear -T "${TERM}"
+                print_message "success" "Theme disabled"
+                return 0
+                ;;
+            q|Q)
+                return 1
+                ;;
+            *)
+                print_message "error" "Invalid option!"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+interactive_color_selection() {
+    local color_type="$1"
+    local prompt="$2"
+    local min="$3"
+    local max="$4"
+    
+    while true; do
+        clear -T "${TERM}"
+        list_colors "${color_type}" "${min}" "${max}" | less -R
+        
+        echo -e "\n${msg_colors[info]}${prompt}:${msg_colors[reset]} "
+        read -r choice
+        
+        case "${choice}" in
+            [0-9]*)
+                if (( choice >= min && choice <= max )); then
+                    sed -i "4cASCII Theme Color Index = ${choice}" "${CONFIG_FILE}"
+                    safe_display_ascii_art
+                    return 0
+                else
+                    print_message "error" "Invalid number! Choose between ${min} and ${max}"
+                    sleep 2
+                fi
+                ;;
+            q|Q)
+                return 1
+                ;;
+            *)
+                print_message "error" "Invalid option!"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+interactive_reader_selection() {
+    while true; do
+        clear -T "${TERM}"
+        echo -e "${msg_colors[title]}=== Display Method ===${msg_colors[reset]}"
+        echo -e "\n0) less (default) - Basic colors"
+        echo "1) ccat - Syntax highlighting"
+        echo "2) lolcat - Rainbow effect"
+        echo -e "\n${msg_colors[info]}Choose method (0-2):${msg_colors[reset]} "
+        read -r choice
+        
+        case "${choice}" in
+            0|1|2)
+                sed -i "6cREADER = ${choice}" "${CONFIG_FILE}"
+                load_configuration
+                safe_display_ascii_art
+                return 0
+                ;;
+            q|Q)
+                return 1
+                ;;
+            *)
+                print_message "error" "Invalid option! Choose 0, 1 or 2"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# Argument handlers
+handle_theme() {
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_theme_selection
+    elif [[ "${secondary_argument}" == "n" ]]; then
+        sed -i "2cASCII Theme Index = n" "${CONFIG_FILE}"
+        clear -T "${TERM}"
+        print_message "success" "Theme disabled"
+    elif validate_number "${secondary_argument}" && \
+         (( secondary_argument >= 0 && secondary_argument < ${#ascii_theme_list[@]} )); then
+        sed -i "2cASCII Theme Index = ${secondary_argument}" "${CONFIG_FILE}"
+        print_message "success" "Theme ${secondary_argument} selected: ${ascii_theme_list[secondary_argument]##*/}"
+        safe_display_ascii_art
+    else
+        print_message "error" "Invalid theme! Use a number between 0 and $(( ${#ascii_theme_list[@]} - 1 )) or 'n'"
+        return 1
+    fi
+}
+
+handle_color() {
+    local max_color="${#shell_color_palette_index[@]}"
+    
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_color_selection "color" "Choose a color (1-${max_color})" 1 "${max_color}"
+    elif validate_number "${secondary_argument}" && \
+         (( secondary_argument >= 1 && secondary_argument <= max_color )); then
+        sed -i "4cASCII Theme Color Index = ${secondary_argument}" "${CONFIG_FILE}"
+        safe_display_ascii_art
+    else
+        print_message "error" "Invalid color! Use a number between 1 and ${max_color}"
+        return 1
+    fi
+}
+
+handle_background() {
+    local max_color="${#shell_color_palette_index[@]}"
+    
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_color_selection "background" "Choose a background color (366-${max_color})" 366 "${max_color}"
+    elif validate_number "${secondary_argument}" && \
+         (( secondary_argument >= 366 && secondary_argument <= max_color )); then
+        sed -i "4cASCII Theme Color Index = ${secondary_argument}" "${CONFIG_FILE}"
+        safe_display_ascii_art
+    else
+        print_message "error" "Invalid background color! Use a number between 366 and ${max_color}"
+        return 1
+    fi
+}
+
+handle_reader() {
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_reader_selection
+    elif validate_number "${secondary_argument}" && (( secondary_argument >= 0 && secondary_argument <= 2 )); then
+        sed -i "6cREADER = ${secondary_argument}" "${CONFIG_FILE}"
+        load_configuration
+        safe_display_ascii_art
+    else
+        print_message "error" "Invalid method! Use 0, 1 or 2"
+        return 1
+    fi
+}
+
+show_help() {
+    clear -T "${TERM}"
+    cat <<EOF | { echo -e "$(cat)"; }
+${msg_colors[title]}=== ASCII Theme Manager ===${msg_colors[reset]}
+
+${msg_colors[info]}Usage:${msg_colors[reset]}
+  ${0##*/} <command> [option]
+
+${msg_colors[info]}Available commands:${msg_colors[reset]}
+
+  help, h                  Shows this help
+  theme, t       [number]  Lists/manages ASCII themes
+  color, c       [number]  Sets text color (1-367)
+  background, b  [number]  Sets background color (366-367)
+  reader         [number]  Sets display method (0-2)
+  reload, r                Reloads current theme
+
+${msg_colors[info]}Examples:${msg_colors[reset]}
+  ${0##*/} theme           # Lists themes interactively
+  ${0##*/} theme 12        # Selects theme 12
+  ${0##*/} theme n         # Disables theme
+  ${0##*/} color 41        # Sets color 41
+  ${0##*/} reader 2        # Uses lolcat to display
+  ${0##*/} reload          # Reloads configuration
+
+${msg_colors[info]}Display methods:${msg_colors[reset]}
+  0 - less (default)     # Basic terminal colors
+  1 - ccat               # Syntax highlighting for code
+  2 - lolcat             # Animated rainbow effect
+EOF
+}
+
+# Main flow
+main() {
+    # Initial configuration
+    setup_configuration
+    load_configuration
+    
+    # If theme is disabled, exit silently
+    [[ "${list_index}" == "n" ]] && exit 0
+    
+    # Load themes and check dependencies
+    load_ascii_themes
+    check_dependencies
+    
+    # If no arguments, display current theme
+    if [[ -z "${primary_argument}" ]]; then
+        safe_display_ascii_art
+        exit 0
+    fi
+    
+    # Process commands
+    case "${primary_argument}" in
+        l|t|theme|themes|list)
+            handle_theme
+            ;;
+        c|color)
+            handle_color
+            ;;
+        b|background)
+            handle_background
+            ;;
+        read|reader)
+            handle_reader
+            ;;
+        r|reload)
+            safe_display_ascii_art
+            ;;
+        -h|--help|h|help)
+            show_help
+            ;;
+        *)
+            print_message "error" "Unknown command: ${primary_argument}"
+            print_message "info" "Use '${0##*/} help' to see available commands"
+            exit 1
+            ;;
+    esac
+}
+
+# Execution
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
