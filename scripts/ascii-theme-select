@@ -21,7 +21,9 @@ DOCUMENTATION
 
 #exec 2>/dev/null
 
+# shellcheck source=/dev/null
 source ~/.shell_utils/variables/shell_colors.sh
+# shellcheck source=/dev/null
 source ~/.shell_utils/variables/shell_colors_indexed_array.sh
 
 config_dir="${HOME}/.shell_utils_configs"
