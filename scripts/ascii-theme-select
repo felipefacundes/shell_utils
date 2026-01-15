@@ -19,405 +19,642 @@ Capabilities:
 - Provides feedback and error messages to enhance user experience.
 DOCUMENTATION
 
-#exec 2>/dev/null
-
 # shellcheck source=/dev/null
 source ~/.shell_utils/variables/shell_colors.sh
 # shellcheck source=/dev/null
 source ~/.shell_utils/variables/shell_colors_indexed_array.sh
 
-config_dir="${HOME}/.shell_utils_configs"
-config_file="${config_dir}/ascii_themes_select.conf"
+# ============================================
+# CONFIGURATION
+# ============================================
+readonly CONFIG_DIR="${HOME}/.shell_utils_configs"
+readonly CONFIG_FILE="${CONFIG_DIR}/ascii_themes_select.conf"
+
+readonly ASCII_ARTS_PATHS=(
+    "${HOME}/.shell_utils/ascii_arts_themes"
+    "${HOME}/.local/shell_utils/ascii_arts_themes"
+)
+
+# ============================================
+# GLOBAL VARIABLES
+# ============================================
 primary_argument="$1"
 secondary_argument="$2"
+list_index=""
+color_index=""
+color_ansi=""
+default_read=""
+ascii_theme_list=()
 
+# ============================================
+# CONFIGURATION FUNCTIONS
+# ============================================
 create_config_file() {
-    [[ ! -d "${config_dir}" ]] && mkdir -p "${config_dir}"
-    if [[ ! -f "${config_file}" ]]; then
-        touch "${config_file}"
-        echo "# Choose a theme number or 'n' for no theme." | tee "${config_file}"
-        echo 'ASCII Theme Index = 10' | tee -a "${config_file}"
-        echo '# Choose a theme color.' | tee -a "${config_file}"
-        echo 'Empty' | tee -a "${config_file}"
-        sed -i -r '4 cASCII Theme Color Index = 41' "${config_file}" #Theme Color
-        echo '# Use 0 for less, 1 for ccat, and 2 for lolcat to display.' | tee -a "${config_file}"
-        echo 'READER = 0' | tee -a "${config_file}"
+    if [[ ! -d "${CONFIG_DIR}" ]]; then
+        mkdir -p "${CONFIG_DIR}"
+    fi
+    
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        cat > "${CONFIG_FILE}" << 'EOF'
+# ASCII Theme Manager Configuration
+# Choose a theme number or 'n' for no theme.
+ASCII Theme Index = 8
+
+# Choose a theme color from the indexed palette (1-2989)
+# OR use ASCII Theme Color ANSI below for custom color
+ASCII Theme Color Index = 41
+
+# Custom ANSI color code (e.g., 38;5;243 or 1;33)
+# Just the numbers, without \033[ and m
+# If set to 0 or empty, ASCII Theme Color Index will be used
+ASCII Theme Color ANSI = 0
+
+# Display method: 0=less, 1=ccat, 2=lolcat
+READER = 0
+EOF
     fi
 }
-create_config_file >/dev/null 2>&1
 
-update_variables() {
-    # default_read=$(less -FX "${config_file}" | head -6 | tail -1 | sed '/^$/d' | cut -f2 -d'=' | sed '/^$/d'); export default_read
-    # list_index=$(less -FX "${config_file}" | head -2 | tail -1 | sed '/^$/d' | cut -f2 -d'=' | sed '/^$/d'); export list_index
-    # color=$(less -FX "${config_file}" | head -4 | tail -1 | sed '/^$/d' | cut -f2 -d'=' | sed '/^$/d'); export color
-    default_read=$(sed -n '6s/.*=\s*\(.*\)/\1/p' "${config_file}"); export default_read
-    list_index=$(sed -n '2s/.*=\s*\(.*\)/\1/p' "${config_file}"); export list_index
-    color_index=$(sed -n '4s/.*=\s*\(.*\)/\1/p' "${config_file}"); export color
-    return 0
+load_configuration() {
+    # Use grep to find each specific line (more robust)
+    list_index=$(grep "^ASCII Theme Index = " "${CONFIG_FILE}" | cut -d= -f2 | xargs)
+    color_index=$(grep "^ASCII Theme Color Index = " "${CONFIG_FILE}" | cut -d= -f2 | xargs)
+    color_ansi=$(grep "^ASCII Theme Color ANSI = " "${CONFIG_FILE}" | cut -d= -f2 | xargs)
+    default_read=$(grep "^READER = " "${CONFIG_FILE}" | cut -d= -f2 | xargs)
+    
+    export list_index color_index color_ansi default_read
 }
 
-[[ "${list_index}" == "n" ]] && echo >/dev/null && exit 0
-[[ "${list_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "2 cASCII Theme Index = 339" "${config_file}" && echo >/dev/null && exit 0
-[[ "${color_index}" =~ ^[[:alpha:]]+$ ]] && sed -i -r '4 cASCII Theme Color Index = 41' "${config_file}"
-[[ "${default_read}" =~ ^[[:alpha:]]+$ ]] && sed -i "6 cREADER = 0" "${config_file}"
-test "${default_read}" -gt 2 2>/dev/null && sed -i "6 cREADER = 0" "${config_file}"
+fix_configuration() {
+    # Automatic fixes as in your original code
+    [[ "${list_index}" == "n" ]] && exit 0
+    [[ "${list_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "/^ASCII Theme Index = /cASCII Theme Index = 339" "${CONFIG_FILE}" && exit 0
+    [[ "${color_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "/^ASCII Theme Color Index = /cASCII Theme Color Index = 41" "${CONFIG_FILE}"
+    [[ "${default_read}" =~ ^[[:alpha:]]+$ ]] && sed -i "/^READER = /cREADER = 0" "${CONFIG_FILE}"
+    [[ "${default_read}" -gt 2 ]] 2>/dev/null && sed -i "/^READER = /cREADER = 0" "${CONFIG_FILE}"
+    
+    # If color_ansi is empty, alpha, or 0, set it to 0
+    if [[ -z "${color_ansi}" ]] || [[ "${color_ansi}" =~ ^[[:alpha:]]+$ ]] || [[ "${color_ansi}" == "0" ]]; then
+        sed -i "/^ASCII Theme Color ANSI = /cASCII Theme Color ANSI = 0" "${CONFIG_FILE}"
+    fi
+}
 
-update_variables
+# Function to get active color (prioritizes custom ANSI)
+get_active_color() {
+    if [[ -n "${color_ansi}" ]] && [[ "${color_ansi}" != "0" ]]; then
+        # Use custom ANSI color - format with \033[ and m
+        # Remove extra spaces
+        local clean_color; clean_color=$(echo "${color_ansi}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        echo -e "\033[${clean_color}m"
+    else
+        # Use default indexed color
+        echo -e "${shell_color_palette_index[${color_index}]}"
+    fi
+}
 
-if ! command -v lolcat &> /dev/null && (( "${default_read}" == 2 )); then
-    clear -T "${TERM}"
-    echo -e "${shell_color_palette[bred]}Error: lolcat is not installed. Please install lolcat for this script to work."
-    exit 1
-elif ! command -v ccat &> /dev/null && (( "${default_read}" == 1 )); then
-    clear -T "${TERM}"
-    echo -e "${shell_color_palette[bred]}Error: ccat is not installed. Please install ccat for this script to work."
-    exit 1
-elif ! command -v less &> /dev/null; then
-    clear -T "${TERM}"
-    echo -e "${shell_color_palette[bred]}Error: less is not installed. Please install less for this script to work."
-    exit 1
-fi
-
-ascii_arts_folder="${HOME}/.shell_utils/ascii_arts_themes"
-cd "${ascii_arts_folder}" || exit
-ascii_theme_list=(*.[tT][xX][tT])
-cd - >/dev/null || exit
-
-load_ascii_art_theme() {
-    clear -T "${TERM}"
-    update_variables && update_variables
-
-    if test "${list_index}" -ge 0 2>/dev/null; then
-        if (( "${default_read}" == 2 )); then
-echo -e "
-$(lolcat -f "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")"
-echo
-        elif (( "${default_read}" == 1 )); then
-echo
-ccat "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}"
-echo
-        else
-            echo -e "${shell_color_palette_index[${color_index}]}
-$(cat "${ascii_arts_folder}/${ascii_theme_list[${list_index}]}")${shell_color_palette[color_off]}"
-echo
+# ============================================
+# INITIALIZATION
+# ============================================
+initialize() {
+    create_config_file >/dev/null 2>&1
+    load_configuration
+    fix_configuration
+    load_configuration  # Reload after fixes
+    
+    for dir in "${ASCII_ARTS_PATHS[@]}"; do
+        [[ ! -d "$dir" ]] && mkdir -p "$dir"
+        if [[ -d "$dir" ]]; then
+            mapfile -t -O "${#ascii_theme_list[@]}" ascii_theme_list < <(
+                find "$dir" -maxdepth 1 -type f -iname "*.txt" | sort -f
+            )
         fi
+    done
+
+    check_dependencies
+}
+
+# ============================================
+# DEPENDENCY CHECK
+# ============================================
+check_dependencies() {
+    # Always need less
+    if ! command -v less &>/dev/null; then
+        clear -T "${TERM}"
+        echo -e "${shell_color_palette[bred]}Error: less is not installed. Please install less for this script to work.${shell_color_palette[color_off]}"
+        exit 1
     fi
-    return 0
-}
-# It was a way I found to fix the color leakage from some color theme combinations.
-# Example: theme Abacus with color 366
-if test "${color_index}" -ge 366 2>/dev/null && test "${default_read}" -lt 1 2>/dev/null; then
-    load_ascii_art_theme && sleep 0.2 && load_ascii_art_theme
-else
-    load_ascii_art_theme
-fi
-
-# leng_theme_list(){
-#     number=0
-#     for list in "${ascii_theme_list[@]}";
-#         do
-#             (( number++ )) || true
-#             echo "${number}"
-#     done
-# }
-
-leng_color_index(){
-    number=0
-    for list in "${shell_color_palette_index[@]}";
-        do
-            (( number++ )) || true
-            echo "${number}"
-    done
-}
-
-print_theme_list() {
-    number=0
-    echo -e "${shell_color_palette[byellow]}Usage:${shell_color_palette[color_off]}\n"
-    echo -e "${shell_color_palette[cyan]}Example:${shell_color_palette[color_off]}"
-    echo -e "${shell_color_palette[bwhite_on_black]}ascii_theme_select theme 1${shell_color_palette[color_off]}\n"
-
-    echo 'n)    Without theme'
-
-    for list in "${ascii_theme_list[@]}";
-        do
-            echo -e "\n\n"
-            cat "${ascii_arts_folder}/${ascii_theme_list[${number}]}"
-            echo -e "\n\n${number})    ${list}\n\n"
-            (( number++ )) || true
-    done
-
-    echo -e "\n"'Enter "q" for exit'"\n"
-    return 0
-}
-
-# leng=$(($(leng_theme_list | wc -l)-1))
-leng=$((${#ascii_theme_list[@]} - 1))
-leng_color=$(leng_color_index | wc -l)
-
-color_shell_select(){
-    number=0
-
-    color_list(){
-        echo -e "${shell_color_palette[byellow]}Usage:${shell_color_palette[color_off]}\n"
-        echo -e "${shell_color_palette[cyan]}Example:${shell_color_palette[color_off]}"
-        echo -e "${shell_color_palette[bgreen_on_black]}${0##*/} color 41${shell_color_palette[color_off]}\n"
-
-        for list in "${shell_color_palette_index[@]}";
-            do
-                (( number++ )) || true
-                if [ "${number}" -le "${leng_color}" ]; then
-                    echo -e "${number})    Color: ${list}'\\${shell_color_palette_index[${number}]}'"
-                fi
-        done
-
-        echo -e "\n"'Enter "q" for exit'"\n"
-        return 0
-    }
-    background_list(){
-        echo -e "${shell_color_palette[byellow]}Usage:${shell_color_palette[color_off]}\n"
-        echo -e "${shell_color_palette[cyan]}Example:${shell_color_palette[color_off]}"
-        echo -e "${shell_color_palette[bgreen_on_black]}${0##*/} background 367${shell_color_palette[color_off]}\n"
-
-        for list in "${shell_color_palette_index[@]}";
-            do
-                (( number++ )) || true
-                if [ "${number}" -ge 366 ]; then
-                    echo -e "${number})    Background: ${list}'\\${shell_color_palette_index[${number}]}'"
-                fi
-        done
-
-        echo -e "\n"'Enter "q" for exit'"\n"
-        return 0
-    }
-    case "${primary_argument}" in
-
-        "background")
-            if [ -z "${secondary_argument}" ]; then
-                background_list | less -Ri
-                return 0
-            elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -ge 366 2>/dev/null; then
-                export background_color="${shell_color_palette_index["${secondary_argument}"]}"
-                echo -e "${shell_color_palette[bblack_on_cyan]}Example of use:${shell_color_palette[color_off]}"
-                echo -e "${shell_color_palette[bblack_on_white]}echo -e \"\${background_color}\" Text${shell_color_palette[color_off]}"
-                return 0
-            else
-                echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid background choice! Enter a number from 366 to ${leng_color}.\n"
-                echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
-                return 0
+    
+    # Check dependencies based on configured reader
+    case "${default_read}" in
+        2)
+            if ! command -v lolcat &>/dev/null; then
+                clear -T "${TERM}"
+                echo -e "${shell_color_palette[bred]}Error: lolcat is not installed. Please install lolcat for this script to work.${shell_color_palette[color_off]}"
+                exit 1
             fi
             ;;
-        "color")
-            if [ -z "${secondary_argument}" ]; then
-                color_list | less -Ri
-                return 0
-            elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -gt 0 2>/dev/null; then
-                export color_shell="${shell_color_palette_index[${secondary_argument}]}"
-                return 0
-            else
-                echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid color choice! Enter a number from 1 to ${leng_color}.\n"
-                echo -e "${shell_color_palette[byellow]}Or use \"set\" option to set colors directly!"
-                return 1
+        1)
+            if ! command -v ccat &>/dev/null; then
+                clear -T "${TERM}"
+                echo -e "${shell_color_palette[bred]}Error: ccat is not installed. Please install ccat for this script to work.${shell_color_palette[color_off]}"
+                exit 1
             fi
             ;;
     esac
 }
 
-change_reader() {
-    local arg="$1"
-    if [[ "$arg" == 2 ]] && ! command -v lolcat &>/dev/null; then
-        echo -e "${shell_color_palette[bred]}Error: lolcat is not installed. Please install lolcat for this script to work."
-        sleep 2 && load_ascii_art_theme && exit 1
-    elif [[ "$arg" == 1 ]] && ! command -v ccat &>/dev/null; then
-        echo -e "${shell_color_palette[bred]}Error: ccat is not installed. Please install lolcat for this script to work."
-        sleep 2 && load_ascii_art_theme && exit 1
-    else
-        sed -i "6 cREADER = ${arg}" "${config_file}"
+# ============================================
+# DISPLAY FUNCTIONS
+# ============================================
+load_ascii_art_theme() {
+    clear -T "${TERM}"
+    load_configuration  # Update variables
+    
+    # If no theme configured, exit
+    [[ "${list_index}" == "n" ]] && return 0
+    
+    # Check if index is valid
+    if [[ "${list_index}" =~ ^[0-9]+$ ]] && [[ "${list_index}" -ge 0 ]] 2>/dev/null; then
+    
+        local theme_file="${ascii_theme_list[${list_index}]}"
+
+        if [[ ! -f "${theme_file}" ]]; then
+            echo -e "${shell_color_palette[bred]}Error: Theme file not found: ${theme_file}${shell_color_palette[color_off]}"
+            return 1
+        fi
+        
+        case "${default_read}" in
+            2)  # lolcat
+                echo
+                lolcat -f "${theme_file}"
+                echo
+                ;;
+            1)  # ccat
+                echo
+                ccat "${theme_file}"
+                echo
+                ;;
+            0)  # less with colors
+                # Use get_active_color to decide which color to use
+                get_active_color
+                cat "${theme_file}"
+                echo -e "${shell_color_palette[color_off]}"
+                echo
+                ;;
+            *)  # fallback
+                cat "${theme_file}"
+                echo
+                ;;
+        esac
     fi
 }
 
-update_variables && update_variables
-
-[[ "${secondary_argument}" != "n" ]] && [[ "${secondary_argument}" =~ ^[[:alpha:]]+$ ]] && clear -T "${TERM}" \
-&& echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid option! Use only numbers or ...\n${0##*/} theme n (for no theme)!" \
-&& sleep 2 && load_ascii_art_theme && exit 1
-
-case "${primary_argument}" in
-    "l"|"t"|"theme"|"themes"|"list"|"list_themes")
-        if [ -z "${secondary_argument}" ]; then
-            while true; do
-                print_theme_list | less -Ri
-                clear -T "${TERM}"
-                echo -e "${shell_color_palette[byellow]}Choose an ASCII theme from 1 to ${leng} or 'n' for none:\n"
-                read -r read_select_ascii_theme
-                if [[ "${read_select_ascii_theme}" == "n" ]]; then
-                    sed -i "2 cASCII Theme Index = ${read_select_ascii_theme}" "${config_file}"
-                    load_ascii_art_theme && load_ascii_art_theme
-                    break
-                elif [ "${read_select_ascii_theme}" -le "${leng}" ]; then
-                    sed -i "2 cASCII Theme Index = ${read_select_ascii_theme}" "${config_file}"
-                    load_ascii_art_theme && load_ascii_art_theme
-                    break
-                else
-                    clear -T "${TERM}"
-                    echo -e "${shell_color_palette[bred]}\"${read_select_ascii_theme}\" is an invalid choice! Enter a number from 0 to ${leng} or 'n' for none!"
-                    sleep 2
-                    clear
-                fi
-            done
-        elif [[ "${secondary_argument}" == "n" ]]; then
-            sed -i "2 cASCII Theme Index = ${secondary_argument}" "${config_file}"
-            load_ascii_art_theme
-            exit 0
-        elif test "${secondary_argument}" -le "${leng}" 2>/dev/null; then
-            clear -T "${TERM}"
-            echo -e "Theme ${secondary_argument} selected: ${ascii_theme_list[${secondary_argument}]}\n"
-            sed -i "2 cASCII Theme Index = ${secondary_argument}" "${config_file}"
-            load_ascii_art_theme
-            exit 0
-        else
-            clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter a number from 0 to ${leng} or 'n' for none!"
-            sleep 2
-            load_ascii_art_theme && load_ascii_art_theme
-            exit 0
-        fi
-        ;;
-    "c"|"color")
-        if [ -z "${secondary_argument}" ]; then
-            while true; do
-                clear -T "${TERM}"
-                color_shell_select color
-                echo -e "${shell_color_palette[byellow]}Which color theme was chosen, from 2 to ${leng_color}?\n"
-                echo -e "${shell_color_palette[byellow]}Or enter 1 for NO color\n"
-                read -r read_select_color
-                if test "${read_select_color}" -le "${leng_color}" 2>/dev/null && test "${read_select_color}" -gt 0 2>/dev/null; then
-                    color_shell_select color "${read_select_color}"
-                    sleep 0.2
-                    sed -i "4 cASCII Theme Color Index = ${read_select_color}" "${config_file}" #Theme Color
-                    load_ascii_art_theme && load_ascii_art_theme
-                    break
-                else
-                    clear -T "${TERM}"
-                    echo -e "${shell_color_palette[bred]}\"${read_select_color}\" is an invalid choice! Enter a number from 1 to ${leng_color}!"
-                    sleep 2
-                    clear
-                fi
-            done
-        elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -gt 0 2>/dev/null; then
-            color_shell_select color "${secondary_argument}"
-            sleep 0.2
-            sed -i "4 cASCII Theme Color Index = ${secondary_argument}" "${config_file}" #Theme Color
-            load_ascii_art_theme
-            exit 0
-        else
-            clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter a number from 1 to ${leng_color}!"
-            sleep 2
-            load_ascii_art_theme && load_ascii_art_theme
-            exit 0
-        fi
-        ;;
-    "b"|"background")
-        if [ -z "${secondary_argument}" ]; then
-            while true; do
-                clear -T "${TERM}"
-                color_shell_select background
-                echo -e "${shell_color_palette[byellow]}Which color theme was chosen, from 1 to ${leng_color}?\n"
-                echo -e "${shell_color_palette[byellow]}Or enter 1 for NO color\n"
-                read -r read_select_background
-                if [[ "${read_select_background}" == 1 ]]; then
-                    sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
-                    load_ascii_art_theme && load_ascii_art_theme
-                    break
-                elif test "${read_select_background}" -le "${leng_color}" 2>/dev/null && test "${read_select_background}" -ge 366 2>/dev/null; then
-                    color_shell_select color "${read_select_background}"
-                    sleep 0.2
-                    sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
-                    load_ascii_art_theme && load_ascii_art_theme
-                    break
-                else
-                    clear -T "${TERM}"
-                    echo -e "${shell_color_palette[bred]}\"${read_select_background}\" is an invalid choice! Enter a number from 366 to ${leng_color}!"
-                    sleep 2
-                    clear
-                fi
-            done
-
-        elif [[ "${secondary_argument}" == 1 ]]; then
-            sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
-            load_ascii_art_theme
-            exit 0
-        elif test "${secondary_argument}" -le "${leng_color}" 2>/dev/null && test "${secondary_argument}" -ge 366 2>/dev/null; then
-            color_shell_select color "${secondary_argument}"
-            sleep 0.2
-            sed -i "4 cASCII Theme Color Index = ${read_select_background}" "${config_file}" #Theme Color
-            load_ascii_art_theme
-            exit 0
-        else
-            clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter a number from 366 to ${leng_color}!"
-            sleep 2
-            load_ascii_art_theme && load_ascii_art_theme
-            exit 0
-        fi
-        ;;
-    "read"|"reader")
-        if [ -z "${secondary_argument}" ]; then
-            while true; do
-                clear -T "${TERM}"
-                echo -e "${shell_color_palette[byellow]}Enter 0 for less, 1 for ccat, and 2 for lolcat.\n"
-                read -r reader_default
-                if test "${reader_default}" -le 2 2>/dev/null; then
-                    change_reader "${reader_default}"
-                    load_ascii_art_theme && load_ascii_art_theme
-                    break
-                else
-                    clear -T "${TERM}"
-                    echo -e "${shell_color_palette[bred]}\"${reader_default}\" is an invalid choice! Enter 0, 1, or 2!"
-                    sleep 2
-                    clear
-                fi
-            done
-
-        elif test "${secondary_argument}" -le 2 2>/dev/null; then
-            change_reader "${secondary_argument}"
-            load_ascii_art_theme
-            exit 0
-        else
-            clear -T "${TERM}"
-            echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid choice! Enter 0, 1, or 2!"
-            sleep 2
-            load_ascii_art_theme && load_ascii_art_theme
-            exit 1
-        fi
-        ;;
-    "r"|"reload")
+display_current_theme() {
+    # Fix for color leakage (your original workaround)
+    # Now checks if using indexed color (not ANSI) and is >= 366
+    if [[ "${color_ansi}" == "0" ]] && \
+       [[ "${color_index}" -ge 366 ]] 2>/dev/null && \
+       [[ "${default_read}" -lt 1 ]]; then
+        load_ascii_art_theme && sleep 0.2 && load_ascii_art_theme
+    else
         load_ascii_art_theme
-        ;;
-    "-h"|"--help"|"h"|"help")
-        clear -T "${TERM}"
-        echo -e "
-${shell_color_palette[bblack_on_cyan]}Usage:${shell_color_palette[color_off]}
+    fi
+}
 
-${shell_color_palette[bblack_on_white]}ascii_theme_select <command> [options]${shell_color_palette[color_off]}
+# ============================================
+# LISTING FUNCTIONS
+# ============================================
+calculate_list_lengths() {
+    # Number of themes (-1 because starts at 0)
+    local theme_count=$((${#ascii_theme_list[@]} - 1))
+    echo "${theme_count}"
+    
+    # Number of colors (your original method)
+    local color_count=0
+    for _ in "${shell_color_palette_index[@]}"; do
+        ((color_count++)) || true
+    done
+    echo "${color_count}"
+}
+
+print_theme_list() {
+    local number=0
+    local theme_count; theme_count=$(calculate_list_lengths | head -1)
+    
+    echo -e "${shell_color_palette[byellow]}Usage:${shell_color_palette[color_off]}\n"
+    echo -e "${shell_color_palette[cyan]}Example:${shell_color_palette[color_off]}"
+    echo -e "${shell_color_palette[bwhite_on_black]}${0##*/} theme 1${shell_color_palette[color_off]}\n"
+    echo 'n)    Without theme'
+    echo
+
+    for list in "${ascii_theme_list[@]}"; do
+        echo -e "\n═ ════════════════════════════════════════════════════════ ═"
+        echo -e "═  ${shell_color_palette[bcyan]}Theme ${number}: ${list##*/}${shell_color_palette[color_off]}"
+        echo "═ ════════════════════════════════════════════════════════ ═"
+        cat "${ascii_theme_list[${number}]}"
+        echo -e "\n═ ═════════════════ Finish Theme ═════════════════════════ ═\n"
+        ((number++)) || true
+    done
+
+    echo -e "\n${shell_color_palette[bred]}Enter 'q' to exit${shell_color_palette[color_off]}\n"
+}
+
+print_color_list() {
+    local type="$1"
+    local start="$2"
+    local end="$3"
+    
+    echo -e "${shell_color_palette[byellow]}Usage:${shell_color_palette[color_off]}\n"
+    echo -e "${shell_color_palette[cyan]}Example:${shell_color_palette[color_off]}"
+    
+    if [[ "${type}" == "background" ]]; then
+        echo -e "${shell_color_palette[bgreen_on_black]}${0##*/} background 367${shell_color_palette[color_off]}\n"
+    else
+        echo -e "${shell_color_palette[bgreen_on_black]}${0##*/} color 41${shell_color_palette[color_off]}\n"
+    fi
+    
+    echo -e "${shell_color_palette[bcyan]}Note:${shell_color_palette[color_off]} You can also set a custom ANSI color"
+    echo -e "      directly in the config file: ${CONFIG_FILE}"
+    echo -e "      Example: ASCII Theme Color ANSI = 38;5;243"
+    echo
+    
+    local number=0
+    for color_value in "${shell_color_palette_index[@]}"; do
+        ((number++)) || true
+        if [[ "${number}" -ge "${start}" ]] && [[ "${number}" -le "${end}" ]]; then
+            if [[ "${type}" == "background" ]]; then
+                echo -e "${number})    ${color_value}Background example${shell_color_palette[color_off]}"
+            else
+                echo -e "${number})    ${color_value}Text color example${shell_color_palette[color_off]}"
+            fi
+        fi
+    done
+    
+    echo -e "\n${shell_color_palette[bred]}Enter 'q' to exit${shell_color_palette[color_off]}\n"
+}
+
+# ============================================
+# INTERACTIVE FUNCTIONS
+# ============================================
+interactive_theme_selection() {
+    local theme_count; theme_count=$(calculate_list_lengths | head -1)
+    
+    while true; do
+        clear -T "${TERM}"
+        print_theme_list | less -Ri
+        
+        echo -e "\n${shell_color_palette[byellow]}Choose an ASCII theme from 0 to ${theme_count} or 'n' for none:${shell_color_palette[color_off]}\n"
+        read -r choice
+        
+        case "${choice}" in
+            [0-9]*)
+                if [[ "${choice}" -le "${theme_count}" ]] 2>/dev/null; then
+                    sed -i "/^ASCII Theme Index = /cASCII Theme Index = ${choice}" "${CONFIG_FILE}"
+                    display_current_theme
+                    break
+                else
+                    clear -T "${TERM}"
+                    echo -e "${shell_color_palette[bred]}\"${choice}\" is an invalid choice! Enter a number from 0 to ${theme_count} or 'n' for none!${shell_color_palette[color_off]}"
+                    sleep 2
+                    clear
+                fi
+                ;;
+            n|N)
+                sed -i "/^ASCII Theme Index = /cASCII Theme Index = n" "${CONFIG_FILE}"
+                clear -T "${TERM}"
+                echo -e "${shell_color_palette[bgreen]}Theme disabled${shell_color_palette[color_off]}"
+                break
+                ;;
+            q|Q)
+                break
+                ;;
+            *)
+                clear -T "${TERM}"
+                echo -e "${shell_color_palette[bred]}Invalid option!${shell_color_palette[color_off]}"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+interactive_color_selection() {
+    local type="$1"
+    local color_count; color_count=$(calculate_list_lengths | tail -1)
+    local start end prompt
+    
+    if [[ "${type}" == "background" ]]; then
+        start=366
+        end="${color_count}"
+        prompt="Choose a background color"
+    else
+        start=1
+        end="${color_count}"
+        prompt="Choose a text color"
+    fi
+    
+    while true; do
+        clear -T "${TERM}"
+        print_color_list "${type}" "${start}" "${end}" | less -R
+        
+        echo -e "\n${shell_color_palette[byellow]}${prompt} (${start}-${end}):${shell_color_palette[color_off]}\n"
+        echo -e "${shell_color_palette[cyan]}Tip:${shell_color_palette[color_off]} Set custom ANSI color in ${CONFIG_FILE}"
+        echo -e "     ASCII Theme Color ANSI = 38;5;243 (for color 243)\n"
+        read -r choice
+        
+        case "${choice}" in
+            [0-9]*)
+                if [[ "${choice}" -ge "${start}" ]] && [[ "${choice}" -le "${end}" ]] 2>/dev/null; then
+                    # Set indexed color and reset custom ANSI to 0
+                    sed -i "/^ASCII Theme Color Index = /cASCII Theme Color Index = ${choice}" "${CONFIG_FILE}"
+                    sed -i "/^ASCII Theme Color ANSI = /cASCII Theme Color ANSI = 0" "${CONFIG_FILE}"
+                    display_current_theme
+                    break
+                else
+                    clear -T "${TERM}"
+                    echo -e "${shell_color_palette[bred]}Invalid number! Choose between ${start} and ${end}.${shell_color_palette[color_off]}"
+                    sleep 2
+                    clear
+                fi
+                ;;
+            q|Q)
+                break
+                ;;
+            *)
+                clear -T "${TERM}"
+                echo -e "${shell_color_palette[bred]}Invalid option!${shell_color_palette[color_off]}"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+interactive_reader_selection() {
+    while true; do
+        clear -T "${TERM}"
+        echo -e "${shell_color_palette[byellow]}Choose display method:${shell_color_palette[color_off]}"
+        echo -e "\n0) less - Basic colors"
+        echo "1) ccat - Syntax highlighting"
+        echo "2) lolcat - Rainbow effect"
+        echo -e "\n${shell_color_palette[byellow]}Enter 0, 1, or 2:${shell_color_palette[color_off]}\n"
+        read -r choice
+        
+        case "${choice}" in
+            0|1|2)
+                change_reader "${choice}"
+                display_current_theme
+                break
+                ;;
+            q|Q)
+                break
+                ;;
+            *)
+                clear -T "${TERM}"
+                echo -e "${shell_color_palette[bred]}Invalid option! Enter 0, 1, or 2.${shell_color_palette[color_off]}"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# ============================================
+# CONFIGURATION CHANGE FUNCTIONS
+# ============================================
+change_reader() {
+    local new_reader="$1"
+    
+    # Check dependencies before changing
+    if [[ "${new_reader}" == 2 ]] && ! command -v lolcat &>/dev/null; then
+        echo -e "${shell_color_palette[bred]}Error: lolcat is not installed. Please install lolcat first.${shell_color_palette[color_off]}"
+        sleep 2
+        display_current_theme
+        return 1
+    elif [[ "${new_reader}" == 1 ]] && ! command -v ccat &>/dev/null; then
+        echo -e "${shell_color_palette[bred]}Error: ccat is not installed. Please install ccat first.${shell_color_palette[color_off]}"
+        sleep 2
+        display_current_theme
+        return 1
+    fi
+    
+    sed -i "/^READER = /cREADER = ${new_reader}" "${CONFIG_FILE}"
+}
+
+# ============================================
+# FUNCTION TO SHOW ANSI EXAMPLE
+# ============================================
+show_ansi_example() {
+    clear -T "${TERM}"
+    echo -e "${shell_color_palette[bcyan]}=== How to set custom ANSI color ===${shell_color_palette[color_off]}\n"
+    echo "Edit the file: ${CONFIG_FILE}"
+    echo
+    echo "Change the line:"
+    echo "  ASCII Theme Color ANSI = 0"
+    echo
+    echo "To one of these formats:"
+    echo
+    echo -e "${shell_color_palette[byellow]}Basic colors:${shell_color_palette[color_off]}"
+    echo "  30-37, 40-47, 90-97, 100-107"
+    echo "  Example (bright red text): ASCII Theme Color ANSI = 91"
+    echo
+    echo -e "${shell_color_palette[byellow]}256 colors:${shell_color_palette[color_off]}"
+    echo "  38;5;0-255 (foreground)"
+    echo "  48;5;0-255 (background)"
+    echo "  Example (color 243): ASCII Theme Color ANSI = 38;5;243"
+    echo
+    echo -e "${shell_color_palette[byellow]}RGB colors:${shell_color_palette[color_off]}"
+    echo "  38;2;R;G;B (foreground)"
+    echo "  48;2;R;G;B (background)"
+    echo "  Example (red): ASCII Theme Color ANSI = 38;2;255;0;0"
+    echo
+    echo -e "${shell_color_palette[byellow]}Text attributes:${shell_color_palette[color_off]}"
+    echo "  1 (bold), 2 (dim), 3 (italic), 4 (underline), etc."
+    echo "  Combine with semicolons: 1;33;44 (bold yellow on blue)"
+    echo
+    echo -e "${shell_color_palette[bgreen]}Important:${shell_color_palette[color_off]} Just the numbers, without \\\\033[ and m"
+    echo
+    echo "After editing, run: ${0##*/} reload"
+    echo
+    read -p "Press Enter to continue..."
+}
+
+# ============================================
+# COMMAND HANDLERS
+# ============================================
+handle_theme() {
+    local theme_count; theme_count=$(calculate_list_lengths | head -1)
+    
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_theme_selection
+    elif [[ "${secondary_argument}" == "n" ]]; then
+        sed -i "/^ASCII Theme Index = /cASCII Theme Index = n" "${CONFIG_FILE}"
+        clear -T "${TERM}"
+        echo -e "${shell_color_palette[bgreen]}Theme disabled${shell_color_palette[color_off]}"
+    elif [[ "${secondary_argument}" =~ ^[0-9]+$ ]] && \
+         [[ "${secondary_argument}" -le "${theme_count}" ]] 2>/dev/null; then
+        sed -i "/^ASCII Theme Index = /cASCII Theme Index = ${secondary_argument}" "${CONFIG_FILE}"
+        echo -e "${shell_color_palette[bgreen]}Theme ${secondary_argument} selected: ${ascii_theme_list[${secondary_argument}]}${shell_color_palette[color_off]}"
+        display_current_theme
+    else
+        echo -e "${shell_color_palette[bred]}Invalid theme! Use a number between 0 and ${theme_count} or 'n'.${shell_color_palette[color_off]}"
+        return 1
+    fi
+}
+
+handle_color() {
+    local color_count; color_count=$(calculate_list_lengths | tail -1)
+    
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_color_selection "color"
+    elif [[ "${secondary_argument}" =~ ^[0-9]+$ ]] && \
+         [[ "${secondary_argument}" -ge 1 ]] && \
+         [[ "${secondary_argument}" -le "${color_count}" ]] 2>/dev/null; then
+        # Set indexed color and reset custom ANSI to 0
+        sed -i "/^ASCII Theme Color Index = /cASCII Theme Color Index = ${secondary_argument}" "${CONFIG_FILE}"
+        sed -i "/^ASCII Theme Color ANSI = /cASCII Theme Color ANSI = 0" "${CONFIG_FILE}"
+        display_current_theme
+    else
+        echo -e "${shell_color_palette[bred]}Invalid color! Use a number between 1 and ${color_count}.${shell_color_palette[color_off]}"
+        return 1
+    fi
+}
+
+handle_background() {
+    local color_count; color_count=$(calculate_list_lengths | tail -1)
+    
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_color_selection "background"
+    elif [[ "${secondary_argument}" == "1" ]]; then
+        sed -i "/^ASCII Theme Color Index = /cASCII Theme Color Index = 1" "${CONFIG_FILE}"
+        sed -i "/^ASCII Theme Color ANSI = /cASCII Theme Color ANSI = 0" "${CONFIG_FILE}"
+        display_current_theme
+    elif [[ "${secondary_argument}" =~ ^[0-9]+$ ]] && \
+         [[ "${secondary_argument}" -ge 366 ]] && \
+         [[ "${secondary_argument}" -le "${color_count}" ]] 2>/dev/null; then
+        sed -i "/^ASCII Theme Color Index = /cASCII Theme Color Index = ${secondary_argument}" "${CONFIG_FILE}"
+        sed -i "/^ASCII Theme Color ANSI = /cASCII Theme Color ANSI = 0" "${CONFIG_FILE}"
+        display_current_theme
+    else
+        echo -e "${shell_color_palette[bred]}Invalid background! Use a number between 366 and ${color_count} or 1 for no color.${shell_color_palette[color_off]}"
+        return 1
+    fi
+}
+
+handle_reader() {
+    if [[ -z "${secondary_argument}" ]]; then
+        interactive_reader_selection
+    elif [[ "${secondary_argument}" =~ ^[0-9]+$ ]] && \
+         [[ "${secondary_argument}" -ge 0 ]] && \
+         [[ "${secondary_argument}" -le 2 ]] 2>/dev/null; then
+        change_reader "${secondary_argument}"
+        display_current_theme
+    else
+        echo -e "${shell_color_palette[bred]}Invalid reader! Use 0, 1, or 2.${shell_color_palette[color_off]}"
+        return 1
+    fi
+}
+
+show_help() {
+    clear -T "${TERM}"
+    cat <<EOF | { echo -e "$(cat)"; }
+${shell_color_palette[bblack_on_cyan]}=== ASCII Theme Manager ===${shell_color_palette[color_off]}
+
+${shell_color_palette[bblack_on_white]}Usage:${shell_color_palette[color_off]}
+  ${0##*/} <command> [option]
 
 ${shell_color_palette[bblack_on_cyan]}Available commands:${shell_color_palette[color_off]}
 
-${shell_color_palette[bblack_on_white]}h or help ..................... Print this help message               ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}t or theme .................... List themes                           ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}t or theme [number] ........... Manage ascii themes                   ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}c or color .................... Prompt to Define color theme          ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}c or color [number] ........... Define color theme                    ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}b or background ............... Prompt to Defines a background color  ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}b or background [number] ...... Defines a background color            ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}reader ........................ Prompt to reader default              ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}reader [number] ............... Choose 0, 1 or 2. Default is 0.       ${shell_color_palette[color_off]}
-${shell_color_palette[bblack_on_white]}r or reload ................... Reload theme                          ${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}help, h ......... - Show this help message${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}theme, t ........ - List all themes${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}theme, t [n] .... - Select theme n or 'n' for none${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}color, c ........ - Interactive color selection${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}color, c [n] .... - Set color n${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}background, b ... - Interactive background selection${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}background, b [n] - Set background color n${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}reader .......... - Interactive reader selection${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}reader [n] ...... - Set reader to n (0=less, 1=ccat, 2=lolcat)${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}reload, r ....... - Reload current theme${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}ansi-example .... - Show how to set custom ANSI color${shell_color_palette[color_off]}
 
-${shell_color_palette[bblack_on_cyan]}Example:${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_cyan]}Custom ANSI Color:${shell_color_palette[color_off]}
+  You can set a custom ANSI color code directly in:
+  ${CONFIG_FILE}
+  
+  Example lines:
+  ASCII Theme Color ANSI = 38;5;243   # Color 243 from 256-color palette
+  ASCII Theme Color ANSI = 1;33;44    # Bold yellow on blue background
+  ASCII Theme Color ANSI = 91         # Bright red text
+  
+  Use '${0##*/} ansi-example' for detailed instructions.
+  Set to 0 to use indexed colors instead.
 
-${shell_color_palette[bblack_on_white]}ascii_theme_select theme 12${shell_color_palette[color_off]}
-"
+${shell_color_palette[bblack_on_cyan]}Examples:${shell_color_palette[color_off]}
+
+${shell_color_palette[bblack_on_white]}${0##*/} theme ......... - List themes interactively${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}${0##*/} theme 12 ...... - Select theme 12${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}${0##*/} theme n ....... - Disable theme${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}${0##*/} color 41 ...... - Set color to 41${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}${0##*/} reader 2 ...... - Use lolcat display${shell_color_palette[color_off]}
+${shell_color_palette[bblack_on_white]}${0##*/} ansi-example .. - Show ANSI color examples${shell_color_palette[color_off]}
+EOF
+}
+
+# ============================================
+# MAIN FLOW
+# ============================================
+main() {
+    initialize
+    
+    # If no arguments, show current theme
+    if [[ -z "${primary_argument}" ]]; then
+        display_current_theme
         exit 0
-        ;;
-esac
+    fi
+    
+    # Secondary argument validation
+    if [[ -n "${secondary_argument}" ]] && \
+       [[ "${secondary_argument}" != "n" ]] && \
+       [[ "${secondary_argument}" =~ ^[[:alpha:]]+$ ]]; then
+        clear -T "${TERM}"
+        echo -e "${shell_color_palette[bred]}\"${secondary_argument}\" is an invalid option! Use only numbers or 'n' for no theme.${shell_color_palette[color_off]}"
+        echo -e "${shell_color_palette[byellow]}Example: ${0##*/} theme n${shell_color_palette[color_off]}"
+        sleep 2
+        display_current_theme
+        exit 1
+    fi
+    
+    # Process command
+    case "${primary_argument}" in
+        l|t|theme|themes|list|list_themes)
+            handle_theme
+            ;;
+        c|color)
+            handle_color
+            ;;
+        b|background)
+            handle_background
+            ;;
+        read|reader)
+            handle_reader
+            ;;
+        r|reload)
+            display_current_theme
+            ;;
+        ansi-example|ansi)
+            show_ansi_example
+            ;;
+        -h|--help|h|help)
+            show_help
+            ;;
+        *)
+            echo -e "${shell_color_palette[bred]}Unknown command: ${primary_argument}${shell_color_palette[color_off]}"
+            echo -e "${shell_color_palette[byellow]}Use '${0##*/} help' for available commands.${shell_color_palette[color_off]}"
+            exit 1
+            ;;
+    esac
+}
+
+# ============================================
+# EXECUTION
+# ============================================
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

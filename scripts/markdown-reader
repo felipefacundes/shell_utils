@@ -305,7 +305,7 @@ fill_background() {
 centralize_text() {
     local color="$1"   
     local text="$2"
-    local cols=$(tput cols)
+    local cols; cols=$(tput cols)
     local text_len=${#text}
     local padding=$(( (cols - text_len) / 2 ))
     printf "${color}%*s%s%*s${COLOR_RESET}\n" "$padding" "" "$text" "$padding" ""

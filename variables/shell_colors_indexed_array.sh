@@ -1,3 +1,6 @@
+# License: GPLv3
+# Credits: Felipe Facundes
+
 # Color Reset 1
 # Colors 2 .. 365
 # Backgrounds 366 .. 2989
