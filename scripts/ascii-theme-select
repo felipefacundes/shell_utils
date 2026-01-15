@@ -215,7 +215,9 @@ display_current_theme() {
     if [[ "${color_ansi}" == "0" ]] && \
        [[ "${color_index}" -ge 366 ]] 2>/dev/null && \
        [[ "${default_read}" -lt 1 ]]; then
-        load_ascii_art_theme && sleep 0.2 && load_ascii_art_theme
+        # If necessary, activate to avoid color bleeding in the background
+        # load_ascii_art_theme && sleep 0.2 && load_ascii_art_theme  # Disabled to avoid delay
+        load_ascii_art_theme
     else
         load_ascii_art_theme
     fi
