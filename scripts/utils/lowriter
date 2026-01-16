@@ -1,16 +1,58 @@
 #!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Suppress only GTK/LO errors, keeping other errors visible
+# exec 2> >(grep -v -E "(Gtk|GLib|Gdk|Pango|Atk)" >&2)
 exec 2>/dev/null
 
 file="$1"
-if [[ ! -f "$file" ]]; then
-    if [[ "${file##*.}" == "txt" || "${file##*.}" == "odt" || "${file##*.}" == "doc" || "${file##*.}" == "docx" ]]; then
-        touch "$file"
-    fi
+
+# Check if any argument was passed
+if [[ -z "$file" ]]; then
+    lowriter &
+    disown
+    exit 0
 fi
 
-main() {
-    lowriter "$@"
-    [[ -f "$file" ]] && [[ ! -s "$file" ]] && rm -f "$file"
+# If the file doesn't exist and has a supported extension
+if [[ ! -f "$file" ]]; then
+    # More comprehensive list of LibreOffice extensions
+    ext="${file##*.}"
+    case "${ext,,}" in
+        txt|odt|doc|docx|rtf|html|xml|pdf|ott|fodt|ods|xls|xlsx|odp|ppt|pptx|md)
+            touch "$file"
+            ;;
+        *)
+            echo "Warning: Extension not supported for automatic creation" >&2
+            ;;
+    esac
+fi
+
+# Function to clean up if the file remained empty
+cleanup() {
+    if [[ -f "$file" ]] && [[ ! -s "$file" ]]; then
+        rm -f "$file"
+        echo "Empty file removed: $file" >&2
+    fi
 }
 
-main "$@" & disown
+# Main function
+main() {
+    # Run LibreOffice and wait for it to finish
+    lowriter "$@"
+    
+    # Wait for the process to start
+    sleep 10
+    # After LibreOffice closes, check if the file is empty
+    cleanup
+}
+
+# Run in background without requiring ENTER
+main "$@" &
+
+# Detach from terminal immediately
+disown
+
+# Exit the main script (doesn't block the terminal)
+exit 0
