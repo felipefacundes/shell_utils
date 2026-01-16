@@ -584,6 +584,12 @@ ${shell_color_palette[bblack_on_cyan]}Custom ANSI Color:${shell_color_palette[co
   Use '${0##*/} ansi-example' for detailed instructions.
   Set to 0 to use indexed colors instead.
 
+  ${shell_color_palette[bblack_on_cyan]}User themes directory (Permanent storage):${shell_color_palette[color_off]}
+  ${shell_color_palette[bblack_on_white]}${HOME}/.local/shell_utils/ascii_arts_themes${shell_color_palette[color_off]}
+
+  ${shell_color_palette[bblack_on_cyan]}Themes in this directory are subject to removal with each update:${shell_color_palette[color_off]}
+  ${shell_color_palette[bblack_on_white]}${HOME}/.shell_utils/ascii_arts_themes${shell_color_palette[color_off]}
+
 ${shell_color_palette[bblack_on_cyan]}Examples:${shell_color_palette[color_off]}
 
 ${shell_color_palette[bblack_on_white]}${0##*/} theme ......... - List themes interactively${shell_color_palette[color_off]}
