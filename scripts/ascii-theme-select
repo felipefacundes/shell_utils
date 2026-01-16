@@ -87,8 +87,8 @@ load_configuration() {
 
 fix_configuration() {
     # Automatic fixes as in your original code
-    [[ "${list_index}" == "n" ]] && exit 0
-    [[ "${list_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "/^ASCII Theme Index = /cASCII Theme Index = 339" "${CONFIG_FILE}" && exit 0
+    [[ "${list_index}" == "n" ]] && return 0
+    [[ "${list_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "/^ASCII Theme Index = /cASCII Theme Index = 8" "${CONFIG_FILE}" && exit 0
     [[ "${color_index}" =~ ^[[:alpha:]]+$ ]] && sed -i "/^ASCII Theme Color Index = /cASCII Theme Color Index = 41" "${CONFIG_FILE}"
     [[ "${default_read}" =~ ^[[:alpha:]]+$ ]] && sed -i "/^READER = /cREADER = 0" "${CONFIG_FILE}"
     [[ "${default_read}" -gt 2 ]] 2>/dev/null && sed -i "/^READER = /cREADER = 0" "${CONFIG_FILE}"
@@ -171,7 +171,7 @@ load_ascii_art_theme() {
     load_configuration  # Update variables
     
     # If no theme configured, exit
-    [[ "${list_index}" == "n" ]] && return 0
+    [[ "${list_index}" == "n" ]] && exit
     
     # Check if index is valid
     if [[ "${list_index}" =~ ^[0-9]+$ ]] && [[ "${list_index}" -ge 0 ]] 2>/dev/null; then
@@ -199,11 +199,9 @@ load_ascii_art_theme() {
                 get_active_color
                 cat "${theme_file}"
                 echo -e "${shell_color_palette[color_off]}"
-                echo
                 ;;
             *)  # fallback
                 cat "${theme_file}"
-                echo
                 ;;
         esac
     fi
@@ -475,7 +473,7 @@ show_ansi_example() {
     echo
     echo "After editing, run: ${0##*/} reload"
     echo
-    read -p "Press Enter to continue..."
+    read -rp "Press Enter to continue..."
 }
 
 # ============================================
@@ -489,11 +487,9 @@ handle_theme() {
     elif [[ "${secondary_argument}" == "n" ]]; then
         sed -i "/^ASCII Theme Index = /cASCII Theme Index = n" "${CONFIG_FILE}"
         clear -T "${TERM}"
-        echo -e "${shell_color_palette[bgreen]}Theme disabled${shell_color_palette[color_off]}"
     elif [[ "${secondary_argument}" =~ ^[0-9]+$ ]] && \
          [[ "${secondary_argument}" -le "${theme_count}" ]] 2>/dev/null; then
         sed -i "/^ASCII Theme Index = /cASCII Theme Index = ${secondary_argument}" "${CONFIG_FILE}"
-        echo -e "${shell_color_palette[bgreen]}Theme ${secondary_argument} selected: ${ascii_theme_list[${secondary_argument}]}${shell_color_palette[color_off]}"
         display_current_theme
     else
         echo -e "${shell_color_palette[bred]}Invalid theme! Use a number between 0 and ${theme_count} or 'n'.${shell_color_palette[color_off]}"
