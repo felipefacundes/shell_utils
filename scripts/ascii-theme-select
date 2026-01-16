@@ -31,8 +31,8 @@ readonly CONFIG_DIR="${HOME}/.shell_utils_configs"
 readonly CONFIG_FILE="${CONFIG_DIR}/ascii_themes_select.conf"
 
 readonly ASCII_ARTS_PATHS=(
-    "${HOME}/.shell_utils/ascii_arts_themes"  # Themes contained in this directory are subject to removal with each update
-    "${HOME}/.local/shell_utils/ascii_arts_themes"  # User Themes Directory
+    "${HOME}/.shell_utils/ascii_arts_themes"  # Themes in this directory are subject to removal with each update.
+    "${HOME}/.local/shell_utils/ascii_arts_themes"  # User themes directory (Permanent storage).
 )
 
 # ============================================
