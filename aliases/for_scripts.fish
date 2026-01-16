@@ -8,6 +8,9 @@ alias video_select="~/.shell_utils/scripts/gpu-select"
 
 alias lowriter="~/.shell_utils/scripts/utils/lowriter"
 
+# It has a capital X so as not to be confused with openai "codex"
+alias codeX='~/.shell_utils/scripts/utils/code-create-with-permission'
+
 alias renomear_imagens_de_onde_parou='~/.shell_utils/scripts/rename-images-of-where-it-stopped'
 
 alias retrocede_um_diretorio_para_pasta_anterior='~/.shell_utils/scripts/return-a-directory-to-previous-folder'
