@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+exec 2>/dev/null
+
+file="$1"
+if [[ ! -f "$file" ]]; then
+    if [[ "${file##*.}" == "txt" || "${file##*.}" == "odt" || "${file##*.}" == "doc" || "${file##*.}" == "docx" ]]; then
+        touch "$file"
+    fi
+fi
+
+main() {
+    lowriter "$@"
+    [[ -f "$file" ]] && [[ ! -s "$file" ]] && rm -f "$file"
+}
+
+main "$@" & disown

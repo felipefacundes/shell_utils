@@ -6,7 +6,7 @@ alias juros_compostos='~/.shell_utils/scripts/compound-interest'
 
 alias video_select="~/.shell_utils/scripts/gpu-select"
 
-
+alias lowriter="~/.shell_utils/scripts/utils/lowriter"
 
 alias renomear_imagens_de_onde_parou='~/.shell_utils/scripts/rename-images-of-where-it-stopped'
 
@@ -18,8 +18,6 @@ alias hd_zero='~/.shell_utils/scripts/pendrive-zero'
 alias ssd_zero='hd_zero'
 alias nvme_zero='hd_zero'
 alias zero_fill='hd_zero'
-
-
 
 alias aur_package_gen='~/.shell_utils/scripts/aur-gen-repo'
 
