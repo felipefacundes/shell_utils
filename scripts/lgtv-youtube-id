@@ -69,7 +69,7 @@ fi
 # Wrapper functions
 f_lgtv() {
     local arg=$1
-    "$SCRIPT_DIR/lgtv" --name "$TV_NAME" --ssl openYoutubeId "$arg"
+    "$SCRIPT_DIR/lgtv" --name "$TV_NAME" --ssl openYoutubeId -- "$arg"
 }
 
 yt_id_extractor() {

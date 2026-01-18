@@ -8,6 +8,8 @@ alias video_select="~/.shell_utils/scripts/gpu-select"
 
 alias lowriter="~/.shell_utils/scripts/utils/lowriter"
 
+alias lgyt='~/.shell_utils/scripts/lgtv-youtube-id'
+
 # It has a capital X so as not to be confused with openai "codex"
 alias codeX='~/.shell_utils/scripts/utils/code-create-with-permission'
 
