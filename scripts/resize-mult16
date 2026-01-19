@@ -4,7 +4,73 @@
 
 : <<'DOCUMENTATION'
 resize-mult16 - Check if images are multiples of 16 and optionally resize them
-Requires: ImageMagick (magick command)
+Version: 1.0
+License: GPLv3
+Author: Felipe Facundes
+
+DESCRIPTION:
+This script checks if image dimensions are multiples of 16 and optionally resizes
+them to the nearest multiple. This is particularly useful for Godot game engine
+TileMaps and texture optimization.
+
+WHY MULTIPLES OF 16 FOR GODOT?
+───────────────────────────────
+• Performance Optimization: Godot's rendering engine is optimized for textures
+  with dimensions that are powers of two (16, 32, 64, 128, 256, 512, 1024, etc.).
+• TileMap Compatibility: Godot's TileMap system uses 16x16 tiles by default.
+  Images not multiples of 16 may be cropped or display incorrectly.
+• Memory Alignment: Modern GPUs process textures more efficiently when dimensions
+  are powers of two, reducing memory fragmentation.
+• Mipmapping: Proper mipmap generation requires power-of-two dimensions for
+  consistent texture filtering across different LOD levels.
+• Best Practice: Keep images under 4096x4096 (4K) for broader hardware
+  compatibility and better performance.
+
+RECOMMENDED PRACTICES:
+──────────────────────
+1. Sprite sheets: Should have dimensions that are multiples of 16
+2. Tile sets: Each tile should be 16x16, 32x32, 64x64, etc.
+3. Texture atlases: Maintain power-of-two dimensions
+4. UI elements: Align to 16-pixel grid for crisp rendering
+
+REQUIREMENTS:
+• ImageMagick (magick command)
+
+EXAMPLES:
+  resize-mult16 image.png                    # Check single image
+  resize-mult16 -r image.png                 # Resize with confirmation
+  resize-mult16 -rf *.png                    # Force resize all PNGs
+  resize-mult16 -l -r                        # Batch process all images
+  resize-mult16 -p -c black image.png        # Pad with black borders
+  resize-mult16 -d image.png                 # Dry run (simulation)
+
+OPTIONS:
+  -h, --help           Show this help message
+  -r, --resize         Automatically resize to nearest multiple of 16
+  -f, --force          Force resize without confirmation
+  -p, --pad            Pad images instead of stretching
+  -c COLOR, --color COLOR  Padding color (default: transparent)
+  -i METHOD, --interpolation METHOD  Interpolation method (default: box)
+  -v, --verbose        Show detailed information
+  -n, --no-backup      Don't create backup of original files
+  -d, --dry-run        Simulate actions without modifying files
+  -l, --loop           Batch process all matching images
+  -o DIR, --output DIR Output directory for resized images
+
+TIPS FOR GODOT USERS:
+─────────────────────
+1. Import Settings: In Godot, set texture filter to "Nearest" for pixel art
+2. TileMap Setup: Use 16x16 cell size for default tiles
+3. Atlas Textures: Create texture atlases with dimensions like 256x256, 512x512
+4. Performance: Textures over 2048x2048 may impact mobile performance
+5. Compression: Use .png for lossless, .jpg for background images
+
+SEE ALSO:
+• Godot Documentation: https://docs.godotengine.org/
+• ImageMagick: https://imagemagick.org/
+
+BUGS & FEEDBACK:
+Please report issues to: https://github.com/felipefacundes/shell_utils
 DOCUMENTATION
 
 # Default values
@@ -565,12 +631,27 @@ loop_monitor() {
     exit 0
 }
 
+# Display Godot-specific recommendations
+show_godot_tips() {
+    echo "GODOT OPTIMIZATION TIPS:"
+    echo "──────────────────────────"
+    echo "1. Tile Size: Default is 16x16. Use multiples for best results."
+    echo "2. Max Texture Size: Keep under 4096x4096 for compatibility."
+    echo "3. Texture Filter: Use 'Nearest' for pixel art, 'Linear' for smooth."
+    echo "4. Compression: PNG for UI/sprites, JPG for backgrounds."
+    echo "5. Atlas Creation: Group small textures into power-of-two atlases."
+    echo "6. Mipmaps: Disable for 2D sprites, enable for 3D textures."
+    echo "7. VRAM: Monitor texture memory in Godot's debugger."
+    echo ""
+}
+
 # Main function
 main() {
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             -h|--help)
+                show_godot_tips
                 show_usage
                 ;;
             -r|--resize)
