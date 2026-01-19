@@ -2,8 +2,10 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# tilefix - Check if images are multiples of 16 and optionally resize them
-# Requires: ImageMagick (magick command)
+: <<'DOCUMENTATION'
+resize-mult16 - Check if images are multiples of 16 and optionally resize them
+Requires: ImageMagick (magick command)
+DOCUMENTATION
 
 # Default values
 RESIZE=false

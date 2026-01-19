@@ -2,8 +2,10 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# Script to copy shell_utils installation command, perfect for installing this framework on virtual machines
-# Script para copiar comando de instalação do shell_utils, perfeito para instalar essa framework em máquinas virtuais
+: <<'DOCUMENTATION'
+Script to copy shell_utils installation command, perfect for installing this framework on virtual machines
+Script para copiar comando de instalação do shell_utils, perfeito para instalar essa framework em máquinas virtuais
+DOCUMENTATION
 
 # Command to be copied
 COMMAND='bash -c "$(curl -fsSL https://raw.githubusercontent.com/felipefacundes/shell_utils/refs/heads/main/install.sh)"'
