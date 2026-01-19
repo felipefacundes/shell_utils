@@ -1,0 +1,705 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# tilefix - Check if images are multiples of 16 and optionally resize them
+# Requires: ImageMagick (magick command)
+
+# Default values
+RESIZE=false
+VERBOSE=false
+FORCE=false
+BACKUP=true
+DRY_RUN=false
+LOOP_MODE=false
+PAD_MODE=false
+PAD_COLOR="transparent"
+INTERPOLATION="box" # Good for pixel art
+OUTPUT_DIR=""
+
+# Display usage information
+show_usage() {
+    echo "Usage: ${0##*/} [OPTIONS] <image_file(s)>"
+    echo ""
+    echo "Options:"
+    echo "  -h, --help           Show this help message"
+    echo "  -r, --resize         Automatically resize images to nearest multiple of 16"
+    echo "  -f, --force          Force resize without confirmation"
+    echo "  -p, --pad            Pad images instead of stretching (maintains aspect ratio)"
+    echo "  -c COLOR, --color COLOR  Padding color (default: transparent)"
+    echo "  -i METHOD, --interpolation METHOD  Interpolation method (default: box)"
+    echo "  -v, --verbose        Show detailed information"
+    echo "  -n, --no-backup      Don't create backup of original files"
+    echo "  -d, --dry-run        Simulate actions without modifying files"
+    echo "  -l, --loop           Enable loop mode for monitoring"
+    echo "  -o DIR, --output DIR Output directory for resized images"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/} image.png                    # Check single image"
+    echo "  ${0##*/} *.png                        # Check all PNG files"
+    echo "  ${0##*/} -r image.png                 # Resize with confirmation"
+    echo "  ${0##*/} -rf image.png                # Force resize without confirmation"
+    echo "  ${0##*/} -p -c black image.png        # Pad with black color"
+    echo "  ${0##*/} -l -r                        # Loop mode with resize"
+    echo "  ${0##*/} -l -d                        # Loop mode dry-run"
+    echo "  ${0##*/} -o ./output/ *.png           # Save to output directory"
+    exit 0
+}
+
+# Check if ImageMagick is installed
+check_dependencies() {
+    if ! command -v magick &> /dev/null; then
+        echo "Error: ImageMagick (magick) is not installed."
+        echo "Install it with: sudo apt install imagemagick (Ubuntu/Debian)"
+        echo "              or: sudo pacman -S imagemagick (Arch)"
+        echo "              or: sudo dnf install ImageMagick (Fedora)"
+        exit 1
+    fi
+}
+
+# Validate color format
+validate_color() {
+    local color="$1"
+    
+    # Check if it's a named color or hex code
+    if [[ "$color" == "transparent" ]] || 
+       [[ "$color" =~ ^#[0-9A-Fa-f]{6}$ ]] || 
+       [[ "$color" =~ ^#[0-9A-Fa-f]{3}$ ]] ||
+       [[ "$color" =~ ^[a-zA-Z]+$ ]]; then
+        return 0
+    else
+        echo "Warning: Color '$color' might not be valid. Using 'transparent' instead."
+        return 1
+    fi
+}
+
+# Check if file is an image
+is_image_file() {
+    local file="$1"
+    if [[ ! -f "$file" ]]; then
+        echo "Error: File '$file' does not exist."
+        return 1
+    fi
+    
+    # Check if file is an image using file command
+    if file "$file" | grep -qE "image|bitmap"; then
+        return 0
+    else
+        echo "Error: '$file' does not appear to be an image file."
+        return 1
+    fi
+}
+
+# Get image dimensions
+get_image_dimensions() {
+    local file="$1"
+    local dimensions
+    
+    # Use magick identify to get dimensions    
+    if ! dimensions=$(magick identify -format "%wx%h" "$file" 2>/dev/null); then
+        echo "Error: Could not get dimensions for '$file'"
+        return 1
+    fi
+    
+    # Extract width and height
+    local width height
+    width=$(echo "$dimensions" | cut -d'x' -f1)
+    height=$(echo "$dimensions" | cut -d'x' -f2)
+    
+    echo "$width $height"
+}
+
+# Calculate nearest multiple of 16
+calculate_nearest_multiple() {
+    local dimension=$1
+    local method=$2  # "ceil" or "floor" or "round"
+    
+    case $method in
+        "ceil")
+            echo $(( ((dimension + 15) / 16) * 16 ))
+            ;;
+        "floor")
+            echo $(( (dimension / 16) * 16 ))
+            ;;
+        "round")
+            local lower=$(( (dimension / 16) * 16 ))
+            local upper=$(( ((dimension + 15) / 16) * 16 ))
+            
+            if [ $((dimension - lower)) -lt $((upper - dimension)) ]; then
+                echo $lower
+            else
+                echo $upper
+            fi
+            ;;
+        *)
+            echo $(( ((dimension + 15) / 16) * 16 ))
+            ;;
+    esac
+}
+
+# Check if dimensions are multiples of 16
+check_multiple_of_16() {
+    local width=$1
+    local height=$2
+    
+    if [ $((width % 16)) -eq 0 ] && [ $((height % 16)) -eq 0 ]; then
+        return 0  # Both are multiples
+    else
+        return 1  # At least one is not a multiple
+    fi
+}
+
+# Display image information
+display_info() {
+    local file="$1"
+    local width=$2
+    local height=$3
+    
+    echo "=== Image: $file ==="
+    echo "Current dimensions: ${width}x${height}"
+    echo "Width:  $width pixels ($((width / 16)) tiles + $((width % 16)) extra pixels)"
+    echo "Height: $height pixels ($((height / 16)) tiles + $((height % 16)) extra pixels)"
+    
+    if check_multiple_of_16 "$width" "$height"; then
+        echo "✓ Image is already a multiple of 16"
+        echo "  Perfect for Godot TileMap (${width}x${height} = $((width / 16))x$((height / 16)) tiles)"
+    else
+        echo "✗ Image is NOT a multiple of 16"
+        
+        # Calculate recommended dimensions
+        local new_width; new_width=$(calculate_nearest_multiple "$width" "ceil")
+        local new_height; new_height=$(calculate_nearest_multiple "$height" "ceil")
+        
+        echo "Recommended size: ${new_width}x${new_height}"
+        echo "This would be: $((new_width / 16))x$((new_height / 16)) tiles"
+        
+        # Show difference
+        local diff_w=$((new_width - width))
+        local diff_h=$((new_height - height))
+        
+        if [ $diff_w -gt 0 ] || [ $diff_h -gt 0 ]; then
+            echo "Would add: ${diff_w}px width, ${diff_h}px height"
+        else
+            echo "Would remove: $((-diff_w))px width, $((-diff_h))px height"
+        fi
+    fi
+    echo ""
+}
+
+# Create backup of original file
+create_backup() {
+    local file="$1"
+    local backup; backup="${file}.backup_$(date +%Y%m%d_%H%M%S)"
+    
+    # Check disk space before backup
+    local file_size available_space
+    file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+    available_space=$(df -P "$(dirname "$backup")" | awk 'NR==2 {print $4}')
+    
+    if [ -z "$file_size" ] || [ -z "$available_space" ]; then
+        echo "Warning: Could not check disk space. Creating backup anyway."
+    elif [ "$file_size" -gt "$available_space" ]; then
+        echo "Warning: Not enough disk space for backup. Skipping backup."
+        return 1
+    fi
+    
+    if [ "$DRY_RUN" = true ]; then
+        echo "[DRY RUN] Would create backup: $backup"
+        return 0
+    fi
+    
+    cp "$file" "$backup"
+    echo "Backup created: $backup"
+}
+
+# Prepare output filename
+prepare_output_filename() {
+    local input_file="$1"
+    
+    if [ -n "$OUTPUT_DIR" ]; then
+        # Ensure output directory exists
+        mkdir -p "$OUTPUT_DIR" 2>/dev/null || {
+            echo "Error: Cannot create output directory '$OUTPUT_DIR'"
+            return 1
+        }
+        
+        # Create output filename with path
+        local basename
+        basename=$(basename "$input_file")
+        echo "${OUTPUT_DIR%/}/$basename"
+    else
+        # Use original file
+        echo "$input_file"
+    fi
+}
+
+_resize() {
+    local input_file="$1"
+    local output_file="$2"
+    local new_width="$3"
+    local new_height="$4"
+    
+    # Resize using magick
+    if [ "$PAD_MODE" = true ]; then
+        # Pad image (add borders)
+        if [ "$DRY_RUN" = true ]; then
+            echo "[DRY RUN] Would execute: magick \"$input_file\" -background \"$PAD_COLOR\" -gravity center -extent \"${new_width}x${new_height}\" \"$output_file\""
+            return 0
+        else
+            magick "$input_file" -background "$PAD_COLOR" -gravity center \
+                -extent "${new_width}x${new_height}" "$output_file"
+        fi
+    else
+        # Resize image (stretch/shrink)
+        if [ "$DRY_RUN" = true ]; then
+            echo "[DRY RUN] Would execute: magick \"$input_file\" -filter \"$INTERPOLATION\" -resize \"${new_width}x${new_height}!\" \"$output_file\""
+            return 0
+        else
+            magick "$input_file" -filter "$INTERPOLATION" -resize "${new_width}x${new_height}!" "$output_file"
+        fi
+    fi
+}
+
+# Resize image to nearest multiple of 16
+resize_image() {
+    local file="$1"
+    local width=$2
+    local height=$3
+    
+    # Prepare output filename
+    local output_file
+    if ! output_file=$(prepare_output_filename "$file"); then
+        return 1
+    fi
+    
+    local new_width; new_width=$(calculate_nearest_multiple "$width" "ceil")
+    local new_height; new_height=$(calculate_nearest_multiple "$height" "ceil")
+    
+    if [ "$VERBOSE" = true ]; then
+        echo "Resizing $file from ${width}x${height} to ${new_width}x${new_height}"
+        if [ "$file" != "$output_file" ]; then
+            echo "Output file: $output_file"
+        fi
+    fi
+    
+    # Create backup if enabled and if we're modifying original file
+    if [ "$BACKUP" = true ] && [ "$file" = "$output_file" ]; then
+        create_backup "$file"
+    fi
+    
+    if _resize "$file" "$output_file" "$new_width" "$new_height"; then
+        if [ "$DRY_RUN" = false ]; then
+            echo "✓ Successfully resized: $file"
+            echo "  New size: ${new_width}x${new_height} ($((new_width / 16))x$((new_height / 16)) tiles)"
+            if [ "$file" != "$output_file" ]; then
+                echo "  Saved to: $output_file"
+            fi
+        else
+            echo "[DRY RUN] Would resize: $file → ${new_width}x${new_height}"
+        fi
+    else
+        echo "✗ Failed to resize: $file"
+        return 1
+    fi
+}
+
+# Ask for confirmation
+ask_confirmation() {
+    local file="$1"
+    local width=$2
+    local height=$3
+    local new_width; new_width=$(calculate_nearest_multiple "$width" "ceil")
+    local new_height; new_height=$(calculate_nearest_multiple "$height" "ceil")
+    
+    echo "Resize $file from ${width}x${height} to ${new_width}x${new_height}?"
+    echo "This will be $((new_width / 16))x$((new_height / 16)) tiles for Godot."
+    
+    if [ "$PAD_MODE" = true ]; then
+        echo "Mode: Padding (maintains aspect ratio)"
+        echo "Padding color: $PAD_COLOR"
+    else
+        echo "Mode: Scaling (changes aspect ratio)"
+    fi
+    
+    if [ -n "$OUTPUT_DIR" ]; then
+        echo "Output directory: $OUTPUT_DIR"
+    fi
+    
+    read -p "Continue? [y/N]: " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Process a single image file
+process_image() {
+    local file="$1"
+    
+    # Skip backup files
+    if [[ "$file" =~ \.backup_[0-9]{8}_[0-9]{6}$ ]]; then
+        if [ "$VERBOSE" = true ]; then
+            echo "Skipping backup file: $file"
+        fi
+        return 2  # Special return code for skipped backup
+    fi
+    
+    # Check if file is an image
+    if ! is_image_file "$file"; then
+        return 1
+    fi
+    
+    # Get dimensions
+    local dimensions
+    
+    if ! dimensions=$(get_image_dimensions "$file"); then
+        return 1
+    fi
+    
+    local width; width=$(echo "$dimensions" | cut -d' ' -f1)
+    local height; height=$(echo "$dimensions" | cut -d' ' -f2)
+    
+    # Display information (unless in quiet mode)
+    if [ "$VERBOSE" = true ] || [ "$FORCE" = false ]; then
+        display_info "$file" "$width" "$height"
+    fi
+    
+    # Check if resize is needed
+    if check_multiple_of_16 "$width" "$height"; then
+        if [ "$VERBOSE" = true ]; then
+            echo "No resize needed for $file (already multiple of 16)"
+        elif [ "$RESIZE" = true ]; then
+            echo "✓ $file is already correct size"
+        fi
+        return 3  # Special code for "already correct"
+    fi
+    
+    # Handle resize based on options
+    if [ "$RESIZE" = true ]; then
+        if [ "$FORCE" = true ]; then
+            # Force resize without confirmation
+            resize_image "$file" "$width" "$height"
+        else
+            # Ask for confirmation (unless in batch mode)
+            if ask_confirmation "$file" "$width" "$height"; then
+                resize_image "$file" "$width" "$height"
+            else
+                echo "Skipped: $file"
+                return 2
+            fi
+        fi
+    else
+        # Just showing info, not resizing
+        return 0
+    fi
+    
+    return 0
+}
+
+# Loop batch processing function
+# Loop batch processing function
+loop_monitor() {
+    echo "=== BATCH PROCESSING MODE ==="
+    echo "Processing ALL image files in current directory matching patterns:"
+    printf "  - %s\n" "${FILE_PATTERNS[@]}"
+    echo ""
+    
+    # Collect all matching files
+    local all_files=()
+    local total_files=0
+    
+    echo "Scanning for files..."
+    
+    # Use shopt to handle null globs properly
+    shopt -s nullglob
+    for pattern in "${FILE_PATTERNS[@]}"; do
+        for file in $pattern; do
+            # Skip directories and non-regular files
+            [ -f "$file" ] || continue
+            
+            # Skip backup files (files ending with .backup_*)
+            if [[ "$file" =~ \.backup_[0-9]{8}_[0-9]{6}$ ]]; then
+                continue
+            fi
+            
+            # Check if it's an image file
+            if file "$file" | grep -qE "image|bitmap"; then
+                all_files+=("$file")
+                ((total_files++))
+            fi
+        done
+    done
+    shopt -u nullglob
+    
+    if [ $total_files -eq 0 ]; then
+        echo "No image files found matching patterns."
+        echo "Supported patterns: ${FILE_PATTERNS[*]}"
+        exit 0
+    fi
+    
+    echo "Found $total_files image file(s) to process."
+    echo ""
+    
+    # Ask for confirmation if not forced
+    if [ "$FORCE" = false ]; then
+        echo "This will process ALL $total_files image file(s):"
+        
+        # Show first few files
+        local show_count=$(( total_files < 5 ? total_files : 5 ))
+        for ((i=0; i<show_count; i++)); do
+            echo "  - ${all_files[$i]}"
+        done
+        [ $total_files -gt 5 ] && echo "  ... and $((total_files - 5)) more"
+        
+        echo ""
+        echo "Options active:"
+        [ "$RESIZE" = true ] && echo "  - Resize: ON"
+        [ "$DRY_RUN" = true ] && echo "  - Dry run: ON (simulation only)"
+        [ "$PAD_MODE" = true ] && echo "  - Pad mode: ON"
+        [ "$BACKUP" = true ] && echo "  - Backup: ON"
+        
+        read -p "Process ALL $total_files file(s)? [y/N]: " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Cancelled."
+            exit 0
+        fi
+    fi
+    
+    # Process all files
+    echo "=================================================="
+    echo "Starting batch processing of $total_files file(s)..."
+    echo ""
+    
+    local processed=0
+    local resized=0
+    local already_correct=0
+    local skipped=0
+    local errors=0
+    
+    for ((i=0; i<total_files; i++)); do
+        local file="${all_files[$i]}"
+        
+        echo "--------------------------------------------------"
+        echo "Processing file $((i + 1)) of $total_files: $(basename "$file")"
+        
+        # Store current state to detect if resize happened
+        local was_resized=false
+        
+        # Check if file already has correct size
+        local dimensions
+        if dimensions=$(get_image_dimensions "$file" 2>/dev/null); then
+            local width; width=$(echo "$dimensions" | cut -d' ' -f1)
+            local height; height=$(echo "$dimensions" | cut -d' ' -f2)
+            
+            if check_multiple_of_16 "$width" "$height"; then
+                ((already_correct++))
+                echo "✓ $file is already correct size"
+                continue
+            fi
+        fi
+        
+        # Process the file
+        if process_image "$file"; then
+            ((processed++))
+            
+            # Check if resize actually happened
+            if dimensions=$(get_image_dimensions "$file" 2>/dev/null); then
+                local new_width; new_width=$(echo "$dimensions" | cut -d' ' -f1)
+                local new_height; new_height=$(echo "$dimensions" | cut -d' ' -f2)
+                
+                if check_multiple_of_16 "$new_width" "$new_height"; then
+                    ((resized++))
+                fi
+            fi
+        else
+            # Check error type
+            if dimensions=$(get_image_dimensions "$file" 2>/dev/null); then
+                local width; width=$(echo "$dimensions" | cut -d' ' -f1)
+                local height; height=$(echo "$dimensions" | cut -d' ' -f2)
+                
+                if check_multiple_of_16 "$width" "$height"; then
+                    ((already_correct++))
+                    echo "  (Already correct size)"
+                else
+                    ((errors++))
+                fi
+            else
+                ((errors++))
+            fi
+        fi
+    done
+    
+    echo "=================================================="
+    echo "BATCH PROCESSING COMPLETE"
+    echo "=================================================="
+    echo "Summary:"
+    echo "  Total files found: $total_files"
+    
+    if [ "$RESIZE" = true ]; then
+        echo "  Already correct size: $already_correct"
+        echo "  Successfully resized: $resized"
+    else
+        echo "  Successfully processed: $processed"
+    fi
+    
+    #echo "  Skipped: $skipped"
+    echo "  Errors: $errors"
+    echo ""
+    
+    if [ "$DRY_RUN" = true ]; then
+        echo "NOTE: This was a DRY RUN - no files were modified."
+        echo "      Would resize: $resized files"
+        echo "      Already correct: $already_correct files"
+    fi
+    
+    if [ $errors -gt 0 ]; then
+        echo "Some files had errors. Check the output above."
+        exit 1
+    fi
+    
+    exit 0
+}
+
+# Main function
+main() {
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_usage
+                ;;
+            -r|--resize)
+                RESIZE=true
+                shift
+                ;;
+            -f|--force)
+                FORCE=true
+                RESIZE=true  # Force implies resize
+                shift
+                ;;
+            -p|--pad)
+                PAD_MODE=true
+                shift
+                ;;
+            -c|--color)
+                PAD_COLOR="$2"
+                if ! validate_color "$PAD_COLOR"; then
+                    PAD_COLOR="transparent"
+                fi
+                shift 2
+                ;;
+            -i|--interpolation)
+                INTERPOLATION="$2"
+                shift 2
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            -n|--no-backup)
+                BACKUP=false
+                shift
+                ;;
+            -d|--dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            -l|--loop)
+                LOOP_MODE=true
+                shift
+                ;;
+            -o|--output)
+                OUTPUT_DIR="$2"
+                shift 2
+                ;;
+            --)
+                shift
+                break
+                ;;
+            -*)
+                echo "Error: Unknown option $1"
+                show_usage
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+    
+    # Check dependencies
+    check_dependencies
+    
+    # Store remaining arguments as file patterns
+    local FILE_PATTERNS=("$@")
+    
+    # If no files specified and not in loop mode, show usage
+    if [ ${#FILE_PATTERNS[@]} -eq 0 ] && [ "$LOOP_MODE" = false ]; then
+        echo "Error: No image files specified."
+        show_usage
+    fi
+    
+    # If no file patterns in loop mode, use default patterns
+    if [ ${#FILE_PATTERNS[@]} -eq 0 ] && [ "$LOOP_MODE" = true ]; then
+        FILE_PATTERNS=("*.png" "*.jpg" "*.jpeg" "*.gif" "*.bmp" "*.tif" "*.tiff" "*.webp")
+    fi
+    
+    # Loop mode
+    if [ "$LOOP_MODE" = true ]; then
+        loop_monitor
+    fi
+    
+    # Normal mode - process files
+    local processed=0
+    local errors=0
+    local total_files=0
+    
+    # Count total files
+    shopt -s nullglob
+    for pattern in "${FILE_PATTERNS[@]}"; do
+        for file in $pattern; do
+            [ -f "$file" ] && ((total_files++))
+        done
+    done
+    shopt -u nullglob
+    
+    echo "Processing $total_files file(s)..."
+    echo ""
+    
+    local current=0
+    shopt -s nullglob
+    for pattern in "${FILE_PATTERNS[@]}"; do
+        for file in $pattern; do
+            [ -f "$file" ] || continue
+            
+            ((current++))
+            echo "--------------------------------------------------"
+            echo "Processing file $current of $total_files: $(basename "$file")"
+            
+            if process_image "$file"; then
+                ((processed++))
+            else
+                ((errors++))
+            fi
+        done
+    done
+    shopt -u nullglob
+    
+    echo "=================================================="
+    echo "Processing complete:"
+    echo "  Total files found: $total_files"
+    echo "  Successfully processed: $processed file(s)"
+    echo "  Errors: $errors file(s)"
+    
+    if [ $errors -gt 0 ]; then
+        exit 1
+    fi
+}
+
+# Trap Ctrl+C for graceful exit in loop mode
+trap 'echo -e "\nExiting..."; exit 0' INT
+
+# Run main function with all arguments
+main "$@"

@@ -7,6 +7,7 @@
 exec 2>/dev/null
 
 file="$1"
+delay=30 # Time for the process to start
 
 # Check if any argument was passed
 if [[ -z "$file" ]]; then
@@ -43,7 +44,7 @@ main() {
     lowriter "$@"
     
     # Wait for the process to start
-    sleep 10
+    sleep "$delay"
     # After LibreOffice closes, check if the file is empty
     cleanup
 }
