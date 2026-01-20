@@ -17,23 +17,32 @@ end
 # Loops through all .fish files in the source directory and its subdirectories
 function sourced
     set -l source_dir $argv[1]
+    set -l output_file "$source_dir.fish"
     
-    if test -f "$source_dir.fish"
-        rm "$source_dir.fish"
-    end
-
-    # Checks if the directory exists and has .fish files
+    # If the directory does not exist, remove file and exit
     if not test -d "$source_dir"
-        return
+        if test -f "$output_file"
+            rm -f "$output_file"
+        end
+        return 0
     end
     
-    if not find "$source_dir" -name "*.fish" -type f -print -quit >/dev/null
-        return
-    end
+    # Find .fish files
+    set -l fish_files (find "$source_dir" -name "*.fish" -type f 2>/dev/null)
+    
+    if test (count $fish_files) -gt 0
+        # Create file with sources
+        for file in $fish_files
+            echo "source \"$file\""
+        end > "$output_file"
         
-    for file in (find "$source_dir" -name '*.fish' 2>/dev/null | sort -f)
-        set file (string replace $HOME "\$HOME" -- $file)
-        echo "source $file" | tee "$source_dir.fish" >/dev/null
+        return 0
+    else
+        # Remove empty file if there are no .fish files
+        if test -f "$output_file"
+            rm -f "$output_file"
+        end
+        return
     end
 end
 
