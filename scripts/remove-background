@@ -1,47 +1,406 @@
 #!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
+# Name: ffmpeg_chromakey_processor.sh
 
 : <<'DOCUMENTATION'
-Background Removal Bash Utility
+FFmpeg Chroma Key Removal Script
 
-A Bash script that uses ImageMagick to automatically remove backgrounds from PNG images in a specified directory. 
-The tool allows users to transparentize images based on a specific color hex code.
+A Bash script that uses FFmpeg to automatically remove backgrounds from images and videos using chroma key technology.
+Supports both PNG/JPG images and video files (MP4, MOV, AVI, MKV, etc.).
 
 Key Features:
-1. Batch PNG image processing
-2. Simple command-line interface
-3. Precise background removal
-4. Automatic output directory management
+1. Batch image and video processing
+2. Custom FPS for video frame extraction
+3. Flexible input: directory for images, file or directory for videos
+4. Precise chroma key background removal
+5. Automatic output directory management
 
-The script provides an efficient solution for bulk image background removal, ideal for designers and developers 
-seeking quick image preprocessing.
+Usage Examples:
+  For images: remove-background images ./output 00FF00
+  For video file: remove-background video.mp4 ./output 00FF00 30
+  For video directory: remove-background ./videos ./output 00FF00 15
 DOCUMENTATION
 
-# Check if the number of arguments is appropriate
-if [ "$#" -ne 3 ]; then
-    echo "Usage: ${0##*/}  <input_directory> <output_directory> <color_hexadecimal>"
+# Function to display help information
+show_help() {
+    echo "Usage:"
+    echo "  For images: ${0##*/} <input_dir> <output_dir> <color_hex> [fps]"
+    echo "  For video:  ${0##*/} <input_video> <output_dir> <color_hex> <fps>"
+    echo ""
+    echo "Parameters:"
+    echo "  <input_dir/video>  Directory (images) or file/dir (videos) to process"
+    echo "  <output_dir>       Directory where processed files will be saved"
+    echo "  <color_hex>        Color hex code for chroma key (e.g., 00FF00 for green)"
+    echo "  [fps]              Optional: Frames per second for video extraction (default: 15)"
+    echo ""
+    echo "Examples:"
+    echo "  Process images:           ${0##*/} ./images ./output 00FF00"
+    echo "  Process single video:     ${0##*/} video.mp4 ./frames 00FF00 30"
+    echo "  Process video directory:  ${0##*/} ./videos ./output 0000FF 15"
+    echo "  Get help:                 ${0##*/} --help"
+    echo ""
+    echo "Supported formats:"
+    echo "  Images: .png, .jpg, .jpeg"
+    echo "  Videos: .mp4, .mov, .avi, .mkv, .webm, .flv, .wmv"
+}
+
+# Function to check if FFmpeg is installed
+check_ffmpeg() {
+    if ! command -v ffmpeg &> /dev/null; then
+        echo "Error: FFmpeg is not installed or not in PATH."
+        echo "Please install FFmpeg first:"
+        echo "  Ubuntu/Debian: sudo apt-get install ffmpeg"
+        echo "  macOS: brew install ffmpeg"
+        echo "  Windows: Download from https://ffmpeg.org/download.html"
+        exit 1
+    fi
+}
+
+# Function to detect if input is an image or video
+detect_media_type() {
+    local input_path="$1"
+    
+    if [ -d "$input_path" ]; then
+        # Check if directory contains images or videos
+        local image_count=$(find "$input_path" -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | wc -l)
+        local video_count=$(find "$input_path" -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.flv" -o -iname "*.wmv" \) | wc -l)
+        
+        if [ $image_count -gt 0 ] && [ $video_count -eq 0 ]; then
+            echo "image_dir"
+        elif [ $video_count -gt 0 ] && [ $image_count -eq 0 ]; then
+            echo "video_dir"
+        elif [ $image_count -gt 0 ] && [ $video_count -gt 0 ]; then
+            echo "mixed_dir"
+        else
+            echo "empty_dir"
+        fi
+    elif [ -f "$input_path" ]; then
+        # Check file extension
+        local extension="${input_path##*.}"
+        case "${extension,,}" in
+            png|jpg|jpeg)
+                echo "image_file"
+                ;;
+            mp4|mov|avi|mkv|webm|flv|wmv)
+                echo "video_file"
+                ;;
+            *)
+                echo "unknown_file"
+                ;;
+        esac
+    else
+        echo "not_found"
+    fi
+}
+
+# Function to process a single image file
+process_image() {
+    local input_file="$1"
+    local output_dir="$2"
+    local color_key="$3"
+    local filename=$(basename -- "$input_file")
+    local filename_noext="${filename%.*}"
+    
+    echo "  Processing image: $filename"
+    
+    # Process image with chroma key filter
+    if ffmpeg -i "$input_file" -vf "chromakey=0x$color_key:0.1:0.2" \
+        -y "$output_dir/${filename_noext}_nobg.png" 2>/dev/null; then
+        echo "    ✓ Background removed"
+        return 0
+    else
+        echo "    ✗ Failed to process"
+        return 1
+    fi
+}
+
+# Function to process a single video file (MODIFIED)
+process_video() {
+    local input_file="$1"
+    local output_dir="$2"
+    local color_key="$3"
+    local fps="$4"
+    local filename=$(basename -- "$input_file")
+    local filename_noext="${filename%.*}"
+    local frame_count=0
+    
+    # Create subdirectory for this video's frames
+    local video_output_dir="$output_dir/${filename_noext}_frames"
+    mkdir -p "$video_output_dir"
+    
+    # Extract frames from video with chroma key filter    
+    if ffmpeg -i "$input_file" -vf "fps=$fps, chromakey=0x$color_key:0.1:0.2" \
+        -y "$video_output_dir/frame_%08d.png" 2>/dev/null; then
+        frame_count=$(find "$video_output_dir" -name "*.png" 2>/dev/null | wc -l)
+        echo "    ✓ Extracted $frame_count frames from $filename (FPS: $fps)"
+    else
+        echo "    ✗ Failed to process $filename"
+        frame_count=0
+    fi
+    
+    # Return frame count via stdout
+    echo "$frame_count"
+}
+
+# Function to process multiple images CORRECTED
+process_image_directory() {
+    local input_dir="$1"
+    local output_dir="$2"
+    local color_key="$3"
+    local processed=0
+        
+    echo "Processing images from directory: $input_dir"
+    
+    # Use process substitution to avoid subshell
+    while IFS= read -r -d '' input_file; do
+        if process_image "$input_file" "$output_dir" "$color_key"; then
+            ((processed++))
+        fi
+    done < <(find "$input_dir" -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0)
+    
+    echo "  Total images processed: $processed"
+    echo "$processed"
+}
+
+# Function to process multiple videos CORRECTED
+process_video_directory() {
+    local input_dir="$1"
+    local output_dir="$2"
+    local color_key="$3"
+    local fps="$4"
+    local processed=0
+    local total_frames=0
+    local frame_count
+    
+    echo "Processing videos from directory: $input_dir"
+    
+    # Use arrays to store files first
+    local video_files=()
+    while IFS= read -r -d '' file; do
+        video_files+=("$file")
+    done < <(find "$input_dir" -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.flv" -o -iname "*.wmv" \) -print0)
+    
+    # Process each video
+    for input_file in "${video_files[@]}"; do
+        frame_count=$(process_video "$input_file" "$output_dir" "$color_key" "$fps")
+        ((processed++))
+        total_frames=$((total_frames + frame_count))
+    done
+    
+    echo "  Total videos processed: $processed"
+    echo "  Total frames extracted: $total_frames"
+    
+    # Return values separated by newline
+    echo "$processed"
+    echo "$total_frames"
+}
+
+# Function to process mixed directory CORRECTED
+process_mixed_directory() {
+    local input_dir="$1"
+    local output_dir="$2"
+    local color_key="$3"
+    local fps="$4"
+    local processed_images=0
+    local processed_videos=0
+    local total_frames=0
+    local frame_count
+    
+    echo "Processing mixed directory: $input_dir"
+    echo "Note: Using FPS=$fps for video extraction"
+    echo ""
+    
+    # Process images first - using array
+    echo "Processing images:"
+    local image_files=()
+    while IFS= read -r -d '' file; do
+        image_files+=("$file")
+    done < <(find "$input_dir" -maxdepth 1 -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -print0)
+    
+    for input_file in "${image_files[@]}"; do
+        if process_image "$input_file" "$output_dir" "$color_key"; then
+            ((processed_images++))
+        fi
+    done
+    
+    # Process videos - using array
+    echo ""
+    echo "Processing videos:"
+    local video_files=()
+    while IFS= read -r -d '' file; do
+        video_files+=("$file")
+    done < <(find "$input_dir" -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.flv" -o -iname "*.wmv" \) -print0)
+    
+    for input_file in "${video_files[@]}"; do
+        frame_count=$(process_video "$input_file" "$output_dir" "$color_key" "$fps")
+        ((processed_videos++))
+        total_frames=$((total_frames + frame_count))
+    done
+    
+    echo "  Total images processed: $processed_images"
+    echo "  Total videos processed: $processed_videos"
+    echo "  Total frames extracted: $total_frames"
+    
+    # Return values separated by newline
+    echo "$processed_images"
+    echo "$processed_videos"
+    echo "$total_frames"
+}
+
+# Main script logic
+
+# Check if help is requested
+if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    show_help
+    exit 0
+fi
+
+# Validate argument count
+if [ $# -lt 3 ] || [ $# -gt 4 ]; then
+    echo "Error: Invalid number of arguments."
+    echo ""
+    show_help
     exit 1
 fi
 
-# Attribute arguments to variables
-input_directory="$1"
+# Check if FFmpeg is installed
+check_ffmpeg
+
+# Assign arguments to variables
+input_path="$1"
 output_directory="$2"
 background_color="$3"
+fps="${4:-15}"  # Default to 15 FPS if not provided
 
-# Creates exit directory if it does not exist
+# Validate color format
+if [[ ! "$background_color" =~ ^[0-9A-Fa-f]{6}$ ]]; then
+    echo "Error: Invalid color hexadecimal format. Use 6 characters (e.g., 00FF00)."
+    exit 1
+fi
+
+# Validate FPS is a positive number
+if ! [[ "$fps" =~ ^[0-9]+$ ]] || [ "$fps" -le 0 ]; then
+    echo "Error: FPS must be a positive integer."
+    exit 1
+fi
+
+# Detect media type
+media_type=$(detect_media_type "$input_path")
+
+case $media_type in
+    not_found)
+        echo "Error: Input path '$input_path' does not exist."
+        exit 1
+        ;;
+    unknown_file)
+        echo "Error: Unsupported file format for '$input_path'."
+        exit 1
+        ;;
+    empty_dir)
+        echo "Error: No supported files found in directory '$input_path'."
+        exit 1
+        ;;
+esac
+
+# Create output directory
 mkdir -p "$output_directory"
 
-# Itra about all images in the entrance directory
-for input_image in "$input_directory"/*.png; do
-    # Get the file name without the way and the extension
-    filename=$(basename -- "$input_image")
-    filename_noext="${filename%.*}"
+echo "=============================================="
+echo "FFmpeg Chroma Key Processor"
+echo "Input: $input_path"
+echo "Output: $output_directory"
+echo "Chroma key: #$background_color"
+echo "FPS: $fps"
+echo "=============================================="
 
-    # Removes the background of the image using imagemagick
-    convert "$input_image" -transparent "$background_color" "$output_directory/$filename_noext.png"
+# Variables for summary
+processed_images=0
+processed_videos=0
+total_frames=0
 
-    echo "Removed the bottom $filename"
-done
+# Process based on media type
+case $media_type in
+    image_file)
+        echo "Processing single image file..."
+        if process_image "$input_path" "$output_directory" "$background_color"; then
+            processed_images=1
+        fi
+        ;;
+    
+    video_file)
+        echo "Processing single video file..."
+        total_frames=$(process_video "$input_path" "$output_directory" "$background_color" "$fps")
+        processed_videos=1
+        ;;
+    
+    image_dir)
+        echo "Processing directory of images..."
+        processed_images=$(process_image_directory "$input_path" "$output_directory" "$background_color")
+        ;;
+    
+    video_dir)
+        echo "Processing directory of videos..."
+        # Read multiple lines into array
+        mapfile -t results < <(process_video_directory "$input_path" "$output_directory" "$background_color" "$fps")
+        if [ ${#results[@]} -ge 2 ]; then
+            processed_videos=${results[0]}
+            total_frames=${results[1]}
+        fi
+        ;;
+    
+    mixed_dir)
+        echo "Processing mixed directory (images and videos)..."
+        # Read multiple lines into array
+        mapfile -t results < <(process_mixed_directory "$input_path" "$output_directory" "$background_color" "$fps")
+        if [ ${#results[@]} -ge 3 ]; then
+            processed_images=${results[0]}
+            processed_videos=${results[1]}
+            total_frames=${results[2]}
+        fi
+        ;;
+esac
 
-echo "Completed!"
+# Display summary
+echo ""
+echo "=============================================="
+echo "Processing completed!"
+echo "Summary:"
+
+echo "  Images processed: $processed_images"
+echo "  Videos processed: $processed_videos"
+    
+if [ $processed_videos -gt 0 ]; then
+    echo "  FPS used: $fps"
+    echo "  Total frames extracted: $total_frames"
+fi
+
+echo "Output location: $output_directory"
+
+# Show directory structure
+if [ -d "$output_directory" ]; then
+    echo ""
+    echo "Output structure:"
+    
+    # Use array to store directory paths
+    local_dirs=()
+    while IFS= read -r -d '' dir; do
+        local_dirs+=("$dir")
+    done < <(find "$output_directory" -maxdepth 2 -type d -print0 | sort -z)
+    
+    for dir in "${local_dirs[@]}"; do
+        rel_dir="${dir#$output_directory/}"
+        if [ -n "$rel_dir" ] && [ "$rel_dir" != "." ]; then
+            count=$(find "$dir" -maxdepth 1 -name "*.png" 2>/dev/null | wc -l)
+            if [ $count -gt 0 ]; then
+                echo "  📁 $rel_dir/ ($count PNG files)"
+            elif [ -z "$(find "$dir" -maxdepth 1 -type f 2>/dev/null)" ]; then
+                echo "  📁 $rel_dir/ (empty)"
+            else
+                echo "  📁 $rel_dir/"
+            fi
+        fi
+    done
+fi
+
+echo "=============================================="
