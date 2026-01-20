@@ -10,7 +10,6 @@ file="$1"
 
 [[ -z "$file" ]] && echo "Usage: ${0##*/} new_file" && exit 1
 [[ -f "$file" ]] && [[ ! -x "$file" ]] && echo 'File is not executable!' && exit 1
-[[ -e "$file" ]] && echo 'File exists!' && exit 1
 
 if ! command -v code &>/dev/null && ! command -v codium &>/dev/null; then
     echo 'Install code or codium, then run this script again.'
@@ -23,4 +22,6 @@ else
     mycode=$(command -v code); export mycode
 fi
 
-touch "$file" && chmod +x "$file" && "$mycode" "$file"
+[[ ! -f "$file" ]] && touch "$file" 
+[[ ! -x "$file" ]] && chmod +x "$file"
+"$mycode" "$file"

@@ -113,6 +113,8 @@ $ ffmpeg -i input.mp4 -vsync 0 -c:v png output_frames/%08d.png
 $ ffmpeg -i input.mp4 -vf fps=15 -c:v png output_frames/frame_%08d.png
 
 $ ffmpeg -i input.mp4 -vf "fps=15, chromakey=0xfb44f8:0.1:0.2" -c:v png output_frames/frame_%08d.png
+
+$ ffmpeg -i input.mp4 -vf "fps=15, chromakey=0x665451:0.01:0.01" -c:v png output_frames/frame_%08d.png
 EOF
 }
 
