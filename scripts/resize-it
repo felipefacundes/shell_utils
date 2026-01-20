@@ -1,0 +1,301 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Script: resize-it
+Description: Resize images maintaining aspect ratio or with exact dimensions
+Usage: resize-it <image_or_directory> <size_specifier>
+DOCUMENTATION
+
+# Function to display help
+show_help() {
+    cat << EOF
+Usage: ${0##*/} <image_or_directory> <size_specifier>
+
+Resize images maintaining aspect ratio or with exact dimensions.
+
+ARGUMENTS:
+  <image_or_directory>    Target image file or directory containing images
+  <size_specifier>        Size specification (see below)
+
+SIZE SPECIFIERS:
+  [width]                 Resize proportionally to specified width
+  [width]x[height]        Resize proportionally to fit within dimensions
+  "[width]x[height]!"     Resize exactly to specified dimensions
+  [factor]x               Multiply size proportionally (e.g., 2x)
+  "[factor]x!"            Multiply size exactly (e.g., "2x!")
+  "[factor]/"             Divide size proportionally (e.g., "2/")
+  "[factor]/!"            Divide size exactly (e.g., "2/!")
+  "[factor]"              Fraction proportionally (e.g., "1/3")
+  "[factor]!"             Fraction exactly (e.g., "1/3!")
+
+PERCENTAGE SPECIFIERS:
+  "[percentage]%"         Resize to percentage proportionally (e.g., "50%")
+  "[percentage]%!"        Resize to percentage exactly (e.g., "50%!")
+  "[percentage]%+"        Increase by percentage proportionally (e.g., "50%+")
+  "[percentage]%+!"       Increase by percentage exactly (e.g., "50%+!")
+  "[percentage]%-"        Decrease by percentage proportionally (e.g., "25%-")
+  "[percentage]%-!"       Decrease by percentage exactly (e.g., "25%-!")
+
+EXAMPLES:
+  ${0##*/} image.jpg 640              # Resize to width 640px proportionally
+  ${0##*/} directory 640              # Resize all images in directory
+  ${0##*/} image.jpg 640x480          # Resize proportionally to fit
+  ${0##*/} image.jpg "640x480!"       # Resize exactly to 640x480
+  ${0##*/} image.jpg 2x               # Double size proportionally
+  ${0##*/} image.jpg "2x!"            # Double size exactly
+  ${0##*/} image.jpg "2/"             # Halve size proportionally
+  ${0##*/} image.jpg "2/!"            # Halve size exactly
+  ${0##*/} image.jpg "1/3"            # Reduce to 1/3 size proportionally
+  ${0##*/} image.jpg "1/3!"           # Reduce to 1/3 size exactly
+  ${0##*/} image.jpg "1/3x"           # Add 1/3 to size proportionally
+  ${0##*/} image.jpg "1/3x!"          # Add 1/3 to size exactly
+  ${0##*/} image.jpg "50%"            # Resize to 50% proportionally
+  ${0##*/} image.jpg "50%!"           # Resize to 50% exactly
+  ${0##*/} image.jpg "25%-"           # Decrease by 25% proportionally
+  ${0##*/} image.jpg "25%-!"          # Decrease by 25% exactly
+  ${0##*/} image.jpg "45%+"           # Increase by 45% proportionally
+  ${0##*/} image.jpg "45%+!"          # Increase by 45% exactly
+
+SUPPORTED IMAGE FORMATS:
+  jpg, jpeg, png, gif, bmp, tiff, webp
+
+NOTES:
+  - Use quotes around specifiers containing exclamation marks or percent signs
+  - Resized images are saved in a 'resized' subfolder with the same filename
+  - Original images are preserved in their original location
+EOF
+}
+
+# Check if ImageMagick's magick command exists
+if ! command -v magick &> /dev/null; then
+    echo "Error: ImageMagick (magick command) is not installed." >&2
+    exit 1
+fi
+
+# Check if correct number of arguments is provided
+if [ $# -ne 2 ]; then
+    echo "Error: Invalid number of arguments." >&2
+    show_help
+    exit 1
+fi
+
+TARGET="$1"
+SIZE_SPEC="$2"
+
+# Function to evaluate fraction and convert to percentage
+evaluate_fraction() {
+    local fraction="$1"
+    local is_exact="$2"  # "!" for exact, empty for proportional
+    
+    # Check if it's a fraction (contains /)
+    if [[ "$fraction" =~ ^([0-9]+)/([0-9]+)$ ]]; then
+        local numerator="${BASH_REMATCH[1]}"
+        local denominator="${BASH_REMATCH[2]}"
+        
+        if [ "$denominator" -eq 0 ]; then
+            echo "Error: Division by zero in fraction: $fraction" >&2
+            return 1
+        fi
+        
+        # Calculate percentage using bc for floating point
+        local percentage=$(echo "scale=2; $numerator / $denominator * 100" | bc)
+        
+        # Remove trailing zeros and decimal point if not needed
+        percentage=$(echo "$percentage" | sed 's/\.0*$//; s/\.$//')
+        
+        echo "${percentage}%${is_exact}"
+        return 0
+    elif [[ "$fraction" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        # It's already a number (decimal or integer)
+        local num="$fraction"
+        # Convert decimal to percentage
+        if [[ "$num" =~ \. ]]; then
+            local percentage=$(echo "$num * 100" | bc | sed 's/\.0*$//; s/\.$//')
+            echo "${percentage}%${is_exact}"
+        else
+            echo "${num}%${is_exact}"
+        fi
+        return 0
+    else
+        echo "Error: Invalid fraction format: $fraction" >&2
+        return 1
+    fi
+}
+
+# Function to resize a single image
+resize_image() {
+    local input_file="$1"
+    local input_dir output_dir output_file
+    local resize_param="$2"
+    
+    # Get input file directory and create resized subdirectory
+    input_dir=$(dirname "$input_file")
+    output_dir="${input_dir}/resized"
+    
+    # Create resized directory if it doesn't exist
+    mkdir -p "$output_dir"
+    
+    # Create output file path with same name in resized folder
+    local filename=$(basename "$input_file")
+    output_file="${output_dir}/${filename}"
+    
+    # Handle different size specifications
+    if [[ "$resize_param" =~ ^[0-9]+$ ]]; then
+        # Simple width (e.g., 640)
+        magick "$input_file" -resize "${resize_param}x" "$output_file"
+    elif [[ "$resize_param" =~ ^[0-9]+x[0-9]+!$ ]]; then
+        # Exact dimensions (e.g., "640x480!")
+        magick "$input_file" -resize "${resize_param}" "$output_file"
+    elif [[ "$resize_param" =~ ^[0-9]+x[0-9]+$ ]]; then
+        # Proportional dimensions (e.g., 640x480)
+        magick "$input_file" -resize "${resize_param}" "$output_file"
+    elif [[ "$resize_param" =~ ^[0-9./]+x!$ ]]; then
+        # Exact multiplication (e.g., "2x!")
+        local factor="${resize_param%x!}"
+        local percentage=$(evaluate_fraction "$factor" "!")
+        if [ $? -eq 0 ]; then
+            magick "$input_file" -resize "$percentage" "$output_file"
+        else
+            echo "Error: Invalid factor: $factor" >&2
+            return 1
+        fi
+    elif [[ "$resize_param" =~ ^[0-9./]+x$ ]]; then
+        # Proportional multiplication (e.g., 2x)
+        local factor="${resize_param%x}"
+        # For multiplication factors like 2x, we need 200%
+        if [[ "$factor" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            local percentage=$(echo "$factor * 100" | bc | sed 's/\.0*$//; s/\.$//')
+            magick "$input_file" -resize "${percentage}%" "$output_file"
+        else
+            echo "Error: Invalid multiplication factor: $factor" >&2
+            return 1
+        fi
+    elif [[ "$resize_param" =~ ^[0-9./]+/!$ ]]; then
+        # Exact division (e.g., "2/!")
+        local factor="${resize_param%/!}"
+        local percentage=$(evaluate_fraction "$factor" "!")
+        if [ $? -eq 0 ]; then
+            # For division, we need the inverse (100/factor)
+            local inverse_percentage=$(echo "scale=2; 100 / $factor" | bc | sed 's/\.0*$//; s/\.$//')
+            magick "$input_file" -resize "${inverse_percentage}%!" "$output_file"
+        else
+            echo "Error: Invalid division factor: $factor" >&2
+            return 1
+        fi
+    elif [[ "$resize_param" =~ ^[0-9./]+/$ ]]; then
+        # Proportional division (e.g., "2/")
+        local factor="${resize_param%/}"
+        if [[ "$factor" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            local inverse_percentage=$(echo "scale=2; 100 / $factor" | bc | sed 's/\.0*$//; s/\.$//')
+            magick "$input_file" -resize "${inverse_percentage}%" "$output_file"
+        else
+            echo "Error: Invalid division factor: $factor" >&2
+            return 1
+        fi
+    elif [[ "$resize_param" =~ ^[0-9./]+!$ ]]; then
+        # Exact fraction (e.g., "1/3!")
+        local fraction="${resize_param%!}"
+        local percentage=$(evaluate_fraction "$fraction" "!")
+        if [ $? -eq 0 ]; then
+            magick "$input_file" -resize "$percentage" "$output_file"
+        else
+            echo "Error: Invalid fraction: $fraction" >&2
+            return 1
+        fi
+    elif [[ "$resize_param" =~ ^[0-9./]+$ ]]; then
+        # Proportional fraction (e.g., "1/3")
+        local fraction="$resize_param"
+        local percentage=$(evaluate_fraction "$fraction" "")
+        if [ $? -eq 0 ]; then
+            magick "$input_file" -resize "$percentage" "$output_file"
+        else
+            echo "Error: Invalid fraction: $fraction" >&2
+            return 1
+        fi
+    # Percentage specifications
+    elif [[ "$resize_param" =~ ^([0-9]+)%!$ ]]; then
+        # Exact percentage (e.g., "50%!")
+        magick "$input_file" -resize "${BASH_REMATCH[1]}%!" "$output_file"
+    elif [[ "$resize_param" =~ ^([0-9]+)%$ ]]; then
+        # Simple percentage (e.g., "50%")
+        magick "$input_file" -resize "${BASH_REMATCH[1]}%" "$output_file"
+    elif [[ "$resize_param" =~ ^([0-9]+)%\+!$ ]]; then
+        # Increase by percentage exactly (e.g., "50%+!")
+        local percentage="${BASH_REMATCH[1]}"
+        local new_percentage=$((100 + percentage))
+        magick "$input_file" -resize "${new_percentage}%!" "$output_file"
+    elif [[ "$resize_param" =~ ^([0-9]+)%\+$ ]]; then
+        # Increase by percentage proportionally (e.g., "50%+")
+        local percentage="${BASH_REMATCH[1]}"
+        local new_percentage=$((100 + percentage))
+        magick "$input_file" -resize "${new_percentage}%" "$output_file"
+    elif [[ "$resize_param" =~ ^([0-9]+)%\-!$ ]]; then
+        # Decrease by percentage exactly (e.g., "25%-!")
+        local percentage="${BASH_REMATCH[1]}"
+        local new_percentage=$((100 - percentage))
+        magick "$input_file" -resize "${new_percentage}%!" "$output_file"
+    elif [[ "$resize_param" =~ ^([0-9]+)%\-$ ]]; then
+        # Decrease by percentage proportionally (e.g., "25%-")
+        local percentage="${BASH_REMATCH[1]}"
+        local new_percentage=$((100 - percentage))
+        magick "$input_file" -resize "${new_percentage}%" "$output_file"
+    else
+        echo "Error: Invalid size specifier: $resize_param" >&2
+        return 1
+    fi
+    
+    if [ $? -eq 0 ]; then
+        echo "Resized: $input_file -> $output_file"
+    else
+        echo "Error resizing: $input_file" >&2
+        return 1
+    fi
+}
+
+# Main logic
+if [ -f "$TARGET" ]; then
+    # Single file mode
+    if file "$TARGET" | grep -qi "image"; then
+        resize_image "$TARGET" "$SIZE_SPEC"
+        echo "Resized image saved to: $(dirname "$TARGET")/resized/"
+    else
+        echo "Error: $TARGET is not a valid image file." >&2
+        exit 1
+    fi
+elif [ -d "$TARGET" ]; then
+    # Directory mode
+    # Find image files using find command
+    IMAGE_FILES=$(find "$TARGET" -maxdepth 1 -type f \( \
+        -iname "*.jpg" -o \
+        -iname "*.jpeg" -o \
+        -iname "*.png" -o \
+        -iname "*.gif" -o \
+        -iname "*.bmp" -o \
+        -iname "*.tiff" -o \
+        -iname "*.tif" -o \
+        -iname "*.webp" \))
+    
+    if [ -z "$IMAGE_FILES" ]; then
+        echo "Error: No image files found in directory: $TARGET" >&2
+        exit 1
+    fi
+    
+    echo "Found $(echo "$IMAGE_FILES" | wc -l) image(s) to resize."
+    
+    # Create resized directory in target folder
+    RESIZED_DIR="${TARGET}/resized"
+    mkdir -p "$RESIZED_DIR"
+    
+    # Resize each image
+    for image in $IMAGE_FILES; do
+        resize_image "$image" "$SIZE_SPEC"
+    done
+    
+    echo "All images resized successfully."
+    echo "Resized images saved to: $RESIZED_DIR"
+else
+    echo "Error: $TARGET is not a valid file or directory." >&2
+    exit 1
+fi

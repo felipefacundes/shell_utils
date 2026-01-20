@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
-# Script completo para remoção de fundo com múltiplas opções
+# Complete background removal script with multiple options
 
 : <<'DOCUMENTATION'
 Background Removal Bash Utility
@@ -11,9 +11,10 @@ Supports multiple removal methods and adjustable fuzz tolerance.
 
 Key Features:
 1. Batch PNG image processing
-2. Multiple removal methods: simple, fuzz, or mask
+2. Multiple removal methods: simple, fuzz, mask, morph, or precise
 3. Adjustable fuzz tolerance via argument
 4. Clean edge handling
+5. Two new highly efficient methods for complex backgrounds
 DOCUMENTATION
 
 # Display help
@@ -26,7 +27,7 @@ show_help() {
     echo "  <color_hex>      Color to remove (format: RRGGBB or #RRGGBB)"
     echo ""
     echo "Optional arguments:"
-    echo "  -m, --method METHOD   Removal method: simple, fuzz (default), mask"
+    echo "  -m, --method METHOD   Removal method: simple, fuzz (default), mask, morph, precise"
     echo "  -f, --fuzz PERCENT    Fuzz tolerance percentage (default: 15%)"
     echo "  -h, --help            Show this help message"
     echo ""
@@ -34,12 +35,16 @@ show_help() {
     echo "  ${0##*/} entrada saida d0d0d0                    # Default method, 15% fuzz"
     echo "  ${0##*/} entrada saida #FF0000 -m simple         # Simple transparent method"
     echo "  ${0##*/} entrada saida 00FF00 -m fuzz -f 20      # Fuzz method with 20% tolerance"
-    echo "  ${0##*/} entrada saida 0000FF -m mask            # Mask method (best quality)"
+    echo "  ${0##*/} entrada saida 0000FF -m mask            # Corrected mask method"
+    echo "  ${0##*/} entrada saida d0d0d0 -m morph           # Morphological method (best for edges)"
+    echo "  ${0##*/} entrada saida d0d0d0 -m precise         # Precise method (high quality)"
     echo ""
     echo "Method descriptions:"
     echo "  simple:   magick input -transparent COLOR output (fast, basic)"
     echo "  fuzz:     magick input -fuzz X% -transparent COLOR output (recommended)"
-    echo "  mask:     Creates a mask first for cleaner edges (slow, best quality)"
+    echo "  mask:     Creates a proper alpha mask for cleaner edges"
+    echo "  morph:    Uses morphological operations for better edge handling"
+    echo "  precise:  Multi-step method with blur and threshold for complex backgrounds"
 }
 
 # Check minimum arguments
@@ -82,9 +87,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+cleanup_temp() {
+    if [ -d "$output_directory/temp_$$" ]; then
+        rm -rf "$output_directory/temp_$$" 2>/dev/null
+    fi
+}
+
+# Set trap for SIGINT (Ctrl+C)
+trap 'echo -e "\n\nInterrupted! Cleaning up..."; cleanup_temp; exit 1' SIGINT
+
 # Validate method
-if [[ ! "$METHOD" =~ ^(simple|fuzz|mask)$ ]]; then
-    echo "Error: Method must be 'simple', 'fuzz', or 'mask'"
+if [[ ! "$METHOD" =~ ^(simple|fuzz|mask|morph|precise)$ ]]; then
+    echo "Error: Method must be 'simple', 'fuzz', 'mask', 'morph', or 'precise'"
     exit 1
 fi
 
@@ -109,7 +123,7 @@ echo "Input directory:  $input_directory"
 echo "Output directory: $output_directory"
 echo "Color to remove:  $color_hex"
 echo "Method:           $METHOD"
-if [[ "$METHOD" == "fuzz" ]]; then
+if [[ "$METHOD" == "fuzz" || "$METHOD" == "mask" || "$METHOD" == "morph" || "$METHOD" == "precise" ]]; then
     echo "Fuzz tolerance:   $FUZZ_PERCENT"
 fi
 echo "========================================"
@@ -120,12 +134,11 @@ for input_image in "$input_directory"/*.png; do
     [ -f "$input_image" ] || continue
     
     filename=$(basename -- "$input_image")
-    filename_noext="${filename%.*}"
     
     echo -n "Processing $filename... "
     
-    # Create temp directory for mask method
-    if [[ "$METHOD" == "mask" ]]; then
+    # Create temp directory for methods that need it
+    if [[ "$METHOD" == "mask" || "$METHOD" == "morph" || "$METHOD" == "precise" ]]; then
         temp_dir="$output_directory/temp_$$"
         mkdir -p "$temp_dir"
     fi
@@ -160,30 +173,111 @@ for input_image in "$input_directory"/*.png; do
             ;;
         
         mask)
-            # MASK METHOD: Best quality with mask creation
-            # Step 1: Create mask
+            # CORRECTED MASK METHOD: Creates proper alpha mask
+            # Step 1: Create alpha mask (white = transparent, black = opaque)
             if ! magick "$input_image" \
-                -fill white -fuzz "$FUZZ_PERCENT" -opaque "$color_hex" \
-                -fill black +opaque white \
-                -alpha off \
+                -fuzz "$FUZZ_PERCENT" \
+                -fill "rgba(255,255,255,0)" -opaque "$color_hex" \
+                -alpha extract \
+                -negate \
                 "$temp_dir/mask.png" 2>/dev/null; then
-                echo "✗ (mask failed)"
+                echo "✗ (mask creation failed)"
                 ((failed++))
                 rm -rf "$temp_dir"
                 continue
             fi
             
-            # Step 2: Apply mask
+            # Step 2: Apply mask to original image
             if magick "$input_image" \
-                "$temp_dir/mask.png" \
-                -alpha off \
-                -compose Copy_Opacity -composite \
+                \( -clone 0 -alpha off \) \
+                \( -clone 0 "$temp_dir/mask.png" -compose Copy_Opacity -composite \) \
+                -delete 0 \
                 -trim +repage \
                 "$output_directory/$filename" 2>/dev/null; then
                 echo "✓"
                 ((processed++))
             else
-                echo "✗ (apply failed)"
+                echo "✗ (mask application failed)"
+                ((failed++))
+            fi
+            
+            # Clean up
+            rm -rf "$temp_dir"
+            ;;
+        
+        morph)
+            # MORPH METHOD: Uses morphological operations for better edges
+            # This method is excellent for handling anti-aliased edges
+            if ! magick "$input_image" \
+                -fuzz "$FUZZ_PERCENT" \
+                \( +clone -fill "$color_hex" -colorize 100 \) \
+                -compose Difference -composite \
+                -evaluate Pow 2 -negate \
+                -alpha off -threshold 0 \
+                -morphology Erode Diamond:1 \
+                -morphology Dilate Diamond:1 \
+                -blur 0x1 \
+                -alpha extract \
+                "$temp_dir/mask.png" 2>/dev/null; then
+                echo "✗ (morph mask failed)"
+                ((failed++))
+                rm -rf "$temp_dir"
+                continue
+            fi
+            
+            # Apply the mask
+            if magick "$input_image" \
+                \( "$temp_dir/mask.png" -alpha extract \) \
+                -alpha off -compose Copy_Opacity -composite \
+                -trim +repage \
+                "$output_directory/$filename" 2>/dev/null; then
+                echo "✓"
+                ((processed++))
+            else
+                echo "✗ (morph apply failed)"
+                ((failed++))
+            fi
+            
+            # Clean up
+            rm -rf "$temp_dir"
+            ;;
+        
+        precise)
+            # PRECISE METHOD: Multi-step approach for complex backgrounds
+            # Best for images with gradients or similar colors
+            if ! magick "$input_image" \
+                \( +clone -fill "$color_hex" -colorize 100 \) \
+                -compose Difference -composite \
+                -separate -evaluate-sequence Max \
+                -auto-level \
+                -fuzz "$FUZZ_PERCENT" -transparent white \
+                -blur 0x2 \
+                -threshold 50% \
+                -morphology Erode Diamond:1 \
+                -alpha extract \
+                "$temp_dir/mask.png" 2>/dev/null; then
+                echo "✗ (precise mask failed)"
+                ((failed++))
+                rm -rf "$temp_dir"
+                continue
+            fi
+            
+            # Create a slightly dilated mask for smoother edges
+            magick "$temp_dir/mask.png" \
+                -morphology Dilate Diamond:1 \
+                -blur 0x0.7 \
+                "$temp_dir/mask_blur.png" 2>/dev/null
+            
+            # Apply the smoothed mask
+            if magick "$input_image" \
+                \( "$temp_dir/mask_blur.png" \) \
+                -alpha off -compose Copy_Opacity -composite \
+                -trim +repage \
+                "$output_directory/$filename" 2>/dev/null; then
+                echo "✓"
+                ((processed++))
+            else
+                echo "✗ (precise apply failed)"
                 ((failed++))
             fi
             

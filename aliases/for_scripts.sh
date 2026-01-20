@@ -18,6 +18,9 @@ alias tile16-resizer='tilefix' # Resizer for 16x16 tiles
 alias mult16resize='tilefix' # Multiple of 16 + resize
 alias resize2tile='tilefix' # Resize to tiles
 
+alias smartresize='~/.shell_utils/scripts/resize-it'
+alias resize_smart='smartresize'
+
 alias renomear_imagens_de_onde_parou='~/.shell_utils/scripts/rename-images-of-where-it-stopped'
 
 alias retrocede_um_diretorio_para_pasta_anterior='~/.shell_utils/scripts/return-a-directory-to-previous-folder'
