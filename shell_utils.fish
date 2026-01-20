@@ -31,9 +31,9 @@ function sourced
         return
     end
         
-    for file in (find "$source_dir" -name '*.fish' 2>/dev/null)
+    for file in (find "$source_dir" -name '*.fish' 2>/dev/null | sort -f)
         set file (string replace $HOME "\$HOME" -- $file)
-        echo "source $file" >> "$source_dir.fish"
+        echo "source $file" | tee "$source_dir.fish" >/dev/null
     end
 end
 
