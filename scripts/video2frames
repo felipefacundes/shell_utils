@@ -38,10 +38,9 @@ fi
 
 # Convert video to PNG images
 echo "Converting '$1' to PNG images in '$output_dir/'..."
-ffmpeg -i "$1" "${output_dir}/frame_%08d.png"
 
 # Check if conversion was successful
-if [ $? -eq 0 ]; then
+if ffmpeg -i "$1" "${output_dir}/frame_%08d.png"; then
     echo "Conversion completed successfully!"
     echo "Images saved in: $output_dir/"
 else

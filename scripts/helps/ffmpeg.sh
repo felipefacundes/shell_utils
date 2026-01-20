@@ -109,6 +109,8 @@ video2images()
 $ ffmpeg -i input.mp4 input_frames/frame_%08d.png
 
 $ ffmpeg -i input.mp4 -vsync 0 output_frames/%08d.png
+
+$ ffmpeg -i input.mp4 -vf fps=15 input_frames/frame_%08d.png
 EOF
 }
 
