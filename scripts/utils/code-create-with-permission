@@ -9,7 +9,7 @@ DOCUMENTATION
 file="$1"
 
 [[ -z "$file" ]] && echo "Usage: ${0##*/} new_file" && exit 1
-[[ -f "$file" ]] && [[ ! -x "$file" ]] && echo 'File is not executable!' && exit 1
+[[ -f "$file" ]] && [[ ! -x "$file" ]] && echo 'File is not executable!'
 
 if ! command -v code &>/dev/null && ! command -v codium &>/dev/null; then
     echo 'Install code or codium, then run this script again.'
@@ -17,11 +17,15 @@ if ! command -v code &>/dev/null && ! command -v codium &>/dev/null; then
 fi
 
 if command -v codium &>/dev/null; then
-    mycode=$(command -v codium); export mycode
+    mycode=$(command -v codium)
 else
-    mycode=$(command -v code); export mycode
+    mycode=$(command -v code)
 fi
 
-[[ ! -f "$file" ]] && touch "$file" 
-[[ ! -x "$file" ]] && chmod +x "$file"
+# If you are creating a new file, it will already be generated with permissions
+[[ ! -f "$file" ]] && touch "$file" && [[ ! -x "$file" ]] && chmod +x "$file"
+# If the file exists, permissions will only be given if the file has a shebang
+if grep -q "^#!" "$file"; then
+    [[ ! -x "$file" ]] && chmod +x "$file"
+fi
 "$mycode" "$file"

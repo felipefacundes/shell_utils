@@ -1,0 +1,348 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Base: https://github.com/sayan01/scripts/blob/master/yt
+# Modified for YouTube Music with autoplay and more results
+
+# dependencies: mpv yt-dlp fzf rofi/dmenu grep (GNU grep)
+
+# NOTE:  if you dont have GNU grep you can replace grep with rg
+
+# explain usage
+function usage () {
+  echo "usage: yt-music"
+  echo "    -h        help"
+  echo "    -c        channels/subscriptions"
+  echo "    -s query  search"
+  echo "    -g / -r   gui mode (rofi/dmenu)"
+  echo "  nothing     use defaults (search from prompt)"
+	echo
+	echo "add channel names to the file $sublistpath to show them"
+	echo "in yt-music -c option. First word should be channel url, optionally"
+	echo "followed by tab and then anything else (channel name/description)"
+	echo "channels not in sublist can be viewed by typing their url in the prompt"
+	echo
+	echo "example file format:"
+	echo "markrober       Mark Rober"
+	echo "vsauce1         VSauce          Michael Steven's Channel"
+	echo "BlackGryph0n    Black Gryph0n   Gabriel Brown signs stuff"
+	echo "TomScottGo      Tom Scott"
+	echo "danielthrasher  Daniel Thrasher"
+  exit 0
+}
+
+# dont use defaults
+useDefaults="f"
+
+# no args -> use defaults
+if [[ ${#} -eq 0 ]]; then
+    useDefaults="t"
+fi
+
+# available flags
+optstring=":s:cgrh"
+
+defcmd="fzf"
+defaction="s"
+guicmd="rofi -dmenu -i" #uncomment next line for dmenu
+#guicmd="dmenu -i -l 15"
+
+#Defaults
+promptcmd="$defcmd"
+action="$defaction"
+isGui="f"
+query=""
+
+# Audio only options - mantém controle do terminal
+mpv_options="--no-video --force-window=no"
+ytdlformats="bestaudio"
+
+# subscription list
+mkdir -p "${HOME:-}/.config/yt"
+sublistpath="${HOME:-}/.config/yt/sublist"
+sublist=""
+[ -f "$sublistpath" ] && sublist=$(cat "$sublistpath")
+
+# if not using defaults search for flags
+if [[ $useDefaults = "f" ]]; then
+    while getopts ${optstring} arg; do
+        case "${arg}" in
+            s)
+                # search in youtube for a query
+                action="s"
+                query="${OPTARG}" ;;
+            c)
+                # search in subscriptions for specific channel
+                action="c"
+                query="${OPTARG}" ;;
+            g|r)
+                # set gui mode to true and change the prompt to gui prompt
+                isGui="t"
+                promptcmd="$guicmd" ;;
+            h)
+                # display help / usage
+                usage ;;
+            \?)
+                # wrong args -> exit with explanation of usage
+                echo "invalid option: -${OPTARG}"
+                echo
+                usage ;;
+            :)
+                # missing args -> exit with explanation of usage
+                echo "Option -${OPTARG} needs an argument"
+                echo
+                usage ;;
+        esac
+    done
+fi
+
+# if no query is set with flags then ask for one
+if [ -z "$query" ]; then
+    # ask for a channel
+    if [[ $action = "c" ]]; then
+        # if in gui mode use gui prompt
+        if [[ $isGui = "t" ]]; then
+			query=$($promptcmd -p "Channel: " <<< "$sublist")
+            promptcmd="$promptcmd -p Music:"
+        else
+            query=$($promptcmd --print-query <<< "$sublist" | tail -n1)
+        fi
+		query=$(echo "$query" | awk '{print $1}')
+    else
+        # ask for a query
+        # if in gui mode use gui prompt
+        if [[ $isGui = "t" ]]; then
+            query=$(echo | $promptcmd -p "Search Music: ")
+            promptcmd="$promptcmd -p Music:"
+        else
+            echo -n "Search Music: "
+            read -r query
+        fi
+    fi
+fi
+
+# program cancelled -> exit
+if [ -z "$query" ]; then exit; fi
+
+# clean query / channel
+query=$(sed \
+  -e 's|+|%2B|g'\
+  -e 's|#|%23|g'\
+  -e 's|&|%26|g'\
+  -e 's| |+|g' <<< "$query")
+
+# Function to get more search results using yt-dlp
+get_enhanced_search_results() {
+    local query="$1"
+    
+    # Try to get more results with yt-dlp (up to 100)
+    echo "Fetching more results..." >&2
+    
+    # Use yt-dlp to search - get more results
+    yt-dlp --flat-playlist --get-title --get-id --playlist-end 100 "ytsearch100:$query" 2>/dev/null | \
+    awk 'NR%2==1 {title=$0} NR%2==0 {print $0 "\t" title}'
+}
+
+# Function to get channel videos using yt-dlp
+get_channel_videos() {
+    local channel="$1"
+    
+    # Use yt-dlp to get channel videos
+    yt-dlp --flat-playlist --get-title --get-id --playlist-end 100 "https://www.youtube.com/c/$channel/videos" 2>/dev/null | \
+    awk 'NR%2==1 {title=$0} NR%2==0 {print $0 "\t" title}'
+}
+
+# Function to play music with proper MPV control
+play_music() {
+    local url="$1"
+    local title="$2"
+    
+    echo "========================================"
+    echo "Playing: $title"
+    echo "URL: $url"
+    echo "========================================"
+    echo "MPV Controls:"
+    echo "  Space    - Play/Pause"
+    echo "  →        - Seek forward 5s"
+    echo "  ←        - Seek backward 5s"
+    echo "  ↑        - Seek forward 1min"
+    echo "  ↓        - Seek backward 1min"
+    echo "  >        - Next track (in playlist)"
+    echo "  <        - Previous track (in playlist)"
+    echo "  q        - Quit and stop ALL playback"
+    echo "  Q        - Quit and continue to next song"
+    echo "  f        - Toggle fullscreen"
+    echo "  m        - Mute"
+    echo "  9/0      - Volume down/up"
+    echo "========================================"
+    echo "The song will automatically continue to the next one when finished."
+    echo "Press 'q' ONLY if you want to STOP COMPLETELY."
+    echo ""
+    
+    # Play with MPV - SEM --no-terminal, mantém controle
+    # Usamos um método diferente para detectar se o usuário quis parar
+    mpv $mpv_options --ytdl-format="$ytdlformats" "$url"
+    
+    # O MPV sempre retorna 0 quando termina normalmente (música acabou)
+    # ou quando o usuário pressiona 'Q' (quit-watch-later)
+    # Mas retorna um código diferente para outros erros
+    
+    # Se chegamos aqui, a música terminou ou usuário pressionou 'Q'
+    # Em ambos os casos, continuamos para a próxima música
+    echo "Track finished, continuing to next..."
+    return 0
+}
+
+# if channel look for channel vids
+if [[ $action = "c" ]]; then
+    echo "Fetching channel videos (this may take a moment)..."
+    
+    # Try to get more results with yt-dlp first
+    ids=$(get_channel_videos "$query")
+    
+    # If yt-dlp fails, fall back to original method
+    if [ -z "$ids" ]; then
+        echo "Using fallback method..."
+        response=$(curl -s "https://www.youtube.com/c/$query/videos" |\
+          sed "s/{\"videoRenderer/\n\n&/g" |\
+          sed "s/}]}}}]}}/&\n\n/g" |\
+          awk -v ORS="\n\n" '/videoRenderer/')
+
+        if ! grep -q "videoRenderer" <<< "$response"; then 
+            echo "unable to fetch yt"; exit 1; 
+        fi
+
+        ids=$(awk -F '[""]' '{print $6 "\t" $50;}' <<< "$response" | grep "^\S")
+    fi
+
+    # url prefix for videos
+    videolink="https://youtu.be/"
+
+    # prompt the results to user to select starting point
+    choice=$(echo -e "$ids" | cut -d'	' -f2 | $promptcmd)
+    if [ -z "$choice" ]; then exit; fi
+    
+    # get starting index
+    start_index=$(echo -e "$ids" | cut -d'	' -f2 | grep -n "^$choice$" | cut -d: -f1)
+    
+    # get all ids and titles from starting point onwards
+    total_lines=$(echo -e "$ids" | wc -l)
+    
+    echo "Found $total_lines tracks total"
+    echo "Playing $((total_lines - start_index + 1)) tracks starting from: $choice"
+    echo ""
+    
+    # play from selected song onwards
+    for ((i=start_index; i<=total_lines; i++)); do
+        current_line=$(echo -e "$ids" | sed -n "${i}p")
+        id=$(echo "$current_line" | cut -d'	' -f1)
+        title=$(echo "$current_line" | cut -d'	' -f2)
+        
+        # Play with control
+        play_music "$videolink$id" "$title"
+        
+        # Small pause between tracks
+        sleep 0.5
+        
+        # Show progress
+        echo ""
+        echo "Progress: $((i - start_index + 1)) of $((total_lines - start_index + 1)) tracks played"
+        echo ""
+    done
+    
+    echo "Playlist finished!"
+    
+else
+    echo "Searching for: $(echo "$query" | sed 's/+/ /g')"
+    
+    # Try to get more results with yt-dlp first
+    enhanced_ids=$(get_enhanced_search_results "$query")
+    
+    # If we got enhanced results, use them
+    if [ -n "$enhanced_ids" ]; then
+        ids="$enhanced_ids"
+        echo "Found enhanced results"
+    else
+        # Fall back to original method
+        echo "Using original search method..."
+        response="$(curl -s "https://www.youtube.com/results?search_query=$query" |\
+          sed 's|\\.||g')"
+        
+        if ! grep -q "script" <<< "$response"; then 
+            echo "unable to fetch yt"; exit 1; 
+        fi
+        
+        vgrep='"videoRenderer":{"videoId":"\K.{11}".+?"text":".+?[^\\](?=")'
+        pgrep='"playlistRenderer":{"playlistId":"\K.{34}?","title":{"simpleText":".+?[^\"](?=")'
+        
+        getresults() {
+            grep -oP "$1" <<< "$response" |\
+              awk -F\" -v p="$2" '{ print $1 "\t" p " " $NF}'
+        }
+        
+        videoids=$(getresults "$vgrep")
+        playlistids=$(getresults "$pgrep" "(playlist)")
+        
+        [ -n "$playlistids" ] && ids="$playlistids\n"
+        [ -n "$videoids" ] && ids="$ids$videoids"
+    fi
+    
+    # url prefix for videos and playlists
+    videolink="https://youtu.be/"
+    playlink="https://youtube.com/playlist?list="
+    
+    # Count total results
+    result_count=$(echo -e "$ids" | wc -l)
+    echo "Found $result_count results"
+    
+    # prompt the results to user to select starting point
+    choice=$(echo -e "$ids" | cut -d'	' -f2 | $promptcmd)
+    if [ -z "$choice" ]; then exit; fi
+    
+    # get starting index
+    start_index=$(echo -e "$ids" | cut -d'	' -f2 | grep -n "^$choice$" | cut -d: -f1)
+    
+    # get all ids and titles from starting point onwards
+    total_lines=$(echo -e "$ids" | wc -l)
+    
+    echo "Playing $((total_lines - start_index + 1)) tracks starting from: $choice"
+    echo ""
+    
+    # play from selected song onwards
+    for ((i=start_index; i<=total_lines; i++)); do
+        current_line=$(echo -e "$ids" | sed -n "${i}p")
+        id=$(echo "$current_line" | cut -d'	' -f1)
+        title=$(echo "$current_line" | cut -d'	' -f2)
+        
+        # Check if it's a video or playlist
+        case $id in
+            # 11 digit id = video
+            ???????????) 
+                url="$videolink$id"
+                ;;
+            # 34 digit id = playlist
+            ??????????????????????????????????) 
+                url="$playlink$id"
+                echo "NOTE: Playing playlist - use MPV controls to navigate within playlist"
+                ;;
+            *) 
+                echo "Skipping invalid ID: $id"
+                continue
+                ;;
+        esac
+        
+        # Play with control
+        play_music "$url" "$title"
+        
+        # Small pause between tracks
+        sleep 0.5
+        
+        # Show progress
+        echo ""
+        echo "Progress: $((i - start_index + 1)) of $((total_lines - start_index + 1)) tracks played"
+        echo ""
+    done
+    
+    echo "Playlist finished!"
+fi

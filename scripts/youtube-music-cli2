@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Base: https://github.com/sayan01/scripts/blob/master/yt
+# Modified for YouTube Music with autoplay and yt-dlp
+
+# dependencies: mpv yt-dlp fzf rofi/dmenu grep (GNU grep)
+
+# NOTE:  if you dont have GNU grep you can replace grep with rg
+
+# Number of search results to fetch
+MAX_RESULTS=100
+
+# explain usage
+function usage () {
+  echo "usage: yt-music"
+  echo "    -h        help"
+  echo "    -c        channels/subscriptions"
+  echo "    -s query  search"
+  echo "    -g / -r   gui mode (rofi/dmenu)"
+  echo "    -n NUM    number of results (default: $MAX_RESULTS)"
+  echo "  nothing     use defaults (search from prompt)"
+	echo
+	echo "add channel names to the file $sublistpath to show them"
+	echo "in yt-music -c option. First word should be channel url, optionally"
+	echo "followed by tab and then anything else (channel name/description)"
+	echo "channels not in sublist can be viewed by typing their url in the prompt"
+	echo
+	echo "example file format:"
+	echo "markrober       Mark Rober"
+	echo "vsauce1         VSauce          Michael Steven's Channel"
+	echo "BlackGryph0n    Black Gryph0n   Gabriel Brown signs stuff"
+	echo "TomScottGo      Tom Scott"
+	echo "danielthrasher  Daniel Thrasher"
+  exit 0
+}
+
+# dont use defaults
+useDefaults="f"
+
+# no args -> use defaults
+if [[ ${#} -eq 0 ]]; then
+    useDefaults="t"
+fi
+
+# available flags
+optstring=":s:c:n:grh"
+
+defcmd="fzf"
+defaction="s"
+guicmd="rofi -dmenu -i" #uncomment next line for dmenu
+#guicmd="dmenu -i -l 15"
+
+#Defaults
+promptcmd="$defcmd"
+action="$defaction"
+isGui="f"
+query=""
+
+# Always audio only for music mode
+mpv_options="--no-video"
+ytdlformats="bestaudio"
+
+# subscription list
+mkdir -p "${HOME:-}/.config/yt"
+sublistpath="${HOME:-}/.config/yt/sublist"
+sublist=""
+[ -f "$sublistpath" ] && sublist=$(cat "$sublistpath")
+
+# if not using defaults search for flags
+if [[ $useDefaults = "f" ]]; then
+    while getopts ${optstring} arg; do
+        case "${arg}" in
+            s)
+                # search in youtube for a query
+                action="s"
+                query="${OPTARG}" ;;
+            c)
+                # search in subscriptions for specific channel
+                action="c"
+                query="${OPTARG}" ;;
+            n)
+                # set max number of results
+                MAX_RESULTS="${OPTARG}" ;;
+            g|r)
+                # set gui mode to true and change the prompt to gui prompt
+                isGui="t"
+                promptcmd="$guicmd" ;;
+            h)
+                # display help / usage
+                usage ;;
+            \?)
+                # wrong args -> exit with explanation of usage
+                echo "invalid option: -${OPTARG}"
+                echo
+                usage ;;
+            :)
+                # missing args -> exit with explanation of usage
+                echo "Option -${OPTARG} needs an argument"
+                echo
+                usage ;;
+        esac
+    done
+fi
+
+# if no query is set with flags then ask for one
+if [ -z "$query" ]; then
+    # ask for a channel
+    if [[ $action = "c" ]]; then
+        # if in gui mode use gui prompt
+        if [[ $isGui = "t" ]]; then
+			query=$($promptcmd -p "Channel: " <<< "$sublist")
+            promptcmd="$promptcmd -p Music:"
+        else
+            query=$($promptcmd --print-query <<< "$sublist" | tail -n1)
+        fi
+		query=$(echo "$query" | awk '{print $1}')
+    else
+        # ask for a query
+        # if in gui mode use gui prompt
+        if [[ $isGui = "t" ]]; then
+            query=$(echo | $promptcmd -p "Search Music: ")
+            promptcmd="$promptcmd -p Music:"
+        else
+            echo -n "Search Music: "
+            read -r query
+        fi
+    fi
+fi
+
+# program cancelled -> exit
+if [ -z "$query" ]; then exit; fi
+
+# if channel look for channel vids
+if [[ $action = "c" ]]; then
+    echo "Fetching channel videos..."
+    
+    # Use yt-dlp to get channel videos
+    channel_url="https://www.youtube.com/c/$query/videos"
+    
+    # Get video IDs and titles using yt-dlp
+    mapfile -t video_data < <(yt-dlp --flat-playlist --print "%(id)s	%(title)s" "$channel_url" 2>/dev/null | head -n "$MAX_RESULTS")
+    
+    if [ ${#video_data[@]} -eq 0 ]; then
+        echo "No videos found or unable to fetch channel"
+        exit 1
+    fi
+    
+    # Format for display
+    ids=""
+    for line in "${video_data[@]}"; do
+        ids+="$line\n"
+    done
+    
+    # url prefix for videos
+    videolink="https://youtu.be/"
+
+    # prompt the results to user to select starting point
+    choice=$(echo -e "$ids" | cut -d'	' -f2 | $promptcmd)
+    if [ -z "$choice" ]; then exit; fi
+    
+    # get starting index
+    start_index=$(echo -e "$ids" | cut -d'	' -f2 | grep -n "^$choice$" | cut -d: -f1 | head -n1)
+    
+    # get all ids and titles from starting point onwards
+    total_lines=$(echo -e "$ids" | wc -l)
+    
+    # play from selected song onwards
+    for ((i=start_index; i<=total_lines; i++)); do
+        current_line=$(echo -e "$ids" | sed -n "${i}p")
+        id=$(echo "$current_line" | cut -d'	' -f1)
+        title=$(echo "$current_line" | cut -d'	' -f2)
+        echo -e "Now Playing [$i/$total_lines]: $title\t($id)"
+        mpv "$videolink$id" $mpv_options --ytdl-format="$ytdlformats"
+    done
+else
+    # Search using yt-dlp
+    echo "Searching for: $query (fetching up to $MAX_RESULTS results)..."
+    
+    # Use yt-dlp to search YouTube
+    mapfile -t video_data < <(yt-dlp --flat-playlist --print "%(id)s	%(title)s" "ytsearch$MAX_RESULTS:$query" 2>/dev/null)
+    
+    if [ ${#video_data[@]} -eq 0 ]; then
+        echo "No results found"
+        exit 1
+    fi
+    
+    echo "Found ${#video_data[@]} results"
+    
+    # Format for display
+    ids=""
+    for line in "${video_data[@]}"; do
+        ids+="$line\n"
+    done
+    
+    # url prefix for videos
+    videolink="https://youtu.be/"
+    
+    # prompt the results to user to select starting point
+    choice=$(echo -e "$ids" | cut -d'	' -f2 | $promptcmd)
+    if [ -z "$choice" ]; then exit; fi
+    
+    # get starting index
+    start_index=$(echo -e "$ids" | cut -d'	' -f2 | grep -n "^$choice$" | cut -d: -f1 | head -n1)
+    
+    # get all ids and titles from starting point onwards
+    total_lines=$(echo -e "$ids" | wc -l)
+    
+    # play from selected song onwards
+    for ((i=start_index; i<=total_lines; i++)); do
+        current_line=$(echo -e "$ids" | sed -n "${i}p")
+        id=$(echo "$current_line" | cut -d'	' -f1)
+        title=$(echo "$current_line" | cut -d'	' -f2)
+        echo -e "Now Playing [$i/$total_lines]: $title\t($id)"
+        mpv "$videolink$id" $mpv_options --ytdl-format="$ytdlformats"
+    done
+fi
