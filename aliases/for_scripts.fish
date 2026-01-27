@@ -7,6 +7,7 @@ alias juros_compostos='~/.shell_utils/scripts/compound-interest'
 alias video_select="~/.shell_utils/scripts/gpu-select"
 
 alias lowriter="~/.shell_utils/scripts/utils/lowriter"
+alias lwr="lowriter"
 
 alias lgyt='~/.shell_utils/scripts/lgtv-youtube-id'
 

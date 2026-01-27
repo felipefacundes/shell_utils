@@ -9,12 +9,18 @@ exec 2>/dev/null
 file="$1"
 delay=30 # Time for the process to start
 
+if ! command -v lowriter &>/dev/null; then
+    echo "Install LibreOffice"
+    exit 1
+fi
+
 # Check if any argument was passed
 if [[ -z "$file" ]]; then
     lowriter &
     disown
     exit 0
 fi
+
 
 # If the file doesn't exist and has a supported extension
 if [[ ! -f "$file" ]]; then

@@ -14,7 +14,7 @@ The strengths of the script include:
 either using the current monitor resolution or setting a custom resolution.
 2. Frame rate configuration: The script allows the user to set the screen capture frame rate, with a default value of 15 fps.
 3. Video codec configuration: The script allows the user to choose between different video codecs, including libx264, libx265, 
-libvpx-vp9, mpeg4, mpeg2video, and libaom-av1.
+libvpx-vp9, mpeg4, mpeg2video, and libsvtav1.
 4. Audio sampling rate configuration: The script allows the user to set the audio sampling rate for the screen capture, 
 with a default value of 22050 Hz.
 5. Muxing support: The script supports muxing functionality, which allows the user to define the maximum muxing queue size.
@@ -30,23 +30,27 @@ DOCUMENTATION
 # Define a signal handler to capture SIGINT (Ctrl+C)
 trap 'kill $(jobs -p)' SIGINT #SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
 
+# Function to detect Wayland session
+function is_wayland {
+    [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]] || [[ -n "$WAYLAND_DISPLAY" ]]
+}
+
 # Função de ajuda
 function show_help {
     cat <<EOF
 Usage: ${0##*/} [args] -o video.ext
 Options:
-    -mon, -monitor <resolution>  Set monitor resolution (default: current)
-    -vf, -video_scale <scale>    Set video scale (e.g., 1920x1080)
-    -fr, -framerate <fps>        Set video framerate (default: 15)
-    -ar, -audio_rate <rate>      Set audio sampling rate (default: 22050)
-    -muxing, -muxing_enabled <on/off>  Enable or disable video muxing (default: off)
-    -max_muxing <value>          Set maximum muxing queue size (default: 9999)
-    -vc, -video_codec <codec>    Set video codec (default: libx264)
-    -list, -codec_list           List available video codecs
-    -o <output_file>             Set output file path and name
+    -mon, -monitor <resolution>         Set monitor resolution (default: current)
+    -vf, -video_scale <scale>           Set video scale (e.g., 1920x1080)
+    -fr, -framerate <fps>               Set video framerate (default: 15)
+    -ar, -audio_rate <rate>             Set audio sampling rate (default: 22050)
+    -muxing, -muxing_enabled <on/off>   Enable or disable video muxing (default: off)
+    -max_muxing <value>                 Set maximum muxing queue size (default: 9999)
+    -vc, -video_codec <codec>           Set video codec (default: libx264)
+    -list, -codec_list                  List available video codecs
+    -o <output_file>                    Set output file path and name (optional)
 EOF
 }
-
 
 function resolution_current_monitor {
     xrandr --current | grep '*' | uniq | awk '{print $1}'
@@ -55,15 +59,33 @@ function resolution_current_monitor {
 function codecs_list {
   
     cat <<'EOF'
-libx264 (H.264 codec, MP4 or MKV format)
-libx265 (H.265 codec, MP4 or MKV format)
+libx264 (H.264 codec, MP4 or MKV format) - Default
+libx265 (H.265/HEVC codec, MP4 or MKV format)
+libsvtav1 (AV1 codec, MP4 or MKV format) - Fast AV1 encoding
 libvpx-vp9 (VP9 codec, WebM format)
 mpeg4 (MPEG-4 codec, MP4 format)
 mpeg2video (MPEG-2 codec, MPG format)
-libaom-av1 (AV1 codec, MKV format)
+hevc_nvenc (NVIDIA HEVC hardware encoding)
+av1_nvenc (NVIDIA AV1 hardware encoding)
 EOF
 }
 
+# Function to get default audio source for Wayland
+function get_wayland_audio_source {
+    LANG=en pactl list sources | awk '/Name:/ {print $2}' | head -n1 | tail -n1
+}
+
+# Function to check if a command exists
+function command_exists {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to check if FFmpeg has specific codec support
+function ffmpeg_has_codec {
+    ffmpeg -hide_banner -encoders 2>/dev/null | grep -i "$1" >/dev/null 2>&1
+}
+
+# Default variables
 mon=${mon:-$(resolution_current_monitor)}
 framerate=${framerate:-15}
 muxing=${muxing:-9999}
@@ -72,48 +94,45 @@ arate=${arate:-44100}
 codec=${codec:-"libx264"}
 default_folder="${HOME}/Videos/Capture"
 
-[[ ! -d "$default_folder" ]] && mkdir -p "$default_folder"
-output_file=${output_file:-"${default_folder}/Screen_$(date +'%Y-%m-%d_%H:%M:%S').mp4"}
-
 # Parse dos argumentos
 while [[ $# -gt 0 ]]; do
   key="$1"
 
   case $key in
-    -mon|-monitor)
+    "-mon"|"-monitor")
       mon="$2"
       shift 2
       ;;
-    -vf|-video_scale)
+    "-vf"|"-video_scale")
       vf_scale="${2//x/:}"
       shift 2
       ;;
-    -fr|-framerate)
+    "-fr"|"-framerate")
       framerate="$2"
       shift 2
       ;;
-    -ar|-audio_rate)
+    "-ar"|"-audio_rate")
       arate="$2"
       shift 2
       ;;
-    -muxing|-muxing_enabled)
+    "-muxing"|"-muxing_enabled")
       if_muxing="$2"
       shift 2
       ;;
-    -max_muxing)
+    "-max_muxing")
       muxing="$2"
       shift 2
       ;;
-    -vc|-video_codec)
+    "-vc"|"-video_codec")
       codec="$2"
       shift 2
       ;;
-    -list|-codec_list)
+    "-list"|"-codec_list")
       codecs_list
       shift
       exit 0
       ;;
-    -o)
+    "-o"|"--output")
       output_file="$2"
       shift 2
       ;;
@@ -123,6 +142,108 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Create default folder if it doesn't exist
+[[ ! -d "$default_folder" ]] && mkdir -p "$default_folder"
+
+# Set output file if not specified by user
+output_file=${output_file:-"${default_folder}/Screen_$(date +'%Y-%m-%d_%H:%M:%S').mp4"}
+
+# Check if Wayland is being used
+if is_wayland; then
+    # Check if wf-recorder is already running
+    wf_rec=$(pidof wf-recorder)
+    
+    if [[ -z "${wf_rec}" ]]; then
+        echo "Detected Wayland session. Using wf-recorder..."
+        
+        # Check if wf-recorder is installed
+        if ! command_exists wf-recorder; then
+            echo "Error: wf-recorder is not installed."
+            echo "Please install wf-recorder to use this script on Wayland."
+            exit 1
+        fi
+        
+        # Determine audio source
+        audio_source=$(get_wayland_audio_source)
+        
+        # Determine codec based on file extension for wf-recorder
+        filename=$(basename "$output_file")
+        extension="${filename##*.}"
+        
+        # Default codec for wf-recorder
+        wf_codec="libx265"
+        
+        # Map codecs for wf-recorder compatibility
+        case "$codec" in
+            libx265|hevc_nvenc)
+                wf_codec="libx265"
+                ;;
+            libsvtav1|av1_nvenc)
+                wf_codec="av1"
+                ;;
+            libvpx-vp9)
+                wf_codec="vp9"
+                ;;
+        esac
+        
+        # Handle scale option if provided
+        scale_option=""
+        if [[ -n "$vf_scale" ]]; then
+            # Convert scale format from ffmpeg to wf-recorder format
+            wf_scale="${vf_scale//:/x}"
+            scale_option="-g ${wf_scale}"
+        fi
+        
+        # Build wf-recorder command
+        echo "Recording to: $output_file"
+        echo "Using codec: $wf_codec"
+        echo "Audio source: $audio_source"
+        
+        # Execute wf-recorder with appropriate options
+        wf-recorder -c "$wf_codec" --audio="$audio_source" $scale_option -f "$output_file"
+        
+        exit 0
+    else
+        echo "wf-recorder is already running (PID: ${wf_rec})"
+        exit 1
+    fi
+fi
+
+# Original X11/FFmpeg code
+echo "Using X11 session with FFmpeg..."
+
+# Check if ffmpeg is installed
+if ! command_exists ffmpeg; then
+    echo "Error: ffmpeg is not installed."
+    echo "Please install ffmpeg to use this script on X11."
+    exit 1
+fi
+
+# Check for specific codec support
+case "$codec" in
+    "hevc_nvenc"|"av1_nvenc")
+        if ! ffmpeg_has_codec "$codec"; then
+            echo "Error: Codec '$codec' is not available in your FFmpeg installation."
+            echo "Make sure you have NVIDIA drivers and FFmpeg with NVENC support."
+            exit 1
+        fi
+        ;;
+    "libsvtav1")
+        if ! ffmpeg_has_codec "libsvtav1"; then
+            echo "Error: Codec 'libsvtav1' is not available in your FFmpeg installation."
+            echo "You may need to compile FFmpeg with --enable-libsvtav1 or install a version with SVT-AV1 support."
+            exit 1
+        fi
+        ;;
+    "libx265")
+        if ! ffmpeg_has_codec "libx265"; then
+            echo "Error: Codec 'libx265' is not available in your FFmpeg installation."
+            echo "You may need to install libx265 development packages and recompile FFmpeg."
+            exit 1
+        fi
+        ;;
+esac
 
 # https://stackoverflow.com/questions/39887869/ffmpeg-whatsapp-video-format-not-supported
 if [[ "$if_muxing" == "on" ]]; then
@@ -139,6 +260,38 @@ elif [[ "$codec" == "libx264" ]]; then
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p "$output_file"
+    fi
+
+elif [[ "$codec" == "libx265" ]]; then
+    # Optimized parameters for libx265 (HEVC)
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx265 -preset ultrafast -crf 28 -x265-params log-level=error -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx265 -preset ultrafast -crf 28 -x265-params log-level=error -pix_fmt yuv420p "$output_file"
+    fi
+
+elif [[ "$codec" == "libsvtav1" ]]; then
+    # Optimized parameters for libsvtav1 (fast AV1 encoding)
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libsvtav1 -preset 8 -crf 35 -pix_fmt yuv420p -svtav1-params log-level=error -vf scale="$vf_scale" "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libsvtav1 -preset 8 -crf 35 -pix_fmt yuv420p -svtav1-params log-level=error "$output_file"
+    fi
+
+elif [[ "$codec" == "hevc_nvenc" ]]; then
+    # Optimized parameters for NVIDIA HEVC hardware encoding
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq 28 -qmin 0 -qmax 51 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq 28 -qmin 0 -qmax 51 -b:v 0 -pix_fmt yuv420p "$output_file"
+    fi
+
+elif [[ "$codec" == "av1_nvenc" ]]; then
+    # Optimized parameters for NVIDIA AV1 hardware encoding
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v av1_nvenc -preset p7 -tune hq -rc vbr -cq 32 -qmin 0 -qmax 63 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v av1_nvenc -preset p7 -tune hq -rc vbr -cq 32 -qmin 0 -qmax 63 -b:v 0 -pix_fmt yuv420p "$output_file"
     fi
 
 else
