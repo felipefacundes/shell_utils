@@ -2,9 +2,9 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-if [[ ! $DISPLAY && ${XDG_VTNR} != 0 ]]; then
-if [[ "${XDG_SESSION_TYPE}" = [Tt][Tt][Yy] ]]; then
-#
+[[ $DISPLAY && ${XDG_VTNR} == 0 ]] && exit
+[[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]] && exit
+
 ### THEMES
 GTK_THEME="$GTK_THEME"; export GTK_THEME
 GTK_MODULES="$GTK_MODULES"; export GTK_MODULES
@@ -304,6 +304,3 @@ case "$option" in
         fi
     ;;
 esac
-
-fi
-fi
