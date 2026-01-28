@@ -2,7 +2,7 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-[[ $DISPLAY && ${XDG_VTNR} == 0 ]] && exit
+{ [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && exit
 [[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]] && exit
 
 ### THEMES
