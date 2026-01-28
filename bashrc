@@ -262,7 +262,13 @@ notifications() {
 	[[ "$NOTIFY" == 1 ]] && notify-send "Command finished" "Status: $exit_status"
 }
 
-PROMPT_COMMAND="notifications; $PROMPT_COMMAND; fix_bash_history"
+_prompt_command() {
+    notifications
+    "$@"
+    fix_bash_history
+}
+
+PROMPT_COMMAND="_prompt_command $PROMPT_COMMAND"
 
 ############################################################################
 

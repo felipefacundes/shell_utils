@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Shell script to configure seatd for Sway on Arch Linux
+Verifies user is in 'seat' group and seatd service is running
+DOCUMENTATION
+
+set -e  # Exit immediately if any command fails
+
+# Color codes for output formatting
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'  # No Color
+
+# Function to print colored status messages
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to check if user is in seat group
+check_seat_group() {
+    print_status "Checking if user $USER is in 'seat' group..."
+    
+    if groups "$USER" | grep -q '\bseat\b'; then
+        print_status "User $USER is already a member of 'seat' group."
+        return 0
+    else
+        print_warning "User $USER is NOT in 'seat' group."
+        return 1
+    fi
+}
+
+# Function to add user to seat group
+add_to_seat_group() {
+    print_status "Adding user $USER to 'seat' group..."
+    
+    # Check if we have sudo privileges
+    if ! sudo -v 2>/dev/null; then
+        print_error "Need sudo privileges to add user to seat group."
+        print_error "Please run this script with sudo or as root."
+        exit 1
+    fi
+    
+    if sudo usermod -aG seat "$USER"; then
+        print_status "Successfully added $USER to 'seat' group."
+        print_warning "NOTE: You need to logout and login again for group changes to take effect."
+        return 0
+    else
+        print_error "Failed to add user to 'seat' group."
+        return 1
+    fi
+}
+
+# Function to check seatd service status
+check_seatd_service() {
+    print_status "Checking seatd service status..."
+    
+    if systemctl is-active --quiet seatd 2>/dev/null; then
+        print_status "seatd service is already running."
+        return 0
+    else
+        print_warning "seatd service is NOT running."
+        return 1
+    fi
+}
+
+# Function to check if seatd service is enabled
+check_seatd_enabled() {
+    if systemctl is-enabled --quiet seatd 2>/dev/null; then
+        print_status "seatd service is already enabled."
+        return 0
+    else
+        print_warning "seatd service is NOT enabled."
+        return 1
+    fi
+}
+
+# Function to enable and start seatd service
+enable_start_seatd() {
+    print_status "Enabling and starting seatd service..."
+    
+    # Check if we have sudo privileges
+    if ! sudo -v 2>/dev/null; then
+        print_error "Need sudo privileges to manage seatd service."
+        print_error "Please run this script with sudo or as root."
+        exit 1
+    fi
+    
+    # Enable the service (starts automatically on boot)
+    if sudo systemctl enable seatd; then
+        print_status "Successfully enabled seatd service."
+    else
+        print_error "Failed to enable seatd service."
+        return 1
+    fi
+    
+    # Start the service immediately
+    if sudo systemctl start seatd; then
+        print_status "Successfully started seatd service."
+        return 0
+    else
+        print_error "Failed to start seatd service."
+        return 1
+    fi
+}
+
+# Main execution
+main() {
+    print_status "Starting seatd configuration check..."
+    print_status "Current user: $USER"
+    
+    # Check and add user to seat group if needed
+    if ! check_seat_group; then
+        add_to_seat_group
+    fi
+    
+    echo ""
+    
+    # Check and enable/start seatd service if needed
+    service_needs_action=false
+    
+    if ! check_seatd_service; then
+        service_needs_action=true
+    fi
+    
+    if ! check_seatd_enabled; then
+        service_needs_action=true
+    fi
+    
+    if [ "$service_needs_action" = true ]; then
+        enable_start_seatd
+    else
+        print_status "seatd service is already properly configured."
+    fi
+    
+    echo ""
+    
+    # Summary
+    print_status "Configuration check completed!"
+    
+    # Final instructions
+    if groups "$USER" | grep -q '\bseat\b' && systemctl is-active --quiet seatd 2>/dev/null; then
+        print_status "✓ User is in 'seat' group"
+        print_status "✓ seatd service is running"
+        echo ""
+        print_status "IMPORTANT: If you were just added to the 'seat' group,"
+        print_status "you need to LOGOUT and LOGIN AGAIN for the changes to take effect."
+        print_status "After that, Sway should be able to obtain necessary privileges."
+    else
+        print_warning "Some configuration might still be needed."
+        print_warning "Check the messages above for any required actions."
+    fi
+}
+
+# Run main function
+main

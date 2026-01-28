@@ -1,6 +1,7 @@
-#!/bin/zsh
+#!/usr/bin/env zsh
 # License: GPLv3
 # Credits: Felipe Facundes
+
 if [[ ! $DISPLAY && ${XDG_VTNR} != 0 ]]; then
 if [[ "${XDG_SESSION_TYPE}" = [Tt][Tt][Yy] ]]; then
 #
@@ -47,7 +48,7 @@ touch ~/.startx_log
 clear
 
 local_count() {
-    echo "${shell_color_palette[bgreen]}Exiting:${shell_color_palette[color_off]}"
+    echo -e "${shell_color_palette[bgreen]}Exiting:${shell_color_palette[color_off]}"
     for i in {1..2}; do
         echo -n "${i}. "
         sleep 0.4
@@ -82,7 +83,17 @@ wm_wayland() {
     echo -e "${wm_wayland} log - $(date +'%d/%m/%Y - %T')\n\
 ------------------------------------\n\n" >> "${wms_logs_dir}"/"${wm_wayland}_$(date +'%d-%m-%Y - %T')".log > /dev/null 2>&1
 
-    eval "${wm_wayland}" "$@" >> "${wms_logs_dir}"/"${wm_wayland}_$(date +'%d-%m-%Y - %T')".log > /dev/null 2>&1
+    if [[ -n "$ZSH_VERSION" ]]; then
+        local cmd=("${(@s: :)wm_wayland}")
+    else
+        local cmd=(${wm_wayland})
+    fi
+    
+    if [[ "$wm_wayland" == "Hyprland" ]]; then
+        Exec=env WLR_RENDERER=vulkan start-hyprland "$@" >> "${wms_logs_dir}"/"${wm_wayland}_$(date +'%d-%m-%Y - %T')".log > /dev/null 2>&1
+    else
+        Exec=env WLR_RENDERER=vulkan "${cmd[@]}" "$@" >> "${wms_logs_dir}"/"${wm_wayland}_$(date +'%d-%m-%Y - %T')".log > /dev/null 2>&1
+    fi
 
 }
 
@@ -90,14 +101,12 @@ standard_wm() {
     standard_wm_conf="${HOME}/.standard_wm.conf"
     [[ ! -f "${standard_wm_conf}" ]] && touch "${standard_wm_conf}"
 
-    if [ "${wm_wayland}" ]
-    then
+    if [ "${wm_wayland}" ]; then
         echo 'protocol=1' | tee "${standard_wm_conf}" > /dev/null 2>&1
         echo -e "swm=${wm_wayland}" | tee -a "${standard_wm_conf}" > /dev/null 2>&1
     fi
 
-    if [ "${start_wm}" ]
-    then
+    if [ "${start_wm}" ]; then
         echo 'protocol=2' | tee "${standard_wm_conf}" > /dev/null 2>&1
         echo -e "swm=${start_wm}" | tee -a "${standard_wm_conf}" > /dev/null 2>&1
     fi
@@ -142,7 +151,7 @@ case "$option" in
                     exit
                 ;;
                 "2")
-                    wm_wayland='sway --unsupported-gpu'
+                    wm_wayland="sway --unsupported-gpu"
                     standard_wm
                     wm_wayland
                     local_count
@@ -272,7 +281,7 @@ case "$option" in
     ;;
     "3")
         echo -e "${shell_color_palette[bgreen]}Welcome terminal!${shell_color_palette[color_off]}\n"
-        zsh
+        $SHELL
         local_count
         source "${file}"
     ;;
