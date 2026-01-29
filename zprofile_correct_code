@@ -1,10 +1,10 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 # License: GPLv3
 # Credits: Felipe Facundes
 
 # Exit if not running in a TTY or if stdin is not a terminal
 { [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && exit
-[[ "${XDG_SESSION_TYPE,,}" != "tty" ]] && exit
+[[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]] && exit
 
 temp_log=/tmp/profile-with-select-wm.log
 # Save original stderr to file descriptor 3
@@ -63,7 +63,7 @@ ansi_colors=("$bwhite" "$bgreen" "$byellow" "$bcyan" "$ipurple" "$iyellow" "$cya
 export SSH_AUTH_SOCK
 
 # Reference to this file for re-sourcing
-file=~/.bash_profile
+file=~/.zprofile
 
 # Directory to store window manager logs
 export wms_logs_dir="${HOME}/.WMs_logs_dir"
@@ -139,20 +139,20 @@ wm_wayland() {
     echo -e "${wm_wayland} log - $(date +'%d/%m/%Y - %T')\n\
 ------------------------------------\n\n" | tee -a "${wms_logs_dir}"/"${wm_wayland}_$(date +'%d-%m-%Y - %T')".log
 
-    # Parse command into array (handles multi-word commands properly in bash)
-    local cmd=($wm_wayland)
+    # Parse command into array (handles multi-word commands properly in zsh)
+    local cmd=("${(@s: :)wm_wayland}")
   
     # Kill Wayland-related processes before starting new session
     pkill -u $USER -f -e "nwg|waybar|sway|hyprland|river|weston|wlroots|labwc|swww|swaybg|mako|wayfire|wayfire\.ini|wlogout|wlsunset|wbg|wpaperd|waybox|wayvnc|xdg-desktop-portal|xdg-desktop-portal-gtk|xdg-desktop-portal-kde" 2>/dev/null || true
 
     # Convert WM name to lowercase for case-insensitive comparison
-    wm_check="${wm_wayland,,}"
+    typeset -l wm_check="$wm_wayland"
     
     # Special handling for Hyprland with Vulkan renderer
     if [[ "$wm_wayland" =~ "uwsm" ]] && ! command -v uwsm >/dev/null; then
         # Use original stderr (fd 3) to show message
         echo -e "${bred}uwsm not found!${color_off}" >&3
-        read -rp "Press enter to continue..." dummy <&0 >&3
+        read -rq "?Press enter to continue..." <&0 >&3
         return 1
     elif [[ "$wm_check" == "hyprland" ]]; then
         # Start Hyprland with Vulkan renderer and log output
@@ -210,12 +210,11 @@ list_wms() {
     echo -e "\n${byellow}Choose an Option:\n"
     
     # Display each WM with a different color from the ANSI colors array
-    # BASH FIX: Use C-style for loop instead of brace expansion
-    for ((i=0; i<count; i++)); do
-        local wm_file="${wms[$i]}"  # Bash arrays are 0-indexed
+    for i in {0..$((count-1))}; do
+        local wm_file="${wms[$i+1]}"
         local wm_name="${wm_file%.desktop}"
         local color_index=$((i % ${#ansi_colors[@]}))
-        local color="${ansi_colors[$color_index]}"  # Bash arrays are 0-indexed
+        local color="${ansi_colors[$color_index+1]}"
         
         echo -e "${color}${i} - ${wm_name} - ${protocol_name}${color_off}"
     done
@@ -223,7 +222,7 @@ list_wms() {
     # Add "Back to Menu" option with red color
     local back_index=$count
     local back_color_index=$((back_index % ${#ansi_colors[@]}))
-    local back_color="${ansi_colors[$back_color_index]}"
+    local back_color="${ansi_colors[$back_color_index+1]}"
     echo -e "${bred}${back_index} - Back Menu${color_off}"
     
     return 0
@@ -288,8 +287,8 @@ main() {
             
             # Validate input is within valid range
             if [ "$WM" -ge 0 ] && [ "$WM" -lt "$wayland_count" ]; then
-                # Get selected WM file - BASH FIX: arrays are 0-indexed
-                selected_wm_file="${wayland_wms[$WM]}"
+                # Get selected WM file (array is 1-indexed, so add 1)
+                selected_wm_file="${wayland_wms[$WM+1]}"
                 # Get Exec command from .desktop file
                 wm_wayland=$(get_wm_exec "$wayland_dir" "$selected_wm_file")
                 
@@ -338,14 +337,14 @@ main() {
             
             # Validate input is within valid range
             if [ "$WM" -ge 0 ] && [ "$WM" -lt "$x11_count" ]; then
-                # Get selected WM file - BASH FIX: arrays are 0-indexed
-                selected_wm_file="${x11_wms[$WM]}"
+                # Get selected WM file (array is 1-indexed, so add 1)
+                selected_wm_file="${x11_wms[$WM+1]}"
                 # Get Exec command from .desktop file
                 export start_wm=$(get_wm_exec "$x11_dir" "$selected_wm_file")
                 
                 # Save as standard WM and start X11 session with startx
                 standard_wm
-                [ "$XDG_VTNR" ] && startx | tee -a ~/.startx_log > /dev/null 2>&1
+                [ $XDG_VTNR ] && startx | tee -a ~/.startx_log > /dev/null 2>&1
                 local_count
                 exit
             else
@@ -360,7 +359,7 @@ main() {
             exec 2>&3
             clear
             echo -e "${bgreen}Entering terminal mode...${color_off}\n"
-            exec bash
+            exec zsh
         ;;
         "r"|"reboot")
             # Reboot - check if pacman is not running
@@ -382,8 +381,8 @@ main() {
         ;;
         *)
             # Default option - load saved standard WM from config file
-            # Read protocol type from config file (1=Wayland, 2=X11)
             if [ -f ~/.standard_wm.conf ]; then
+                # Read protocol type from config file (1=Wayland, 2=X11)
                 protocol=$(cat ~/.standard_wm.conf | head -n1 | cut -f2 -d'=')
                 # Read saved WM name from config file
                 swm=$(cat ~/.standard_wm.conf | tail -n1 | cut -f2 -d'=')

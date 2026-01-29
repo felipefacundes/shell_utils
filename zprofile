@@ -6,7 +6,8 @@
 { [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && exit
 [[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]] && exit
 
-exec 2>>/tmp/profile-with-select-wm.log
+temp_log=/tmp/profile-with-select-wm.log
+exec 2>>"${temp_log}"
 
 ### THEMES
 # Export GTK theme configuration
@@ -138,8 +139,8 @@ wm_wayland() {
     # Parse command into array (handles multi-word commands properly in zsh)
     local cmd=("${(@s: :)wm_wayland}")
   
-    # kills everything before starting, if there is any active process
-    pkill -u $USER -f -e "nwg|waybar|sway|hyprland|river|weston|wlroots|labwc|swww|swaybg|mako|wayfire|wayfire\.ini|wlogout|wlsunset|wbg|wpaperd|waybox|wayvnc|xdg-desktop-portal|xdg-desktop-portal-gtk|xdg-desktop-portal-kde"
+    # Kill Wayland-related processes before starting new session
+    pkill -u $USER -f -e "nwg|waybar|sway|hyprland|river|weston|wlroots|labwc|swww|swaybg|mako|wayfire|wayfire\.ini|wlogout|wlsunset|wbg|wpaperd|waybox|wayvnc|xdg-desktop-portal|xdg-desktop-portal-gtk|xdg-desktop-portal-kde" 2>/dev/null || true
 
     # Convert WM name to lowercase for case-insensitive comparison
     typeset -l wm_check="$wm_wayland"
@@ -288,7 +289,7 @@ main() {
                 
                 # Save as standard WM and start Wayland session
                 standard_wm
-                if ! wm_wayland >/dev/null 2>&1; then
+                if ! wm_wayland >>"${temp_log}" 2>>"${temp_log}"; then
                     pkill -9 -u $USER
                 fi
                 local_count
@@ -349,17 +350,29 @@ main() {
         ;;
         "3"|"terminal"|"t")
             # Terminal option - stay in shell without starting a window manager
-            $SHELL
+            clear
+            echo -e "${bgreen}Entering terminal mode...${color_off}\n"
+            exec zsh
             local_count
             source "${file}"
         ;;
         "r"|"reboot")
-            # Reboot
-            ! pidof pacman >/dev/null && systemctl reboot 2>/dev/null
+            # Reboot - check if pacman is not running
+            if ! pidof pacman >/dev/null; then
+                systemctl reboot 2>/dev/null
+            else
+                echo -e "${bred}Cannot reboot while pacman is running${color_off}"
+                sleep 2
+            fi
         ;;
         "s"|"shutdowm"|"S"|"p"|"P"|"poweroff")
-            # Shutdown
-            ! pidof pacman >/dev/null && systemctl poweroff 2>/dev/null
+            # Shutdown - check if pacman is not running
+            if ! pidof pacman >/dev/null; then
+                systemctl poweroff 2>/dev/null
+            else
+                echo -e "${bred}Cannot shutdown while pacman is running${color_off}"
+                sleep 2
+            fi
         ;;
         *)
             # Default option - load saved standard WM from config file
@@ -371,7 +384,7 @@ main() {
             if [ "${protocol}" = 1 ]; then
                 # Start saved Wayland WM from config
                 wm_wayland="${swm}"
-                if ! wm_wayland >/dev/null 2>&1; then
+                if ! wm_wayland >>"${temp_log}" 2>>"${temp_log}"; then
                     pkill -9 -u $USER
                     exit
                 fi
@@ -391,4 +404,4 @@ main() {
     esac
 }
 
-main 2>/dev/null
+main 2>>"${temp_log}"
