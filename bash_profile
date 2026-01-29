@@ -6,6 +6,20 @@
 { [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && exit
 [[ "${XDG_SESSION_TYPE,,}" != "tty" ]] && exit
 
+dms=("sddm" "lightdm" "gdm" "slim" "xdm" "lxdm" "wdm")
+running_dm=""
+
+for dm in "${dms[@]}"; do
+    # Using pgrep as it's more reliable and handles process names better
+    if pgrep -x "$dm" > /dev/null 2>&1; then
+        running_dm="$dm"
+        echo -e "${bred}WARNING: ${running_dm^^} display manager is currently running.${color_off}"
+        echo "This script performs better when display managers are temporarily disabled."
+        echo -e "${bred} To override warnings and continue, use the 'select-wm' command.${color_off}"
+        exit
+    fi
+done
+
 temp_log=/tmp/profile-with-select-wm.log
 # Save original stderr to file descriptor 3
 exec 3>&2
@@ -253,6 +267,75 @@ echo
 
 clear
 
+# Check if xorg-xinit is installed
+install_xinit() {
+    if ! command -v startx &> /dev/null; then
+        echo -e "${byellow}xorg-xinit is not installed. Installing now...${color_off}"
+        
+        # Detect distribution and install appropriately
+        if [ -f /etc/arch-release ]; then
+            sudo pacman -Sy xorg-xinit --noconfirm
+        elif [ -f /etc/debian_version ]; then
+            sudo apt update && sudo apt install xorg-xinit -y
+        elif [ -f /etc/fedora-release ]; then
+            sudo dnf install xorg-xinit -y
+        else
+            echo -e "${bred}Unsupported distribution. Please install xorg-xinit manually.${color_off}"
+            exit 1
+        fi
+        
+        echo "${bgreen}xorg-xinit installation completed.${color_off}"
+        sleep 2
+    fi
+}
+
+check_xinitrc_config() {
+    local xinitrc_original="$HOME/.shell_utils/xinitrc"
+    local xinitrc_current="$HOME/.xinitrc"
+    local md5_original=""
+    local md5_current=""
+    
+    # Check if the original xinitrc exists
+    if [ ! -f "$xinitrc_original" ]; then
+        echo "Original xinitrc template not found: $xinitrc_original"
+        exit 1
+    fi
+    
+    # Calculate MD5 checksums
+    if [ -f "$xinitrc_current" ]; then
+        md5_current=$(md5sum "$xinitrc_current" | cut -d' ' -f1)
+    else
+        echo "No ~/.xinitrc file found. Script will use default configuration."
+        if [ -f "$xinitrc_original" ]; then
+            echo "Original xinitrc template found in: $xinitrc_original"
+        fi
+        exit 0
+    fi
+    
+    md5_original=$(md5sum "$xinitrc_original" | cut -d' ' -f1)
+    
+    # Compare checksums
+    if [ "$md5_current" != "$md5_original" ]; then
+        echo -e "\n${bred}WARNING: ~/.xinitrc differs from the script's base template.${color_off}"
+        echo "MD5 checksum mismatch detected:"
+        echo "  Original template: $md5_original"
+        echo "  Current ~/.xinitrc: $md5_current"
+        echo ""
+        echo "This script may not function correctly because:"
+        echo "1. Your current ~/.xinitrc has been modified from the expected template"
+        echo "2. Missing or altered configuration may cause X11 session failures"
+        echo "3. Environment variables or execution commands may be incorrect"
+        echo ""
+        echo "Recommended actions:"
+        echo "  - Backup current: cp ~/.xinitrc ~/.xinitrc.backup"
+        echo "  - Restore template: cp ~/.shell_utils/xinitrc ~/.xinitrc"
+        echo "  - Review differences: diff ~/.xinitrc ~/.shell_utils/xinitrc"
+        echo ""
+        echo -e "${bred}Continuing in 3 seconds with potentially unstable configuration...${color_off}"
+        sleep 3
+    fi
+}
+
 main() {
     # Main menu case statement
     case "$option" in
@@ -310,6 +393,8 @@ main() {
             # X11 window managers menu
             x11_dir="/usr/share/xsessions"
             
+            install_xinit
+            check_xinitrc_config
             # Check if X11 sessions directory exists
             if [ ! -d "$x11_dir" ]; then
                 echo -e "${bred}X11 sessions directory not found!${color_off}"

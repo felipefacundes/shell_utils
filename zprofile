@@ -6,7 +6,24 @@
 { [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && exit
 [[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]] && exit
 
+dms=("sddm" "lightdm" "gdm" "slim" "xdm" "lxdm" "wdm")
+running_dm=""
+
+for dm in "${dms[@]}"; do
+    # Using pgrep as it's more reliable and handles process names better
+    if pgrep -x "$dm" > /dev/null 2>&1; then
+        running_dm="$dm"
+        echo -e "${bred}WARNING: ${running_dm^^} display manager is currently running.${color_off}"
+        echo "This script performs better when display managers are temporarily disabled."
+        echo -e "${bred} To override warnings and continue, use the 'select-wm' command.${color_off}"
+        exit
+    fi
+done
+
 temp_log=/tmp/profile-with-select-wm.log
+# Save original stderr to file descriptor 3
+exec 3>&2
+# Redirect stderr to log file
 exec 2>>"${temp_log}"
 
 ### THEMES
@@ -65,7 +82,7 @@ file=~/.zprofile
 # Directory to store window manager logs
 export wms_logs_dir="${HOME}/.WMs_logs_dir"
 # Get current size of logs directory in KB
-wms_logs_dir_size=$(du "${wms_logs_dir}" | awk '{print $1}')
+wms_logs_dir_size=$(du "${wms_logs_dir}" 2>/dev/null | awk '{print $1}')
 
 # Create logs directory if it doesn't exist
 if [ ! -d "${wms_logs_dir}" ]; then
@@ -88,7 +105,7 @@ fi
 [[ ! -d ~/Pictures ]] && rm ~/.config/user-dirs.dirs && LANG=en xdg-user-dirs-update > /dev/null 2>&1
 
 # Clean up and create fresh startx log file
-rm ~/.startx_log
+rm -f ~/.startx_log
 touch ~/.startx_log
 clear
 
@@ -147,8 +164,10 @@ wm_wayland() {
     
     # Special handling for Hyprland with Vulkan renderer
     if [[ "$wm_wayland" =~ "uwsm" ]] && ! command -v uwsm >/dev/null; then
-        echo "Install uwsm"
-        read -rq "?Install uwsm"
+        # Use original stderr (fd 3) to show message
+        echo -e "${bred}uwsm not found!${color_off}" >&3
+        read -rq "?Press enter to continue..." <&0 >&3
+        return 1
     elif [[ "$wm_check" == "hyprland" ]]; then
         # Start Hyprland with Vulkan renderer and log output
         env WLR_RENDERER=vulkan start-hyprland "$@" | tee -a "${wms_logs_dir}"/"${wm_wayland}_$(date +'%d-%m-%Y - %T')".log 
@@ -168,15 +187,15 @@ standard_wm() {
     [[ ! -f "${standard_wm_conf}" ]] && touch "${standard_wm_conf}"
 
     # Save Wayland WM configuration (protocol=1 indicates Wayland)
-    if [ "${wm_wayland}" ]; then
+    if [ -n "${wm_wayland}" ]; then
         echo 'protocol=1' | tee "${standard_wm_conf}" > /dev/null 2>&1
-        echo -e "swm=${wm_wayland}" | tee -a "${standard_wm_conf}" > /dev/null 2>&1
+        echo "swm=${wm_wayland}" | tee -a "${standard_wm_conf}" > /dev/null 2>&1
     fi
 
     # Save X11 WM configuration (protocol=2 indicates X11)
-    if [ "${start_wm}" ]; then
+    if [ -n "${start_wm}" ]; then
         echo 'protocol=2' | tee "${standard_wm_conf}" > /dev/null 2>&1
-        echo -e "swm=${start_wm}" | tee -a "${standard_wm_conf}" > /dev/null 2>&1
+        echo "swm=${start_wm}" | tee -a "${standard_wm_conf}" > /dev/null 2>&1
     fi
 }
 
@@ -230,7 +249,7 @@ get_wm_exec() {
     
     # Extract Exec line from .desktop file using grep with Perl regex
     # The (?<=Exec=) is a positive lookbehind to match everything after "Exec="
-    local exec_value=$(grep -oP '(?<=Exec=).*' "$dir/$wm_file" | head -n1)
+    local exec_value=$(grep -oP '(?<=Exec=).*' "$dir/$wm_file" 2>/dev/null | head -n1)
     echo "$exec_value"
 }
 
@@ -246,6 +265,75 @@ read -r option
 echo
 
 clear
+
+# Check if xorg-xinit is installed
+install_xinit() {
+    if ! command -v startx &> /dev/null; then
+        echo -e "${byellow}xorg-xinit is not installed. Installing now...${color_off}"
+        
+        # Detect distribution and install appropriately
+        if [ -f /etc/arch-release ]; then
+            sudo pacman -Sy xorg-xinit --noconfirm
+        elif [ -f /etc/debian_version ]; then
+            sudo apt update && sudo apt install xorg-xinit -y
+        elif [ -f /etc/fedora-release ]; then
+            sudo dnf install xorg-xinit -y
+        else
+            echo -e "${bred}Unsupported distribution. Please install xorg-xinit manually.${color_off}"
+            exit 1
+        fi
+        
+        echo "${bgreen}xorg-xinit installation completed.${color_off}"
+        sleep 2
+    fi
+}
+
+check_xinitrc_config() {
+    local xinitrc_original="$HOME/.shell_utils/xinitrc"
+    local xinitrc_current="$HOME/.xinitrc"
+    local md5_original=""
+    local md5_current=""
+    
+    # Check if the original xinitrc exists
+    if [ ! -f "$xinitrc_original" ]; then
+        echo "Original xinitrc template not found: $xinitrc_original"
+        exit 1
+    fi
+    
+    # Calculate MD5 checksums
+    if [ -f "$xinitrc_current" ]; then
+        md5_current=$(md5sum "$xinitrc_current" | cut -d' ' -f1)
+    else
+        echo "No ~/.xinitrc file found. Script will use default configuration."
+        if [ -f "$xinitrc_original" ]; then
+            echo "Original xinitrc template found in: $xinitrc_original"
+        fi
+        exit 0
+    fi
+    
+    md5_original=$(md5sum "$xinitrc_original" | cut -d' ' -f1)
+    
+    # Compare checksums
+    if [ "$md5_current" != "$md5_original" ]; then
+        echo -e "\n${bred}WARNING: ~/.xinitrc differs from the script's base template.${color_off}"
+        echo "MD5 checksum mismatch detected:"
+        echo "  Original template: $md5_original"
+        echo "  Current ~/.xinitrc: $md5_current"
+        echo ""
+        echo "This script may not function correctly because:"
+        echo "1. Your current ~/.xinitrc has been modified from the expected template"
+        echo "2. Missing or altered configuration may cause X11 session failures"
+        echo "3. Environment variables or execution commands may be incorrect"
+        echo ""
+        echo "Recommended actions:"
+        echo "  - Backup current: cp ~/.xinitrc ~/.xinitrc.backup"
+        echo "  - Restore template: cp ~/.shell_utils/xinitrc ~/.xinitrc"
+        echo "  - Review differences: diff ~/.xinitrc ~/.shell_utils/xinitrc"
+        echo ""
+        echo -e "${bred}Continuing in 3 seconds with potentially unstable configuration...${color_off}"
+        sleep 3
+    fi
+}
 
 main() {
     # Main menu case statement
@@ -304,6 +392,8 @@ main() {
             # X11 window managers menu
             x11_dir="/usr/share/xsessions"
             
+            install_xinit
+            check_xinitrc_config
             # Check if X11 sessions directory exists
             if [ ! -d "$x11_dir" ]; then
                 echo -e "${bred}X11 sessions directory not found!${color_off}"
@@ -350,11 +440,11 @@ main() {
         ;;
         "3"|"terminal"|"t")
             # Terminal option - stay in shell without starting a window manager
+            # Restore original stderr from fd 3
+            exec 2>&3
             clear
             echo -e "${bgreen}Entering terminal mode...${color_off}\n"
             exec zsh
-            local_count
-            source "${file}"
         ;;
         "r"|"reboot")
             # Reboot - check if pacman is not running
@@ -365,7 +455,7 @@ main() {
                 sleep 2
             fi
         ;;
-        "s"|"shutdowm"|"S"|"p"|"P"|"poweroff")
+        "s"|"shutdown"|"S"|"p"|"P"|"poweroff")
             # Shutdown - check if pacman is not running
             if ! pidof pacman >/dev/null; then
                 systemctl poweroff 2>/dev/null
@@ -376,27 +466,33 @@ main() {
         ;;
         *)
             # Default option - load saved standard WM from config file
-            # Read protocol type from config file (1=Wayland, 2=X11)
-            protocol=$(cat ~/.standard_wm.conf | head -n1 | cut -f2 -d'=')
-            # Read saved WM name from config file
-            swm=$(cat ~/.standard_wm.conf | tail -n1 | cut -f2 -d'=')
+            if [ -f ~/.standard_wm.conf ]; then
+                # Read protocol type from config file (1=Wayland, 2=X11)
+                protocol=$(cat ~/.standard_wm.conf | head -n1 | cut -f2 -d'=')
+                # Read saved WM name from config file
+                swm=$(cat ~/.standard_wm.conf | tail -n1 | cut -f2 -d'=')
 
-            if [ "${protocol}" = 1 ]; then
-                # Start saved Wayland WM from config
-                wm_wayland="${swm}"
-                if ! wm_wayland >>"${temp_log}" 2>>"${temp_log}"; then
-                    pkill -9 -u $USER
-                    exit
+                if [ "${protocol}" = 1 ]; then
+                    # Start saved Wayland WM from config
+                    wm_wayland="${swm}"
+                    if ! wm_wayland >>"${temp_log}" 2>>"${temp_log}"; then
+                        pkill -9 -u $USER
+                        exit
+                    fi
+                    local_count
+                elif [ "${protocol}" = 2 ]; then
+                    # Start saved X11 WM from config
+                    export start_wm="${swm}"
+                    [ "$XDG_VTNR" ] && startx | tee -a ~/.startx_log > /dev/null 2>&1
+                    local_count
+                else
+                    # Invalid protocol in config file or no config found
+                    echo -e "${bred}Wrong Option!${color_off}"
+                    local_count
+                    source "${file}"
                 fi
-                local_count
-            elif [ "${protocol}" = 2 ]; then
-                # Start saved X11 WM from config
-                export start_wm="${swm}"
-                [ "$XDG_VTNR" ] && startx | tee -a ~/.startx_log > /dev/null 2>&1
-                local_count
             else
-                # Invalid protocol in config file or no config found
-                echo -e "${bred}Wrong Option!${color_off}"
+                echo -e "${bred}No config file found!${color_off}"
                 local_count
                 source "${file}"
             fi
