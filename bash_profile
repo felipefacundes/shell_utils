@@ -283,9 +283,9 @@ install_xinit() {
             echo -e "${bred}Unsupported distribution. Please install xorg-xinit manually.${color_off}"
             exit 1
         fi
-        
+
+        clear        
         echo "${bgreen}xorg-xinit installation completed.${color_off}"
-        sleep 2
     fi
 }
 

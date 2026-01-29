@@ -333,8 +333,8 @@ install_xinit() {
             exit 1
         fi
         
+        clear
         echo "${bgreen}xorg-xinit installation completed.${color_off}"
-        sleep 2
     fi
 }
 
