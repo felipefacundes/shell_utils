@@ -444,7 +444,6 @@ main() {
             # Restore original stderr from fd 3
             exec 2>&3
             clear
-            echo -e "${bgreen}Entering terminal mode...${color_off}\n"
             exec bash
         ;;
         "r"|"reboot")

@@ -493,8 +493,7 @@ main() {
             # Restore original stderr from fd 3
             exec 2>&3
             clear
-            echo -e "${bgreen}Entering terminal mode...${color_off}\n"
-            exec bash
+            exec "$SHELL"
         ;;
         "r"|"reboot")
             # Reboot - check if pacman is not running
