@@ -347,7 +347,7 @@ ${bcyan}NAME${color_off}
     select-wm - Window Manager selector for X11, Wayland and Terminal sessions
 
 ${bcyan}SYNOPSIS${color_off}
-    ./select-wm [OPTION]
+    select-wm [OPTION]
 
 ${bcyan}DESCRIPTION${color_off}
     This script provides an interactive menu to select and launch different
@@ -440,16 +440,16 @@ ${bcyan}DISPLAY MANAGER WARNING${color_off}
 
 ${bcyan}EXAMPLES${color_off}
     ${yellow}Interactive selection:${color_off}
-        ./select-wm          # Shows main menu
+        select-wm          # Shows main menu
     
     ${yellow}Direct Wayland selection:${color_off}
-        ./select-wm wayland  # Goes directly to Wayland WM menu
+        select-wm wayland  # Goes directly to Wayland WM menu
     
     ${yellow}Direct X11 selection:${color_off}
-        ./select-wm x11      # Goes directly to X11 WM menu
+        select-wm x11      # Goes directly to X11 WM menu
     
     ${yellow}Terminal only:${color_off}
-        ./select-wm terminal # Starts shell session
+        select-wm terminal # Starts shell session
 
 ${bcyan}TROUBLESHOOTING${color_off}
     ${bred}1. Script exits immediately${color_off}
