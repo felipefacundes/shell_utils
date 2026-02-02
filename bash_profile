@@ -259,6 +259,8 @@ echo -e "\n${byellow}Choose an Option:\n"
 echo -e "${bpurple}1 - Wayland"
 echo -e "${bwhite}2 - X11"
 echo -e "${bcyan}3 - Terminal"
+echo -e "${bgreen}h - Help"
+echo -e "${bwhite}e - Exit"
 echo -e "${byellow}r - Reboot"
 echo -e "${bred}s - Shutdown${color_off}"
 echo
@@ -334,6 +336,146 @@ check_xinitrc_config() {
         echo -e "${bred}Continuing in 3 seconds with potentially unstable configuration...${color_off}"
         sleep 3
     fi
+}
+
+help() {
+    ! command -v less >/dev/null && echo -e "${bred}Install less${color_off}\n" && sleep 5
+
+    cat <<EOF | { echo -e "$(cat)" | less -R; }
+
+${bcyan}NAME${color_off}
+    select-wm - Window Manager selector for X11, Wayland and Terminal sessions
+
+${bcyan}SYNOPSIS${color_off}
+    ./select-wm [OPTION]
+
+${bcyan}DESCRIPTION${color_off}
+    This script provides an interactive menu to select and launch different
+    window managers and display sessions. It supports:
+    
+    ${bgreen}•${color_off} ${green}Wayland${color_off} sessions from /usr/share/wayland-sessions/
+    ${bgreen}•${color_off} ${green}X11${color_off} sessions from /usr/share/xsessions/
+    ${bgreen}•${color_off} ${green}Terminal${color_off} sessions (shell only)
+    ${bgreen}•${color_off} ${green}System${color_off} operations (reboot/shutdown)
+
+    The script automatically detects and handles display manager conflicts,
+    provides colorful interface feedback, and maintains session logs.
+
+${bcyan}MAIN MENU OPTIONS${color_off}
+    ${bpurple}1, way, wayland, w${color_off}
+        Launch a Wayland window manager session
+    
+    ${bwhite}2, x11, x${color_off}
+        Launch an X11 window manager session (requires xorg-xinit)
+    
+    ${bcyan}3, terminal, t${color_off}
+        Start a terminal session without window manager
+    
+    ${byellow}r, reboot${color_off}
+        Reboot the system (if pacman is not running)
+    
+    ${bred}s, shutdown, S, p, P, poweroff${color_off}
+        Shutdown the system (if pacman is not running)
+
+${bcyan}WM SELECTION MENU${color_off}
+    After choosing ${green}Wayland${color_off} or ${green}X11${color_off}, a numbered list of available
+    window managers is displayed with ${bwhite}color-coded${color_off} entries.
+    
+    ${yellow}Example:${color_off}
+        0 - sway - Wayland
+        1 - hyprland - Wayland
+        2 - back_menu
+    
+    ${bred}IMPORTANT:${color_off} The last option always returns to the main menu.
+
+${bcyan}AUTOMATIC SESSION RESUMPTION${color_off}
+    If launched without options and ${green}~/.standard_wm.conf${color_off} exists,
+    the script automatically resumes the last used session:
+    
+    ${yellow}Protocol detection:${color_off}
+        ${cyan}protocol=1${color_off} → Wayland session
+        ${cyan}protocol=2${color_off} → X11 session
+    
+    ${yellow}WM specification:${color_off}
+        ${cyan}swm=<window_manager_command>${color_off}
+
+${bcyan}ENVIRONMENT VARIABLES${color_off}
+    ${green}GTK_THEME${color_off}, ${green}XCURSOR_THEME${color_off}
+        GUI theme configuration
+    
+    ${green}XKB_DEFAULT_LAYOUT${color_off}, ${green}XKB_DEFAULT_OPTIONS${color_off}
+        Keyboard layout (default: br with Alt+Shift toggle)
+    
+    ${green}MOZ_ENABLE_WAYLAND${color_off}
+        Auto-enabled for Wayland sessions
+    
+    ${green}WLR_RENDERER=vulkan${color_off}
+        Used for Wayland compositors (Hyprland, Sway, etc.)
+
+${bcyan}LOG FILES${color_off}
+    ${green}~/.WMs_logs_dir/${color_off}
+        Window manager session logs (auto-cleaned when >2GB)
+    
+    ${green}/tmp/select-wm.log${color_off}
+        Script execution log
+    
+    ${green}~/.startx_log${color_off}
+        X11 startx session log
+
+${bcyan}DEPENDENCIES${color_off}
+    ${yellow}Required for X11:${color_off} xorg-xinit (auto-installed if missing)
+    ${yellow}Recommended:${color_off} Display manager temporarily disabled for best performance
+
+${bcyan}DISPLAY MANAGER WARNING${color_off}
+    ${bred}WARNING:${color_off} Running display managers (SDDM, LightDM, GDM, etc.)
+    may cause conflicts. The script detects and warns about active DMs.
+    
+    ${yellow}Temporary disable:${color_off}
+        sudo systemctl stop <display_manager>
+        sudo systemctl disable <display_manager>
+    
+    ${yellow}Re-enable later:${color_off}
+        sudo systemctl enable <display_manager>
+        sudo systemctl start <display_manager>
+
+${bcyan}EXAMPLES${color_off}
+    ${yellow}Interactive selection:${color_off}
+        ./select-wm          # Shows main menu
+    
+    ${yellow}Direct Wayland selection:${color_off}
+        ./select-wm wayland  # Goes directly to Wayland WM menu
+    
+    ${yellow}Direct X11 selection:${color_off}
+        ./select-wm x11      # Goes directly to X11 WM menu
+    
+    ${yellow}Terminal only:${color_off}
+        ./select-wm terminal # Starts shell session
+
+${bcyan}TROUBLESHOOTING${color_off}
+    ${bred}1. Script exits immediately${color_off}
+        ${yellow}Cause:${color_off} Running in graphical environment
+        ${yellow}Fix:${color_off} Run in text console (Ctrl+Alt+F2-F6)
+    
+    ${bred}2. WM doesn't start properly${color_off}
+        ${yellow}Check:${color_off} ~/.WMs_logs_dir/ for error logs
+        ${yellow}Check:${color_off} Display manager conflicts
+    
+    ${bred}3. Missing .xinitrc template${color_off}
+        ${yellow}Fix:${color_off} Ensure ~/.shell_utils/xinitrc exists
+    
+    ${bred}4. Keyboard layout wrong${color_off}
+        ${yellow}Fix:${color_off} Modify XKB_DEFAULT_LAYOUT in script
+
+${bcyan}SEE ALSO${color_off}
+    startx(1), systemctl(1), xinit(1), journalctl(1)
+
+${bcyan}AUTHOR${color_off}
+    Felipe Facundes
+
+${bcyan}LICENSE${color_off}
+    GPLv3
+
+EOF
 }
 
 main() {
@@ -444,7 +586,18 @@ main() {
             # Restore original stderr from fd 3
             exec 2>&3
             clear
-            exec bash
+            bash
+            local_count
+            source "${file}"
+        ;;
+        "h"|"help")
+            help
+            clear
+            local_count
+            source "${file}"
+        ;;
+        "e"|"exit")
+            exit
         ;;
         "r"|"reboot")
             # Reboot - check if pacman is not running

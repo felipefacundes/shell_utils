@@ -4,7 +4,7 @@
 
 # Suppress only GTK/LO errors, keeping other errors visible
 # exec 2> >(grep -v -E "(Gtk|GLib|Gdk|Pango|Atk)" >&2)
-exec 2>/dev/null
+exec 2>>/tmp/lowriter.log
 
 file="$1"
 delay=30 # Time for the process to start
