@@ -135,6 +135,17 @@ prompt_for_reboot() {
     fi
 }
 
+_initramfs() {
+    local linux="/boot/initramfs-linux.img"
+    local linux_cachyos="/boot/initramfs-linux-cachyos.img"
+
+    if [[ -f "$linux" ]]; then
+        LC_ALL=c ls -l "$linux"
+    elif [[ -f "$linux_cachyos" ]]; then
+        LC_ALL=c ls -l "$linux_cachyos"
+    fi   
+}
+
 monitor_kernel_updates() {
     STORED_INITRAMFS_TIMESTAMP=$(cat "${KERNEL_TIMESTAMP_FILE}")
     CURRENT_KERNEL_VERSION="$(uname -r | sed 's|-|.|g')"
@@ -142,7 +153,7 @@ monitor_kernel_updates() {
     while true
         do sleep "$CHECK_INTERVAL"
         INSTALLED_KERNEL_VERSION="$(LC_ALL=en pacman -Si linux | grep -i "^Version" | awk '{print $3}' | sed 's|-|.|g')"
-        CURRENT_INITRAMFS_TIMESTAMP="$(LC_ALL=c ls -l /boot/initramfs-linux.img | awk '{print $6 $7 $8}')"
+        CURRENT_INITRAMFS_TIMESTAMP="$(_initramfs | awk '{print $6 $7 $8}')"
         KERNEL_UPDATE_LOCK_FILE="${SCRIPT_TMPDIR}/kernel_monitor.reboot_prompted.lock"
         ALERT_ICON_PATH=~/.shell_utils/icons/exclamation.png
 
