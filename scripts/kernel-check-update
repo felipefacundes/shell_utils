@@ -14,10 +14,10 @@ Strengths:
 1. Signal Handling: The script captures termination signals to cleanly manage background jobs.
 2. Kernel Update Detection: It checks if the kernel has been updated by comparing the current 
 and installed kernel versions.
-3. User  Notification: Utilizes graphical notifications to inform the user about the need for 
+3. User Notification: Utilizes graphical notifications to inform the user about the need for 
 a reboot after a kernel update.
 4. Sound Alerts: Plays a sound alert to draw attention to the reboot prompt.
-5. User  Interaction: Provides a user-friendly interface for confirming the reboot through a dialog box.
+5. User Interaction: Provides a user-friendly interface for confirming the reboot through a dialog box.
 
 Capabilities:
 - Monitors kernel updates continuously.
@@ -117,25 +117,92 @@ if [[ "$1" != "-d" && "$1" != "--daemon" ]]; then
     exit 1
 fi
 
+# SUPPORTED_KERNELS - Array of supported kernels (customizable)
+SUPPORTED_KERNELS=("linux" "linux-cachyos" "linux-lts" "linux-zen" "linux-hardened")
+
+# Function to get timestamp of an initramfs file
 _initramfs_timestamp() {
     local arg=$1
-    LC_ALL=c ls -l "$arg" | awk '{print $6 $7 $8}'
+    if [[ -f "$arg" ]]; then
+        LC_ALL=c ls -l "$arg" | awk '{print $6 $7 $8}'
+        return 0
+    fi
+    return 1
 }
 
-_initramfs() {
-    local linux="/boot/initramfs-linux.img"
-    local linux_cachyos="/boot/initramfs-linux-cachyos.img"
-
-    if [[ -f "$linux" ]]; then
-        _initramfs_timestamp "$linux"
-    elif [[ -f "$linux_cachyos" ]]; then
-        _initramfs_timestamp "$linux_cachyos"
-    fi   
+# Function to check ANY initramfs file (more robust)
+_get_initramfs_timestamp() {
+    # First, try the running kernel
+    local running_kernel=$(uname -r | sed 's/-.*//')  # Get "linux", "linux-lts", etc
+    
+    # Check initramfs for the running kernel
+    local initramfs_file="/boot/initramfs-${running_kernel}.img"
+    if [[ -f "$initramfs_file" ]]; then
+        _initramfs_timestamp "$initramfs_file"
+        return 0
+    fi
+    
+    # Fallback: check all supported kernels
+    for kernel in "${SUPPORTED_KERNELS[@]}"; do
+        initramfs_file="/boot/initramfs-${kernel}.img"
+        if [[ -f "$initramfs_file" ]]; then
+            _initramfs_timestamp "$initramfs_file"
+            return 0
+        fi
+    done
+    
+    # Ultimate fallback: any initramfs-*.img file
+    local any_initramfs=$(ls /boot/initramfs-*.img 2>/dev/null | head -1)
+    if [[ -n "$any_initramfs" ]]; then
+        _initramfs_timestamp "$any_initramfs"
+        return 0
+    fi
+    
+    return 1
 }
 
+# Function to get installed kernel version (more reliable)
+_get_installed_kernel_version() {
+    # Get the ACTUALLY RUNNING kernel package name
+    local running_kernel=$(uname -r | sed 's/-.*//')
+    
+    # Try to get version of the running kernel package
+    local version=$(LC_ALL=en pacman -Si "$running_kernel" 2>/dev/null | 
+                    grep -i "^Version" | awk '{print $3}' | sed 's|-|.|g')
+    
+    if [[ -n "$version" ]]; then
+        echo "$version"
+        return 0
+    fi
+    
+    # Fallback: get version from /usr/lib/modules (most reliable method)
+    local modules_dir="/usr/lib/modules"
+    if [[ -d "$modules_dir" ]]; then
+        # Get all installed kernel modules, exclude currently running, sort by version
+        local latest_module=$(ls -1 "$modules_dir" | grep -v "$(uname -r)" | sort -V | tail -1)
+        if [[ -n "$latest_module" ]]; then
+            echo "$latest_module" | sed 's/-/./g'
+            return 0
+        fi
+    fi
+    
+    # Last resort: try all supported kernel packages
+    for kernel in "${SUPPORTED_KERNELS[@]}"; do
+        version=$(LC_ALL=en pacman -Si "$kernel" 2>/dev/null | 
+                  grep -i "^Version" | awk '{print $3}' | sed 's|-|.|g')
+        if [[ -n "$version" ]]; then
+            echo "$version"
+            return 0
+        fi
+    done
+    
+    return 1
+}
+
+# Initialize timestamp
 if [[ ! -f "${KERNEL_TIMESTAMP_FILE}" ]]; then
     touch "${KERNEL_TIMESTAMP_FILE}"
-    _initramfs | tee "${KERNEL_TIMESTAMP_FILE}"
+    _get_initramfs_timestamp | tee "${KERNEL_TIMESTAMP_FILE}"
 fi
 
 notify_with_sound() {
@@ -154,22 +221,86 @@ prompt_for_reboot() {
 monitor_kernel_updates() {
     STORED_INITRAMFS_TIMESTAMP=$(cat "${KERNEL_TIMESTAMP_FILE}")
     CURRENT_KERNEL_VERSION="$(uname -r | sed 's|-|.|g')"
+    
+    # Variables for continuous notification
+    local last_notification_time=0
+    local notification_interval=300  # 5 minutes between notifications
+    local last_prompt_time=0
+    local prompt_interval=900  # 15 minutes between prompts
+    local notification_count=0
 
     while true
-        do sleep "$CHECK_INTERVAL"
-        INSTALLED_KERNEL_VERSION="$(LC_ALL=en pacman -Si linux | grep -i "^Version" | awk '{print $3}' | sed 's|-|.|g')"
-        CURRENT_INITRAMFS_TIMESTAMP="$(_initramfs)"
+    do
+        sleep "$CHECK_INTERVAL"
+        
+        # Get current installed version
+        INSTALLED_KERNEL_VERSION=$(_get_installed_kernel_version)
+        CURRENT_INITRAMFS_TIMESTAMP=$(_get_initramfs_timestamp)
+        
         KERNEL_UPDATE_LOCK_FILE="${SCRIPT_TMPDIR}/kernel_monitor.reboot_prompted.lock"
         ALERT_ICON_PATH=~/.shell_utils/icons/exclamation.png
+        current_time=$(date +%s)
 
-        if [[ "$CURRENT_KERNEL_VERSION" != "$INSTALLED_KERNEL_VERSION" ]] && [[ "$STORED_INITRAMFS_TIMESTAMP" != "$CURRENT_INITRAMFS_TIMESTAMP" ]] && ! pidof pacman >/dev/null; then
-			[[ ! -f "${KERNEL_UPDATE_LOCK_FILE}.notification" ]] && notify-send -i "$ALERT_ICON_PATH" -u critical "Updated kernel" "Reboot system"
-			if [[ ! -f "$KERNEL_UPDATE_LOCK_FILE" ]]; then 
-				sleep 15; ~/.shell_utils/scripts/systray-icon.py -i "$ALERT_ICON_PATH" -t "Reboot System" -m "Updated kernel" -n "Reboot system" & #sleep 45
-				sleep 15; notify_with_sound & prompt_for_reboot & #sleep 60
-				touch "$KERNEL_UPDATE_LOCK_FILE"
-			fi
-		fi
+        # Check if kernel update is detected
+        if [[ -n "$INSTALLED_KERNEL_VERSION" ]] && \
+           [[ -n "$CURRENT_INITRAMFS_TIMESTAMP" ]] && \
+           [[ "$CURRENT_KERNEL_VERSION" != "$INSTALLED_KERNEL_VERSION" ]] && \
+           [[ "$STORED_INITRAMFS_TIMESTAMP" != "$CURRENT_INITRAMFS_TIMESTAMP" ]] && \
+           ! pidof pacman >/dev/null; then
+            
+            # Send periodic desktop notifications (every 5 minutes)
+            if (( current_time - last_notification_time >= notification_interval )); then
+                notify-send -i "$ALERT_ICON_PATH" -u critical \
+                    "KERNEL UPDATED - REBOOT REQUIRED" \
+                    "System is running old kernel $(uname -r)\nNew kernel $INSTALLED_KERNEL_VERSION is installed\nPlease reboot to avoid system instability"
+                last_notification_time=$current_time
+                notification_count=$((notification_count + 1))
+                
+                # Play sound with first few notifications
+                if (( notification_count <= 3 )); then
+                    notify_with_sound &
+                fi
+            fi
+            
+            # Show system tray icon continuously
+            if ! pgrep -f "systray-icon.py.*Reboot" >/dev/null; then
+                ~/.shell_utils/scripts/systray-icon.py -i "$ALERT_ICON_PATH" \
+                    -t "REBOOT REQUIRED" \
+                    -m "Kernel Updated" \
+                    -n "System running: $(uname -r)\nNew kernel: $INSTALLED_KERNEL_VERSION" &
+            fi
+            
+            # Show interactive prompt periodically (every 15 minutes)
+            if (( current_time - last_prompt_time >= prompt_interval )); then
+                # Check if zenity is already running to avoid multiple prompts
+                if ! pgrep -f "zenity.*System.restart" >/dev/null; then
+                    prompt_for_reboot &
+                    last_prompt_time=$current_time
+                fi
+            fi
+            
+            # Create lock file to mark detection but DON'T update timestamp
+            # This ensures continuous notifications
+            if [[ ! -f "$KERNEL_UPDATE_LOCK_FILE" ]]; then
+                touch "$KERNEL_UPDATE_LOCK_FILE"
+            fi
+            
+        else
+            # Reset notification counter if no update detected
+            notification_count=0
+            
+            # Kill system tray icon if no update needed
+            pkill -f "systray-icon.py.*Reboot" 2>/dev/null || true
+            
+            # Remove lock file if kernel is up to date
+            if [[ -f "$KERNEL_UPDATE_LOCK_FILE" ]] && \
+               [[ "$CURRENT_KERNEL_VERSION" == "$INSTALLED_KERNEL_VERSION" ]]; then
+                rm -f "$KERNEL_UPDATE_LOCK_FILE"
+                # Update timestamp only when kernel is up to date
+                echo "$CURRENT_INITRAMFS_TIMESTAMP" > "${KERNEL_TIMESTAMP_FILE}"
+            fi
+        fi
+        
         sleep 15
     done
 }
