@@ -2,6 +2,9 @@
 # Credits: Felipe Facundes
 # Initial Credits: shapeoflambda # https://github.com/swaywm/sway/issues/4121
 # Tweaked the above code to make it work with floating windows.
+# Fixed: Added workspace switching before focusing window
+# Enhanced: Ensures correct window is focused even with multiple windows in workspace
+# Fixed: Close action now works correctly
 
 : <<'DOCUMENTATION'
 This Bash script is designed to manage windows in the Sway window manager, offering functionality to focus, close, or forcefully terminate windows. 
@@ -10,20 +13,46 @@ Below are its key strengths and capabilities:
 
 1. Window Management: The script effectively handles both regular and floating windows in Sway, providing a unified interface for managing them.  
 2. User Interaction: It uses 'wofi' for user-friendly interaction, allowing users to select windows and choose actions (focus, close, or kill).  
-3. Process Termination: It includes the ability to forcefully terminate processes associated with selected windows using the 'kill' command.  
-4. Error Handling: The script includes checks to ensure no duplicate instances of 'wofi' are running and notifies the user if no windows are open.  
-5. Flexibility: It dynamically adapts to the presence of regular or floating windows, ensuring smooth operation in various scenarios.  
+3. Workspace Switching: Now switches to the workspace where the selected window is located before focusing it.  
+4. Focus Guarantee: Ensures the correct window is focused even when there are multiple windows in the workspace.  
+5. Process Termination: It includes the ability to forcefully terminate processes associated with selected windows using the 'kill' command.  
+6. Error Handling: The script includes checks to ensure no duplicate instances of 'wofi' are running and notifies the user if no windows are open.  
+7. Flexibility: It dynamically adapts to the presence of regular or floating windows, ensuring smooth operation in various scenarios.  
 
 This script is a powerful tool for Sway users seeking enhanced window management capabilities.
 DOCUMENTATION
 
 TMPDIR="${TMPDIR:-/tmp}"
 
-# Get regular windows
-regular_windows=$(swaymsg -t get_tree | jq -r '.nodes[1].nodes[].nodes[] | .. | (.id|tostring) + " " + .name?' | grep -e "[0-9]* .")
+# Get all windows with workspace and container type info
+all_windows_info=$(swaymsg -t get_tree | jq -r '
+    # Function to recursively get windows
+    def get_windows($node; $workspace):
+        ($node | to_entries[]) as $entry
+        | if $entry.key == "nodes" or $entry.key == "floating_nodes" then
+            $entry.value[]
+            | if .id and .name then
+                {
+                    id: (.id|tostring),
+                    name: .name,
+                    workspace: $workspace,
+                    type: (if $entry.key == "floating_nodes" then "floating" else "tiling" end)
+                }
+            else
+                get_windows(.; $workspace)
+            end
+        else
+            empty
+        end;
+    
+    .nodes[1].nodes[]
+    | .name as $workspace
+    | get_windows(.; $workspace)
+')
 
-# Get floating windows
-floating_windows=$(swaymsg -t get_tree | jq '.nodes[1].nodes[].floating_nodes[] | (.id|tostring) + " " + .name?' | grep -e "[0-9]* ." | tr -d '"')
+# Format for display
+regular_windows=$(echo "$all_windows_info" | jq -r 'select(.type=="tiling") | "\(.id)|\(.workspace)|\(.name)"')
+floating_windows=$(echo "$all_windows_info" | jq -r 'select(.type=="floating") | "\(.id)|\(.workspace)|\(.name)"')
 
 lock="${TMPDIR}/${0##*/}-lock"
 enter=$'\n'
@@ -34,11 +63,11 @@ fi
 
 if [[ $regular_windows || $floating_windows ]]; then
     if [[ $regular_windows && $floating_windows ]]; then
-        all_windows="$regular_windows$enter$floating_windows"
+        display_windows="$regular_windows$enter$floating_windows"
     elif [[ $regular_windows ]]; then
-        all_windows=$regular_windows
+        display_windows=$regular_windows
     else
-        all_windows=$floating_windows
+        display_windows=$floating_windows
     fi
 
     [[ -f "$lock" ]] && rm "$lock"
@@ -46,28 +75,100 @@ if [[ $regular_windows || $floating_windows ]]; then
     # Select action (focus or close) with wofi
     action=$(echo -e "focus\nclose\nkill" | wofi --show dmenu)
 
-    # Select window with wofi
-    selected=$(echo "$all_windows" | wofi --show dmenu | awk '{print $1}')
+    # Select window with wofi - format: ID|Workspace|Window Name
+    selected_line=$(echo "$display_windows" | wofi --show dmenu)
+    
+    if [[ -z "$selected_line" ]]; then
+        exit 0
+    fi
+    
+    # Extract components using pipe separator
+    selected=$(echo "$selected_line" | awk -F'|' '{print $1}')
+    workspace_name=$(echo "$selected_line" | awk -F'|' '{print $2}')
+    window_name=$(echo "$selected_line" | awk -F'|' '{print $3}')
 
     # Perform action based on user selection
     case $action in
         "close")
-            swaymsg [con_id="$selected"] kill
+            swaymsg "[con_id=$selected] kill"
             ;;
         "kill")
             # Get the process ID (PID) associated with the window
-            window_pid=$(swaymsg -t get_tree | jq -r '.. | select(.nodes? or .floating_nodes?) | .nodes[].nodes? | .[] | select(.id == '$selected') | .pid')
+            window_pid=$(swaymsg -t get_tree | jq -r ".. | select(.id? == $selected) | .pid? // empty")
         
             # Use kill to forcefully terminate the process
             if [ -n "$window_pid" ]; then
                 kill -9 "$window_pid"
+                # Optional: Send notification
+                notify-send -t 2000 "Process Killed" "$window_name (PID: $window_pid)"
             else
                 echo "Failed to retrieve process ID for the selected window."
+                # Fallback to normal close
+                swaymsg "[con_id=$selected] kill"
             fi
             ;;
         *)
-            # Tell sway to focus said window
-            swaymsg [con_id="$selected"] focus
+            # For focus action
+            # Get current workspace
+            current_workspace=$(swaymsg -t get_workspaces | jq -r '.[] | select(.focused==true).name')
+            
+            # Switch workspace if needed
+            if [ "$workspace_name" != "$current_workspace" ] && [ -n "$workspace_name" ] && [ "$workspace_name" != "null" ]; then
+                swaymsg workspace "$workspace_name"
+                # Give Sway time to complete workspace switch
+                sleep 0.05
+            fi
+            
+            # Get window info to determine the best way to focus it
+            window_info=$(echo "$all_windows_info" | jq -r "select(.id==\"$selected\")")
+            window_type=$(echo "$window_info" | jq -r '.type')
+            
+            # Different strategies based on window type and situation
+            
+            # Strategy 1: Try to focus by criteria (most reliable)
+            # First get the app_id or class if available
+            app_info=$(swaymsg -t get_tree | jq -r "
+                recurse(.nodes[]?, .floating_nodes[]?)
+                | select(.id? == $selected)
+                | .app_id // .window_properties.class
+            ")
+            
+            if [ -n "$app_info" ] && [ "$app_info" != "null" ]; then
+                # Try to focus by app_id/class and window name
+                swaymsg "[app_id=\"$app_info\"] focus" 2>/dev/null || \
+                swaymsg "[class=\"$app_info\"] focus" 2>/dev/null || \
+                swaymsg "[con_id=$selected] focus"
+            else
+                # Fallback to con_id
+                swaymsg "[con_id=$selected] focus"
+            fi
+            
+            # Strategy 2: Ensure focus with multiple attempts
+            # Sometimes sway needs multiple focus commands
+            for i in {1..3}; do
+                swaymsg "[con_id=$selected] focus"
+                sleep 0.01
+            done
+            
+            # Strategy 3: For floating windows, bring to front
+            if [ "$window_type" = "floating" ]; then
+                swaymsg "[con_id=$selected] move to front"
+                swaymsg "[con_id=$selected] focus"
+                # Floating windows might need raise
+                swaymsg "[con_id=$selected] raise"
+            fi
+            
+            # Strategy 4: Use focus command with window ID
+            swaymsg "focus window_id=$selected"
+            
+            # Strategy 5: Final direct focus
+            swaymsg "[con_id=$selected] focus"
+            
+            # Optional: Mark the window for easier future reference
+            swaymsg "[con_id=$selected] mark --add _focused_by_script"
+            
+            # Give visual feedback
+            notify-send -t 1000 "Focused: $window_name" "Workspace: $workspace_name"
             ;;
     esac
 else
