@@ -2,19 +2,20 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# Sway Window Switcher in Bash
-# Behavior: native focus right/left + notification of the focused window
-# --list shows all windows via rofi
+: <<'DOCUMENTATION'
+Sway Window Switcher in Bash
+Behavior: native focus right/left + notification of the focused window
+ --list shows windows from the focused workspace via rofi
+ --list-all shows all windows from all workspaces via rofi
+DOCUMENTATION
 
 show_preview=1
-
 # Check dependencies at the start
 check_deps() {
     local deps=("swaymsg" "jq")
-    if [[ "$1" == "--list" ]] || [[ "${mode:-}" == "list" ]]; then
+    if [[ "$1" == "--list" ]] || [[ "$1" == "--list-all" ]] || [[ "${mode:-}" == "list" ]] || [[ "${mode:-}" == "list-all" ]]; then
         deps+=("rofi")
     fi
-    
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" >/dev/null 2>&1; then
             echo "Error: $dep not found" >&2
@@ -22,58 +23,43 @@ check_deps() {
         fi
     done
 }
-
 get_focused_window_info() {
     # Get information about the currently focused window
     local tree
     tree=$(swaymsg -t get_tree 2>/dev/null) || return 1
-
     local name app_id class_name
-
     name=$(echo "$tree" | jq -r '
-        .. | select(.focused? == true) |
-        .name // "Untitled" |
-        if . == "" then "Untitled" else . end
+            .. | select(.focused? == true) |
+            .name // "Untitled" |
+            if . == "" then "Untitled" else . end
     ' 2>/dev/null)
-
     app_id=$(echo "$tree" | jq -r '
-        .. | select(.focused? == true) |
-        .app_id // ""
+            .. | select(.focused? == true) |
+            .app_id // ""
     ' 2>/dev/null)
-
     class_name=$(echo "$tree" | jq -r '
-        .. | select(.focused? == true) |
-        .window_properties.class // ""
+            .. | select(.focused? == true) |
+            .window_properties.class // ""
     ' 2>/dev/null)
-
     # Return empty if nothing useful was found
     [[ -z "$name" ]] && return 1
-    
     echo "$name|$app_id|$class_name"
 }
-
 switch_window() {
-    local direction="$1"   # "next" or "prev"
-
+    local direction="$1" # "next" or "prev"
     if [[ "$direction" == "next" ]]; then
         swaymsg focus right >/dev/null 2>&1
     else
         swaymsg focus left >/dev/null 2>&1
     fi
-
     # Small wait for the focus to update
     sleep 0.08
-
     (( show_preview == 0 )) && return
-
     local info
     info=$(get_focused_window_info) || return
-
     IFS='|' read -r name app_id class_name <<< "$info"
-
     local icon="${app_id:-${class_name:-window}}"
     local clean_name="${name//$'\n'/ }"
-
     notify-send \
         --app-name "Window Switcher" \
         --icon "$icon" \
@@ -81,83 +67,111 @@ switch_window() {
         --urgency low \
         "→ $clean_name" >/dev/null 2>&1
 }
-
-show_rofi_list() {
+show_rofi_list_all() {
     local tree
     tree=$(swaymsg -t get_tree 2>/dev/null) || exit 1
-
     # Extract all windows with jq - more robust
     local windows
     mapfile -t windows < <(echo "$tree" | jq -r '
-        .. | select(.type? == "con" or .type? == "floating_con") |
-        select(.name != null and .name != "") |
-        .name as $n |
-        .app_id as $a |
-        (.window_properties.class // "") as $c |
-        .id as $id |
-        .focused as $f |
-        [$n, ($a // $c // "?"), $id, $f] | @tsv
+            .. | select(.type? == "con" or .type? == "floating_con") |
+            select(.name != null and .name != "") |
+            .name as $n |
+            .app_id as $a |
+            (.window_properties.class // "") as $c |
+            .id as $id |
+            .focused as $f |
+            [$n, ($a // $c // "?"), $id, $f] | @tsv
     ' 2>/dev/null)
-
     (( ${#windows[@]} == 0 )) && exit 0
-
     local rofi_lines=() id_map=()
     local name app id focused prefix line
-
     for win in "${windows[@]}"; do
         IFS=$'\t' read -r name app id focused <<< "$win"
-
         # Skip unwanted windows (case insensitive)
         local lower_all="${app,,}${name,,}"
         [[ "$lower_all" =~ waybar|wofi|rofi|dmenu|swaync|swaylock ]] && continue
-
         # Clean name
         name="${name//$'\n'/ }"
-
         # Prefix based on focus
-        prefix="  "
+        prefix=" "
         [[ "$focused" == "true" ]] && prefix="● "
-
-        line="${prefix}${name}   <small>(${app})</small>"
+        line="${prefix}${name} <small>(${app})</small>"
         rofi_lines+=("$line")
         id_map+=("$id")
     done
-
     (( ${#rofi_lines[@]} == 0 )) && exit 0
-
     local choice
-    choice=$(printf '%s\n' "${rofi_lines[@]}" | rofi -dmenu -i -p "Windows" -format i -no-custom 2>/dev/null)
-
+    choice=$(printf '%s\n' "${rofi_lines[@]}" | rofi -dmenu -i -p "Windows (All)" -format i -no-custom 2>/dev/null)
     if [[ -n "$choice" && "$choice" =~ ^[0-9]+$ && "$choice" -lt ${#rofi_lines[@]} ]]; then
         local selected_id="${id_map[$choice]}"
         [[ -n "$selected_id" ]] && swaymsg "[con_id=$selected_id] focus" >/dev/null 2>&1
     fi
 }
-
+show_rofi_list_current() {
+    local tree
+    tree=$(swaymsg -t get_tree 2>/dev/null) || exit 1
+    # Extract windows from focused workspace with jq
+    local windows
+    mapfile -t windows < <(echo "$tree" | jq -r '
+            recurse(.nodes[]?) | select(.type == "workspace" and any(recurse(.nodes[]?); .focused == true)) |
+            .. | select(.type? == "con" or .type? == "floating_con") |
+            select(.name != null and .name != "") |
+            .name as $n |
+            .app_id as $a |
+            (.window_properties.class // "") as $c |
+            .id as $id |
+            .focused as $f |
+            [$n, ($a // $c // "?"), $id, $f] | @tsv
+    ' 2>/dev/null)
+    (( ${#windows[@]} == 0 )) && exit 0
+    local rofi_lines=() id_map=()
+    local name app id focused prefix line
+    for win in "${windows[@]}"; do
+        IFS=$'\t' read -r name app id focused <<< "$win"
+        # Skip unwanted windows (case insensitive)
+        local lower_all="${app,,}${name,,}"
+        [[ "$lower_all" =~ waybar|wofi|rofi|dmenu|swaync|swaylock ]] && continue
+        # Clean name
+        name="${name//$'\n'/ }"
+        # Prefix based on focus
+        prefix=" "
+        [[ "$focused" == "true" ]] && prefix="● "
+        line="${prefix}${name} <small>(${app})</small>"
+        rofi_lines+=("$line")
+        id_map+=("$id")
+    done
+    (( ${#rofi_lines[@]} == 0 )) && exit 0
+    local choice
+    choice=$(printf '%s\n' "${rofi_lines[@]}" | rofi -dmenu -i -p "Windows (Current)" -format i -no-custom 2>/dev/null)
+    if [[ -n "$choice" && "$choice" =~ ^[0-9]+$ && "$choice" -lt ${#rofi_lines[@]} ]]; then
+        local selected_id="${id_map[$choice]}"
+        [[ -n "$selected_id" ]] && swaymsg "[con_id=$selected_id] focus" >/dev/null 2>&1
+    fi
+}
 # Parse arguments
 mode=""
-direction="next"  # default
-
+direction="next" # default
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --next)     direction="next" ;;
-        --prev)     direction="prev" ;;
-        --list)     mode="list" ;;
+        --next) direction="next" ;;
+        --prev) direction="prev" ;;
+        --list) mode="list" ;;
+        --list-all) mode="list-all" ;;
         --disable-preview) show_preview=0 ;;
-        *) 
-            echo "Usage: ${0##*/} [--next] [--prev] [--list] [--disable-preview]" >&2
+        *)
+            echo "Usage: ${0##*/} [--next] [--prev] [--list] [--list-all] [--disable-preview]" >&2
             exit 1
             ;;
     esac
     shift
 done
-
 # Check dependencies
 check_deps "${1:-}"
-
 # Execute
-if [[ "$mode" == "list" ]]; then
-    show_rofi_list
+if [[ "$mode" == "list-all" ]]; then
+    show_rofi_list_all
+elif [[ "$mode" == "list" ]]; then
+    show_rofi_list_current
 else
     switch_window "$direction"
 fi

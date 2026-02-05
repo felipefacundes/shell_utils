@@ -215,8 +215,8 @@ bindsym $sup+$alt+p exec bash -c 'xpad -t &'
 bindsym $ctrl+$alt+c exec bash -c 'pkill -9 wofi; cliphist list | wofi --show dmenu | cliphist decode | wl-copy'
 
 # TaskManager
-bindsym $ctrl+Escape exec $term -T HTOP -e htop
-bindsym $ctrl+$sup+Escape exec $term -T VTOP -e vtop
+bindsym $ctrl+$sup+Escape exec $term -T HTOP -e htop
+# bindsym $ctrl+$sup+Escape exec $term -T VTOP -e vtop
 bindsym $ctrl+Shift+Escape exec $term -T nvtop -e nvtop
 
 # Shutdown
@@ -338,16 +338,21 @@ bindsym $alt+F4 kill
 
 # Change focus
 bindsym $alt+h focus left
-bindsym $alt+$sup+Left focus left
-bindsym $sup+Shift+Tab focus left
 bindsym $alt+j focus down
 bindsym $alt+$sup+Down focus down
-bindsym $sup+Tab exec bash -c '~/.shell_utils/scripts/sway-all-windows-focused'
 bindsym $alt+k focus up
 bindsym $alt+$sup+Up focus up
 bindsym $alt+l focus right
-bindsym $alt+$sup+Right focus right
-bindsym $alt+Tab focus right
+# bindsym $alt+Tab focus right
+# bindsym $sup+Shift+Tab focus left
+# bindsym $alt+$sup+Right focus right
+# bindsym $alt+$sup+Left focus left
+bindsym $alt+Tab exec bash -c '~/.shell_utils/scripts/sway-window-preview --list'
+bindsym $ctrl+Escape exec bash -c '~/.shell_utils/scripts/sway-all-windows-focused'
+bindsym $sup+Shift+Tab exec bash -c '~/.shell_utils/scripts/sway-window-preview.py'
+bindsym $sup+Tab exec bash -c '~/.shell_utils/scripts/sway-window-preview --list-all'
+bindsym $alt+$sup+Right exec bash -c '~/.shell_utils/scripts/sway-window-preview --next'
+bindsym $alt+$sup+Left exec bash -c '~/.shell_utils/scripts/sway-window-preview --prev'
 
 # Fullscreen mode
 bindsym $alt+F11 fullscreen toggle
@@ -652,11 +657,17 @@ mode "$mode_gaps_outer" {
 # xss-lock grabs a logind suspend inhibit lock and will use i3lock to lock the
 # screen before suspend. Use loginctl lock-session to lock your screen.
 
+# Alarm
+exec bash -c '~/.shell_utils/scripts/alarm-daemon-multilingual -r &' &
+
 # Kernel Update
 exec bash -c '~/.shell_utils/scripts/kernel-check-update -d &' &
 
 # Simple Battery Manager
 exec bash -c '~/.shell_utils/scripts/simple-battery-manager &' &
+
+# Script to fix cursor and GTK theme asynchronously (runs in background)
+exec bash -c '~/.shell_utils/scripts/cursor-gtk-theme-fix -t &' &
 
 # QuakeTerminal daemon
 #exec bash -c '~/.shell_utils/scripts/sway-dropdown-terminal -d &' &
