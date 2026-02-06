@@ -90,23 +90,26 @@ main() {
     check_pandoc
     process_args "$@"
 
+    TMPDIR="${TMPDIR:-/tmp}"
     pwd="$PWD"
     temp_file=""
-    cd /tmp || true
+    cd "$TMPDIR" || true
 
     if [[ "$use_clipboard" == true ]]; then
         temp_file=$(mktemp clipboard_content_XXXXXX.md)
         echo -e "${GREEN}Copying clipboard content to $temp_file${NC}"
         
         # Tries different clipboard methods
-        if command -v xclip &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" != "wayland" ]]; then
+        if command -v termux-clipboard-get &> /dev/null && [[ -n "$TERMUX_VERSION" ]]; then
+            termux-clipboard-get > "$temp_file"
+        elif command -v xclip &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" != "wayland" ]]; then
             xclip -o -selection clipboard > "$temp_file"
         elif command -v xsel &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" != "wayland" ]]; then
             xsel --clipboard --output > "$temp_file"
-        elif command -v wl-copy &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]]; then
+        elif command -v wl-paste &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]] && [[ -n "$WAYLAND_DISPLAY" ]]; then
             wl-paste > "$temp_file"
         else
-            echo -e "${RED}Error: No clipboard utility found (xclip, xsel or wl-clipboard)${NC}"
+            echo -e "${RED}Error: No clipboard utility found (xclip, xsel, wl-clipboard or termux-clipboard-get)${NC}"
             exit 1
         fi
 
