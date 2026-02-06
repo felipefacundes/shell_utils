@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# clip2file - Save clipboard content to a file
+# Usage: clip2file "filename.extension"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to display help
+show_help() {
+    echo -e "${GREEN}${0##*/} - Save clipboard content to a file${NC}"
+    echo ""
+    echo "Usage: ${0##*/} [OPTIONS] \"filename.extension\""
+    echo ""
+    echo "Options:"
+    echo "  -h, --help     Show this help message"
+    echo "  -v, --verbose  Show detailed output"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/} \"notes.txt\"          # Save clipboard to notes.txt"
+    echo "  ${0##*/} \"code.py\"            # Save clipboard to code.py"
+    echo "  ${0##*/} \"document.md\"        # Save clipboard to markdown file"
+    echo ""
+    echo "Supported extensions are automatically detected from filename."
+    echo "The script works on Linux (X11/Wayland) and Termux."
+}
+
+# Check for help option
+if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    show_help
+    exit 0
+fi
+
+# Check if filename is provided
+if [[ $# -eq 0 ]]; then
+    echo -e "${RED}Error: No filename specified.${NC}"
+    echo "Use: ${0##*/} \"filename.extension\""
+    echo "Or:  ${0##*/} --help for more options"
+    exit 1
+fi
+
+# Check for verbose mode
+VERBOSE=0
+if [[ "$1" == "-v" ]] || [[ "$1" == "--verbose" ]]; then
+    VERBOSE=1
+    shift
+fi
+
+# Get filename
+FILENAME="$1"
+
+# Check if filename has extension
+if [[ ! "$FILENAME" =~ \..+$ ]]; then
+    echo -e "${YELLOW}Warning: Filename has no extension. Using .txt as default.${NC}"
+    FILENAME="${FILENAME}.txt"
+fi
+
+# Extract extension for informational purposes
+EXTENSION="${FILENAME##*.}"
+if [[ $VERBOSE -eq 1 ]]; then
+    echo -e "${GREEN}Detected file extension: .${EXTENSION}${NC}"
+fi
+
+# Create temp file
+temp_file=$(mktemp)
+
+# Tries different clipboard methods
+if [[ $VERBOSE -eq 1 ]]; then
+    echo -e "${YELLOW}Attempting to read from clipboard...${NC}"
+fi
+
+if command -v termux-clipboard-get &> /dev/null && [[ -n "$TERMUX_VERSION" ]]; then
+    if [[ $VERBOSE -eq 1 ]]; then
+        echo "Using Termux clipboard method"
+    fi
+    termux-clipboard-get > "$temp_file"
+elif command -v xclip &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" != "wayland" ]]; then
+    if [[ $VERBOSE -eq 1 ]]; then
+        echo "Using xclip (X11)"
+    fi
+    xclip -o -selection clipboard > "$temp_file"
+elif command -v xsel &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" != "wayland" ]]; then
+    if [[ $VERBOSE -eq 1 ]]; then
+        echo "Using xsel (X11)"
+    fi
+    xsel --clipboard --output > "$temp_file"
+elif command -v wl-paste &> /dev/null && [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]] && [[ -n "$WAYLAND_DISPLAY" ]]; then
+    if [[ $VERBOSE -eq 1 ]]; then
+        echo "Using wl-paste (Wayland)"
+    fi
+    wl-paste > "$temp_file"
+else
+    echo -e "${RED}Error: No clipboard utility found (xclip, xsel, wl-clipboard or termux-clipboard-get)${NC}"
+    rm -f "$temp_file"
+    exit 1
+fi
+
+# Check if clipboard is empty
+if [[ ! -s "$temp_file" ]]; then
+    echo -e "${YELLOW}Warning: Clipboard appears to be empty or contains only whitespace.${NC}"
+    read -p "Do you want to create an empty file? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        rm -f "$temp_file"
+        exit 0
+    fi
+fi
+
+# Copy temp file to destination
+cp "$temp_file" "$FILENAME"
+
+# Clean up
+rm -f "$temp_file"
+
+# Check if file was created successfully
+if [[ -f "$FILENAME" ]]; then
+    # Count lines and words for info
+    LINES=$(wc -l < "$FILENAME" 2>/dev/null || echo "0")
+    WORDS=$(wc -w < "$FILENAME" 2>/dev/null || echo "0")
+    BYTES=$(wc -c < "$FILENAME" 2>/dev/null || echo "0")
+    
+    echo -e "${GREEN}Success: Clipboard saved to '${FILENAME}'${NC}"
+    
+    if [[ $VERBOSE -eq 1 ]] || [[ $BYTES -gt 0 ]]; then
+        echo "  Lines: $LINES"
+        echo "  Words: $WORDS"
+        echo "  Size:  $BYTES bytes"
+    fi
+else
+    echo -e "${RED}Error: Failed to create file '${FILENAME}'${NC}"
+    exit 1
+fi
+
+exit 0

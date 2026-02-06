@@ -171,3 +171,7 @@ unset sourced
 if [[ -n "$BASH_VERSION" ]]; then
 	source ~/.shell_utils/scripts/utils/install-bash-smartcd
 fi
+
+if [[ -n "$TERMUX_VERSION" ]]; then
+    cd /sdcard || true
+fi
