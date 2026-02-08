@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Script: merge-pdf
+Description: Compresses PDFs or merges multiple PDFs/images into a single PDF
+Usage: merge-pdf [compress_mode] [output_name] [file1] [file2] ... [directory]
+Check if Ghostscript and ImageMagick are installed
+DOCUMENTATION
+
+check_dependencies() {
+    if ! command -v gs &> /dev/null; then
+        echo "Error: Ghostscript is not installed."
+        echo "Install with: sudo pacman -S ghostscript (ArchLinux)"
+        echo "Install with: sudo apt-get install ghostscript (Debian/Ubuntu/Termux)"
+        exit 1
+    fi
+    
+    if ! command -v magick &> /dev/null; then
+        echo "Error: ImageMagick is not installed."
+        echo "Install with: sudo pacman -S imagemagick (ArchLinux)"
+        echo "Install with: sudo apt-get install imagemagick (Debian/Ubuntu/Termux)"
+        exit 1
+    fi
+}
+
+# Convert images to PDF
+convert_image_to_pdf() {
+    local input="$1"
+    local output="$2"
+    local page_size="$3"
+    
+    if [ "$page_size" = "A4" ]; then
+        # Convert to A4 with fixed dimensions
+        magick "$input" \
+          -resize 2480x3508! \
+          -background white \
+          -gravity center \
+          -extent 2480x3508 \
+          -units pixelsperinch \
+          -density 300 \
+          "$output"
+    else
+        # Keep original image size
+        magick "$input" "$output"
+    fi
+}
+
+# Process a directory, collecting all PDFs and images
+process_directory() {
+    local dir="$1"
+    local temp_dir="$2"
+    local page_size="$3"
+    
+    # Find all PDF and common image files
+    find "$dir" -maxdepth 1 -type f \( \
+        -iname "*.pdf" -o \
+        -iname "*.jpg" -o \
+        -iname "*.jpeg" -o \
+        -iname "*.png" -o \
+        -iname "*.bmp" -o \
+        -iname "*.tiff" -o \
+        -iname "*.tif" -o \
+        -iname "*.gif" \
+    \) | sort > "$temp_dir/file_list.txt"
+    
+    local count=0
+    while IFS= read -r file; do
+        if [ -f "$file" ]; then
+            count=$((count + 1))
+            local ext="${file##*.}"
+            local base="${file%.*}"
+            local temp_pdf; temp_pdf="$temp_dir/$(printf "%03d" $count)_$(basename "$base").pdf"
+            
+            if [[ "$ext" =~ ^(pdf|PDF)$ ]]; then
+                # Copy PDFs to temporary directory
+                cp "$file" "$temp_pdf"
+            else
+                # Convert images to PDF
+                convert_image_to_pdf "$file" "$temp_pdf" "$page_size"
+            fi
+        fi
+    done < "$temp_dir/file_list.txt"
+}
+
+# Show script usage
+show_usage() {
+    echo "Usage: ${0##*/} [compress_mode] [output_name] [files...]"
+    echo ""
+    echo "Compression modes (required):"
+    echo "  printer    - High quality, 300dpi"
+    echo "  screen     - Low quality, 72dpi"
+    echo "  ebook      - Medium quality, 150dpi"
+    echo "  prepress   - High quality, preserves colors"
+    echo "  default    - No additional compression"
+    echo ""
+    echo "Parameters:"
+    echo "  output_name - Output file name (with or without .pdf extension)"
+    echo "  files       - PDFs, images, or directories to process"
+    echo ""
+    echo "Options:"
+    echo "  --a4       - Convert images to A4 size (default: keep original size)"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/} ebook report file1.pdf image.jpg folder/"
+    echo "  ${0##*/} printer final_document *.pdf"
+    echo "  ${0##*/} screen presentation image_folder/ --a4"
+    echo "  ${0##*/} prepress output.pdf doc1.pdf image.png"
+    exit 1
+}
+
+# Initial setup
+check_dependencies
+
+# Check minimum number of arguments
+if [ $# -lt 3 ]; then
+    show_usage
+fi
+
+# Process arguments
+COMPRESS_MODE=""
+OUTPUT_NAME=""
+PAGE_SIZE="original"
+FILES=()
+
+# Extract compression mode (first argument)
+VALID_MODES=("printer" "screen" "ebook" "prepress" "default")
+if [[ " ${VALID_MODES[*]} " =~ " $1 " ]]; then
+    COMPRESS_MODE="$1"
+    shift
+else
+    echo "Error: Invalid compression mode: $1"
+    show_usage
+fi
+
+# Extract output name (second argument)
+if [ $# -ge 1 ]; then
+    OUTPUT_NAME="$1"
+    shift
+else
+    echo "Error: Output name not specified"
+    show_usage
+fi
+
+# Process options and files
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --a4)
+            PAGE_SIZE="A4"
+            shift
+            ;;
+        -*)
+            echo "Error: Unknown option: $1"
+            show_usage
+            ;;
+        *)
+            FILES+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Check if there are files to process
+if [ ${#FILES[@]} -eq 0 ]; then
+    echo "Error: No files or directories specified"
+    show_usage
+fi
+
+# Create temporary directory
+TEMP_DIR=$(mktemp -d -t pdf_merge_XXXXXX)
+echo "Temporary directory: $TEMP_DIR"
+
+# Collect all files to process
+INPUT_FILES=()
+
+process() {
+    for item in "${FILES[@]}"; do
+        if [ -d "$item" ]; then
+            # Process directory
+            echo "Processing directory: $item"
+            process_directory "$item" "$TEMP_DIR" "$PAGE_SIZE"
+            
+            # Add generated PDFs to the list
+            for pdf in "$TEMP_DIR"/*.pdf; do
+                if [ -f "$pdf" ]; then
+                    INPUT_FILES+=("$pdf")
+                fi
+            done
+        elif [ -f "$item" ]; then
+            # Process individual file
+            local ext="${item##*.}"
+            local base="${item%.*}"
+            
+            if [[ "${ext,,}" =~ ^pdf$ ]]; then
+                # PDF - add directly
+                INPUT_FILES+=("$item")
+            elif [[ "${ext,,}" =~ ^(jpg|jpeg|png|bmp|tiff|tif|gif)$ ]]; then
+                # Image - convert to PDF
+                echo "Converting image: $item"
+                TEMP_PDF="$TEMP_DIR/$(basename "$base").pdf"
+                convert_image_to_pdf "$item" "$TEMP_PDF" "$PAGE_SIZE"
+                INPUT_FILES+=("$TEMP_PDF")
+            else
+                echo "Warning: Unsupported file type: $item"
+            fi
+        else
+            echo "Warning: File not found: $item"
+        fi
+    done
+}
+
+process
+
+# Check if there are files to process
+if [ ${#INPUT_FILES[@]} -eq 0 ]; then
+    echo "Error: No valid files to process"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+echo "Processing ${#INPUT_FILES[@]} files..."
+
+# Ensure OUTPUT_NAME has .pdf extension if not already present
+if [[ ! "${OUTPUT_NAME}" =~ \.pdf$ ]]; then
+    OUTPUT_NAME="${OUTPUT_NAME}.pdf"
+fi
+
+# Execute Ghostscript
+if [ ${#INPUT_FILES[@]} -eq 1 ] && [[ "${INPUT_FILES[0]}" != *.pdf ]]; then
+    # Only one file (possibly already converted)
+    gs -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite \
+       -dCompatibilityLevel=1.4 -dPDFSETTINGS="/$COMPRESS_MODE" \
+       -sOutputFile="${OUTPUT_NAME}" "${INPUT_FILES[0]}"
+else
+    # Multiple files
+    gs -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite \
+       -dCompatibilityLevel=1.4 -dPDFSETTINGS="/$COMPRESS_MODE" \
+       -sOutputFile="${OUTPUT_NAME}" "${INPUT_FILES[@]}"
+fi
+
+# Clean up temporary directory
+rm -rf "$TEMP_DIR"
+
+# Check if file was created
+if [ -f "${OUTPUT_NAME}" ]; then
+    echo "File created successfully: ${OUTPUT_NAME}"
+    echo "Size: $(du -h "${OUTPUT_NAME}" | cut -f1)"
+else
+    echo "Error: Failed to create PDF file"
+    exit 1
+fi

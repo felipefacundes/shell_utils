@@ -22,6 +22,8 @@ alias resize2tile='tilefix' # Resize to tiles
 alias smartresize='~/.shell_utils/scripts/resize-it'
 alias resize_smart='smartresize'
 
+alias compress_pdf='~/.shell_utils/scripts/merge-pdf'
+
 alias renomear_imagens_de_onde_parou='~/.shell_utils/scripts/rename-images-of-where-it-stopped'
 
 alias retrocede_um_diretorio_para_pasta_anterior='~/.shell_utils/scripts/return-a-directory-to-previous-folder'

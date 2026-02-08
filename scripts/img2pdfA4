@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Script: img2pdfA4
+Description: Converts images to A4 PDF format with high quality
+Usage: img2pdfA4 <input_file> [<output_file>]
+DOCUMENTATION
+
+
+# Check if ImageMagick is installed
+if ! command -v magick &> /dev/null; then
+    echo "Error: ImageMagick is not installed."
+    echo "Install with: sudo pacman -S imagemagick (ArchLinux)"
+    echo "Install with: sudo apt install imagemagick (Debian/Ubuntu/Termux)"
+    echo "or: brew install imagemagick (macOS)"
+    exit 1
+fi
+
+# Check number of arguments
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "Usage: ${0##*/} <image_file> [<pdf_output_file>]"
+    echo "Example: ${0##*/} photo.jpg document.pdf"
+    echo "If output filename is not provided, same name with .pdf extension will be used"
+    exit 1
+fi
+
+input="$1"
+
+# Check if input file exists
+if [ ! -f "$input" ]; then
+    echo "Error: File '$input' not found!"
+    exit 1
+fi
+
+# Define output filename
+if [ $# -eq 2 ]; then
+    output="$2"
+else
+    # Remove extension from original file and add .pdf
+    filename=$(basename -- "$input")
+    filename="${filename%.*}"
+    output="${filename}.pdf"
+fi
+
+# Add .pdf extension if not present
+if [[ ! "$output" =~ \.pdf$ ]]; then
+    output="${output}.pdf"
+fi
+
+echo "Converting: $input -> $output"
+echo "Processing..."
+
+# Convert image to A4 PDF
+# A4 resolution in pixels for 300 DPI: 2480x3508
+
+# Check if conversion was successful
+if magick "$input" \
+  -resize 2480x3508! \
+  -background white \
+  -gravity center \
+  -extent 2480x3508 \
+  -units pixelsperinch \
+  -density 300 \
+  "$output"; then
+    echo "✓ Conversion completed successfully!"
+    echo "Generated file: $output"
+    
+    # Show information about generated PDF
+    echo -e "\nFile information:"
+    ls -lh "$output"
+else
+    echo "✗ Conversion error!"
+    exit 1
+fi
