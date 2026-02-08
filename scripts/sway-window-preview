@@ -101,7 +101,7 @@ show_rofi_list_all() {
     done
     (( ${#rofi_lines[@]} == 0 )) && exit 0
     local choice
-    choice=$(printf '%s\n' "${rofi_lines[@]}" | rofi -dmenu -i -p "Windows (All)" -format i -no-custom 2>/dev/null)
+    choice=$(printf '%s\n' "${rofi_lines[@]}" | rofi -dmenu -kb-accept-alt "Alt_L,Alt_R" -kb-row-select "1" -kb-row-down "2" -i -p "Windows (All)" -format i -no-custom 2>/dev/null)
     if [[ -n "$choice" && "$choice" =~ ^[0-9]+$ && "$choice" -lt ${#rofi_lines[@]} ]]; then
         local selected_id="${id_map[$choice]}"
         [[ -n "$selected_id" ]] && swaymsg "[con_id=$selected_id] focus" >/dev/null 2>&1
@@ -135,14 +135,14 @@ show_rofi_list_current() {
         name="${name//$'\n'/ }"
         # Prefix based on focus
         prefix=" "
-        [[ "$focused" == "true" ]] && prefix="● "
+        [[ "$focused" == "true" ]] && prefix="▶ " # ●
         line="${prefix}${name} <small>(${app})</small>"
         rofi_lines+=("$line")
         id_map+=("$id")
     done
     (( ${#rofi_lines[@]} == 0 )) && exit 0
     local choice
-    choice=$(printf '%s\n' "${rofi_lines[@]}" | rofi -dmenu -i -p "Windows (Current)" -format i -no-custom 2>/dev/null)
+    choice=$(printf '%s\n' "${rofi_lines[@]}" | rofi -dmenu -kb-accept-alt "Alt_L,Alt_R" -kb-row-select "1" -kb-row-down "2" -i -p "Windows (Current)" -format i -no-custom 2>/dev/null)
     if [[ -n "$choice" && "$choice" =~ ^[0-9]+$ && "$choice" -lt ${#rofi_lines[@]} ]]; then
         local selected_id="${id_map[$choice]}"
         [[ -n "$selected_id" ]] && swaymsg "[con_id=$selected_id] focus" >/dev/null 2>&1

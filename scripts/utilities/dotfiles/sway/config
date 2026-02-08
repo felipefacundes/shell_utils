@@ -343,10 +343,10 @@ bindsym $alt+$sup+Down focus down
 bindsym $alt+k focus up
 bindsym $alt+$sup+Up focus up
 bindsym $alt+l focus right
-# bindsym $alt+Tab focus right
 # bindsym $sup+Shift+Tab focus left
 # bindsym $alt+$sup+Right focus right
 # bindsym $alt+$sup+Left focus left
+bindsym Alt_L+Shift+Tab focus right
 bindsym $alt+Tab exec bash -c '~/.shell_utils/scripts/sway-window-preview --list'
 bindsym $ctrl+Escape exec bash -c '~/.shell_utils/scripts/sway-all-windows-focused'
 bindsym $sup+Shift+Tab exec bash -c '~/.shell_utils/scripts/sway-window-preview.py'
