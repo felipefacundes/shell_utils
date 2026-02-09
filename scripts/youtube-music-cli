@@ -293,7 +293,7 @@ play_music() {
     echo "  q        - Quit and stop ALL playback (Ctrl+C to exit script)"
     echo "  Q        - Quit and continue to next song"
     echo "  f        - Toggle fullscreen"
-    echo "  L        - Toggle loop"
+    echo "  L        - Toggle loop/repeat"
     echo "  m        - Mute"
     echo "  9/0      - Volume down/up"
     echo "========================================"
