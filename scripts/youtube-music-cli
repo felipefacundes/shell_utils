@@ -2,12 +2,46 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# Base: https://github.com/sayan01/scripts/blob/master/yt
-# Modified for YouTube Music with autoplay and more results
+: <<'DOCUMENTATION'
+Base: https://github.com/sayan01/scripts/blob/master/yt
+Modified for YouTube Music with autoplay and more results
 
-# dependencies: mpv yt-dlp fzf rofi/dmenu grep (GNU grep)
+dependencies: mpv yt-dlp fzf rofi/dmenu grep (GNU grep)
+NOTE:  if you dont have GNU grep you can replace grep with rg
+DOCUMENTATION
 
-# NOTE:  if you dont have GNU grep you can replace grep with rg
+# Check dependencies
+for cmd in mpv yt-dlp fzf; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Error: $cmd is not installed"
+        exit 1
+    fi
+done
+
+# ====================== IMPROVED SIGNAL HANDLING ======================
+# Define cleanup function
+cleanup() {
+    echo ""
+    echo "Encerrando script e processos relacionados..."
+    
+    # Kill mpv processes
+    pkill -INT mpv 2>/dev/null
+    sleep 0.1
+    pkill -TERM mpv 2>/dev/null
+    sleep 0.1
+    pkill -KILL mpv 2>/dev/null
+    
+    # Kill background jobs
+    kill $(jobs -p) 2>/dev/null
+    
+    # Clean up temporary files
+    rm -f /tmp/yt_music_volume_*.lua
+    
+    exit 0
+}
+
+# Set up trap for common termination signals
+trap cleanup SIGINT SIGTERM SIGQUIT
 
 # explain usage
 function usage () {
@@ -159,12 +193,12 @@ fi
 # Set MPV options based on video flag
 if [[ $showVideo = "t" ]]; then
     # With video - show window and download best quality (video+audio)
-    mpv_options="--force-window=yes"
+    mpv_options="--force-window=yes --input-conf=/dev/null"
     ytdlformats="best"
     echo "Video mode enabled"
 else
     # Audio only (default) - no video, no window, download best audio only
-    mpv_options="--force-window=no --no-video"
+    mpv_options="--force-window=no --no-video --input-conf=/dev/null"
     echo "Audio-only mode (use -v or --video for video)"
 fi
 
@@ -202,7 +236,7 @@ if [ -z "$query" ]; then
 fi
 
 # program cancelled -> exit
-if [ -z "$query" ]; then exit; fi
+if [ -z "$query" ]; then cleanup; fi
 
 # clean query / channel - escape special characters for URL
 query=$(sed \
@@ -256,14 +290,15 @@ play_music() {
     echo "  ↓        - Seek backward 1min"
     echo "  >        - Next track (in playlist)"
     echo "  <        - Previous track (in playlist)"
-    echo "  q        - Quit and stop ALL playback"
+    echo "  q        - Quit and stop ALL playback (Ctrl+C to exit script)"
     echo "  Q        - Quit and continue to next song"
     echo "  f        - Toggle fullscreen"
+    echo "  L        - Toggle loop"
     echo "  m        - Mute"
     echo "  9/0      - Volume down/up"
     echo "========================================"
-    echo "The song will automatically continue to the next one when finished."
-    echo "Press 'q' ONLY if you want to STOP COMPLETELY."
+    echo "Press q on the MPV to stop the current song, or"
+    echo "Ctrl+C to completely exit the script."
     echo ""
     
     # Get current cached volume
@@ -332,17 +367,28 @@ LUA
 
     # Play with MPV using cached volume and Lua tracking script
     mpv $mpv_options \
-        --idle \
         --no-resume-playback \
         --no-save-position-on-quit \
         --term-playing-msg="Initial Volume: ${current_volume}" \
         --volume="$current_volume" \
         --ytdl-format="$ytdlformats" \
         --script="$VOLUME_LUA" \
-        "$url"
+        "$url" &
+    
+    local mpv_pid=$!
+    
+    # Wait for MPV to finish or for Ctrl+C
+    wait $mpv_pid 2>/dev/null
+    local mpv_exit_code=$?
     
     # Clean up Lua script
     rm -f "$VOLUME_LUA"
+    
+    # Check if MPV was terminated by signal (like Ctrl+C)
+    if [ $mpv_exit_code -eq 130 ] || [ $mpv_exit_code -eq 143 ]; then
+        echo "MPV interrupted. Exiting script..."
+        cleanup
+    fi
     
     echo "Track finished, continuing to next..."
     return 0
@@ -376,7 +422,7 @@ if [[ $action = "c" ]]; then
 
     # prompt the results to user to select starting point
     choice=$(echo -e "$ids" | cut -d'	' -f2- | $promptcmd)
-    if [ -z "$choice" ]; then exit; fi
+    if [ -z "$choice" ]; then cleanup; fi
     
     # get starting index using exact matching
     start_index=$(echo -e "$ids" | cut -d'	' -f2- | grep -n -x -F -- "$choice" | cut -d: -f1)
@@ -455,7 +501,7 @@ else
     
     # prompt the results to user to select starting point
     choice=$(echo -e "$ids" | cut -d'	' -f2- | $promptcmd)
-    if [ -z "$choice" ]; then exit; fi
+    if [ -z "$choice" ]; then cleanup; fi
     
     # get starting index using exact matching
     start_index=$(echo -e "$ids" | cut -d'	' -f2- | grep -n -x -F -- "$choice" | cut -d: -f1)
@@ -503,3 +549,6 @@ else
     
     echo "Playlist finished!"
 fi
+
+# Final cleanup
+cleanup
