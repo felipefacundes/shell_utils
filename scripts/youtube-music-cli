@@ -11,15 +11,16 @@
 
 # explain usage
 function usage () {
-  echo "usage: yt-music"
-  echo "    -h        help"
-  echo "    -c        channels/subscriptions"
-  echo "    -s query  search"
-  echo "    -g / -r   gui mode (rofi/dmenu)"
-  echo "  nothing     use defaults (search from prompt)"
+    echo "usage: ${0##*/}"
+    echo "    -h, --help            help"
+    echo "    -c                    channels/subscriptions"
+    echo "    -s query              search"
+    echo "    -g, -r                gui mode (rofi/dmenu)"
+    echo "    -v, --video           enable video (default: audio only)"
+    echo "  nothing                 use defaults (search from prompt)"
 	echo
 	echo "add channel names to the file $sublistpath to show them"
-	echo "in yt-music -c option. First word should be channel url, optionally"
+	echo "in ${0##*/} -c option. First word should be channel url, optionally"
 	echo "followed by tab and then anything else (channel name/description)"
 	echo "channels not in sublist can be viewed by typing their url in the prompt"
 	echo
@@ -40,8 +41,8 @@ if [[ ${#} -eq 0 ]]; then
     useDefaults="t"
 fi
 
-# available flags
-optstring=":s:cgrh"
+# available flags - added v for video, support for --video will be handled separately
+optstring=":s:cgrhv"
 
 defcmd="fzf"
 defaction="s"
@@ -52,19 +53,53 @@ guicmd="rofi -dmenu -i" #uncomment next line for dmenu
 promptcmd="$defcmd"
 action="$defaction"
 isGui="f"
+showVideo="f"
 query=""
 
-# Audio only options - mantém controle do terminal
-mpv_options="--no-video --force-window=no"
+# ========================= VOLUME CACHE SYSTEM =========================
+# Setup cache directory for volume persistence between sessions
+SCRIPT="${0##*/}"
+CACHE_DIR="${XDG_CACHE_HOME:=${HOME}/.cache}/${SCRIPT%.*}"
+mkdir -p "$CACHE_DIR"
+VOLUME_CACHE_FILE="$CACHE_DIR/volume_cache"
+
+# Initialize volume cache with 100 (default volume) if it doesn't exist
+if [ ! -f "$VOLUME_CACHE_FILE" ]; then
+    echo "100" > "$VOLUME_CACHE_FILE"
+fi
+
+# Function to get cached volume with validation
+get_cached_volume() {
+    local vol
+    vol=$(cat "$VOLUME_CACHE_FILE" 2>/dev/null)
+    # Validate volume is a number between 0 and 200 (MPV typical range)
+    if [[ $vol =~ ^[0-9]+$ ]] && [ "$vol" -ge 0 ] && [ "$vol" -le 200 ]; then
+        echo "$vol"
+    else
+        # Reset to default if invalid
+        echo "100" > "$VOLUME_CACHE_FILE"
+        echo "100"
+    fi
+}
+
+# Audio only options by default - maintains terminal control
+# We'll modify this if -v or --video flag is used
 ytdlformats="bestaudio"
 
-# subscription list
-mkdir -p "${HOME:-}/.config/yt"
-sublistpath="${HOME:-}/.config/yt/sublist"
-sublist=""
-[ -f "$sublistpath" ] && sublist=$(cat "$sublistpath")
+# ========================= ARGUMENT PARSING =========================
+# First check for --video and --help long options
+for arg in "$@"; do
+    case "$arg" in
+        --video)
+            showVideo="t"
+            ;;
+        --help)
+            usage
+            ;;
+    esac
+done
 
-# if not using defaults search for flags
+# Now parse standard options with getopts
 if [[ $useDefaults = "f" ]]; then
     while getopts ${optstring} arg; do
         case "${arg}" in
@@ -80,6 +115,9 @@ if [[ $useDefaults = "f" ]]; then
                 # set gui mode to true and change the prompt to gui prompt
                 isGui="t"
                 promptcmd="$guicmd" ;;
+            v)
+                # enable video
+                showVideo="t" ;;
             h)
                 # display help / usage
                 usage ;;
@@ -96,6 +134,24 @@ if [[ $useDefaults = "f" ]]; then
         esac
     done
 fi
+
+# Set MPV options based on video flag
+if [[ $showVideo = "t" ]]; then
+    # With video - show window and download best quality (video+audio)
+    mpv_options="--force-window=yes"
+    ytdlformats="best"
+    echo "Video mode enabled"
+else
+    # Audio only (default) - no video, no window, download best audio only
+    mpv_options="--force-window=no --no-video"
+    echo "Audio-only mode (use -v or --video for video)"
+fi
+
+# subscription list
+mkdir -p "${HOME:-}/.config/yt"
+sublistpath="${HOME:-}/.config/yt/sublist"
+sublist=""
+[ -f "$sublistpath" ] && sublist=$(cat "$sublistpath")
 
 # if no query is set with flags then ask for one
 if [ -z "$query" ]; then
@@ -125,12 +181,14 @@ fi
 # program cancelled -> exit
 if [ -z "$query" ]; then exit; fi
 
-# clean query / channel
+# clean query / channel - escape special characters for URL
 query=$(sed \
   -e 's|+|%2B|g'\
   -e 's|#|%23|g'\
   -e 's|&|%26|g'\
   -e 's| |+|g' <<< "$query")
+
+# ========================= SEARCH FUNCTIONS =========================
 
 # Function to get more search results using yt-dlp
 get_enhanced_search_results() {
@@ -153,7 +211,9 @@ get_channel_videos() {
     awk 'NR%2==1 {title=$0} NR%2==0 {print $0 "\t" title}'
 }
 
-# Function to play music with proper MPV control
+# ========================= VOLUME TRACKING LUA SCRIPT =========================
+
+# Function to play music with volume cache support
 play_music() {
     local url="$1"
     local title="$2"
@@ -161,6 +221,7 @@ play_music() {
     echo "========================================"
     echo "Playing: $title"
     echo "URL: $url"
+    echo "Current volume: $(get_cached_volume)"
     echo "========================================"
     echo "MPV Controls:"
     echo "  Space    - Play/Pause"
@@ -180,21 +241,88 @@ play_music() {
     echo "Press 'q' ONLY if you want to STOP COMPLETELY."
     echo ""
     
-    # Play with MPV - SEM --no-terminal, mantém controle
-    # Usamos um método diferente para detectar se o usuário quis parar
-    mpv $mpv_options --ytdl-format="$ytdlformats" "$url"
+    # Get current cached volume
+    local current_volume
+    current_volume=$(get_cached_volume)
     
-    # O MPV sempre retorna 0 quando termina normalmente (música acabou)
-    # ou quando o usuário pressiona 'Q' (quit-watch-later)
-    # Mas retorna um código diferente para outros erros
+    # Create Lua script for volume tracking with DEBOUNCING optimization
+    # Debouncing prevents too many disk writes by waiting a bit between writes
+    local VOLUME_LUA="/tmp/yt_music_volume_$$.lua"
+    cat > "$VOLUME_LUA" << 'LUA'
+mp = require 'mp'
+
+local cache_file = os.getenv('VOLUME_CACHE_FILE')
+if not cache_file then return end
+
+local last_saved_volume = nil
+local last_save_time = 0
+local SAVE_DELAY = 0.5 -- 500ms debounce delay
+
+-- Function to save volume with debouncing
+local function save_volume_with_debounce(volume)
+    local current_time = mp.get_time()
     
-    # Se chegamos aqui, a música terminou ou usuário pressionou 'Q'
-    # Em ambos os casos, continuamos para a próxima música
+    -- Only save if volume changed AND enough time has passed since last save
+    if volume ~= last_saved_volume and (current_time - last_save_time) >= SAVE_DELAY then
+        local f = io.open(cache_file, 'w')
+        if f then
+            f:write(tostring(math.floor(volume + 0.5))) -- Round to nearest integer
+            f:close()
+            last_saved_volume = volume
+            last_save_time = current_time
+        end
+    end
+end
+
+-- Function to handle volume changes
+local function on_volume_change(name, value)
+    if value ~= nil then
+        save_volume_with_debounce(value)
+    end
+end
+
+-- Function to save volume on shutdown (ensure final volume is saved)
+local function save_final_volume()
+    local volume = mp.get_property_number("volume", 100)
+    local f = io.open(cache_file, 'w')
+    if f then
+        f:write(tostring(math.floor(volume + 0.5)))
+        f:close()
+    end
+end
+
+-- Observe volume changes
+mp.observe_property('volume', 'number', on_volume_change)
+
+-- Register shutdown handler
+mp.register_event('shutdown', save_final_volume)
+
+-- Save initial volume
+local initial_volume = mp.get_property_number("volume", 100)
+save_volume_with_debounce(initial_volume)
+LUA
+
+    # Export cache file path for Lua script
+    export VOLUME_CACHE_FILE="$VOLUME_CACHE_FILE"
+    
+    # Play with MPV using cached volume and Lua tracking script
+    mpv $mpv_options \
+        --no-resume-playback \
+        --no-save-position-on-quit \
+        --volume="$current_volume" \
+        --ytdl-format="$ytdlformats" \
+        --script="$VOLUME_LUA" \
+        "$url"
+    
+    # Clean up Lua script
+    rm -f "$VOLUME_LUA"
+    
     echo "Track finished, continuing to next..."
     return 0
 }
 
-# if channel look for channel vids
+# ========================= CHANNEL MODE =========================
+
 if [[ $action = "c" ]]; then
     echo "Fetching channel videos (this may take a moment)..."
     
@@ -220,11 +348,11 @@ if [[ $action = "c" ]]; then
     videolink="https://youtu.be/"
 
     # prompt the results to user to select starting point
-    choice=$(echo -e "$ids" | cut -d'	' -f2 | $promptcmd)
+    choice=$(echo -e "$ids" | cut -d'	' -f2- | $promptcmd)
     if [ -z "$choice" ]; then exit; fi
     
-    # get starting index
-    start_index=$(echo -e "$ids" | cut -d'	' -f2 | grep -n "^$choice$" | cut -d: -f1)
+    # get starting index using exact matching
+    start_index=$(echo -e "$ids" | cut -d'	' -f2- | grep -n -x -F -- "$choice" | cut -d: -f1)
     
     # get all ids and titles from starting point onwards
     total_lines=$(echo -e "$ids" | wc -l)
@@ -237,7 +365,7 @@ if [[ $action = "c" ]]; then
     for ((i=start_index; i<=total_lines; i++)); do
         current_line=$(echo -e "$ids" | sed -n "${i}p")
         id=$(echo "$current_line" | cut -d'	' -f1)
-        title=$(echo "$current_line" | cut -d'	' -f2)
+        title=$(echo "$current_line" | cut -d'	' -f2-)
         
         # Play with control
         play_music "$videolink$id" "$title"
@@ -253,6 +381,8 @@ if [[ $action = "c" ]]; then
     
     echo "Playlist finished!"
     
+# ========================= SEARCH MODE =========================
+
 else
     echo "Searching for: $(echo "$query" | sed 's/+/ /g')"
     
@@ -297,11 +427,11 @@ else
     echo "Found $result_count results"
     
     # prompt the results to user to select starting point
-    choice=$(echo -e "$ids" | cut -d'	' -f2 | $promptcmd)
+    choice=$(echo -e "$ids" | cut -d'	' -f2- | $promptcmd)
     if [ -z "$choice" ]; then exit; fi
     
-    # get starting index
-    start_index=$(echo -e "$ids" | cut -d'	' -f2 | grep -n "^$choice$" | cut -d: -f1)
+    # get starting index using exact matching
+    start_index=$(echo -e "$ids" | cut -d'	' -f2- | grep -n -x -F -- "$choice" | cut -d: -f1)
     
     # get all ids and titles from starting point onwards
     total_lines=$(echo -e "$ids" | wc -l)
@@ -313,7 +443,7 @@ else
     for ((i=start_index; i<=total_lines; i++)); do
         current_line=$(echo -e "$ids" | sed -n "${i}p")
         id=$(echo "$current_line" | cut -d'	' -f1)
-        title=$(echo "$current_line" | cut -d'	' -f2)
+        title=$(echo "$current_line" | cut -d'	' -f2-)
         
         # Check if it's a video or playlist
         case $id in
