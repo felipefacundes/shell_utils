@@ -7,7 +7,7 @@
 exec 2>>/tmp/lowriter.log
 
 file="$1"
-delay=30 # Time for the process to start
+delay=120 # Time for the process to start
 
 if ! command -v lowriter &>/dev/null; then
     echo "Install LibreOffice"

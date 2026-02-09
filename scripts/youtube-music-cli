@@ -17,6 +17,7 @@ function usage () {
     echo "    -s query              search"
     echo "    -g, -r                gui mode (rofi/dmenu)"
     echo "    -v, --video           enable video (default: audio only)"
+    echo "    -f, --filter N        filter number of results (default: 100)"
     echo "  nothing                 use defaults (search from prompt)"
 	echo
 	echo "add channel names to the file $sublistpath to show them"
@@ -42,7 +43,7 @@ if [[ ${#} -eq 0 ]]; then
 fi
 
 # available flags - added v for video, support for --video will be handled separately
-optstring=":s:cgrhv"
+optstring=":s:cgrhf:"
 
 defcmd="fzf"
 defaction="s"
@@ -55,6 +56,7 @@ action="$defaction"
 isGui="f"
 showVideo="f"
 query=""
+filter_results=100
 
 # ========================= VOLUME CACHE SYSTEM =========================
 # Setup cache directory for volume persistence between sessions
@@ -87,7 +89,7 @@ get_cached_volume() {
 ytdlformats="bestaudio"
 
 # ========================= ARGUMENT PARSING =========================
-# First check for --video and --help long options
+# First check for --video, --filter and --help long options
 for arg in "$@"; do
     case "$arg" in
         --video)
@@ -95,6 +97,16 @@ for arg in "$@"; do
             ;;
         --help)
             usage
+            ;;
+        --filter)
+            # Handle --filter in the getopts loop
+            ;;
+        *)
+            # Check if argument is a number (for --filter value)
+            if [[ $arg =~ ^[0-9]+$ ]] && [[ "$1" == "--filter" ]]; then
+                filter_results="$arg"
+                shift
+            fi
             ;;
     esac
 done
@@ -118,6 +130,15 @@ if [[ $useDefaults = "f" ]]; then
             v)
                 # enable video
                 showVideo="t" ;;
+            f)
+                # filter number of results
+                if [[ ${OPTARG} =~ ^[0-9]+$ ]] && [ "${OPTARG}" -gt 0 ]; then
+                    filter_results="${OPTARG}"
+                else
+                    echo "Error: -f requires a positive numeric argument"
+                    echo
+                    usage
+                fi ;;
             h)
                 # display help / usage
                 usage ;;
@@ -146,6 +167,8 @@ else
     mpv_options="--force-window=no --no-video"
     echo "Audio-only mode (use -v or --video for video)"
 fi
+
+echo "Filtering up to $filter_results results"
 
 # subscription list
 mkdir -p "${HOME:-}/.config/yt"
@@ -193,21 +216,23 @@ query=$(sed \
 # Function to get more search results using yt-dlp
 get_enhanced_search_results() {
     local query="$1"
+    local max_results="$2"
     
-    # Try to get more results with yt-dlp (up to 100)
-    echo "Fetching more results..." >&2
+    # Try to get more results with yt-dlp
+    echo "Fetching up to $max_results results..." >&2
     
-    # Use yt-dlp to search - get more results
-    yt-dlp --flat-playlist --get-title --get-id --playlist-end 100 "ytsearch100:$query" 2>/dev/null | \
+    # Use yt-dlp to search - get specified number of results
+    yt-dlp --flat-playlist --get-title --get-id --playlist-end "$max_results" "ytsearch${max_results}:$query" 2>/dev/null | \
     awk 'NR%2==1 {title=$0} NR%2==0 {print $0 "\t" title}'
 }
 
 # Function to get channel videos using yt-dlp
 get_channel_videos() {
     local channel="$1"
+    local max_results="$2"
     
     # Use yt-dlp to get channel videos
-    yt-dlp --flat-playlist --get-title --get-id --playlist-end 100 "https://www.youtube.com/c/$channel/videos" 2>/dev/null | \
+    yt-dlp --flat-playlist --get-title --get-id --playlist-end "$max_results" "https://www.youtube.com/c/$channel/videos" 2>/dev/null | \
     awk 'NR%2==1 {title=$0} NR%2==0 {print $0 "\t" title}'
 }
 
@@ -304,11 +329,13 @@ LUA
 
     # Export cache file path for Lua script
     export VOLUME_CACHE_FILE="$VOLUME_CACHE_FILE"
-    
+
     # Play with MPV using cached volume and Lua tracking script
     mpv $mpv_options \
+        --idle \
         --no-resume-playback \
         --no-save-position-on-quit \
+        --term-playing-msg="Initial Volume: ${current_volume}" \
         --volume="$current_volume" \
         --ytdl-format="$ytdlformats" \
         --script="$VOLUME_LUA" \
@@ -327,7 +354,7 @@ if [[ $action = "c" ]]; then
     echo "Fetching channel videos (this may take a moment)..."
     
     # Try to get more results with yt-dlp first
-    ids=$(get_channel_videos "$query")
+    ids=$(get_channel_videos "$query" "$filter_results")
     
     # If yt-dlp fails, fall back to original method
     if [ -z "$ids" ]; then
@@ -387,7 +414,7 @@ else
     echo "Searching for: $(echo "$query" | sed 's/+/ /g')"
     
     # Try to get more results with yt-dlp first
-    enhanced_ids=$(get_enhanced_search_results "$query")
+    enhanced_ids=$(get_enhanced_search_results "$query" "$filter_results")
     
     # If we got enhanced results, use them
     if [ -n "$enhanced_ids" ]; then
