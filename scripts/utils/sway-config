@@ -4,7 +4,7 @@
 
 config_dir=~/.config/sway/
 config_file="$config_dir/config"
-config_base=~/.shell_utils/scripts/utilities/dotfiles/sway/config
+config_base=~/.shell_utils/utilities/dotfiles/sway/config
 
 # Initialize associative array for internationalization (i18n)
 declare -A MESSAGES

@@ -1,6 +1,6 @@
 #alias utils='ls ~/.shell_utils/scripts/utils' # Subdirectory for simpler scripts
 alias faqs='ls ~/.shell_utils/scripts/faqs'
-alias utilities='ls ~/.shell_utils/scripts/utilities'
+alias utilities='ls ~/.shell_utils/utilities'
 alias utils='ls ~/.shell_utils/scripts/utils'
 alias scripts='ls ~/.shell_utils/scripts'
 alias Freds_img='ls ~/.shell_utils/scripts/Freds_img'

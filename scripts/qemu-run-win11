@@ -46,7 +46,7 @@ DISK_IMAGE="$VMs_DIR/Win11.qcow2"
 WINFSP="$PUBLIC/winfsp-2.0.23075.msi"
 MESA3D_WIN="$PUBLIC/mesa3d-25.2.6-release-msvc.7z"
 OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd"
-OVMF_VARS="$HOME/.shell_utils/scripts/utilities/nvram/win11_VARS.fd"
+OVMF_VARS="$HOME/.shell_utils/utilities/nvram/win11_VARS.fd"
 OVMF_VARS2="/var/lib/libvirt/qemu/nvram/win11_VARS.fd"
 OVMF_VARS3="/usr/share/edk2/x64/OVMF_VARS.4m.fd"
 
