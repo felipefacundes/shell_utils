@@ -196,11 +196,16 @@ bindsym $sup+F4 exec bash -c '~/.shell_utils/scripts/custom-terminal-for-nautilu
 # Translate to Clipboard
 bindsym $sup+Shift+T exec bash -c '~/.shell_utils/scripts/translate-to-clipboard &'
 
-# PLayerCTL Play-Pause
+# PLayerCTL Control Play-Pause etc
 bindsym $sup+F8 exec bash -c 'playerctl play-pause &'
-
-# PLayerCTL STOP
 bindsym $sup+F6 exec bash -c 'playerctl stop &'
+bindsym $sup+F7 exec bash -c 'playerctl position 5- &'
+bindsym $sup+F9 exec bash -c 'playerctl position 5+ &'
+bindsym $sup+Shift+F7 exec bash -c 'playerctl previous &'
+bindsym $sup+Shift+F9 exec bash -c 'playerctl next &'
+bindsym $sup+Shift+F5 exec bash -c 'playerctl volume 0 &'
+bindsym $sup+Shift+F4 exec bash -c 'playerctl volume .05+ &'
+bindsym $sup+Shift+F3 exec bash -c 'playerctl volume .05- &'
 
 # Reboot System
 bindsym $ctrl+$sup+backspace exec bash -c 'openrc-shutdown --reboot now; systemctl reboot'

@@ -10,6 +10,8 @@ dependencies: mpv yt-dlp fzf rofi/dmenu grep (GNU grep)
 NOTE:  if you dont have GNU grep you can replace grep with rg
 DOCUMENTATION
 
+clear
+
 # Check dependencies
 for cmd in mpv yt-dlp fzf; do
     if ! command -v "$cmd" &> /dev/null; then
@@ -57,14 +59,7 @@ function usage () {
 	echo "add channel names to the file $sublistpath to show them"
 	echo "in ${0##*/} -c option. First word should be channel url, optionally"
 	echo "followed by tab and then anything else (channel name/description)"
-	echo "channels not in sublist can be viewed by typing their url in the prompt"
-	echo
-	echo "example file format:"
-	echo "markrober       Mark Rober"
-	echo "vsauce1         VSauce          Michael Steven's Channel"
-	echo "BlackGryph0n    Black Gryph0n   Gabriel Brown signs stuff"
-	echo "TomScottGo      Tom Scott"
-	echo "danielthrasher  Daniel Thrasher"
+	echo -e "channels not in sublist can be viewed by typing their url in the prompt\n"
   exit 0
 }
 
