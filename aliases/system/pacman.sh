@@ -15,7 +15,7 @@ if command -v pacman &>/dev/null && test -d /var/cache/pacman/pkg/; then
     alias pacman_history_installed_today='last_update'
     alias pacman_history_installed_today2='last_update2'
 
-	alias u='sudo pacman -Syyu --noconfirm --overwrite "*"'
+	alias u='sudo pacman -Syyu --noconfirm'
 	alias up="u"
 	alias autoremove='sudo pacman -Rcs $(pacman -Qtdq)'
 
