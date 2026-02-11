@@ -71,7 +71,7 @@ export SMARTCD_CONFIG="$SMARTCD_CONFIG_FOLDER/smartcd.conf"
 export SMARTCD_HIST_FILE=${SMARTCD_HIST_FILE:-"path_history.db"}
 export SMARTCD_AUTOEXEC_FILE=${SMARTCD_AUTOEXEC_FILE:-"autoexec.db"}
 
-[[ ! -d "$SMARTCD_CONFIG_FOLDER" ]] && mkdir -p "$SMARTCD_CONFIG_FOLDER"
+[[ ! -d "$SMARTCD_CONFIG_FOLDER" ]] && mkdir -p "$SMARTCD_CONFIG_FOLDER" >/dev/null 2>&1
 
 if [[ ! -f "$SMARTCD_CONFIG" ]]; then
 cat <<'EOF' | tee "$SMARTCD_CONFIG" &>/dev/null
@@ -344,7 +344,7 @@ function __smartcd::databaseCleanup() {
 }
 
 function __smartcd::databaseReset() {
-	mkdir -p "${SMARTCD_CONFIG_FOLDER}"
+	mkdir -p "${SMARTCD_CONFIG_FOLDER}" >/dev/null 2>&1
 	echo "" > "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
 }
 
