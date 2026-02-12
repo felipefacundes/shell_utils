@@ -19,7 +19,7 @@ This will restore the proper `/lib -> /usr/lib` symlink and your system should b
 
 ---
 
-## 📦 About This Script
+## 📦 About This Script (fix-lib-utils)
 
 **Arch Linux pacman has recently been removing `/lib` or creating it as a directory instead of preserving the symbolic link to `/usr/lib`.** This happens due to:
 
@@ -52,7 +52,7 @@ This script provides **three layers of protection** against this issue:
 
 ```bash
 # Download the script
-curl -O https://raw.githubusercontent.com/youruser/arch-lib-fix/main/install-lib-fix.sh
+curl -O https://raw.githubusercontent.com/felipefacundes/lib-fix/main/lib-fix-utils
 
 # Make executable and run as root
 chmod +x install-lib-fix.sh
