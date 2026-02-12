@@ -46,20 +46,7 @@ Target = lib
 [Action]
 Description = Checking and fixing /lib symlink to /usr/lib...
 When = PostTransaction
-Exec = /usr/bin/bash -c '  
-    # If /lib is a directory and smaller than 1M, replace it with symlink
-    if [ -d "/lib" ]; then
-        cd / || true
-        lib_size=$(du -sk /lib 2>/dev/null | cut -f1)
-        if [ "$lib_size" -lt 1024 ]; then
-            rm -rf lib 2>/dev/null
-            ln -s /usr/lib /lib 2>/dev/null
-        fi
-    # If /lib does not exist, create symlink
-    elif [ ! -e "/lib" ]; then
-        ln -s /usr/lib /lib 2>/dev/null
-    fi
-'
+Exec = /usr/bin/bash -c 'if [ -d "/lib" ]; then cd / || true; lib_size=$(du -sk /lib 2>/dev/null | cut -f1); if [ "$lib_size" -lt 1024 ]; then rm -rf lib 2>/dev/null; ln -s /usr/lib /lib 2>/dev/null; fi; elif [ ! -e "/lib" ]; then ln -s /usr/lib /lib 2>/dev/null; fi'
 EOF
     echo "✓ Pacman hook created"
 else
