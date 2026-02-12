@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Arch Linux pacman has recently been removing /lib or creating it as a directory 
+instead of preserving the symbolic link to /usr/lib. This script is designed to 
+detect and fix this issue by checking if /lib is a small directory (likely the 
+mistakenly created one) and replacing it with the proper symlink.
+DOCUMENTATION
+
+# Check if running as root
+echo "=== /lib Symlink Emergency Fix ==="
+
+# Check current state
+if [ -L "/lib" ] && [ "$(readlink /lib)" = "/usr/lib" ]; then
+    echo "✓ /lib is already a symlink to /usr/lib"
+    exit 0
+fi
+
+# Attempt fix
+if [ -d "/lib" ]; then
+    cd / || true
+
+    # Try to get size, fallback if du fails
+    lib_size=$(du -sk /lib 2>/dev/null | cut -f1)
+    
+    if [ -z "$lib_size" ] || [ "$lib_size" -lt 1024 ]; then
+        echo "Removing incorrect /lib directory..."
+        rm -rf lib 2>/dev/null
+        
+        echo "Creating symlink: /lib -> /usr/lib"
+        ln -s /usr/lib /lib 2>/dev/null
+        
+        echo "✓ Fix applied successfully"
+    else
+        echo "ERROR: /lib is a directory with size >= 1M"
+        echo "Manual intervention required"
+        exit 1
+    fi
+# If /lib does not exist, create symlink
+elif [ ! -e "/lib" ]; then
+    echo "Creating missing symlink: /lib -> /usr/lib"
+    ln -s /usr/lib /lib 2>/dev/null
+    echo "✓ Symlink created"
+fi
+
+# Verify
+if [ -L "/lib" ] && [ "$(readlink /lib)" = "/usr/lib" ]; then
+    echo "✓ Verification passed"
+else
+    echo "ERROR: Fix failed"
+    exit 1
+fi

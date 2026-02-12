@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Arch Linux /lib Fix Installer
+This script ensures all three fix mechanisms are properly installed:
+ 1. Pacman hook - fixes immediately after pacman transactions
+ 2. systemd-tmpfiles.d - fixes at boot
+ 3. Emergency script - for manual recovery
+
+All components are created if missing
+DOCUMENTATION
+
+set -euo pipefail
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "This script must be run as root"
+    exit 1
+fi
+
+echo "=== Arch Linux /lib Fix Installer ==="
+echo "Installing and verifying all fix mechanisms..."
+
+# ----------------------------------------------------------------------------
+# 1. Pacman Hook
+# ----------------------------------------------------------------------------
+# /etc/pacman.d/hooks
+HOOK_PATH="/usr/share/libalpm/hooks/60-fix-lib.hook"
+HOOK_DIR="/usr/share/libalpm/hooks"
+
+if [ ! -f "$HOOK_PATH" ]; then
+    echo "Creating pacman hook: $HOOK_PATH"
+    [[ ! -d "$HOOK_PATH" ]] && mkdir -p "$HOOK_DIR"
+    
+    cat <<'EOF' > "$HOOK_PATH"
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Path
+Target = usr/lib
+Target = lib
+
+[Action]
+Description = Checking and fixing /lib symlink to /usr/lib...
+When = PostTransaction
+Exec = /usr/bin/bash -c '  
+    # If /lib is a directory and smaller than 1M, replace it with symlink
+    if [ -d "/lib" ]; then
+        cd / || true
+        lib_size=$(du -sk /lib 2>/dev/null | cut -f1)
+        if [ "$lib_size" -lt 1024 ]; then
+            rm -rf lib 2>/dev/null
+            ln -s /usr/lib /lib 2>/dev/null
+        fi
+    # If /lib does not exist, create symlink
+    elif [ ! -e "/lib" ]; then
+        ln -s /usr/lib /lib 2>/dev/null
+    fi
+'
+EOF
+    echo "✓ Pacman hook created"
+else
+    echo "✓ Pacman hook already exists"
+fi
+
+# ----------------------------------------------------------------------------
+# 2. systemd-tmpfiles.d Configuration
+# ----------------------------------------------------------------------------
+TMPFILES_PATH="/etc/tmpfiles.d/fix-lib.conf"
+TMPFILES_DIR="/etc/tmpfiles.d"
+
+if [ ! -f "$TMPFILES_PATH" ]; then
+    echo "Creating tmpfiles.d configuration: $TMPFILES_PATH"
+    mkdir -p "$TMPFILES_DIR"
+    
+    cat <<'EOF' > "$TMPFILES_PATH"
+# Type Path        Mode User Group Age Argument
+L+     /lib        -    -    -     -   /usr/lib
+EOF
+    echo "✓ tmpfiles.d configuration created"
+    
+    # Apply immediately
+    systemd-tmpfiles --create "$TMPFILES_PATH" 2>/dev/null || true
+else
+    echo "✓ tmpfiles.d configuration already exists"
+fi
+
+# ----------------------------------------------------------------------------
+# 3. Emergency Script
+# ----------------------------------------------------------------------------
+EMERGENCY_PATH="/usr/local/bin/fix-lib-emergency"
+EMERGENCY_DIR="/usr/local/bin"
+
+if [ ! -f "$EMERGENCY_PATH" ]; then
+    echo "Creating emergency script: $EMERGENCY_PATH"
+    mkdir -p "$EMERGENCY_DIR"
+    
+    cat <<'EOF' > "$EMERGENCY_PATH"
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Arch Linux pacman has recently been removing /lib or creating it as a directory 
+instead of preserving the symbolic link to /usr/lib. This script is designed to 
+detect and fix this issue by checking if /lib is a small directory (likely the 
+mistakenly created one) and replacing it with the proper symlink.
+DOCUMENTATION
+
+# Emergency /lib symlink fix script
+# Designed to work in minimal recovery environments (busybox, static ash)
+# Usage: fix-lib-emergency
+
+# Check if running as root
+echo "=== /lib Symlink Emergency Fix ==="
+
+# Check current state
+if [ -L "/lib" ] && [ "$(readlink /lib)" = "/usr/lib" ]; then
+    echo "✓ /lib is already a symlink to /usr/lib"
+    exit 0
+fi
+
+# Attempt fix
+if [ -d "/lib" ]; then
+    cd / || true
+
+    # Try to get size, fallback if du fails
+    lib_size=$(du -sk /lib 2>/dev/null | cut -f1)
+    
+    if [ -z "$lib_size" ] || [ "$lib_size" -lt 1024 ]; then
+        echo "Removing incorrect /lib directory..."
+        rm -rf lib 2>/dev/null
+        
+        echo "Creating symlink: /lib -> /usr/lib"
+        ln -s /usr/lib /lib 2>/dev/null
+        
+        echo "✓ Fix applied successfully"
+    else
+        echo "ERROR: /lib is a directory with size >= 1M"
+        echo "Manual intervention required"
+        exit 1
+    fi
+# If /lib does not exist, create symlink
+elif [ ! -e "/lib" ]; then
+    echo "Creating missing symlink: /lib -> /usr/lib"
+    ln -s /usr/lib /lib 2>/dev/null
+    echo "✓ Symlink created"
+fi
+
+# Verify
+if [ -L "/lib" ] && [ "$(readlink /lib)" = "/usr/lib" ]; then
+    echo "✓ Verification passed"
+else
+    echo "ERROR: Fix failed"
+    exit 1
+fi
+EOF
+    
+    chmod +x "$EMERGENCY_PATH"
+    echo "✓ Emergency script created and made executable"
+else
+    echo "✓ Emergency script already exists"
+fi
+
+# ----------------------------------------------------------------------------
+# Verify current system state and apply fix if needed
+# ----------------------------------------------------------------------------
+echo ""
+echo "=== Current System State ==="
+
+# Check if /lib needs immediate fixing
+NEEDS_FIX=0
+
+if [ -L "/lib" ]; then
+    TARGET=$(readlink /lib)
+    if [ "$TARGET" = "/usr/lib" ]; then
+        echo "✓ /lib is correctly symlinked to /usr/lib"
+    else
+        echo "⚠ /lib symlink points to $TARGET (should be /usr/lib)"
+        NEEDS_FIX=1
+    fi
+elif [ -d "/lib" ]; then
+    lib_size=$(du -sk /lib 2>/dev/null | cut -f1)
+    if [ "$lib_size" -lt 1024 ]; then
+        echo "⚠ /lib is a small directory (${lib_size}KB) - likely incorrect"
+        NEEDS_FIX=1
+    else
+        echo "⚠ /lib is a large directory (${lib_size}KB) - manual check recommended"
+    fi
+elif [ ! -e "/lib" ]; then
+    echo "⚠ /lib does not exist"
+    NEEDS_FIX=1
+fi
+
+# Apply fix if needed
+if [ $NEEDS_FIX -eq 1 ]; then
+    echo ""
+    echo "=== Applying Fix ==="
+    
+    # Try emergency script first
+    if [ -x "$EMERGENCY_PATH" ]; then
+        "$EMERGENCY_PATH"
+    else
+        # Fallback: direct fix
+        if [ -d "/lib" ]; then
+            cd / || true
+            rm -rf lib 2>/dev/null
+        fi
+        ln -s /usr/lib /lib 2>/dev/null
+        echo "✓ Direct fix applied"
+    fi
+fi
+
+echo ""
+echo "=== Installation Complete ==="
+echo "All fix mechanisms are in place:"
+echo "  • Pacman hook:     $HOOK_PATH"
+echo "  • tmpfiles.d:      $TMPFILES_PATH"
+echo "  • Emergency script: $EMERGENCY_PATH"
+echo ""
+echo "To test emergency script manually:"
+echo "  sudo fix-lib-emergency"
+echo ""
+echo "To test tmpfiles.d configuration:"
+echo "  sudo systemd-tmpfiles --create /etc/tmpfiles.d/fix-lib.conf"
+echo ""
+echo "To view pacman hook:"
+echo "  cat $HOOK_PATH"
+
+exit 0
