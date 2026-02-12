@@ -12,6 +12,8 @@ alias screen_help='help screen_help'
 
 alias tmux_help='help tmux_help'
 
+alias fix_lib_help='help fix_lib'
+
 alias video_clear_metadata='help video_clear_metadata'
 
 alias tunnel_and_server='help tunnel_and_server'
