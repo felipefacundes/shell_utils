@@ -688,8 +688,13 @@ exec bash -c 'mako &' &
 exec bash -c '~/.shell_utils/scripts/persistent-pid /bin/anyremote -f /usr/share/anyremote/cfg-data/Server-mode/all-in-one2.cfg -s socket:5197 &' &
 exec bash -c '~/.shell_utils/scripts/persistent-pid /bin/minidlnad -f ${HOME}/.config/minidlna/minidlna.conf -P ${HOME}/.config/minidlna/minidlna.pid &' &
 exec bash -c '~/.shell_utils/scripts/gnome-keyring-fix &' &
-exec bash -c 'LANG=en /usr/lib/xdg-desktop-portal-gtk & LANG=en /usr/lib/xdg-desktop-portal-gnome &' &
 exec bash -c 'cadmus &' &
+
+# Portal and permissions
+# sudo systemctl enable --now seatd
+exec bash -c 'systemctl --user enable --now xdg-desktop-portal xdg-desktop-portal-gtk 2>/dev/null &' &
+exec bash -c 'systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP 2>/dev/null &' &
+exec bash -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP 2>/dev/null &' & 
 
 # Fix pulseaudio
 exec bash -c '~/.shell_utils/scripts/fix-pulseaudio &' &
