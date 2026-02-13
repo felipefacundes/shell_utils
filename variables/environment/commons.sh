@@ -24,9 +24,9 @@ PERL_MB_OPT="--install_base \"${HOME}/.perl5\""; export PERL_MB_OPT;
 PERL_MM_OPT="INSTALL_BASE=${HOME}/.perl5"; export PERL_MM_OPT;
 
 # Booting pyenv if it is available
-if command -v pyenv &>/dev/null; then
-    eval "$(pyenv init -)"
-fi
+# if command -v pyenv &>/dev/null; then
+#     eval "$(pyenv init -)"
+# fi
 
 # Defining the favorite editor
 if command -v nvim &>/dev/null; then

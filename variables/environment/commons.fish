@@ -29,9 +29,9 @@ set -gx PERL_MB_OPT "--install_base \"$HOME/.perl5\""
 set -gx PERL_MM_OPT "INSTALL_BASE=$HOME/.perl5"
 
 # Booting pyenv if it is available
-if command -v pyenv > /dev/null
-    eval (pyenv init -)
-end
+# if command -v pyenv > /dev/null
+#     eval (pyenv init -)
+# end
 
 # Defining the favorite editor
 if command -v nvim &>/dev/null
