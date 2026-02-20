@@ -4,7 +4,7 @@
 
 : <<'DOCUMENTATION'
 resize-mult16 - Check if images are multiples of 16 and optionally resize them
-Version: 1.0
+Version: 1.1
 License: GPLv3
 Author: Felipe Facundes
 
@@ -43,6 +43,8 @@ EXAMPLES:
   resize-mult16 -l -r                        # Batch process all images
   resize-mult16 -p -c black image.png        # Pad with black borders
   resize-mult16 -d image.png                 # Dry run (simulation)
+  resize-mult16 -s 1080 image.png            # Resize to approximate 1080p (multiple of 16)
+  resize-mult16 -s 1920x1080 image.png       # Resize to approximate 1920x1080 (multiple of 16)
 
 OPTIONS:
   -h, --help           Show this help message
@@ -56,6 +58,8 @@ OPTIONS:
   -d, --dry-run        Simulate actions without modifying files
   -l, --loop           Batch process all matching images
   -o DIR, --output DIR Output directory for resized images
+  -s SIZE, --size SIZE Target size (e.g., 1080 or 1920x1080). The image will be resized 
+                        to the nearest multiple of 16 that approximates the target size.
 
 TIPS FOR GODOT USERS:
 ─────────────────────
@@ -84,6 +88,9 @@ PAD_MODE=false
 PAD_COLOR="transparent"
 INTERPOLATION="box" # Good for pixel art
 OUTPUT_DIR=""
+TARGET_SIZE=""      # Target size for -s option
+TARGET_WIDTH=""     # Parsed target width
+TARGET_HEIGHT=""    # Parsed target height
 
 # Display usage information
 show_usage() {
@@ -101,6 +108,9 @@ show_usage() {
     echo "  -d, --dry-run        Simulate actions without modifying files"
     echo "  -l, --loop           Enable loop mode for monitoring"
     echo "  -o DIR, --output DIR Output directory for resized images"
+    echo "  -s SIZE, --size SIZE Target size (e.g., 1080 or 1920x1080). The image will be"
+    echo "                        resized to the nearest multiple of 16 that approximates"
+    echo "                        the target size while maintaining aspect ratio."
     echo ""
     echo "Examples:"
     echo "  ${0##*/} image.png                    # Check single image"
@@ -111,6 +121,8 @@ show_usage() {
     echo "  ${0##*/} -l -r                        # Loop mode with resize"
     echo "  ${0##*/} -l -d                        # Loop mode dry-run"
     echo "  ${0##*/} -o ./output/ *.png           # Save to output directory"
+    echo "  ${0##*/} -s 1080 image.png            # Resize to approximate 1080p height"
+    echo "  ${0##*/} -s 1920x1080 image.png       # Resize to approximate 1920x1080"
     exit 0
 }
 
@@ -138,6 +150,34 @@ validate_color() {
     else
         echo "Warning: Color '$color' might not be valid. Using 'transparent' instead."
         return 1
+    fi
+}
+
+# Parse target size argument
+parse_target_size() {
+    local size="$1"
+    
+    # Check if it's in format WxH
+    if [[ "$size" =~ ^[0-9]+x[0-9]+$ ]]; then
+        TARGET_WIDTH="${size%x*}"
+        TARGET_HEIGHT="${size#*x}"
+    # Check if it's a single number (assume height for landscape, but we'll use it as reference)
+    elif [[ "$size" =~ ^[0-9]+$ ]]; then
+        TARGET_WIDTH="$size"
+        TARGET_HEIGHT="$size"
+    else
+        echo "Error: Invalid size format. Use format like 1080 or 1920x1080."
+        exit 1
+    fi
+    
+    # Validate numbers are positive
+    if [ "$TARGET_WIDTH" -le 0 ] || [ "$TARGET_HEIGHT" -le 0 ]; then
+        echo "Error: Dimensions must be positive numbers."
+        exit 1
+    fi
+    
+    if [ "$VERBOSE" = true ]; then
+        echo "Target size parsed: ${TARGET_WIDTH}x${TARGET_HEIGHT}"
     fi
 }
 
@@ -205,6 +245,59 @@ calculate_nearest_multiple() {
     esac
 }
 
+# Calculate dimensions based on target size while maintaining aspect ratio
+calculate_target_dimensions() {
+    local original_width="$1"
+    local original_height="$2"
+    local target_width="$3"
+    local target_height="$4"
+    
+    local new_width new_height
+    local aspect_ratio
+    
+    # Calculate aspect ratio
+    aspect_ratio=$(echo "scale=10; $original_width / $original_height" | bc 2>/dev/null)
+    
+    # If bc is not available, use awk as fallback
+    if [ -z "$aspect_ratio" ] || [ "$aspect_ratio" = "0" ]; then
+        aspect_ratio=$(awk "BEGIN {print $original_width / $original_height}")
+    fi
+    
+    # Try to fit to target dimensions while maintaining aspect ratio
+    # First, try scaling by width
+    new_width="$target_width"
+    new_height=$(echo "scale=0; $target_width / $aspect_ratio" | bc 2>/dev/null)
+    
+    # If bc failed, use awk
+    if [ -z "$new_height" ] || [ "$new_height" = "0" ]; then
+        new_height=$(awk "BEGIN {printf \"%.0f\", $target_width / $aspect_ratio}")
+    fi
+    
+    # If height exceeds target, scale by height instead
+    if [ "$new_height" -gt "$target_height" ]; then
+        new_height="$target_height"
+        new_width=$(echo "scale=0; $target_height * $aspect_ratio" | bc 2>/dev/null)
+        
+        if [ -z "$new_width" ] || [ "$new_width" = "0" ]; then
+            new_width=$(awk "BEGIN {printf \"%.0f\", $target_height * $aspect_ratio}")
+        fi
+    fi
+    
+    # Round to nearest integer
+    new_width=$(printf "%.0f" "$new_width" 2>/dev/null || echo "$new_width")
+    new_height=$(printf "%.0f" "$new_height" 2>/dev/null || echo "$new_height")
+    
+    # Ensure minimum size of 16
+    [ "$new_width" -lt 16 ] && new_width=16
+    [ "$new_height" -lt 16 ] && new_height=16
+    
+    # Adjust to nearest multiple of 16
+    new_width=$(calculate_nearest_multiple "$new_width" "round")
+    new_height=$(calculate_nearest_multiple "$new_height" "round")
+    
+    echo "$new_width $new_height"
+}
+
 # Check if dimensions are multiples of 16
 check_multiple_of_16() {
     local width=$1
@@ -215,6 +308,26 @@ check_multiple_of_16() {
     else
         return 1  # At least one is not a multiple
     fi
+}
+
+# Check if image needs resizing based on options
+needs_resize() {
+    local width=$1
+    local height=$2
+    
+    # If -s is used, ALWAYS resize (to target size)
+    if [ -n "$TARGET_SIZE" ]; then
+        return 0  # Needs resize
+    fi
+    
+    # If -r is used, only resize if not multiple of 16
+    if [ "$RESIZE" = true ]; then
+        if ! check_multiple_of_16 "$width" "$height"; then
+            return 0  # Needs resize
+        fi
+    fi
+    
+    return 1  # No resize needed
 }
 
 # Display image information
@@ -328,7 +441,7 @@ _resize() {
     fi
 }
 
-# Resize image to nearest multiple of 16
+# Resize image to target size or nearest multiple of 16
 resize_image() {
     local file="$1"
     local width=$2
@@ -340,11 +453,31 @@ resize_image() {
         return 1
     fi
     
-    local new_width; new_width=$(calculate_nearest_multiple "$width" "ceil")
-    local new_height; new_height=$(calculate_nearest_multiple "$height" "ceil")
+    local new_width new_height
+    
+    # Determine target dimensions based on options
+    if [ -n "$TARGET_SIZE" ]; then
+        # Calculate dimensions based on target size while maintaining aspect ratio
+        read new_width new_height <<< $(calculate_target_dimensions "$width" "$height" "$TARGET_WIDTH" "$TARGET_HEIGHT")
+    else
+        # Use nearest multiple of 16 (ceil method)
+        new_width=$(calculate_nearest_multiple "$width" "ceil")
+        new_height=$(calculate_nearest_multiple "$height" "ceil")
+    fi
+    
+    # If dimensions haven't changed, nothing to do
+    if [ "$width" -eq "$new_width" ] && [ "$height" -eq "$new_height" ]; then
+        if [ "$VERBOSE" = true ]; then
+            echo "Image already has target dimensions: ${width}x${height}"
+        fi
+        return 0
+    fi
     
     if [ "$VERBOSE" = true ]; then
         echo "Resizing $file from ${width}x${height} to ${new_width}x${new_height}"
+        if [ -n "$TARGET_SIZE" ]; then
+            echo "Target size: ${TARGET_WIDTH}x${TARGET_HEIGHT} (approximate)"
+        fi
         if [ "$file" != "$output_file" ]; then
             echo "Output file: $output_file"
         fi
@@ -376,11 +509,27 @@ ask_confirmation() {
     local file="$1"
     local width=$2
     local height=$3
-    local new_width; new_width=$(calculate_nearest_multiple "$width" "ceil")
-    local new_height; new_height=$(calculate_nearest_multiple "$height" "ceil")
+    local new_width new_height
+    
+    if [ -n "$TARGET_SIZE" ]; then
+        read new_width new_height <<< $(calculate_target_dimensions "$width" "$height" "$TARGET_WIDTH" "$TARGET_HEIGHT")
+    else
+        new_width=$(calculate_nearest_multiple "$width" "ceil")
+        new_height=$(calculate_nearest_multiple "$height" "ceil")
+    fi
+    
+    # If dimensions haven't changed, no need to ask
+    if [ "$width" -eq "$new_width" ] && [ "$height" -eq "$new_height" ]; then
+        echo "Image already has target dimensions: ${width}x${height}"
+        return 2  # Special code for no change needed
+    fi
     
     echo "Resize $file from ${width}x${height} to ${new_width}x${new_height}?"
     echo "This will be $((new_width / 16))x$((new_height / 16)) tiles for Godot."
+    
+    if [ -n "$TARGET_SIZE" ]; then
+        echo "Target size: ${TARGET_WIDTH}x${TARGET_HEIGHT} (approximate)"
+    fi
     
     if [ "$PAD_MODE" = true ]; then
         echo "Mode: Padding (maintains aspect ratio)"
@@ -429,44 +578,44 @@ process_image() {
     local width; width=$(echo "$dimensions" | cut -d' ' -f1)
     local height; height=$(echo "$dimensions" | cut -d' ' -f2)
     
-    # Display information (unless in quiet mode)
-    if [ "$VERBOSE" = true ] || [ "$FORCE" = false ]; then
+    # Display information (always show in verbose mode)
+    if [ "$VERBOSE" = true ] || [ "$RESIZE" = false ]; then
         display_info "$file" "$width" "$height"
     fi
     
-    # Check if resize is needed
-    if check_multiple_of_16 "$width" "$height"; then
-        if [ "$VERBOSE" = true ]; then
-            echo "No resize needed for $file (already multiple of 16)"
-        elif [ "$RESIZE" = true ]; then
-            echo "✓ $file is already correct size"
-        fi
-        return 3  # Special code for "already correct"
-    fi
-    
-    # Handle resize based on options
-    if [ "$RESIZE" = true ]; then
-        if [ "$FORCE" = true ]; then
-            # Force resize without confirmation
-            resize_image "$file" "$width" "$height"
-        else
-            # Ask for confirmation (unless in batch mode)
-            if ask_confirmation "$file" "$width" "$height"; then
+    # Check if resize is needed based on options
+    if [ "$RESIZE" = true ] || [ -n "$TARGET_SIZE" ]; then
+        if needs_resize "$width" "$height"; then
+            if [ "$FORCE" = true ]; then
+                # Force resize without confirmation
                 resize_image "$file" "$width" "$height"
             else
-                echo "Skipped: $file"
-                return 2
+                # Ask for confirmation
+                ask_confirmation "$file" "$width" "$height"
+                local confirm_result=$?
+                
+                if [ $confirm_result -eq 0 ]; then
+                    resize_image "$file" "$width" "$height"
+                elif [ $confirm_result -eq 2 ]; then
+                    # No change needed (already target dimensions)
+                    echo "✓ $file already has target dimensions: ${width}x${height}"
+                    return 0
+                else
+                    echo "Skipped: $file"
+                    return 2
+                fi
+            fi
+        else
+            # No resize needed - image is already multiple of 16 and using -r without -s
+            if [ -z "$TARGET_SIZE" ] && [ "$RESIZE" = true ]; then
+                echo "✓ $file is already a multiple of 16 (no resize needed)"
             fi
         fi
-    else
-        # Just showing info, not resizing
-        return 0
     fi
     
     return 0
 }
 
-# Loop batch processing function
 # Loop batch processing function
 loop_monitor() {
     echo "=== BATCH PROCESSING MODE ==="
@@ -524,6 +673,7 @@ loop_monitor() {
         echo ""
         echo "Options active:"
         [ "$RESIZE" = true ] && echo "  - Resize: ON"
+        [ -n "$TARGET_SIZE" ] && echo "  - Target size: ${TARGET_WIDTH}x${TARGET_HEIGHT}"
         [ "$DRY_RUN" = true ] && echo "  - Dry run: ON (simulation only)"
         [ "$PAD_MODE" = true ] && echo "  - Pad mode: ON"
         [ "$BACKUP" = true ] && echo "  - Backup: ON"
@@ -553,50 +703,24 @@ loop_monitor() {
         echo "--------------------------------------------------"
         echo "Processing file $((i + 1)) of $total_files: $(basename "$file")"
         
-        # Store current state to detect if resize happened
-        local was_resized=false
-        
-        # Check if file already has correct size
-        local dimensions
-        if dimensions=$(get_image_dimensions "$file" 2>/dev/null); then
-            local width; width=$(echo "$dimensions" | cut -d' ' -f1)
-            local height; height=$(echo "$dimensions" | cut -d' ' -f2)
-            
-            if check_multiple_of_16 "$width" "$height"; then
-                ((already_correct++))
-                echo "✓ $file is already correct size"
-                continue
-            fi
-        fi
-        
         # Process the file
         if process_image "$file"; then
             ((processed++))
             
-            # Check if resize actually happened
-            if dimensions=$(get_image_dimensions "$file" 2>/dev/null); then
-                local new_width; new_width=$(echo "$dimensions" | cut -d' ' -f1)
-                local new_height; new_height=$(echo "$dimensions" | cut -d' ' -f2)
-                
-                if check_multiple_of_16 "$new_width" "$new_height"; then
-                    ((resized++))
-                fi
-            fi
-        else
-            # Check error type
+            # Check if file was already correct
             if dimensions=$(get_image_dimensions "$file" 2>/dev/null); then
                 local width; width=$(echo "$dimensions" | cut -d' ' -f1)
                 local height; height=$(echo "$dimensions" | cut -d' ' -f2)
                 
                 if check_multiple_of_16 "$width" "$height"; then
-                    ((already_correct++))
-                    echo "  (Already correct size)"
-                else
-                    ((errors++))
+                    # Only count as already correct if no resize was needed
+                    if [ -z "$TARGET_SIZE" ] && [ "$RESIZE" = true ]; then
+                        ((already_correct++))
+                    fi
                 fi
-            else
-                ((errors++))
             fi
+        else
+            ((errors++))
         fi
     done
     
@@ -607,20 +731,19 @@ loop_monitor() {
     echo "  Total files found: $total_files"
     
     if [ "$RESIZE" = true ]; then
-        echo "  Already correct size: $already_correct"
-        echo "  Successfully resized: $resized"
+        if [ -z "$TARGET_SIZE" ]; then
+            echo "  Already multiple of 16: $already_correct"
+        fi
+        echo "  Successfully processed: $processed"
     else
         echo "  Successfully processed: $processed"
     fi
     
-    #echo "  Skipped: $skipped"
     echo "  Errors: $errors"
     echo ""
     
     if [ "$DRY_RUN" = true ]; then
         echo "NOTE: This was a DRY RUN - no files were modified."
-        echo "      Would resize: $resized files"
-        echo "      Already correct: $already_correct files"
     fi
     
     if [ $errors -gt 0 ]; then
@@ -698,6 +821,12 @@ main() {
                 OUTPUT_DIR="$2"
                 shift 2
                 ;;
+            -s|--size)
+                TARGET_SIZE="$2"
+                parse_target_size "$TARGET_SIZE"
+                RESIZE=true  # -s implies resize
+                shift 2
+                ;;
             --)
                 shift
                 break
@@ -737,44 +866,97 @@ main() {
     # Normal mode - process files
     local processed=0
     local errors=0
-    local total_files=0
+    local already_correct=0
+    local total_files=${#FILE_PATTERNS[@]}
     
-    # Count total files
-    shopt -s nullglob
-    for pattern in "${FILE_PATTERNS[@]}"; do
-        for file in $pattern; do
-            [ -f "$file" ] && ((total_files++))
-        done
-    done
-    shopt -u nullglob
-    
-    echo "Processing $total_files file(s)..."
-    echo ""
-    
-    local current=0
-    shopt -s nullglob
-    for pattern in "${FILE_PATTERNS[@]}"; do
-        for file in $pattern; do
-            [ -f "$file" ] || continue
-            
-            ((current++))
-            echo "--------------------------------------------------"
-            echo "Processing file $current of $total_files: $(basename "$file")"
-            
-            if process_image "$file"; then
-                ((processed++))
+    # Check if we have literal filenames (not patterns)
+    if [ $total_files -gt 0 ]; then
+        echo "Processing $total_files file(s)..."
+        echo ""
+        
+        local current=0
+        for file in "${FILE_PATTERNS[@]}"; do
+            # Expand glob patterns if needed
+            if [[ "$file" == *\** ]] || [[ "$file" == *\?* ]] || [[ "$file" == *\[* ]]; then
+                # It's a pattern, expand it
+                shopt -s nullglob
+                for expanded_file in $file; do
+                    [ -f "$expanded_file" ] || continue
+                    ((current++))
+                    echo "--------------------------------------------------"
+                    echo "Processing file $current of ?: $(basename "$expanded_file")"
+                    
+                    if process_image "$expanded_file"; then
+                        ((processed++))
+                    else
+                        ((errors++))
+                    fi
+                done
+                shopt -u nullglob
             else
-                ((errors++))
+                # It's a literal filename
+                if [ -f "$file" ]; then
+                    ((current++))
+                    echo "--------------------------------------------------"
+                    echo "Processing file $current of $total_files: $(basename "$file")"
+                    
+                    if process_image "$file"; then
+                        ((processed++))
+                    else
+                        ((errors++))
+                    fi
+                else
+                    echo "Warning: File '$file' does not exist"
+                    ((errors++))
+                fi
             fi
         done
-    done
-    shopt -u nullglob
+    fi
+    
+    # If no files were processed through the loop above, try pattern matching
+    if [ $processed -eq 0 ] && [ $errors -eq 0 ]; then
+        # Try to find files using common image patterns
+        local found_files=0
+        shopt -s nullglob
+        for pattern in "${FILE_PATTERNS[@]}"; do
+            for file in $pattern; do
+                [ -f "$file" ] || continue
+                ((found_files++))
+            done
+        done
+        shopt -u nullglob
+        
+        if [ $found_files -gt 0 ]; then
+            echo "Found $found_files file(s) matching patterns..."
+            echo ""
+            
+            shopt -s nullglob
+            for pattern in "${FILE_PATTERNS[@]}"; do
+                for file in $pattern; do
+                    [ -f "$file" ] || continue
+                    echo "--------------------------------------------------"
+                    echo "Processing file: $(basename "$file")"
+                    
+                    if process_image "$file"; then
+                        ((processed++))
+                    else
+                        ((errors++))
+                    fi
+                done
+            done
+            shopt -u nullglob
+        fi
+    fi
     
     echo "=================================================="
     echo "Processing complete:"
-    echo "  Total files found: $total_files"
-    echo "  Successfully processed: $processed file(s)"
-    echo "  Errors: $errors file(s)"
+    echo "  Files processed: $processed"
+    
+    if [ -z "$TARGET_SIZE" ] && [ "$RESIZE" = true ] && [ $already_correct -gt 0 ]; then
+        echo "  Already multiple of 16: $already_correct"
+    fi
+    
+    echo "  Errors: $errors"
     
     if [ $errors -gt 0 ]; then
         exit 1
