@@ -22,10 +22,12 @@ RED='\033[1;31m'
 NC='\033[0m'
 
 declare -A MESSAGES
+
 # Check the system language and assign messages accordingly
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
         ["framework_not_found"]="Shell Utils não encontrado. Clonando repositório..."
+        ["error_no_internet"]="${RED}Erro: Sem conexão com a internet! Nenhuma atualização pode ser encontrada!${NC}"
         ["repo_clone_error"]="${RED}Erro ao clonar repositório${NC}"
         ["updates_found"]="${YELLOW}Novas atualizações encontradas. Atualizando...${NC}"
         ["update_success"]="${GREEN}Shell Utils atualizado com sucesso!${NC}"
@@ -95,6 +97,7 @@ EOF
 elif [[ "${LANG,,}" =~ es_ ]]; then
     MESSAGES=(
         ["framework_not_found"]="Shell Utils no encontrado. Clonando repositorio..."
+        ["error_no_internet"]="${RED}Error: ¡Sin conexión a internet! No se encontraron actualizaciones.${NC}"
         ["repo_clone_error"]="${RED}Error al clonar el repositorio${NC}"
         ["updates_found"]="${YELLOW}Nuevas actualizaciones encontradas. Actualizando...${NC}"
         ["update_success"]="${GREEN}¡Shell Utils actualizado con éxito!${NC}"
@@ -164,6 +167,7 @@ EOF
 else
     MESSAGES=(
         ["framework_not_found"]="Shell Utils directory not found. Cloning repository..."
+        ["error_no_internet"]="${RED}Error: No internet connection! No update can be found.${NC}"
         ["repo_clone_error"]="${RED}Error cloning repository${NC}"
         ["updates_found"]="${YELLOW}New updates found. Updating...${NC}"
         ["update_success"]="${GREEN}Shell Utils successfully updated!${NC}"
@@ -307,6 +311,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 fi
 
 if [[ -f "$CONFIG_FILE" ]]; then
+    #shellcheck source=/dev/null
     source "$CONFIG_FILE"
 fi
 
@@ -326,8 +331,14 @@ case "$ARGUMENT" in
     ;;
 esac
 
-if [[ "$SHELL_UTILS_AUTO_UPDATE" == 0 ]]; then
+if [[ "$SHELL_UTILS_AUTO_UPDATE" != 1 ]]; then
     exit 0
+fi
+
+# Check network
+if ! timeout .8 ping -c 1 8.8.8.8 &>/dev/null; then
+    echo -e "${MESSAGES["error_no_internet"]}"
+    exit 1
 fi
 
 # Check for running update
