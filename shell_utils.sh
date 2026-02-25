@@ -7,6 +7,10 @@ shell_utils_configs=~/.shell_utils_configs
 # DEBUG log on/off
 # exec 2>/tmp/shell_utils_debug
 
+if [[ -n $TERMUX_VERSION ]]; then
+    USER=$(id -un); export USER
+fi
+
 # Path to your shell_utils installation.
 if [ ! -d "$shell_utils" ]; then
     git clone https://github.com/felipefacundes/shell_utils "$shell_utils"
