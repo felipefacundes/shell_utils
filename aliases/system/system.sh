@@ -12,7 +12,7 @@ alias all_kill="killX"
 alias kill_all="all_kill"
 alias death_all="all_kill"
 alias matar_tudo="all_kill"
-alias my_current_terminal_is='help my_current_terminal_is'
+alias my_current_terminal_is='helps my_current_terminal_is'
 alias my_terminal_is='my_current_terminal_is'
 alias current_terminal_is='my_current_terminal_is'
 alias b='cd ~/.local/bin'
@@ -83,7 +83,7 @@ alias fuso_horario_select='timezone_info'
 alias fuso_horario_info='timezone_info'
 
 # Commands with Help
-alias scp='help scp_help; scp'
+alias scp='helps scp_help; scp'
 alias ssh2send="scp"
 
 alias curl='~/.shell_utils/scripts/faqs/curl'
@@ -91,10 +91,10 @@ alias cget_curl='curl'
 alias ssh='~/.shell_utils/scripts/faqs/ssh'
 alias sftp='~/.shell_utils/scripts/faqs/sftp'
 
-alias wget='help wget_help; wget'
+alias wget='helps wget_help; wget'
 alias dd='~/.shell_utils/scripts/faqs/dd'
-alias rsync='help rsync_help; rsync'
-alias rsync2ssh="help rsync_help"
+alias rsync='helps rsync_help; rsync'
+alias rsync2ssh="helps rsync_help"
 
 # Smart command with chatgpt
 alias ci='tgpt -s'

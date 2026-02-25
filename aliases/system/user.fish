@@ -1,5 +1,5 @@
-alias permissions='help permissions'
-alias default_user='help default_user'
+alias permissions='helps permissions'
+alias default_user='helps default_user'
 alias my_user_default='default_user'
 alias user_default='default_user'
 

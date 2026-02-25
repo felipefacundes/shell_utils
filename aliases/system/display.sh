@@ -18,6 +18,6 @@ alias brilho='xrandr_brightness'
 alias xrandr_brilho='xrandr_brightness'
 alias command_brightness='xrandr_brightness'
 
-alias xrandr_brightness_help='help xrandr_brightness'
+alias xrandr_brightness_help='helps xrandr_brightness'
 alias xrandr_brilho_ajuda='xrandr_brightness_help'
 alias command_brightness='xrandr_brightness_help'

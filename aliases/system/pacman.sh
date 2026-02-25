@@ -9,7 +9,7 @@ if command -v pacman &>/dev/null && test -d /var/cache/pacman/pkg/; then
 	alias pac_his='~/.shell_utils/scripts/pacman-history'
 	alias pachis_ins='~/.shell_utils/scripts/pacman-history-installed-log'
 	alias pachis_rem='~/.shell_utils/scripts/pacman-history-removed-log'
-	alias pacman_remove_debug='help pacman_remove_debug'
+	alias pacman_remove_debug='helps pacman_remove_debug'
 	alias last_update='ls -lt --time-style=+%Y-%m-%d /var/cache/pacman/pkg/*.zst | grep $(date +%Y-%m-%d)'
 	alias last_update2="ls -ltr --time-style=+%Y-%m-%d /var/cache/pacman/pkg/*.zst | grep -E '\b[0-9]{4}-[0-9]{2}-[0-9]{2}\b'"
     alias pacman_history_installed_today='last_update'

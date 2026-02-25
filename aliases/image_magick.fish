@@ -1,1 +1,1 @@
-alias remove_background_help="help remove_background"
+alias remove_background_help="helps remove_background"

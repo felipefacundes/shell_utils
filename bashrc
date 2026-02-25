@@ -100,6 +100,30 @@ shopt -s histverify
 ## Isso pode ajudar a reduzir o tamanho do histórico e evitar que comandos repetidos ocupem espaço desnecessário.
 shopt -s cmdhist
 
+## If set, the programmable completion facilities are enabled. This allows
+## dynamic completion of command arguments based on context. When a user hits
+## TAB, Bash can execute custom completion functions that provide context-
+## sensitive suggestions (e.g., completing git branches for 'git checkout',
+## or package names for 'apt install'). This option is enabled by default in
+## interactive shells.
+###############################################################################################################################
+## Habilita a opção progcomp, que ativa os recursos de completação programável no Bash.
+## Isso permite a completação dinâmica de argumentos de comandos baseada no contexto.
+## Quando o usuário pressiona TAB, o Bash pode executar funções de completação personalizadas
+## que fornecem sugestões sensíveis ao contexto (ex.: completar branches do git para 'git checkout',
+## ou nomes de pacotes para 'apt install'). Esta opção está habilitada por padrão em shells interativos.
+shopt -s progcomp
+
+## If set, aliases are expanded separately for shell completion purposes.
+## This allows completion functions to work with aliased commands by treating
+## the alias as if it were the original command. Without this option, you must
+## manually configure completions for each alias using the complete command.
+###############################################################################################################################
+## Habilita a opção progcomp_alias, que expande aliases separadamente para fins de conclusão (completion) no shell.
+## Isso permite que as funções de completação funcionem com comandos alias, tratando o alias como se fosse o comando original.
+## Sem esta opção, é necessário configurar manualmente as completações para cada alias usando o comando complete.
+shopt -s progcomp_alias
+
 ## With this option enabled, Bash will not complete empty commands when pressing the Tab key twice. This prevents Bash from listing 
 ## all available commands when no commands have been entered.
 ###############################################################################################################################

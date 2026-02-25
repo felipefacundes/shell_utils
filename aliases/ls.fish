@@ -1,1 +1,1 @@
-alias ls_tips='help ls_tips'
+alias ls_tips='helps ls_tips'

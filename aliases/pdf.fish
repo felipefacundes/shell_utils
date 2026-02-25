@@ -1,4 +1,4 @@
-alias pdf_encrypt_decrypt_help="help encrypt_decrypt_pdf"
-alias ghostscript_settings_vectorDevices_help="help ghostscript_vectorDevices"
-alias pdf_ghostscript_settings_vectorDevices_help="help ghostscript_vectorDevices"
-alias pdf_metadata_help="help pdf_metadata"
+alias pdf_encrypt_decrypt_help="helps encrypt_decrypt_pdf"
+alias ghostscript_settings_vectorDevices_help="helps ghostscript_vectorDevices"
+alias pdf_ghostscript_settings_vectorDevices_help="helps ghostscript_vectorDevices"
+alias pdf_metadata_help="helps pdf_metadata"

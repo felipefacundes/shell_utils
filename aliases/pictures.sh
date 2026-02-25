@@ -1,21 +1,21 @@
 #####################################################
 ################# Pictures / Photos #################
-alias resize_force='help resize_force'
-alias force_resize='help resize_force'
+alias resize_force='helps resize_force'
+alias force_resize='helps resize_force'
 alias pdf2text='~/.shell_utils/scripts/faqs/pdftotext-help'
 alias ascii_image_converter_help='echo https://github.com/TheZoraiz/ascii-image-converter'
 alias ascii_image_converter_man='ascii_image_converter_help'
-alias convert='help im_options; magick'
-alias texttopdf_help='help texttopdf_help'
+alias convert='helps im_options; magick'
+alias texttopdf_help='helps texttopdf_help'
 alias text2pdf='texttopdf_help'
 alias lesspipe='lesspipe.sh'
-alias pdfimg='help pdfimg'
+alias pdfimg='helps pdfimg'
 alias pdftoimg='pdfimg; pdftoppm'
 alias pdftoppm='pdfimg; pdftoppm'
 alias pic_dir="cd ~/Pictures"
 alias wpp="cd ~/Pictures/Wallpapers"
 alias wallpp="wpp"
-alias resolutions='help resolutions'
+alias resolutions='helps resolutions'
 alias sizes='resolutions'
 alias mi='~/.shell_utils/scripts/enhanced-image'
 alias improve_image='mi'

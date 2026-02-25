@@ -1,1 +1,1 @@
-alias godot_animation_generate='help godot_animation_generate'
+alias godot_animation_generate='helps godot_animation_generate'

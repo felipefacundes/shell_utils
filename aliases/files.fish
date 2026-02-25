@@ -1,5 +1,5 @@
-alias remove_extension='help remove_extension'
-alias recent_files='help recent_files'
+alias remove_extension='helps remove_extension'
+alias recent_files='helps recent_files'
 
 alias file_type='~/.shell_utils/scripts/test-file-type'
 alias test_file='file_type'
@@ -24,5 +24,5 @@ alias have_pdf='has_pdf'
 alias is_pdf='has_pdf'
 alias pdf_here='has_pdf'
 
-alias mime='help default_mime'
+alias mime='helps default_mime'
 alias default_mime='mime'
