@@ -2,9 +2,12 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+# Exit if running in an SSH session
+[[ -n "$SSH_TTY" || -n "$SSH_CLIENT" || -n "$SSH_CONNECTION" ]] && return
+
 # Exit if not running in a TTY or if stdin is not a terminal
-{ [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && exit
-[[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]] && exit
+{ [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && return
+[[ "${XDG_SESSION_TYPE}" != [Tt][Tt][Yy] ]] && return
 
 dms=("sddm" "lightdm" "gdm" "slim" "xdm" "lxdm" "wdm")
 running_dm=""

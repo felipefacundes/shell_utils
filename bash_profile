@@ -2,9 +2,12 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+# Exit if running in an SSH session
+[[ -n "$SSH_TTY" || -n "$SSH_CLIENT" || -n "$SSH_CONNECTION" ]] && return
+
 # Exit if not running in a TTY or if stdin is not a terminal
-{ [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && exit
-[[ "${XDG_SESSION_TYPE,,}" != "tty" ]] && exit
+{ [[ ! -t 0 ]] || ! tty >/dev/null 2>&1; } && return
+[[ "${XDG_SESSION_TYPE,,}" != "tty" ]] && return
 
 dms=("sddm" "lightdm" "gdm" "slim" "xdm" "lxdm" "wdm")
 running_dm=""
@@ -16,7 +19,7 @@ for dm in "${dms[@]}"; do
         echo -e "${bred}WARNING: ${running_dm^^} display manager is currently running.${color_off}"
         echo "This script performs better when display managers are temporarily disabled."
         echo -e "${bred} To override warnings and continue, use the 'select-wm' command.${color_off}"
-        exit
+        return
     fi
 done
 
