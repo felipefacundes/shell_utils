@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #################################
 ###### Xterm Transparency #######
 [[ "$XTERM_VERSION" ]] && command -v transset-df >/dev/null 2>&1 && transset-df -x 0.7 -m 0.7 --id "$WINDOWID" >/dev/null
@@ -8,19 +8,19 @@
 # https://www.gnu.org/software/bash/manual/html_node/The-Shopt-Builtin.html
 # https://www.networkworld.com/article/3574960/using-bashs-shopt-builtin-to-manage-linux-shell-behavior.html
 
-#set -x # Debug trace
-#The set -o pipefail option is used in Bash to handle pipeline failures (chaining commands using the "|" operator) more accurately. Typically, 
-#a pipeline returns the exit code of the last command executed in the pipeline. However, if an intermediate command fails, 
-#theexit code is usually ignored and the pipeline is considered successful.
-#Enabling set -o pipefail changes the default behavior. In this mode, the pipeline will return the exit code of the last command that failed 
-#within the pipeline, instead of returning the exit code of the last executed command. This can be useful for detecting failuresin complex pipelines, 
-#especially when dealing with data processing or task automation.
-#set -o pipefail # Will cause the pipeline to return the exit code of the last failed command within the pipeline.
-#set -e # Debug (Errors: exit) mode 'exit-on-error' or 'errexit'. Terminates execution immediately if any command returns a non-zero error code.
-#set -u # Enables 'nounset' or 'unbound variables' mode. Generates an error if an uninitialized variable is referenced.
-#set -f # Disable globstar. Disables wildcard expansion (globbing).
-#set -efu
-#set -eo pipefail
+# set -x # Debug trace
+# The set -o pipefail option is used in Bash to handle pipeline failures (chaining commands using the "|" operator) more accurately. Typically, 
+# a pipeline returns the exit code of the last command executed in the pipeline. However, if an intermediate command fails, 
+# theexit code is usually ignored and the pipeline is considered successful.
+# Enabling set -o pipefail changes the default behavior. In this mode, the pipeline will return the exit code of the last command that failed 
+# within the pipeline, instead of returning the exit code of the last executed command. This can be useful for detecting failuresin complex pipelines, 
+# especially when dealing with data processing or task automation.
+# set -o pipefail # Will cause the pipeline to return the exit code of the last failed command within the pipeline.
+# set -e # Debug (Errors: exit) mode 'exit-on-error' or 'errexit'. Terminates execution immediately if any command returns a non-zero error code.
+# set -u # Enables 'nounset' or 'unbound variables' mode. Generates an error if an uninitialized variable is referenced.
+# set -f # Disable globstar. Disables wildcard expansion (globbing).
+# set -efu
+# set -eo pipefail
 
 # shopt | column
 #
@@ -33,7 +33,7 @@
 shopt -s globstar
 
 ## If set, the extended pattern matching features described above (see Pattern Matching) are enabled.
-###################################################################################################
+#####################################################################################################
 ## Habilita a opção extglob, que permite o uso de recursos avançados de correspondência de padrões, 
 ## como padrões de correspondência estendidos.
 shopt -s extglob
@@ -41,7 +41,7 @@ shopt -s extglob
 ## If set, minor errors in the spelling of a directory component in a cd command will be corrected. 
 ## The errors checked for are transposed characters, a missing character, and a character too many. 
 ## If a correction is found, the corrected path is printed, and the command proceeds. This option is only used by interactive shells.
-#########################################################################################################################
+###############################################################################################################################
 ## Habilita a opção cdspell, que corrige erros menores na digitação de nomes de diretórios ao usar o comando cd. 
 ## Por exemplo, se você digitar um diretório com caracteres transpostos, ausentes ou extras, o Bash tentará corrigi-lo 
 ## e executar o comando cd para o diretório corrigido.
@@ -49,21 +49,21 @@ shopt -s cdspell
 
 ## If set, Bash replaces directory names with the results of word expansion when performing filename completion.
 ## This changes the contents of the Readline editing buffer. If not set, Bash attempts to preserve what the user typed.
-#########################################################################################################################
+###############################################################################################################################
 ## Habilita a opção direxpand, que substitui nomes de diretórios pelos resultados da expansão de palavras durante 
 ## a conclusão de nomes de arquivos. Isso significa que, ao usar a conclusão de tabulação, o Bash substituirá nomes 
 ## de diretórios pelos caminhos completos correspondentes.
 shopt -s direxpand
 
 ## If set, Bash attempts spelling correction on directory names during word completion if the directory name initially supplied does not exist.
-##############################################################################################################################################
+###############################################################################################################################
 ## Habilita a opção dirspell, que realiza correção ortográfica em nomes de diretórios durante a conclusão de tabulação, caso o nome do diretório 
 ## fornecido inicialmente não exista. O Bash tentará corrigir o nome do diretório e completá-lo corretamente.
 shopt -s dirspell
 
 ## If set, a command name that is the name of a directory is executed as if it were the argument to the cd command. 
 ## This option is only used by interactive shells.
-###################################################################################################################
+###############################################################################################################################
 ## Habilita a opção autocd, permitindo que um nome de comando que corresponda a um diretório seja executado como se fosse o argumento 
 ## para o comando cd. Isso é útil para navegar diretamente para um diretório digitando seu nome no prompt de comando, em vez de precisar digitar 
 ## explicitamente o comando cd.
@@ -71,7 +71,7 @@ shopt -s autocd
 
 ## With this option enabled, matching wildcards will not be case sensitive. For example, *.txt will match files with a .txt extension, 
 ## regardless of case.
-######################################################################################################################################
+###############################################################################################################################
 ## Com essa opção habilitada, a correspondência de globos (wildcards) não será sensível a maiúsculas e minúsculas. Por exemplo, *.txt
 ## corresponderá a arquivos com extensão .txt, independentemente do uso de letras maiúsculas ou minúsculas.
 shopt -s nocaseglob
@@ -81,38 +81,40 @@ shopt -s histreedit
 
 ## This option causes the history to be displayed before each command is executed. After displaying the command history, 
 ## you have the option to edit or confirm the execution. This can help to avoid errors when running old commands from history.
-######################################################################################################################################
+###############################################################################################################################
 ## Essa opção faz com que o histórico seja exibido antes da execução de cada comando. Após exibir o comando do histórico, você tem a opção 
 ## de editar ou confirmar a execução. Isso pode ajudar a evitar erros ao executar comandos antigos do histórico.
 shopt -s histverify 
 
 ## With this option enabled, the history will be stored in single-line format instead of the default multi-line format. This makes it easy 
 ## to search and manipulate history using tools like grep or scripts.
-######################################################################################################################################
+###############################################################################################################################
 ## Com essa opção ativada, o histórico será armazenado no formato de linha única, em vez do formato de várias linhas padrão. 
 ## Isso facilita a pesquisa e manipulação do histórico usando ferramentas como grep ou scripts.
 #shopt -s lithist
 
 ## By enabling this option, the history will not store duplicate consecutive commands. This can help reduce the history size and preventrepeated 
 ## commands from taking up unnecessary space.
-######################################################################################################################################
+###############################################################################################################################
 ## Habilitando essa opção, o histórico não armazenará comandos consecutivos duplicados. 
 ## Isso pode ajudar a reduzir o tamanho do histórico e evitar que comandos repetidos ocupem espaço desnecessário.
 shopt -s cmdhist
 
 ## With this option enabled, Bash will not complete empty commands when pressing the Tab key twice. This prevents Bash from listing 
 ## all available commands when no commands have been entered.
-######################################################################################################################################
+###############################################################################################################################
 ## Com essa opção ativada, o Bash não completará comandos vazios ao pressionar a tecla Tab duas vezes. 
 ## Isso evita que o Bash liste todos os comandos disponíveis quando nenhum comando foi digitado
 shopt -s no_empty_cmd_completion
 
 #################################
 ######### SHELL UTILS ###########
+# shellcheck source=/dev/null
 [[ -f ~/.shell_utils/shell_utils.sh ]] && . ~/.shell_utils/shell_utils.sh
 #################################
 
 # Bash-it
+# shellcheck source=/dev/null
 [[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
 
 # Enable the subsequent settings only in interactive sessions
@@ -123,7 +125,9 @@ esac
 
 # Oh My Bash Config
 OMB_THEME=demula #"agnoster" #"pure" #"rr" #"mairan" #"rjorgenson" #"brainy" #"iterate" #"standard" #"demula" #"powerline-naked" #"powerline-multiline" #"90210" #"clean" #"dulcie" #"brunton" #"binaryanomaly" #"random" #"font" #"powerline" #"duru" #"vscode" #"candy" #"hawaii50" #"emperor" #"tylenol" #"morris" #"pzq" #"zitron" #"kitsune"
-OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$OMBC"
+
+# shellcheck source=/dev/null
+OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$OMBC" && unset OMBC
 if [[ "$OMB_THEME" == "agnoster" ]]; then
     prompt_theme_agnoster
 fi
@@ -296,9 +300,43 @@ fzf_bash
 # shellcheck source=/dev/null
 source ~/.shell_utils/scripts/utils/zbash-smartcd-with-fzf
 
+# Load local bash completions from user directory
+# This allows installing shell completions without sudo/root access
+# (typical location for pip/pipx, cargo, and other language package managers)
 if [ -d ~/.local/share/bash-completion/completions/ ]; then
     for completion in ~/.local/share/bash-completion/completions/*.bash; do
         # shellcheck source=/dev/null
         [ -f "$completion" ] && source "$completion"
     done
+fi
+
+# ble.sh configuration - syntax highlighting and autosuggest for bash
+BLE_PATH="$HOME/.local/share/blesh/ble.sh"
+BLE_REPO="$HOME/.ble.sh"
+
+# Install ble.sh only if it doesn't exist
+if [[ ! -f "$BLE_PATH" && ! -d "$BLE_REPO" ]]; then
+    echo "📦 Installing ble.sh..."
+    git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git "$BLE_REPO"
+    
+    if [[ -d "$BLE_REPO" ]]; then
+        make -C "$BLE_REPO" install PREFIX="$HOME/.local"
+        echo "✅ ble.sh successfully installed!"
+    else
+        echo "❌ Failed to clone ble.sh"
+    fi
+fi
+
+# Load ble.sh if it exists
+if [[ -f "$BLE_PATH" ]]; then
+    # shellcheck source=/dev/null
+    source -- "$BLE_PATH"
+    
+    # Optional ble.sh settings
+    bleopt complete_auto_history=1  # History-based autosuggest
+    bleopt highlight_syntax=1       # Syntax highlighting
+    bleopt highlight_filename=1     # Filename highlighting (existing/broken)
+    unset BLE_PATH BLE_REPO
+else
+    echo "⚠️  ble.sh not found at $BLE_PATH"
 fi
