@@ -1,5 +1,9 @@
 # shell_utils.fish
 
+# If not an interactive shell, do nothing.
+# This prevents errors with scp and sftp.
+status --is-interactive; or exit
+
 set shell_utils ~/.shell_utils
 set shell_utils_users ~/.local/shell_utils
 set shell_utils_configs ~/.shell_utils_configs
