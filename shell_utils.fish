@@ -8,6 +8,10 @@ set shell_utils ~/.shell_utils
 set shell_utils_users ~/.local/shell_utils
 set shell_utils_configs ~/.shell_utils_configs
 
+if set -q TERMUX_VERSION
+    set -g USER (id -un)
+end
+
 # Path to your shell_utils installation.
 if not test -d "$shell_utils"
     git clone https://github.com/felipefacundes/shell_utils "$shell_utils"
