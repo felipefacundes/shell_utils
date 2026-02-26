@@ -376,4 +376,19 @@ elif [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "⚠️  ble.sh not found at $BLE_PATH"
 fi
 
+# Function that ONLY completes commands, ALWAYS
+_complete_only_commands() {
+    COMPREPLY=($(compgen -c -- "$2"))
+    return 0
+}
+
+# Remove all existing completions
+complete -r
+
+# Apply our function to all contexts
+# complete -F _complete_only_commands -D  # This causes entering the first subsequent directory that exists, which can be problematic
+complete -F _complete_only_commands -E
+complete -F _complete_only_commands -I
+
 unset BLE_PATH BLE_REPO BLE_CONF
+
