@@ -91,7 +91,7 @@ shopt -s histverify
 ###############################################################################################################################
 ## Com essa opção ativada, o histórico será armazenado no formato de linha única, em vez do formato de várias linhas padrão. 
 ## Isso facilita a pesquisa e manipulação do histórico usando ferramentas como grep ou scripts.
-#shopt -s lithist
+shopt -s lithist
 
 ## By enabling this option, the history will not store duplicate consecutive commands. This can help reduce the history size and preventrepeated 
 ## commands from taking up unnecessary space.
@@ -335,8 +335,8 @@ if [ -d ~/.local/share/bash-completion/completions/ ]; then
 fi
 
 # ble.sh configuration - syntax highlighting and autosuggest for bash
+BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
 BLE_PATH="$HOME/.local/share/blesh/ble.sh"
-BLE_CONF=~/.shell_utils_configs/ble_bash.conf
 BLE_REPO="$HOME/.ble.sh"
 
 if [[ ! -f "$BLE_CONF" ]] && [[ -n $TERMUX_VERSION ]]; then
@@ -376,9 +376,11 @@ elif [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "⚠️  ble.sh not found at $BLE_PATH"
 fi
 
+unset BLE_PATH BLE_REPO BLE_CONF
+
 # Function that ONLY completes commands, ALWAYS
 _complete_only_commands() {
-    COMPREPLY=($(compgen -c -- "$2"))
+    mapfile -t COMPREPLY < <(compgen -c -- "$2")
     return 0
 }
 
@@ -390,5 +392,7 @@ complete -r
 complete -F _complete_only_commands -E
 complete -F _complete_only_commands -I
 
-unset BLE_PATH BLE_REPO BLE_CONF
-
+# Tests
+#shopt -u interactive_comments
+#shopt -u no_empty_cmd_completion
+#shopt -s bash_source_fullpath
