@@ -336,10 +336,22 @@ fi
 
 # ble.sh configuration - syntax highlighting and autosuggest for bash
 BLE_PATH="$HOME/.local/share/blesh/ble.sh"
+BLE_CONF=~/.shell_utils_configs/ble_bash.conf
 BLE_REPO="$HOME/.ble.sh"
 
+if [[ ! -f "$BLE_CONF" ]] && [[ -n $TERMUX_VERSION ]]; then
+    echo 'BLE_BASH_ENABLED=0' > "$BLE_CONF"
+elif [[ ! -f "$BLE_CONF" ]]; then
+    echo 'BLE_BASH_ENABLED=1' > "$BLE_CONF"
+fi
+
+if [[ -f "$BLE_CONF" ]]; then
+    # shellcheck source=/dev/null
+    source "$BLE_CONF"
+fi
+
 # Install ble.sh only if it doesn't exist
-if [[ ! -f "$BLE_PATH" && ! -d "$BLE_REPO" ]]; then
+if [[ ! -f "$BLE_PATH" && ! -d "$BLE_REPO" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "📦 Installing ble.sh..."
     git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git "$BLE_REPO"
     
@@ -352,7 +364,7 @@ if [[ ! -f "$BLE_PATH" && ! -d "$BLE_REPO" ]]; then
 fi
 
 # Load ble.sh if it exists
-if [[ -f "$BLE_PATH" ]]; then
+if [[ -f "$BLE_PATH" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     # shellcheck source=/dev/null
     source -- "$BLE_PATH"
     
@@ -360,7 +372,8 @@ if [[ -f "$BLE_PATH" ]]; then
     bleopt complete_auto_history=1  # History-based autosuggest
     bleopt highlight_syntax=1       # Syntax highlighting
     bleopt highlight_filename=1     # Filename highlighting (existing/broken)
-    unset BLE_PATH BLE_REPO
-else
+elif [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "⚠️  ble.sh not found at $BLE_PATH"
 fi
+
+unset BLE_PATH BLE_REPO BLE_CONF
