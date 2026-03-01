@@ -24,6 +24,8 @@ alias windows_on_pendrive='helps windows_to_go'
 alias dd_help='helps dd_help'
 alias zero_fill_help='dd_help'
 
+alias complete_bash_help='helps complete_bash'
+
 alias multiboot_help='helps multiboot'
 alias 40_custom_help='multiboot_help'
 
@@ -40,6 +42,7 @@ alias mounting_qcow2_help='qemu_mounting_help'
 alias nouveau_nvk_zink_help='helps nouveau_nvk_zink'
 
 alias godot_restore_editor_theme='helps godot_restore_editor_theme'
+alias godot_comment_markers='helps godot_comment_markers'
 
 alias trap_signals='helps trap_signals'
 alias trap_signals_a_help='trap_signals'
