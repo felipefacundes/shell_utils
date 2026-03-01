@@ -20,8 +20,31 @@ remove_extension() {
 		echo "${filename##*.}"    # Saída: gz
 
 		EOF
-
-		read -s -n 1 -rp "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
+        echo "Pressione qualquer tecla para exibir o help completo, exceto as setas."
+        while true; do
+            # Ler um caractere
+            read -rs -n 1 key
+            
+            # Se for ESC (código 27)
+            if [[ $key == $'\x1b' ]]; then
+                # Ler próximo caractere com timeout pequeno
+                read -rs -n 1 -t 0.1 key2
+                
+                if [[ $key2 == "[" ]]; then
+                    read -rs -n 1 -t 0.1 key3
+                    
+                    case $key3 in
+                        "A") : #printf '\033[1S'  # Sroll up
+                            ;;
+                        "B") : #printf '\033[1T'  # Scroll down
+                            ;;
+                    esac
+                fi
+            else
+                break
+            fi
+        done
+		#read -s -n 1 -rp "Pressione qualquer tecla, para exibir o help completo" >/dev/tty
 		markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension-pt.md
 	else
 		cat <<-'EOF'
@@ -39,7 +62,31 @@ remove_extension() {
 		echo "${filename##*.}"    # Output: gz
 
 		EOF
-		read -s -n 1 -rp "Press any key to display the full help" >/dev/tty
+        echo "Press any key to display the full help, except the arrows."
+        while true; do
+            # Read a character
+            read -rs -n 1 key
+            
+            # If ESC (code 27)
+            if [[ $key == $'\x1b' ]]; then
+                # Read next character with small timeout
+                read -rs -n 1 -t 0.1 key2
+                
+                if [[ $key2 == "[" ]]; then
+                    read -rs -n 1 -t 0.1 key3
+                    
+                    case $key3 in
+                        "A") : #printf '\033[1S'  # Sroll up
+                            ;;
+                        "B") : #printf '\033[1T'  # Scroll down
+                            ;;
+                    esac
+                fi
+            else
+                break
+            fi
+        done
+		#read -s -n 1 -rp "Press any key to display the full help" >/dev/tty
 		markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/remove-extension.md
     fi
 }
