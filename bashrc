@@ -22,115 +22,6 @@
 # set -efu
 # set -eo pipefail
 
-# shopt | column
-#
-## By enabling the globstar option, you can glob all matching files in this directory and all subdirectories:
-## Example: for i in **/*.sh; do echo ${i}; done
-## For allowing the Bash shell to expand globes (wildcards) across all matching files in directories and subdirectories
-#########################################################################################################################
-## Habilita a opção globstar, permitindo que o shell Bash expanda globos (wildcards) em todos os arquivos correspondentes 
-## nos diretórios e subdiretórios.
-shopt -s globstar
-
-## If set, the extended pattern matching features described above (see Pattern Matching) are enabled.
-#####################################################################################################
-## Habilita a opção extglob, que permite o uso de recursos avançados de correspondência de padrões, 
-## como padrões de correspondência estendidos.
-shopt -s extglob
-
-## If set, minor errors in the spelling of a directory component in a cd command will be corrected. 
-## The errors checked for are transposed characters, a missing character, and a character too many. 
-## If a correction is found, the corrected path is printed, and the command proceeds. This option is only used by interactive shells.
-###############################################################################################################################
-## Habilita a opção cdspell, que corrige erros menores na digitação de nomes de diretórios ao usar o comando cd. 
-## Por exemplo, se você digitar um diretório com caracteres transpostos, ausentes ou extras, o Bash tentará corrigi-lo 
-## e executar o comando cd para o diretório corrigido.
-shopt -s cdspell
-
-## If set, Bash replaces directory names with the results of word expansion when performing filename completion.
-## This changes the contents of the Readline editing buffer. If not set, Bash attempts to preserve what the user typed.
-###############################################################################################################################
-## Habilita a opção direxpand, que substitui nomes de diretórios pelos resultados da expansão de palavras durante 
-## a conclusão de nomes de arquivos. Isso significa que, ao usar a conclusão de tabulação, o Bash substituirá nomes 
-## de diretórios pelos caminhos completos correspondentes.
-shopt -s direxpand
-
-## If set, Bash attempts spelling correction on directory names during word completion if the directory name initially supplied does not exist.
-###############################################################################################################################
-## Habilita a opção dirspell, que realiza correção ortográfica em nomes de diretórios durante a conclusão de tabulação, caso o nome do diretório 
-## fornecido inicialmente não exista. O Bash tentará corrigir o nome do diretório e completá-lo corretamente.
-shopt -s dirspell
-
-## If set, a command name that is the name of a directory is executed as if it were the argument to the cd command. 
-## This option is only used by interactive shells.
-###############################################################################################################################
-## Habilita a opção autocd, permitindo que um nome de comando que corresponda a um diretório seja executado como se fosse o argumento 
-## para o comando cd. Isso é útil para navegar diretamente para um diretório digitando seu nome no prompt de comando, em vez de precisar digitar 
-## explicitamente o comando cd.
-shopt -s autocd
-
-## With this option enabled, matching wildcards will not be case sensitive. For example, *.txt will match files with a .txt extension, 
-## regardless of case.
-###############################################################################################################################
-## Com essa opção habilitada, a correspondência de globos (wildcards) não será sensível a maiúsculas e minúsculas. Por exemplo, *.txt
-## corresponderá a arquivos com extensão .txt, independentemente do uso de letras maiúsculas ou minúsculas.
-shopt -s nocaseglob
-
-# Enable history reediting and verification.
-shopt -s histreedit
-
-## This option causes the history to be displayed before each command is executed. After displaying the command history, 
-## you have the option to edit or confirm the execution. This can help to avoid errors when running old commands from history.
-###############################################################################################################################
-## Essa opção faz com que o histórico seja exibido antes da execução de cada comando. Após exibir o comando do histórico, você tem a opção 
-## de editar ou confirmar a execução. Isso pode ajudar a evitar erros ao executar comandos antigos do histórico.
-shopt -s histverify 
-
-## With this option enabled, the history will be stored in single-line format instead of the default multi-line format. This makes it easy 
-## to search and manipulate history using tools like grep or scripts.
-###############################################################################################################################
-## Com essa opção ativada, o histórico será armazenado no formato de linha única, em vez do formato de várias linhas padrão. 
-## Isso facilita a pesquisa e manipulação do histórico usando ferramentas como grep ou scripts.
-shopt -s lithist
-
-## By enabling this option, the history will not store duplicate consecutive commands. This can help reduce the history size and preventrepeated 
-## commands from taking up unnecessary space.
-###############################################################################################################################
-## Habilitando essa opção, o histórico não armazenará comandos consecutivos duplicados. 
-## Isso pode ajudar a reduzir o tamanho do histórico e evitar que comandos repetidos ocupem espaço desnecessário.
-shopt -s cmdhist
-
-## If set, the programmable completion facilities are enabled. This allows
-## dynamic completion of command arguments based on context. When a user hits
-## TAB, Bash can execute custom completion functions that provide context-
-## sensitive suggestions (e.g., completing git branches for 'git checkout',
-## or package names for 'apt install'). This option is enabled by default in
-## interactive shells.
-###############################################################################################################################
-## Habilita a opção progcomp, que ativa os recursos de completação programável no Bash.
-## Isso permite a completação dinâmica de argumentos de comandos baseada no contexto.
-## Quando o usuário pressiona TAB, o Bash pode executar funções de completação personalizadas
-## que fornecem sugestões sensíveis ao contexto (ex.: completar branches do git para 'git checkout',
-## ou nomes de pacotes para 'apt install'). Esta opção está habilitada por padrão em shells interativos.
-shopt -s progcomp
-
-## If set, aliases are expanded separately for shell completion purposes.
-## This allows completion functions to work with aliased commands by treating
-## the alias as if it were the original command. Without this option, you must
-## manually configure completions for each alias using the complete command.
-###############################################################################################################################
-## Habilita a opção progcomp_alias, que expande aliases separadamente para fins de conclusão (completion) no shell.
-## Isso permite que as funções de completação funcionem com comandos alias, tratando o alias como se fosse o comando original.
-## Sem esta opção, é necessário configurar manualmente as completações para cada alias usando o comando complete.
-shopt -s progcomp_alias
-
-## With this option enabled, Bash will not complete empty commands when pressing the Tab key twice. This prevents Bash from listing 
-## all available commands when no commands have been entered.
-###############################################################################################################################
-## Com essa opção ativada, o Bash não completará comandos vazios ao pressionar a tecla Tab duas vezes. 
-## Isso evita que o Bash liste todos os comandos disponíveis quando nenhum comando foi digitado
-shopt -s no_empty_cmd_completion
-
 #################################
 ######### SHELL UTILS ###########
 # shellcheck source=/dev/null
@@ -269,7 +160,8 @@ fix_bash_history() {
 }
 
 # Configure navigation keys
-bind '"\t":menu-complete'            # TAB
+bind '"\t":complete'
+#bind '"\t":menu-complete'            # TAB
 bind '"\e[Z":menu-complete-backward' # Shift + TAB
 
 # jump to next/previous word in a commandline by pressing SHIFT+RIGHT and SHIFT+LEFT
@@ -342,7 +234,9 @@ BLE_REPO="$HOME/.ble.sh"
 if [[ ! -f "$BLE_CONF" ]] && [[ -n $TERMUX_VERSION ]]; then
     echo 'BLE_BASH_ENABLED=0' > "$BLE_CONF"
 elif [[ ! -f "$BLE_CONF" ]]; then
-    echo 'BLE_BASH_ENABLED=1' > "$BLE_CONF"
+    # We use BLE disabled by default even though it is not termux, 
+    # because BLE, no matter how excellent it is, can cause crashes and slowdowns
+    echo 'BLE_BASH_ENABLED=0' > "$BLE_CONF"
 fi
 
 if [[ -f "$BLE_CONF" ]]; then
@@ -372,27 +266,209 @@ if [[ -f "$BLE_PATH" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     bleopt complete_auto_history=1  # History-based autosuggest
     bleopt highlight_syntax=1       # Syntax highlighting
     bleopt highlight_filename=1     # Filename highlighting (existing/broken)
+    
+    # Tests to avoid crashes, by reducing timeout time: if it doesn't autocomplete quickly, simply don't complete it.
+    # bleopt complete_limit_auto=100
+    # bleopt complete_timeout_auto=100
+    # bleopt highlight_timeout_async=100
+
+    # ==============================================================================
+    # ble.sh (Bash Line Editor) Configuration
+    # Source: https://github.com/akinomyoga/ble.sh
+    #
+    # Optimized for performance and responsiveness. Limits are set to prevent
+    # freezing and excessive delays during complex operations (globbing, large
+    # directories, etc.).
+    # ==============================================================================
+
+    # --- Performance & Responsiveness Core ---
+    # These settings directly impact how quickly ble.sh responds to keystrokes.
+    bleopt complete_auto_delay=300           # Wait 300ms before starting auto-complete [citation:4]
+    bleopt complete_polling_cycle=20          # Check for more completion candidates more frequently (lower = more responsive but more CPU)
+    bleopt idle_interval=15                    # Check for terminal resize/etc more often [citation:original]
+    bleopt input_encoding=UTF-8                 # Keep UTF-8
+
+    # --- Completion System Limits (Safety First) ---
+    # These are crucial for preventing freezes in directories with many files [citation:4][citation:5]
+    bleopt complete_limit=500                   # Hard limit for number of completion candidates (fallback)
+    bleopt complete_limit_auto=100               # YOUR VALUE: Stop auto-completion generation if > 100 candidates [citation:3][citation:4]
+    bleopt complete_limit_auto_menu=100           # YOUR VALUE: Stop menu generation if > 100 candidates
+    bleopt complete_timeout_auto=200              # Stop auto-completion generation if it takes > 200ms [citation:3]
+    bleopt complete_timeout_compvar=150            # Timeout for external completer functions (like from bash-completion) [citation:3]
+
+    # --- History & Line Limits ---
+    # Prevents large history or long lines from slowing down the editor [citation:6]
+    bleopt history_limit_length=5000            # Max number of history entries to load into memory (adjust as needed)
+    bleopt line_limit_length=5000                # Max line length to process for highlighting/editing
+
+    # --- Syntax & File Highlighting Limits ---
+    # These limit the work done for complex commands and path expansions [citation:8]
+    bleopt highlight_eval_word_limit=100          # Limit expansion (e.g., {1..1000}) for highlighting to 100 words [citation:8]
+    light_timeout_async=80                         # Timeout for async (background) highlighting
+    bleopt highlight_timeout_sync=40                # Timeout for sync (foreground) highlighting (lower = more responsive typing)
+    bleopt filename_ls_colors=                       # Use LS_COLORS but without extra underlines (cleaner/faster) [citation:2]
+
+    # --- Optional: Disable or Reduce Heavy Features for Max Speed ---
+    # Uncomment these lines if you still experience lag. They disable non-essential features. [citation:2][citation:10]
+    # bleopt highlight_syntax=                        # Disable syntax coloring
+    # bleopt highlight_filename=                      # Disable file existence checks for paths
+    # bleopt highlight_variable=                       # Disable variable type highlighting
+    # bleopt complete_ambiguous=                        # Disable ambiguous completion (e.g., completing from middle of word)
+    # bleopt complete_menu_complete=                    # Disable cycling through menu with TAB
+    # bleopt complete_menu_filter=                      # Disable incremental filtering in the completion menu
+
+    # --- Visual Polish (Keep but can be disabled for speed) ---
+    bleopt prompt_eol_mark='[ble: EOF]'              # Marker for end-of-file (keep for clarity)
+    bleopt exec_errexit_mark='[ble: exit %d]'         # Marker for command errors
+    bleopt exec_exit_mark='[ble: exit]'               # Marker for shell exit
+    bleopt edit_marker='[ble: %s]'                    # General ble.sh status messages
+    bleopt edit_marker_error='[ble: %s]'               # Error messages
+
+    # --- Key Bindings & Misc ---
+    bleopt default_keymap=auto
+    bleopt decode_abort_char=28                        # C-^ (usually C-/ or C-_) to abort
+    bleopt term_bracketed_paste_mode=on                # Essential for pasting
+
+    # --- Face Customization (Optional) ---
+    # Example: Make auto-suggestions more subtle [citation:10]
+    # ble-face auto_complete='fg=240,italic'
+
+    # --- Dynamic Configuration Example (Advanced) ---
+    # Disable auto-complete completely when in system directories with many files [citation:4]
+    # function blehook_chpwd_update_completion {
+    #   case $PWD in
+    #     /bin|/sbin|/usr/bin|/usr/sbin|/lib|/usr/lib)
+    #       bleopt complete_auto_complete= ;;
+    #     *)
+    #       bleopt complete_auto_complete=1 ;;
+    #   esac
+    # }
+    # blehook CHPWD!=blehook_chpwd_update_completion
+    # blehook_chpwd_update_completion # run once on load
+
 elif [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "⚠️  ble.sh not found at $BLE_PATH"
 fi
 
 unset BLE_PATH BLE_REPO BLE_CONF
 
-# Function that ONLY completes commands, ALWAYS
-_complete_only_commands() {
-    mapfile -t COMPREPLY < <(compgen -c -- "$2")
-    return 0
-}
 
-# Remove all existing completions
-complete -r
+# shopt | column
+#
+## By enabling the globstar option, you can glob all matching files in this directory and all subdirectories:
+## Example: for i in **/*.sh; do echo ${i}; done
+## For allowing the Bash shell to expand globes (wildcards) across all matching files in directories and subdirectories
+#########################################################################################################################
+## Habilita a opção globstar, permitindo que o shell Bash expanda globos (wildcards) em todos os arquivos correspondentes 
+## nos diretórios e subdiretórios.
+shopt -s globstar
 
-# Apply our function to all contexts
-# complete -F _complete_only_commands -D  # This causes entering the first subsequent directory that exists, which can be problematic
-complete -F _complete_only_commands -E
-complete -F _complete_only_commands -I
+## If set, the extended pattern matching features described above (see Pattern Matching) are enabled.
+#####################################################################################################
+## Habilita a opção extglob, que permite o uso de recursos avançados de correspondência de padrões, 
+## como padrões de correspondência estendidos.
+shopt -s extglob
+
+## If set, minor errors in the spelling of a directory component in a cd command will be corrected. 
+## The errors checked for are transposed characters, a missing character, and a character too many. 
+## If a correction is found, the corrected path is printed, and the command proceeds. This option is only used by interactive shells.
+###############################################################################################################################
+## Habilita a opção cdspell, que corrige erros menores na digitação de nomes de diretórios ao usar o comando cd. 
+## Por exemplo, se você digitar um diretório com caracteres transpostos, ausentes ou extras, o Bash tentará corrigi-lo 
+## e executar o comando cd para o diretório corrigido.
+shopt -s cdspell
+
+## If set, Bash replaces directory names with the results of word expansion when performing filename completion.
+## This changes the contents of the Readline editing buffer. If not set, Bash attempts to preserve what the user typed.
+###############################################################################################################################
+## Habilita a opção direxpand, que substitui nomes de diretórios pelos resultados da expansão de palavras durante 
+## a conclusão de nomes de arquivos. Isso significa que, ao usar a conclusão de tabulação, o Bash substituirá nomes 
+## de diretórios pelos caminhos completos correspondentes.
+shopt -s direxpand
+
+## If set, Bash attempts spelling correction on directory names during word completion if the directory name initially supplied does not exist.
+###############################################################################################################################
+## Habilita a opção dirspell, que realiza correção ortográfica em nomes de diretórios durante a conclusão de tabulação, caso o nome do diretório 
+## fornecido inicialmente não exista. O Bash tentará corrigir o nome do diretório e completá-lo corretamente.
+shopt -s dirspell
+
+## If set, a command name that is the name of a directory is executed as if it were the argument to the cd command. 
+## This option is only used by interactive shells.
+###############################################################################################################################
+## Habilita a opção autocd, permitindo que um nome de comando que corresponda a um diretório seja executado como se fosse o argumento 
+## para o comando cd. Isso é útil para navegar diretamente para um diretório digitando seu nome no prompt de comando, em vez de precisar digitar 
+## explicitamente o comando cd.
+shopt -s autocd
+
+## With this option enabled, matching wildcards will not be case sensitive. For example, *.txt will match files with a .txt extension, 
+## regardless of case.
+###############################################################################################################################
+## Com essa opção habilitada, a correspondência de globos (wildcards) não será sensível a maiúsculas e minúsculas. Por exemplo, *.txt
+## corresponderá a arquivos com extensão .txt, independentemente do uso de letras maiúsculas ou minúsculas.
+shopt -s nocaseglob
+
+# Enable history reediting and verification.
+shopt -s histreedit
+
+## This option causes the history to be displayed before each command is executed. After displaying the command history, 
+## you have the option to edit or confirm the execution. This can help to avoid errors when running old commands from history.
+###############################################################################################################################
+## Essa opção faz com que o histórico seja exibido antes da execução de cada comando. Após exibir o comando do histórico, você tem a opção 
+## de editar ou confirmar a execução. Isso pode ajudar a evitar erros ao executar comandos antigos do histórico.
+shopt -s histverify 
+
+## With this option enabled, the history will be stored in single-line format instead of the default multi-line format. This makes it easy 
+## to search and manipulate history using tools like grep or scripts.
+###############################################################################################################################
+## Com essa opção ativada, o histórico será armazenado no formato de linha única, em vez do formato de várias linhas padrão. 
+## Isso facilita a pesquisa e manipulação do histórico usando ferramentas como grep ou scripts.
+shopt -s lithist
+
+## By enabling this option, the history will not store duplicate consecutive commands. This can help reduce the history size and preventrepeated 
+## commands from taking up unnecessary space.
+###############################################################################################################################
+## Habilitando essa opção, o histórico não armazenará comandos consecutivos duplicados. 
+## Isso pode ajudar a reduzir o tamanho do histórico e evitar que comandos repetidos ocupem espaço desnecessário.
+shopt -s cmdhist
+
+## If set, the programmable completion facilities are enabled. This allows
+## dynamic completion of command arguments based on context. When a user hits
+## TAB, Bash can execute custom completion functions that provide context-
+## sensitive suggestions (e.g., completing git branches for 'git checkout',
+## or package names for 'apt install'). This option is enabled by default in
+## interactive shells.
+###############################################################################################################################
+## Habilita a opção progcomp, que ativa os recursos de completação programável no Bash.
+## Isso permite a completação dinâmica de argumentos de comandos baseada no contexto.
+## Quando o usuário pressiona TAB, o Bash pode executar funções de completação personalizadas
+## que fornecem sugestões sensíveis ao contexto (ex.: completar branches do git para 'git checkout',
+## ou nomes de pacotes para 'apt install'). Esta opção está habilitada por padrão em shells interativos.
+shopt -s progcomp
+
+## If set, aliases are expanded separately for shell completion purposes.
+## This allows completion functions to work with aliased commands by treating
+## the alias as if it were the original command. Without this option, you must
+## manually configure completions for each alias using the complete command.
+###############################################################################################################################
+## Habilita a opção progcomp_alias, que expande aliases separadamente para fins de conclusão (completion) no shell.
+## Isso permite que as funções de completação funcionem com comandos alias, tratando o alias como se fosse o comando original.
+## Sem esta opção, é necessário configurar manualmente as completações para cada alias usando o comando complete.
+
+## With this option enabled, Bash will not complete empty commands when pressing the Tab key twice. This prevents Bash from listing 
+## all available commands when no commands have been entered.
+###############################################################################################################################
+## Com essa opção ativada, o Bash não completará comandos vazios ao pressionar a tecla Tab duas vezes. 
+## Isso evita que o Bash liste todos os comandos disponíveis quando nenhum comando foi digitado
+shopt -s no_empty_cmd_completion
 
 # Tests
+#shopt -s progcomp_alias
 #shopt -u interactive_comments
 #shopt -u no_empty_cmd_completion
 #shopt -s bash_source_fullpath
+
+# Remove all existing completions
+complete -r
+#complete -o default -o bashdefault -F _filedir_xspec -E code
+complete -o default -o bashdefault -F _filedir_xspec -E 
+complete -o default -o filenames codium
