@@ -54,7 +54,6 @@ alias diff_date='days_calculate'
 # The command 'helps' should not be confused with the bash built-in command: 'help'.
 alias helps='~/.shell_utils/scripts/help-shell-fzf'
 alias help_with_rofi='~/.shell_utils/scripts/help-shell-with-rofi'
-alias auto_confirm_scripts='helps auto_confirm_scripts'
 
 alias bookmark='~/.shell_utils/scripts/quickmarks'
 alias quickmark='bookmark'

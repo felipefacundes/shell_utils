@@ -32,6 +32,8 @@ alias 40_custom_help='multiboot_help'
 alias markers_ascii_for_documentation='printf "1\n" | help markers'
 alias marcadores_ascii_para_documentar='printf "2\n" | help markers'
 
+alias auto_confirm_scripts='helps auto_confirm_scripts'
+
 alias qemu_gpu_passthrough_help='helps qemu_gpu_passthrough'
 alias gpu_passthrough_help='qemu_gpu_passthrough_help'
 
