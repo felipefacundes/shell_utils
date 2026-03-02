@@ -3,9 +3,8 @@
 # Credits: Felipe Facundes
 
 # =============================================================
-# BLE — Bash Line Editor  (standalone, stty raw)
-# Uso: bash ble.bash
-#      ou adicione ao .bashrc: alias fish='bash ~/ble.bash'
+# BLE — Bash Line Editor (standalone, stty raw)
+# CORREÇÃO: Enter funciona no menu e executa comandos
 # =============================================================
 
 # ─── CORES ───────────────────────────────────────────────────
@@ -65,12 +64,8 @@ _term_cols() { tput cols 2>/dev/null || echo 80; }
 _term_rows() { tput lines 2>/dev/null || echo 24; }
 
 # ─── LEITURA DE TECLA ────────────────────────────────────────
-# Retorna sequência em KEY_SEQ e tipo em KEY_TYPE
 KEY_SEQ=""
-KEY_TYPE=""   # char | up | down | left | right | home | end
-              # del | bs | enter | tab | ctrlc | ctrld
-              # ctrla | ctrle | ctrlf | ctrlb | ctrlk | ctrlu
-              # ctrlw | ctrlr | pgup | pgdn | esc | unknown
+KEY_TYPE=""
 
 _read_key() {
     local k s1 s2 s3
@@ -138,7 +133,6 @@ _read_key() {
 }
 
 # ─── SYNTAX HIGHLIGHT ────────────────────────────────────────
-# Retorna a linha colorizada em HIGHLIGHTED
 _highlight() {
     local line="$1"
     if [[ -z "$line" ]]; then HIGHLIGHTED=""; return; fi
@@ -160,7 +154,6 @@ _highlight() {
         return
     fi
 
-    # Colore argumentos: --opções em azul, resto em branco
     local colored_rest=""
     local -a words
     read -ra words <<< "$rest"
@@ -181,7 +174,6 @@ _get_suggestion() {
     local cur="$1"
     [[ -z "$cur" ]] && SUGGESTION="" && return
 
-    # Busca no histórico do mais recente para o mais antigo
     local i
     for (( i=${#HIST[@]}-1; i>=0; i-- )); do
         local h="${HIST[$i]}"
@@ -191,7 +183,6 @@ _get_suggestion() {
         fi
     done
 
-    # Tenta completar comando pelo PATH
     if [[ "$cur" != *" "* ]]; then
         local c
         c=$(compgen -c -- "$cur" 2>/dev/null | head -1)
@@ -226,42 +217,29 @@ _make_prompt() {
     fi
 
     PROMPT="${C_PROMPT}${dir}${R}${git_info} ${arrow} "
-    # Comprimento visual do prompt (sem escapes)
     PROMPT_LEN=$(printf '%s' "${PROMPT}" | sed 's/\x1b\[[0-9;]*m//g' | wc -c)
     PROMPT_LEN=$(( PROMPT_LEN ))
 }
 
 # ─── REDRAW DA LINHA ─────────────────────────────────────────
 _redraw() {
-    local show_ghost="${1:-1}"   # 1=mostra ghost, 0=não mostra
+    local show_ghost="${1:-1}"
 
-    # Busca sugestão
     _get_suggestion "$INPUT"
-
-    # Coloriza input
     _highlight "$INPUT"
 
     local tw; tw=$(_term_cols)
 
-    # Posição do cursor na tela (considerando wrap)
-    # Vai para coluna 0 da linha do prompt
     printf '\r\e[K'
-
-    # Imprime prompt
     printf '%s' "$PROMPT"
-
-    # Imprime input colorizado
     printf '%s' "$HIGHLIGHTED"
 
-    # Ghost text
     if (( show_ghost )) && [[ -n "$SUGGESTION" && \
           "$SUGGESTION" == "${INPUT}"* && \
           ${#SUGGESTION} -gt ${#INPUT} ]]; then
         printf '%s%s%s' "$C_GHOST" "${SUGGESTION:${#INPUT}}" "$R"
     fi
 
-    # Volta cursor para posição correta
-    # Quantos chars há depois do cursor
     local after=$(( ${#INPUT} - CURSOR ))
     local ghost_len=0
     if (( show_ghost )) && [[ -n "$SUGGESTION" && \
@@ -281,7 +259,6 @@ _collect_completions() {
 
     COMP_ITEMS=()
 
-    # Primeiro token?
     local is_first=0
     [[ -z "${line% $word}" || "$line" == "$word" ]] && is_first=1
 
@@ -292,7 +269,6 @@ _collect_completions() {
     fi
 }
 
-# Cor e sufixo de item
 _item_color() {
     local f="$1"
     if   [[ -d "$f" ]];            then printf '%s' "$C_DIR"
@@ -313,22 +289,22 @@ _item_suffix() {
 declare -a COMP_ITEMS=()
 
 _run_menu() {
-    local word="$1"   # palavra que está sendo completada
-    local prefix="$2" # parte da linha antes da palavra
+    local word="$1"
+    local prefix="$2"
 
     local total="${#COMP_ITEMS[@]}"
     (( total == 0 )) && return 1
 
-    # Item único: completa direto sem menu
     if (( total == 1 )); then
         local s="${COMP_ITEMS[0]}"
-        local suf; suf=$(_item_suffix "$s")
-        INPUT="${prefix}${s}${suf}"
+        local insert_suf=""
+        if [[ -d "$s" ]]; then insert_suf="/"; fi
+        INPUT="${prefix}${s}${insert_suf}"
+        if [[ -z "$insert_suf" ]]; then INPUT+=" "; fi
         CURSOR="${#INPUT}"
         return 0
     fi
 
-    # ── Calcula grid ──────────────────────────────────────────
     local tw; tw=$(_term_cols)
 
     local max_len=1
@@ -351,12 +327,10 @@ _run_menu() {
     local sel=0
     local scroll=0
 
-    # ── Render ────────────────────────────────────────────────
     _menu_draw() {
         local s="$1" sc="$2"
         local n=0
 
-        # Header
         local hdr
         printf -v hdr \
             ' 📂 %d itens   ↑↓←→ navegar   TAB/Enter selecionar   Esc cancelar' \
@@ -385,7 +359,6 @@ _run_menu() {
             (( n++ ))
         done
 
-        # Rodapé paginação
         if (( total_rows > max_vis )); then
             local pct=$(( (sc + vis) * 100 / total_rows ))
             (( pct > 100 )) && pct=100
@@ -398,12 +371,10 @@ _run_menu() {
         _MENU_LINES=$n
     }
 
-    # Salva linha atual limpa
     printf '\r\e[K'
     printf '\n'
     _menu_draw "$sel" "$scroll"
 
-    # ── Loop ──────────────────────────────────────────────────
     while true; do
         _read_key
 
@@ -424,14 +395,19 @@ _run_menu() {
                 (( sel-- ))
                 (( sel < 0 )) && sel=$(( total - 1 ))
                 ;;
-            tab|enter)
-                # Apaga menu
+            tab)
+                (( sel++ ))
+                (( sel >= total )) && sel=0
+                ;;
+            enter)
                 printf '\e[%dA\r\e[J' "$(( _MENU_LINES + 1 ))"
                 local chosen="${COMP_ITEMS[$sel]}"
-                local suf; suf=$(_item_suffix "$chosen")
-                INPUT="${prefix}${chosen}${suf}"
+                local insert_suf=""
+                if [[ -d "$chosen" ]]; then insert_suf="/"; fi
+                INPUT="${prefix}${chosen}${insert_suf}"
+                if [[ -z "$insert_suf" ]]; then INPUT+=" "; fi
                 CURSOR="${#INPUT}"
-                return 0
+                return 2  # Código para executar comando
                 ;;
             esc|ctrlc|ctrlg)
                 printf '\e[%dA\r\e[J' "$(( _MENU_LINES + 1 ))"
@@ -439,12 +415,10 @@ _run_menu() {
                 ;;
         esac
 
-        # Mantém seleção visível
         local sel_row=$(( sel / cols ))
         (( sel_row < scroll )) && scroll=$sel_row
         (( sel_row >= scroll + vis )) && scroll=$(( sel_row - vis + 1 ))
 
-        # Redesenha menu
         printf '\e[%dA\r\e[J' "$(( _MENU_LINES + 1 ))"
         printf '\n'
         _menu_draw "$sel" "$scroll"
@@ -480,7 +454,6 @@ _history_search() {
                 ;;
         esac
 
-        # Busca no histórico
         result=""
         if [[ -n "$query" ]]; then
             local i
@@ -507,7 +480,6 @@ _ble_main() {
     _load_history
     _term_raw
 
-    # Trap para limpar no exit
     trap '_term_restore; echo; exit 0' EXIT INT TERM
 
     clear
@@ -515,7 +487,6 @@ _ble_main() {
         "$C_CMD_OK$BOLD" "$C_GHOST" "$R"
 
     while true; do
-        # Prompt
         _make_prompt
         LAST_EXIT=0
         INPUT=""
@@ -524,13 +495,10 @@ _ble_main() {
         HIST_SAVED=""
         SUGGESTION=""
 
-        # Desenha prompt inicial
         printf '%s' "$PROMPT"
 
-        # ── Loop de edição ──────────────────────────────────
         while true; do
             _redraw
-
             _read_key
 
             case "$KEY_TYPE" in
@@ -560,10 +528,8 @@ _ble_main() {
                     ;;
 
                 right)
-                    # Aceita sugestão se cursor estiver no fim
                     if (( CURSOR == ${#INPUT} )) && \
                        [[ -n "$SUGGESTION" && "$SUGGESTION" == "${INPUT}"* ]]; then
-                        # Aceita um token por vez (fish)
                         local rest="${SUGGESTION:${#INPUT}}"
                         local tok="${rest%% *}"
                         if [[ "$tok" == "$rest" ]]; then
@@ -611,7 +577,6 @@ _ble_main() {
                     ;;
 
                 ctrlf)
-                    # Aceita sugestão completa
                     if [[ -n "$SUGGESTION" && "$SUGGESTION" == "${INPUT}"* ]]; then
                         INPUT="$SUGGESTION"
                         CURSOR="${#INPUT}"
@@ -619,22 +584,18 @@ _ble_main() {
                     ;;
 
                 ctrlk)
-                    # Apaga do cursor até o fim
                     INPUT="${INPUT:0:$CURSOR}"
                     ;;
 
                 ctrlu)
-                    # Apaga do início até o cursor
                     INPUT="${INPUT:$CURSOR}"
                     CURSOR=0
                     ;;
 
                 ctrlw)
-                    # Apaga palavra anterior
                     if (( CURSOR > 0 )); then
                         local before="${INPUT:0:$CURSOR}"
                         local after="${INPUT:$CURSOR}"
-                        # Remove espaços finais, depois remove até espaço
                         before="${before% }"
                         before="${before% *}"
                         [[ "$before" != "${INPUT:0:$CURSOR}" ]] && before+=" " 2>/dev/null || true
@@ -656,7 +617,6 @@ _ble_main() {
                     ;;
 
                 tab)
-                    # Descobere palavra atual
                     local before_cur="${INPUT:0:$CURSOR}"
                     local word="${before_cur##* }"
                     local prefix_line="${before_cur%$word}"
@@ -666,47 +626,56 @@ _ble_main() {
                     if (( ${#COMP_ITEMS[@]} == 0 )); then
                         printf '\a'
                     else
-                        _redraw 0   # Redesenha sem ghost antes do menu
+                        _redraw 0
                         _run_menu "$word" "$prefix_line"
+                        local menu_result=$?
+                        _redraw
+                        
+                        # Se o menu retornou 2, significa que Enter foi pressionado e devemos executar
+                        if (( menu_result == 2 )); then
+                            printf '\n'
+                            
+                            if [[ -n "$INPUT" ]]; then
+                                if [[ "${HIST[-1]}" != "$INPUT" ]]; then
+                                    HIST+=("$INPUT")
+                                fi
+
+                                _term_restore
+                                eval "$INPUT"
+                                LAST_EXIT=$?
+                                _term_raw
+                                printf '\n'
+                            fi
+                            break
+                        fi
                     fi
                     ;;
 
                 enter)
-                    # Limpa ghost e vai para nova linha
-                    _redraw 0
                     printf '\n'
 
                     if [[ -n "$INPUT" ]]; then
-                        # Salva no histórico (sem duplicatas consecutivas)
                         if [[ "${HIST[-1]}" != "$INPUT" ]]; then
                             HIST+=("$INPUT")
                         fi
 
-                        # Restaura terminal para executar o comando
                         _term_restore
-
-                        # Executa
                         eval "$INPUT"
                         LAST_EXIT=$?
-
-                        # Volta para raw
                         _term_raw
                         printf '\n'
                     fi
-                    break  # Volta ao loop externo para novo prompt
+                    break
                     ;;
 
                 ctrlc)
-                    _redraw 0
-                    printf '%s^C%s\n' "$C_CMD_ERR" "$R"
+                    printf '^C\n'
                     LAST_EXIT=130
                     break
                     ;;
 
                 ctrld)
-                    # Sai se linha vazia
                     if [[ -z "$INPUT" ]]; then
-                        _redraw 0
                         printf '\n%sbye 👋%s\n' "$C_CMD_OK" "$R"
                         _save_history
                         _term_restore
@@ -719,5 +688,4 @@ _ble_main() {
     done
 }
 
-# ─── ENTRY POINT ─────────────────────────────────────────────
 _ble_main
