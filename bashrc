@@ -28,10 +28,6 @@
 [[ -f ~/.shell_utils/shell_utils.sh ]] && . ~/.shell_utils/shell_utils.sh
 #################################
 
-# Bash-it
-# shellcheck source=/dev/null
-[[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
-
 # Enable the subsequent settings only in interactive sessions
 case $- in
   *i*) ;;
@@ -46,6 +42,13 @@ OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$O
 if [[ "$OMB_THEME" == "agnoster" ]]; then
     prompt_theme_agnoster
 fi
+
+# Remove all existing completions
+complete -r
+
+# Bash-it
+# shellcheck source=/dev/null
+[[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
 
 ##### STARTUP
 ##### INPUTRC
@@ -220,7 +223,13 @@ source ~/.shell_utils/scripts/utils/zbash-smartcd-with-fzf
 # This allows installing shell completions without sudo/root access
 # (typical location for pip/pipx, cargo, and other language package managers)
 if [ -d ~/.local/share/bash-completion/completions/ ]; then
-    for completion in ~/.local/share/bash-completion/completions/*.bash; do
+    for completion in ~/.local/share/bash-completion/completions/*; do
+        # shellcheck source=/dev/null
+        [ -f "$completion" ] && source "$completion"
+    done
+fi
+if [ -d ~/.shell_utils/utilities/completions/bash/ ]; then
+    for completion in ~/.shell_utils/utilities/completions/bash/*.bash; do
         # shellcheck source=/dev/null
         [ -f "$completion" ] && source "$completion"
     done
@@ -467,8 +476,6 @@ shopt -s no_empty_cmd_completion
 #shopt -u no_empty_cmd_completion
 #shopt -s bash_source_fullpath
 
-# Remove all existing completions
-complete -r
 #complete -o default -o bashdefault -F _filedir_xspec -E code
 complete -o default -o bashdefault -F _filedir_xspec -E 
 complete -o default -o filenames codium
