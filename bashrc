@@ -34,13 +34,42 @@ case $- in
     *) return;;
 esac
 
-# Oh My Bash Config
-OMB_THEME=demula #"agnoster" #"pure" #"rr" #"mairan" #"rjorgenson" #"brainy" #"iterate" #"standard" #"demula" #"powerline-naked" #"powerline-multiline" #"90210" #"clean" #"dulcie" #"brunton" #"binaryanomaly" #"random" #"font" #"powerline" #"duru" #"vscode" #"candy" #"hawaii50" #"emperor" #"tylenol" #"morris" #"pzq" #"zitron" #"kitsune"
+# ble.sh configuration - syntax highlighting and autosuggest for bash
+BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
+BLE_PATH="$HOME/.local/share/blesh/ble.sh"
+BLE_REPO="$HOME/.ble.sh"
 
-# shellcheck source=/dev/null
-OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$OMBC" && unset OMBC
-if [[ "$OMB_THEME" == "agnoster" ]]; then
-    prompt_theme_agnoster
+_ble_comment() {
+    echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" | tee "$BLE_CONF" &>/dev/null
+    echo "# and if set to 2, it enables an alternative, simple but functional version of ble." | tee -a "$BLE_CONF" &>/dev/null
+}
+
+if [[ ! -f "$BLE_CONF" ]] && [[ -n $TERMUX_VERSION ]]; then
+    _ble_comment
+elif [[ ! -f "$BLE_CONF" ]]; then
+    # We use BLE disabled by default even though it is not termux, 
+    # because BLE, no matter how excellent it is, can cause crashes and slowdowns
+    _ble_comment
+fi
+
+if [[ -f "$BLE_CONF" ]]; then
+    # shellcheck source=/dev/null
+    source "$BLE_CONF"
+fi
+
+# Oh My Bash Config
+###################
+# Themes available for Oh-My-Bash:
+#"agnoster" #"pure" #"rr" #"mairan" #"rjorgenson" #"brainy" #"iterate" #"standard" #"demula" #"powerline-naked" #"powerline-multiline" #"90210" #"clean" #"dulcie" 
+#"brunton" #"binaryanomaly" #"random" #"font" #"powerline" #"duru" #"vscode" #"candy" #"hawaii50" #"emperor" #"tylenol" #"morris" #"pzq" #"zitron" #"kitsune"
+if [[ "$BLE_BASH_ENABLED" != 2 ]]; then 
+    OMB_THEME=demula 
+
+    # shellcheck source=/dev/null
+    OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$OMBC" && unset OMBC
+    if [[ "$OMB_THEME" == "agnoster" ]]; then
+        prompt_theme_agnoster
+    fi
 fi
 
 # Remove all existing completions
@@ -48,7 +77,7 @@ complete -r
 
 # Bash-it
 # shellcheck source=/dev/null
-[[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
+[[ "$BLE_BASH_ENABLED" != 2 ]] && [[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
 
 ##### STARTUP
 ##### INPUTRC
@@ -235,24 +264,6 @@ if [ -d ~/.shell_utils/utilities/completions/bash/ ]; then
     done
 fi
 
-# ble.sh configuration - syntax highlighting and autosuggest for bash
-BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
-BLE_PATH="$HOME/.local/share/blesh/ble.sh"
-BLE_REPO="$HOME/.ble.sh"
-
-if [[ ! -f "$BLE_CONF" ]] && [[ -n $TERMUX_VERSION ]]; then
-    echo 'BLE_BASH_ENABLED=0' > "$BLE_CONF"
-elif [[ ! -f "$BLE_CONF" ]]; then
-    # We use BLE disabled by default even though it is not termux, 
-    # because BLE, no matter how excellent it is, can cause crashes and slowdowns
-    echo 'BLE_BASH_ENABLED=0' > "$BLE_CONF"
-fi
-
-if [[ -f "$BLE_CONF" ]]; then
-    # shellcheck source=/dev/null
-    source "$BLE_CONF"
-fi
-
 # Install ble.sh only if it doesn't exist
 if [[ ! -f "$BLE_PATH" && ! -d "$BLE_REPO" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "📦 Installing ble.sh..."
@@ -267,7 +278,10 @@ if [[ ! -f "$BLE_PATH" && ! -d "$BLE_REPO" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]];
 fi
 
 # Load ble.sh if it exists
-if [[ -f "$BLE_PATH" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
+if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
+    # shellcheck source=/dev/null
+    source ~/.shell_utils/scripts/bash-line-editor
+elif [[ -f "$BLE_PATH" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     # shellcheck source=/dev/null
     source -- "$BLE_PATH"
     
@@ -359,6 +373,7 @@ elif [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "⚠️  ble.sh not found at $BLE_PATH"
 fi
 
+unset -f _ble_comment
 unset BLE_PATH BLE_REPO BLE_CONF
 
 
