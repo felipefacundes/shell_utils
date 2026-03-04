@@ -1,691 +1,632 @@
 #!/usr/bin/env bash
-# License: GPLv3
-# Credits: Felipe Facundes
+# ble.sh — Bash Line Editor
+# source ~/ble.sh   ou   echo 'source ~/ble.sh' >> ~/.bashrc
+#
+# Features:
+#   • Syntax highlight em tempo real (overlay via bind -x por tecla)
+#   • Ghost text baseado em histórico (seta→ aceita palavra, Ctrl+F aceita tudo)
+#   • Menu de completação visual: setas navegam, TAB confirma, Esc cancela
+#   • Prompt com git branch + exit code colorido
+#   • Ctrl+R busca incremental visual no histórico
+#   • Ctrl+C cancela a linha (shell continua normalmente)
+#
+# Por que TAB confirma e Enter não:
+#   Quando bind -x chama o menu, o readline já processou o Enter como
+#   "executar linha" antes de read -rsn1 conseguir capturá-lo.
+#   Tab é totalmente interceptado por bind -x, por isso funciona.
+#
+# Compatibilidade: Bash 4.3+
 
-# =============================================================
-# BLE — Bash Line Editor (standalone, stty raw)
-# CORREÇÃO: Enter funciona no menu e executa comandos
-# =============================================================
+[[ "${_BLE_LOADED:-}" == "1" ]] && return 0
+_BLE_LOADED=1
 
-# ─── CORES ───────────────────────────────────────────────────
-R=$'\e[0m'
-BOLD=$'\e[1m'
-C_CMD_OK=$'\e[38;5;82m'      # verde  — comando válido
-C_CMD_ERR=$'\e[38;5;196m'    # vermelho — comando inválido
-C_ARG=$'\e[38;5;252m'        # branco suave — argumentos
-C_OPT=$'\e[38;5;75m'         # azul — --opções
-C_DIR=$'\e[38;5;220m'        # amarelo — diretórios
-C_EXE=$'\e[38;5;82m'         # verde — executáveis
-C_LINK=$'\e[38;5;117m'       # ciano — symlinks
-C_FILE=$'\e[38;5;252m'       # branco — arquivos normais
-C_GHOST=$'\e[38;5;240m'      # cinza escuro — sugestão ghost
-C_SEL=$'\e[48;5;25m\e[38;5;231m\e[1m'  # fundo azul, texto branco
-C_HEADER=$'\e[48;5;235m\e[38;5;245m'   # fundo escuro, cinza
-C_PROMPT=$'\e[38;5;117m'     # ciano — diretório no prompt
-C_ARROW_OK=$'\e[38;5;82m'    # verde — seta ❯
-C_ARROW_ERR=$'\e[38;5;196m'  # vermelho — seta ❯ em erro
-C_GIT=$'\e[38;5;213m'        # rosa — git branch
-
-# ─── ESTADO GLOBAL ───────────────────────────────────────────
-INPUT=""          # buffer da linha atual
-CURSOR=0          # posição do cursor no buffer
-HIST_IDX=-1       # índice de navegação no histórico
-HIST_SAVED=""     # salva input antes de navegar histórico
-SUGGESTION=""     # ghost text atual
-LAST_EXIT=0       # exit code do último comando
-
-# Histórico em memória + carrega do bash history
-declare -a HIST=()
-_load_history() {
-    local hfile="${HISTFILE:-$HOME/.bash_history}"
-    if [[ -f "$hfile" ]]; then
-        mapfile -t HIST < "$hfile"
-    fi
+(( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
+    printf 'ble.sh: requer Bash 4.3+  (atual: %s)\n' "$BASH_VERSION" >&2
+    return 1
 }
 
-_save_history() {
-    local hfile="${HISTFILE:-$HOME/.bash_history}"
-    printf '%s\n' "${HIST[@]}" > "$hfile" 2>/dev/null || true
-}
+# ══════════════════════════════════════════════════════════════
+# CORES
+# ══════════════════════════════════════════════════════════════
+_b0=$'\e[0m'
+_bb=$'\e[1m'
+_bG=$'\e[38;5;82m'
+_bR=$'\e[38;5;196m'
+_bA=$'\e[38;5;252m'
+_bO=$'\e[38;5;75m'
+_bS=$'\e[38;5;214m'
+_bN=$'\e[38;5;183m'
+_bP=$'\e[38;5;220m'
+_bD=$'\e[38;5;220m'
+_bX=$'\e[38;5;82m'
+_bL=$'\e[38;5;117m'
+_bF=$'\e[38;5;252m'
+_bH=$'\e[38;5;240m'
+_bPR=$'\e[38;5;117m'
+_bGT=$'\e[38;5;213m'
+_bAK=$'\e[38;5;82m'
+_bAE=$'\e[38;5;196m'
+_bSL=$'\e[48;5;25m\e[38;5;231m\e[1m'
+_bHD=$'\e[48;5;235m\e[38;5;245m'
 
-# ─── TERMINAL ────────────────────────────────────────────────
-TTY_SAVED=""
+# ══════════════════════════════════════════════════════════════
+# ESTADO
+# ══════════════════════════════════════════════════════════════
+_BLE_EXIT=0
+_BLE_PLEN=0
+_BLE_SUGGESTION=""
+_BLE_MENU_RES=""
 
-_term_raw() {
-    TTY_SAVED=$(stty -g)
-    stty -echo -icanon -icrnl min 1 time 0
-}
+# ══════════════════════════════════════════════════════════════
+# LEITURA DE TECLA (sem stty — readline já configura o terminal)
+# ══════════════════════════════════════════════════════════════
+_BLE_KEY=""
+_BLE_KTYPE=""
 
-_term_restore() {
-    [[ -n "$TTY_SAVED" ]] && stty "$TTY_SAVED"
-}
-
-_term_cols() { tput cols 2>/dev/null || echo 80; }
-_term_rows() { tput lines 2>/dev/null || echo 24; }
-
-# ─── LEITURA DE TECLA ────────────────────────────────────────
-KEY_SEQ=""
-KEY_TYPE=""
-
-_read_key() {
+_ble_read_key() {
     local k s1 s2 s3
     IFS= read -rsn1 k
-    KEY_SEQ="$k"
-
+    _BLE_KEY="$k"
     if [[ "$k" == $'\x1b' ]]; then
-        IFS= read -rsn1 -t 0.15 s1 || { KEY_TYPE="esc"; return; }
-        KEY_SEQ+="$s1"
+        IFS= read -rsn1 -t 0.15 s1 2>/dev/null || { _BLE_KTYPE="esc"; return; }
+        _BLE_KEY+="$s1"
         if [[ "$s1" == '[' ]]; then
-            IFS= read -rsn1 -t 0.15 s2 || { KEY_TYPE="unknown"; return; }
-            KEY_SEQ+="$s2"
+            IFS= read -rsn1 -t 0.15 s2 2>/dev/null || { _BLE_KTYPE="unknown"; return; }
+            _BLE_KEY+="$s2"
             case "$s2" in
-                A) KEY_TYPE="up"    ;;
-                B) KEY_TYPE="down"  ;;
-                C) KEY_TYPE="right" ;;
-                D) KEY_TYPE="left"  ;;
-                H) KEY_TYPE="home"  ;;
-                F) KEY_TYPE="end"   ;;
-                3) IFS= read -rsn1 -t 0.15 s3; KEY_SEQ+="$s3"
-                   KEY_TYPE="del"   ;;
-                5) IFS= read -rsn1 -t 0.15 s3; KEY_SEQ+="$s3"
-                   KEY_TYPE="pgup"  ;;
-                6) IFS= read -rsn1 -t 0.15 s3; KEY_SEQ+="$s3"
-                   KEY_TYPE="pgdn"  ;;
-                *) KEY_TYPE="unknown" ;;
+                A) _BLE_KTYPE="up"    ;; B) _BLE_KTYPE="down"  ;;
+                C) _BLE_KTYPE="right" ;; D) _BLE_KTYPE="left"  ;;
+                H) _BLE_KTYPE="home"  ;; F) _BLE_KTYPE="end"   ;;
+                3) IFS= read -rsn1 -t 0.15 s3 2>/dev/null; _BLE_KEY+="$s3"; _BLE_KTYPE="del"  ;;
+                5) IFS= read -rsn1 -t 0.15 s3 2>/dev/null; _BLE_KEY+="$s3"; _BLE_KTYPE="pgup" ;;
+                6) IFS= read -rsn1 -t 0.15 s3 2>/dev/null; _BLE_KEY+="$s3"; _BLE_KTYPE="pgdn" ;;
+                *) _BLE_KTYPE="unknown" ;;
             esac
         elif [[ "$s1" == 'O' ]]; then
-            IFS= read -rsn1 -t 0.15 s2 || { KEY_TYPE="unknown"; return; }
-            KEY_SEQ+="$s2"
-            case "$s2" in
-                H) KEY_TYPE="home" ;;
-                F) KEY_TYPE="end"  ;;
-                *) KEY_TYPE="unknown" ;;
-            esac
+            IFS= read -rsn1 -t 0.15 s2 2>/dev/null || { _BLE_KTYPE="unknown"; return; }
+            _BLE_KEY+="$s2"
+            case "$s2" in H) _BLE_KTYPE="home";; F) _BLE_KTYPE="end";; *) _BLE_KTYPE="unknown";; esac
         else
-            KEY_TYPE="unknown"
+            _BLE_KTYPE="unknown"
         fi
         return
     fi
-
     case "$k" in
-        $'\x01') KEY_TYPE="ctrla"  ;;
-        $'\x02') KEY_TYPE="ctrlb"  ;;
-        $'\x03') KEY_TYPE="ctrlc"  ;;
-        $'\x04') KEY_TYPE="ctrld"  ;;
-        $'\x05') KEY_TYPE="ctrle"  ;;
-        $'\x06') KEY_TYPE="ctrlf"  ;;
-        $'\x0b') KEY_TYPE="ctrlk"  ;;
-        $'\x0c') KEY_TYPE="ctrll"  ;;
-        $'\x12') KEY_TYPE="ctrlr"  ;;
-        $'\x15') KEY_TYPE="ctrlu"  ;;
-        $'\x17') KEY_TYPE="ctrlw"  ;;
-        $'\x09') KEY_TYPE="tab"    ;;
-        $'\x0a'|$'\x0d') KEY_TYPE="enter" ;;
-        $'\x7f'|$'\x08') KEY_TYPE="bs"    ;;
+        $'\x09') _BLE_KTYPE="tab"   ;; $'\x0a'|$'\x0d') _BLE_KTYPE="enter" ;;
+        $'\x7f'|$'\x08') _BLE_KTYPE="bs" ;; $'\x1b') _BLE_KTYPE="esc"    ;;
+        $'\x03') _BLE_KTYPE="ctrlc" ;; $'\x04') _BLE_KTYPE="ctrld"  ;;
+        $'\x01') _BLE_KTYPE="home"  ;; $'\x05') _BLE_KTYPE="end"    ;;
+        $'\x0b') _BLE_KTYPE="ctrlk" ;; $'\x15') _BLE_KTYPE="ctrlu"  ;;
+        $'\x17') _BLE_KTYPE="ctrlw" ;; $'\x0c') _BLE_KTYPE="ctrll"  ;;
+        $'\x12') _BLE_KTYPE="ctrlr" ;; $'\x06') _BLE_KTYPE="ctrlf"  ;;
         *)
-            if [[ $(printf '%d' "'$k" 2>/dev/null || echo 0) -ge 32 ]]; then
-                KEY_TYPE="char"
-            else
-                KEY_TYPE="unknown"
-            fi
-            ;;
+            local _code; printf -v _code '%d' "'$k" 2>/dev/null || _code=0
+            (( _code >= 32 )) && _BLE_KTYPE="char" || _BLE_KTYPE="unknown" ;;
     esac
 }
 
-# ─── SYNTAX HIGHLIGHT ────────────────────────────────────────
-_highlight() {
+# ══════════════════════════════════════════════════════════════
+# SYNTAX HIGHLIGHT → _BLE_HL
+# ══════════════════════════════════════════════════════════════
+_BLE_HL=""
+
+_ble_highlight() {
     local line="$1"
-    if [[ -z "$line" ]]; then HIGHLIGHTED=""; return; fi
+    _BLE_HL=""
+    [[ -z "$line" ]] && return
+    local out="" tok="" is_first=1 in_str=0 quote="" char i len=${#line}
 
-    local first="${line%% *}"
-    local rest=""
-    [[ "$line" == *" "* ]] && rest="${line#* }"
-
-    local cmd_color
-    if command -v "$first" &>/dev/null || \
-       type "$first" &>/dev/null 2>&1; then
-        cmd_color="$C_CMD_OK"
-    else
-        cmd_color="$C_CMD_ERR"
-    fi
-
-    if [[ -z "$rest" ]]; then
-        HIGHLIGHTED="${cmd_color}${line}${R}"
-        return
-    fi
-
-    local colored_rest=""
-    local -a words
-    read -ra words <<< "$rest"
-    for w in "${words[@]}"; do
-        if [[ "$w" == --* || "$w" == -* ]]; then
-            colored_rest+="${C_OPT}${w}${R} "
+    _bf() {
+        local t="$1" f="$2"; [[ -z "$t" ]] && return
+        if (( f )); then
+            builtin type -t "$t" &>/dev/null 2>&1 \
+                && out+="${_bG}${t}${_b0}" || out+="${_bR}${t}${_b0}"
         else
-            colored_rest+="${C_ARG}${w}${R} "
+            case "$t" in
+                --*|-[a-zA-Z]*) out+="${_bO}${t}${_b0}" ;;
+                [0-9]*)         out+="${_bN}${t}${_b0}" ;;
+                */*)
+                    if   [[ -d "$t" ]];             then out+="${_bD}${t}${_b0}"
+                    elif [[ -L "$t" ]];             then out+="${_bL}${t}${_b0}"
+                    elif [[ -x "$t" && -f "$t" ]];  then out+="${_bX}${t}${_b0}"
+                    else out+="${_bA}${t}${_b0}"; fi ;;
+                *) out+="${_bA}${t}${_b0}" ;;
+            esac
         fi
+    }
+
+    for (( i=0; i<len; i++ )); do
+        char="${line:$i:1}"
+        if (( in_str )); then
+            tok+="$char"
+            if [[ "$char" == "$quote" && ( $i -eq 0 || "${line:$((i-1)):1}" != '\' ) ]]; then
+                out+="${_bS}${tok}${_b0}"; tok=""; in_str=0
+            fi
+            continue
+        fi
+        case "$char" in
+            '"'|"'") _bf "$tok" "$is_first"; [[ -n "$tok" ]] && is_first=0
+                     tok="$char"; in_str=1; quote="$char" ;;
+            ' '|$'\t') _bf "$tok" "$is_first"; [[ -n "$tok" ]] && is_first=0
+                        tok=""; out+="$char" ;;
+            '|'|'&'|';') _bf "$tok" "$is_first"; tok=""; is_first=1
+                          out+="${_bP}${char}${_b0}" ;;
+            *) tok+="$char" ;;
+        esac
     done
-    colored_rest="${colored_rest% }"
-
-    HIGHLIGHTED="${cmd_color}${first}${R} ${colored_rest}"
+    _bf "$tok" "$is_first"
+    (( in_str )) && [[ -n "$tok" ]] && out+="${_bS}${tok}${_b0}"
+    _BLE_HL="$out"
+    unset -f _bf
 }
 
-# ─── GHOST SUGGESTION ────────────────────────────────────────
-_get_suggestion() {
-    local cur="$1"
-    [[ -z "$cur" ]] && SUGGESTION="" && return
-
-    local i
-    for (( i=${#HIST[@]}-1; i>=0; i-- )); do
-        local h="${HIST[$i]}"
-        if [[ "$h" == "${cur}"* && "$h" != "$cur" ]]; then
-            SUGGESTION="$h"
-            return
-        fi
-    done
-
-    if [[ "$cur" != *" "* ]]; then
-        local c
-        c=$(compgen -c -- "$cur" 2>/dev/null | head -1)
-        if [[ -n "$c" && "$c" != "$cur" ]]; then
-            SUGGESTION="$c"
-            return
-        fi
-    fi
-
-    SUGGESTION=""
+# ══════════════════════════════════════════════════════════════
+# GHOST TEXT → _BLE_SUGGESTION
+# ══════════════════════════════════════════════════════════════
+_ble_get_suggestion() {
+    _BLE_SUGGESTION=""
+    [[ ${#1} -lt 2 ]] && return
+    local h
+    while IFS= read -r h; do
+        [[ "$h" == "${1}"* && "$h" != "$1" ]] && { _BLE_SUGGESTION="$h"; return; }
+    done < <(history | sort -rn | sed 's/^ *[0-9]* *//')
 }
 
-# ─── PROMPT ──────────────────────────────────────────────────
-_make_prompt() {
-    local dir="${PWD/$HOME/\~}"
-    local git_info=""
-
-    if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
-        local branch
-        branch=$(git symbolic-ref --short HEAD 2>/dev/null || \
-                 git rev-parse --short HEAD 2>/dev/null || echo "?")
-        local dirty=""
-        git diff --quiet 2>/dev/null || dirty="${C_CMD_ERR}±${R}"
-        git_info=" ${C_GIT}⎇ ${branch}${dirty}${R}"
+# ══════════════════════════════════════════════════════════════
+# OVERLAY: sobrescreve a linha atual com highlight + ghost
+#
+# Técnica:
+#   \e7           — salva posição do cursor (DEC save)
+#   \r            — vai para coluna 0 da linha atual
+#   \e[Nc         — avança N colunas (pula o prompt visual)
+#   \e[K          — apaga do cursor até o fim da linha
+#   <conteúdo>    — imprime linha colorida + ghost
+#   \e8           — restaura posição do cursor (DEC restore)
+#
+# O readline redesenha sem cores depois desta função retornar,
+# mas como interceptamos CADA tecla, o overlay é reaplicado
+# em cada keystroke, tornando o highlight estável visualmente.
+# ══════════════════════════════════════════════════════════════
+_ble_overlay() {
+    local line="$READLINE_LINE"
+    _ble_highlight "$line"
+    _ble_get_suggestion "$line"
+    local ghost=""
+    if [[ -n "$_BLE_SUGGESTION" && "$_BLE_SUGGESTION" == "${line}"* && \
+          "$_BLE_SUGGESTION" != "$line" ]]; then
+        ghost="${_bH}${_BLE_SUGGESTION:${#line}}${_b0}"
     fi
+    printf '\e7\r\e[%dC\e[K%s%s\e8' "$_BLE_PLEN" "$_BLE_HL" "$ghost"
+}
 
-    local arrow
-    if (( LAST_EXIT == 0 )); then
-        arrow="${C_ARROW_OK}❯${R}"
+# ══════════════════════════════════════════════════════════════
+# FUNÇÕES DE EDIÇÃO (cada uma chama _ble_overlay ao final)
+# ══════════════════════════════════════════════════════════════
+_ble_self_insert() {
+    # $1 pode ser uma letra/número; $@ para símbolos com espaços
+    local char="$*"
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${char}${READLINE_LINE:$READLINE_POINT}"
+    (( READLINE_POINT++ ))
+    _ble_overlay
+}
+
+_ble_backspace() {
+    (( READLINE_POINT > 0 )) && {
+        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
+        (( READLINE_POINT-- ))
+    }
+    _ble_overlay
+}
+
+_ble_delete_char() {
+    (( READLINE_POINT < ${#READLINE_LINE} )) && \
+        READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
+    _ble_overlay
+}
+
+_ble_move_left() {
+    (( READLINE_POINT > 0 )) && (( READLINE_POINT-- ))
+    _ble_overlay
+}
+
+_ble_right_or_ghost() {
+    local line="$READLINE_LINE" point="$READLINE_POINT"
+    if (( point < ${#line} )); then
+        (( READLINE_POINT++ ))
     else
-        arrow="${C_ARROW_ERR}❯ [✗ ${LAST_EXIT}]${R}"
+        _ble_get_suggestion "$line"
+        if [[ -n "$_BLE_SUGGESTION" && "$_BLE_SUGGESTION" == "${line}"* ]]; then
+            local rest="${_BLE_SUGGESTION:${#line}}"
+            if [[ "$rest" == *' '* ]]; then
+                READLINE_LINE="${line}${rest%% *} "
+            else
+                READLINE_LINE="$_BLE_SUGGESTION"
+            fi
+            READLINE_POINT=${#READLINE_LINE}
+        fi
     fi
-
-    PROMPT="${C_PROMPT}${dir}${R}${git_info} ${arrow} "
-    PROMPT_LEN=$(printf '%s' "${PROMPT}" | sed 's/\x1b\[[0-9;]*m//g' | wc -c)
-    PROMPT_LEN=$(( PROMPT_LEN ))
+    _ble_overlay
 }
 
-# ─── REDRAW DA LINHA ─────────────────────────────────────────
-_redraw() {
-    local show_ghost="${1:-1}"
-
-    _get_suggestion "$INPUT"
-    _highlight "$INPUT"
-
-    local tw; tw=$(_term_cols)
-
-    printf '\r\e[K'
-    printf '%s' "$PROMPT"
-    printf '%s' "$HIGHLIGHTED"
-
-    if (( show_ghost )) && [[ -n "$SUGGESTION" && \
-          "$SUGGESTION" == "${INPUT}"* && \
-          ${#SUGGESTION} -gt ${#INPUT} ]]; then
-        printf '%s%s%s' "$C_GHOST" "${SUGGESTION:${#INPUT}}" "$R"
+_ble_accept_ghost() {
+    _ble_get_suggestion "$READLINE_LINE"
+    if [[ -n "$_BLE_SUGGESTION" && "$_BLE_SUGGESTION" == "${READLINE_LINE}"* ]]; then
+        READLINE_LINE="$_BLE_SUGGESTION"
+        READLINE_POINT=${#READLINE_LINE}
     fi
-
-    local after=$(( ${#INPUT} - CURSOR ))
-    local ghost_len=0
-    if (( show_ghost )) && [[ -n "$SUGGESTION" && \
-          "$SUGGESTION" == "${INPUT}"* ]]; then
-        ghost_len=$(( ${#SUGGESTION} - ${#INPUT} ))
-    fi
-    local total_after=$(( after + ghost_len ))
-    if (( total_after > 0 )); then
-        printf '\e[%dD' "$total_after"
-    fi
+    _ble_overlay
 }
 
-# ─── COMPLETAÇÃO — COLETA ITENS ──────────────────────────────
-_collect_completions() {
-    local line="$1"
-    local word="$2"
+_ble_kill_line()     { READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}"; _ble_overlay; }
+_ble_kill_to_start() { READLINE_LINE="${READLINE_LINE:$READLINE_POINT}"; READLINE_POINT=0; _ble_overlay; }
+_ble_home()          { READLINE_POINT=0; _ble_overlay; }
+_ble_end()           { READLINE_POINT=${#READLINE_LINE}; _ble_overlay; }
 
-    COMP_ITEMS=()
-
-    local is_first=0
-    [[ -z "${line% $word}" || "$line" == "$word" ]] && is_first=1
-
-    if (( is_first )) && [[ "$word" != */* ]]; then
-        mapfile -t COMP_ITEMS < <(compgen -c -- "$word" 2>/dev/null | sort -u | head -200)
-    else
-        mapfile -t COMP_ITEMS < <(compgen -f -- "$word" 2>/dev/null | sort)
+_ble_kill_word() {
+    if (( READLINE_POINT > 0 )); then
+        local b="${READLINE_LINE:0:$READLINE_POINT}" a="${READLINE_LINE:$READLINE_POINT}"
+        b="${b%% }";  # trim espaço final
+        b="${b% *}"   # remove última palavra
+        READLINE_LINE="${b} ${a}"
+        READLINE_POINT=$(( ${#b} + 1 ))
+        [[ "${READLINE_LINE:0:1}" == ' ' ]] && {
+            READLINE_LINE="${READLINE_LINE:1}"; (( READLINE_POINT-- ))
+        }
     fi
+    _ble_overlay
 }
 
-_item_color() {
-    local f="$1"
-    if   [[ -d "$f" ]];            then printf '%s' "$C_DIR"
-    elif [[ -L "$f" ]];            then printf '%s' "$C_LINK"
-    elif [[ -x "$f" && -f "$f" ]]; then printf '%s' "$C_EXE"
-    else                                printf '%s' "$C_FILE"
-    fi
-}
-_item_suffix() {
-    local f="$1"
-    if   [[ -d "$f" ]]; then printf '/'
-    elif [[ -L "$f" ]]; then printf '@'
-    elif [[ -x "$f" && -f "$f" ]]; then printf '*'
-    fi
-}
-
-# ─── MENU DE COMPLETAÇÃO ─────────────────────────────────────
-declare -a COMP_ITEMS=()
-
-_run_menu() {
-    local word="$1"
-    local prefix="$2"
-
-    local total="${#COMP_ITEMS[@]}"
+# ══════════════════════════════════════════════════════════════
+# MENU DE COMPLETAÇÃO
+# Setas navegam. TAB confirma. Esc cancela.
+# Sem stty — readline já está em modo raw.
+# ══════════════════════════════════════════════════════════════
+_ble_menu() {
+    local -a items=("$@")
+    local total=${#items[@]}
     (( total == 0 )) && return 1
 
-    if (( total == 1 )); then
-        local s="${COMP_ITEMS[0]}"
-        local insert_suf=""
-        if [[ -d "$s" ]]; then insert_suf="/"; fi
-        INPUT="${prefix}${s}${insert_suf}"
-        if [[ -z "$insert_suf" ]]; then INPUT+=" "; fi
-        CURSOR="${#INPUT}"
-        return 0
-    fi
-
-    local tw; tw=$(_term_cols)
-
-    local max_len=1
-    local it
-    for it in "${COMP_ITEMS[@]}"; do
-        (( ${#it} + 2 > max_len )) && max_len=$(( ${#it} + 2 ))
-    done
+    local tw; tw=$(tput cols 2>/dev/null || echo 80)
+    local max_len=4 it
+    for it in "${items[@]}"; do (( ${#it}+1 > max_len )) && max_len=$(( ${#it}+1 )); done
     local cw=$(( max_len + 2 ))
-    (( cw < 6  )) && cw=6
-    (( cw > 50 )) && cw=50
-
+    (( cw < 8  )) && cw=8; (( cw > 50 )) && cw=50
     local cols=$(( tw / cw ))
-    (( cols < 1  )) && cols=1
-    (( cols > 16 )) && cols=16
-
+    (( cols < 1  )) && cols=1; (( cols > 16 )) && cols=16
     local total_rows=$(( (total + cols - 1) / cols ))
     local max_vis=12
     local vis=$(( total_rows < max_vis ? total_rows : max_vis ))
+    local sel=0 scroll=0 _ML=0
 
-    local sel=0
-    local scroll=0
-
-    _menu_draw() {
-        local s="$1" sc="$2"
-        local n=0
-
-        local hdr
-        printf -v hdr \
-            ' 📂 %d itens   ↑↓←→ navegar   TAB/Enter selecionar   Esc cancelar' \
-            "$total"
-        printf '%s%-*s%s\n' "$C_HEADER" "$tw" "$hdr" "$R"
-        (( n++ ))
-
-        local r
+    _fc() {
+        [[ -d "$1" ]] && printf '%s' "$_bD"  && return
+        [[ -L "$1" ]] && printf '%s' "$_bL"  && return
+        [[ -x "$1" && -f "$1" ]] && printf '%s' "$_bX" && return
+        printf '%s' "$_bF"
+    }
+    _fs() {
+        [[ -d "$1" ]] && printf '/' && return
+        [[ -L "$1" ]] && printf '@' && return
+        [[ -x "$1" && -f "$1" ]] && printf '*'
+    }
+    _mdraw() {
+        local s=$1 sc=$2 n=0 r c idx it sf disp fc
+        local hdr; printf -v hdr \
+            ' 📂 %d itens   ↑↓←→ navegar   TAB confirma   Esc cancela' "$total"
+        printf '%s%-*.*s%s\n' "$_bHD" "$tw" "$tw" "$hdr" "$_b0"; (( n++ ))
         for (( r=sc; r < sc+vis && r < total_rows; r++ )); do
-            local c
             for (( c=0; c<cols; c++ )); do
-                local idx=$(( r * cols + c ))
-                (( idx >= total )) && break
-                local it="${COMP_ITEMS[$idx]}"
-                local suf; suf=$(_item_suffix "$it")
-                local disp="${it}${suf}"
-
+                idx=$(( r*cols+c )); (( idx >= total )) && break
+                it="${items[$idx]}"; sf=$(_fs "$it"); disp="${it}${sf}"
                 if (( idx == s )); then
-                    printf '%s %-*s %s' "$C_SEL" "$cw" "$disp" "$R"
+                    printf '%s %-*.*s%s' "$_bSL" "$cw" "$cw" "$disp" "$_b0"
                 else
-                    local fc; fc=$(_item_color "$it")
-                    printf '%s %-*s %s' "$fc"  "$cw" "$disp" "$R"
+                    printf '%s %-*.*s%s' "$(_fc "$it")" "$cw" "$cw" "$disp" "$_b0"
                 fi
             done
-            printf '\n'
-            (( n++ ))
+            printf '\n'; (( n++ ))
         done
-
         if (( total_rows > max_vis )); then
-            local pct=$(( (sc + vis) * 100 / total_rows ))
-            (( pct > 100 )) && pct=100
-            local foot
-            printf -v foot ' ↕ scroll %d%%  (%d total)' "$pct" "$total"
-            printf '%s%-*s%s\n' "$C_HEADER" "$tw" "$foot" "$R"
-            (( n++ ))
+            local pct=$(( (sc+vis)*100/total_rows )); (( pct>100 )) && pct=100
+            printf '%s ↕ %d%%  (%d total)%-*s%s\n' \
+                "$_bHD" "$pct" "$total" "$(( tw-20 ))" "" "$_b0"; (( n++ ))
         fi
-
-        _MENU_LINES=$n
+        _ML=$n
     }
 
-    printf '\r\e[K'
-    printf '\n'
-    _menu_draw "$sel" "$scroll"
+    printf '\n'; _mdraw "$sel" "$scroll"
 
+    local chosen=""
     while true; do
-        _read_key
-
-        case "$KEY_TYPE" in
-            up)
-                (( sel -= cols ))
-                (( sel < 0 )) && sel=$(( total - 1 ))
-                ;;
-            down)
-                (( sel += cols ))
-                (( sel >= total )) && sel=0
-                ;;
-            right)
-                (( sel++ ))
-                (( sel >= total )) && sel=0
-                ;;
-            left)
-                (( sel-- ))
-                (( sel < 0 )) && sel=$(( total - 1 ))
-                ;;
-            tab)
-                (( sel++ ))
-                (( sel >= total )) && sel=0
-                ;;
-            enter)
-                printf '\e[%dA\r\e[J' "$(( _MENU_LINES + 1 ))"
-                local chosen="${COMP_ITEMS[$sel]}"
-                local insert_suf=""
-                if [[ -d "$chosen" ]]; then insert_suf="/"; fi
-                INPUT="${prefix}${chosen}${insert_suf}"
-                if [[ -z "$insert_suf" ]]; then INPUT+=" "; fi
-                CURSOR="${#INPUT}"
-                return 2  # Código para executar comando
-                ;;
-            esc|ctrlc|ctrlg)
-                printf '\e[%dA\r\e[J' "$(( _MENU_LINES + 1 ))"
-                return 1
-                ;;
+        _ble_read_key
+        case "$_BLE_KTYPE" in
+            up)    (( sel -= cols )); (( sel < 0 )) && sel=$(( total-1 )) ;;
+            down)  (( sel += cols )); (( sel >= total )) && sel=0 ;;
+            right) (( sel++ ));       (( sel >= total )) && sel=0 ;;
+            left)  (( sel-- ));       (( sel < 0 )) && sel=$(( total-1 )) ;;
+            tab)   chosen="${items[$sel]}" ;;
+            esc|ctrlc) chosen="" ;;
         esac
 
-        local sel_row=$(( sel / cols ))
-        (( sel_row < scroll )) && scroll=$sel_row
-        (( sel_row >= scroll + vis )) && scroll=$(( sel_row - vis + 1 ))
+        printf '\e[%dA\r\e[J' "$(( _ML + 1 ))"
 
-        printf '\e[%dA\r\e[J' "$(( _MENU_LINES + 1 ))"
-        printf '\n'
-        _menu_draw "$sel" "$scroll"
+        if [[ "$_BLE_KTYPE" == "tab" || "$_BLE_KTYPE" == "esc" || "$_BLE_KTYPE" == "ctrlc" ]]; then
+            break
+        fi
+
+        local sr=$(( sel/cols ))
+        (( sr < scroll )) && scroll=$sr
+        (( sr >= scroll+vis )) && scroll=$(( sr-vis+1 ))
+
+        printf '\n'; _mdraw "$sel" "$scroll"
     done
+
+    unset -f _fc _fs _mdraw
+
+    [[ -n "$chosen" ]] && { _BLE_MENU_RES="$chosen"; return 0; }
+    _BLE_MENU_RES=""; return 1
 }
 
-# ─── BUSCA NO HISTÓRICO (Ctrl+R) ─────────────────────────────
-_history_search() {
-    local query=""
-    local result=""
+# ══════════════════════════════════════════════════════════════
+# COMPLETAÇÃO (bind -x '"\t": _ble_complete')
+# ══════════════════════════════════════════════════════════════
+_ble_complete() {
+    local line="$READLINE_LINE" point="$READLINE_POINT"
+    local before="${line:0:$point}" after="${line:$point}"
+    local cur="${before##* }" pfx="${before%"${before##* }"}"
+    local is_first=0
+    [[ "$line" == "$cur" || -z "${pfx// /}" ]] && is_first=1
+    local -a items=()
 
-    printf '\r\e[K'
-    printf '%s bck-i-search: %s_' "$C_HEADER$R" ""
+    if (( is_first )) && [[ "$cur" != */* ]]; then
+        mapfile -t items < <(compgen -c -- "$cur" 2>/dev/null | sort -u | head -300)
+    else
+        local cmd="${line%% *}"; cmd="${cmd##*/}"
+        local comp_fn
+        comp_fn=$(complete -p "$cmd" 2>/dev/null | grep -oP '(?<=-F )\S+' | head -1)
+        if [[ -n "$comp_fn" ]] && declare -F "$comp_fn" &>/dev/null; then
+            local COMP_LINE="$line" COMP_POINT=$point
+            local -a COMP_WORDS=(); read -ra COMP_WORDS <<< "$line"
+            local COMP_CWORD=$(( ${#COMP_WORDS[@]}-1 ))
+            [[ "$line" == *' ' ]] && { COMP_WORDS+=(""); (( COMP_CWORD++ )); }
+            local COMPREPLY=()
+            "$comp_fn" "$cmd" "$cur" \
+                "${COMP_WORDS[$((COMP_CWORD>0 ? COMP_CWORD-1 : 0))]:-}" \
+                2>/dev/null || true
+            (( ${#COMPREPLY[@]} > 0 )) && items=("${COMPREPLY[@]}")
+        fi
+        if (( ${#items[@]} == 0 )) && [[ "$cur" == -* ]] && command -v "$cmd" &>/dev/null; then
+            mapfile -t items < <(
+                "$cmd" --help 2>&1 \
+                | grep -oP '(?<![a-zA-Z])-{1,2}[a-zA-Z][a-zA-Z0-9_-]*' \
+                | sort -u | grep -- "^${cur}" | head -80
+            )
+        fi
+        if (( ${#items[@]} == 0 )); then
+            mapfile -t items < <(compgen -f -- "$cur" 2>/dev/null | sort)
+        fi
+    fi
 
+    (( ${#items[@]} == 0 )) && { printf '\a'; return; }
+
+    if (( ${#items[@]} == 1 )); then
+        local chosen="${items[0]}" suf=""
+        [[ -d "$chosen" ]] && suf="/"
+        local ins="${pfx}${chosen}${suf}"; [[ -z "$suf" ]] && ins="${pfx}${chosen} "
+        READLINE_LINE="${ins}${after}"; READLINE_POINT=${#ins}
+        _ble_overlay; return
+    fi
+
+    _BLE_MENU_RES=""
+    if _ble_menu "${items[@]}"; then
+        local chosen="$_BLE_MENU_RES" suf=""
+        [[ -d "$chosen" ]] && suf="/"
+        local ins="${pfx}${chosen}${suf}"; [[ -z "$suf" ]] && ins="${pfx}${chosen} "
+        READLINE_LINE="${ins}${after}"; READLINE_POINT=${#ins}
+        _ble_overlay
+    fi
+}
+
+# ══════════════════════════════════════════════════════════════
+# BUSCA NO HISTÓRICO (Ctrl+R)
+# ══════════════════════════════════════════════════════════════
+_ble_history_search() {
+    local query="" result=""
+    _hsdraw() {
+        printf '\r\e[K%sbck-i-search%s: %s%s%s' "$_bHD" "$_b0" "$_bG" "$query" "$_b0"
+        [[ -n "$result" ]] \
+            && printf '  %s→ %s%s' "$_bH" "$result" "$_b0" \
+            || { [[ -n "$query" ]] && printf '  %s(não encontrado)%s' "$_bR" "$_b0"; }
+    }
+    _hsfind() {
+        result=""; [[ -z "$1" ]] && return 1
+        local h
+        while IFS= read -r h; do
+            [[ "$h" == *"$1"* ]] && { result="$h"; return 0; }
+        done < <(history | sort -rn | sed 's/^ *[0-9]* *//')
+        return 1
+    }
+
+    printf '\n'; _hsdraw
+    local found=""
     while true; do
-        _read_key
-        case "$KEY_TYPE" in
-            char)
-                query+="$KEY_SEQ"
-                ;;
-            bs)
-                [[ -n "$query" ]] && query="${query:0:-1}"
-                ;;
-            enter)
-                INPUT="$result"
-                CURSOR="${#INPUT}"
-                printf '\r\e[K'
-                return 0
-                ;;
-            esc|ctrlc|ctrlr)
-                printf '\r\e[K'
-                return 1
-                ;;
+        _ble_read_key
+        case "$_BLE_KTYPE" in
+            char)  query+="$_BLE_KEY";    _hsfind "$query" ;;
+            bs)    query="${query:0:-1}";  _hsfind "$query" ;;
+            tab|enter) found="$result";   break ;;
+            esc|ctrlc) found="";          break ;;
         esac
-
-        result=""
-        if [[ -n "$query" ]]; then
-            local i
-            for (( i=${#HIST[@]}-1; i>=0; i-- )); do
-                if [[ "${HIST[$i]}" == *"$query"* ]]; then
-                    result="${HIST[$i]}"
-                    break
-                fi
-            done
-        fi
-
-        printf '\r\e[K'
-        printf '%sbck-i-search%s: %s%s%s' \
-            "$C_HEADER" "$R" \
-            "$C_CMD_OK" "$query" "$R"
-        if [[ -n "$result" ]]; then
-            printf ' → %s%s%s' "$C_GHOST" "$result" "$R"
-        fi
+        printf '\r\e[K'; _hsdraw
     done
+    printf '\r\e[K'
+    unset -f _hsdraw _hsfind
+    if [[ -n "$found" ]]; then
+        READLINE_LINE="$found"; READLINE_POINT=${#found}
+        _ble_overlay
+    fi
 }
 
-# ─── LOOP PRINCIPAL ──────────────────────────────────────────
-_ble_main() {
-    _load_history
-    _term_raw
+# ══════════════════════════════════════════════════════════════
+# PROMPT
+# ══════════════════════════════════════════════════════════════
+_ble_build_ps1() {
+    local dir="${PWD/$HOME/\~}" git_info=""
+    if git rev-parse --is-inside-work-tree &>/dev/null 2>&1; then
+        local branch dirty=""
+        branch=$(git symbolic-ref --short HEAD 2>/dev/null \
+              || git rev-parse --short HEAD 2>/dev/null || echo "?")
+        git diff --quiet 2>/dev/null          || dirty+="${_bAE}●${_b0}"
+        git diff --cached --quiet 2>/dev/null || dirty+="${_bG}+${_b0}"
+        git_info=" ${_bGT}⎇ ${branch}${_b0}${dirty}"
+    fi
+    local arrow
+    (( _BLE_EXIT == 0 )) \
+        && arrow="${_bAK}❯${_b0}" \
+        || arrow="${_bAE}❯ [✗${_BLE_EXIT}]${_b0}"
+    PS1="\[${_bPR}\]${dir}\[${_b0}\]${git_info} \[${arrow}\] "
 
-    trap '_term_restore; echo; exit 0' EXIT INT TERM
+    # Comprimento visual (sem escapes ANSI e sem \[...\] do readline)
+    local raw="$PS1"
+    raw="${raw//\\[/}"; raw="${raw//\\]/}"
+    raw=$(printf '%s' "$raw" | sed 's/\x1b\[[0-9;]*m//g')
+    raw="${raw//\\u/$USER}"
+    raw="${raw//\\h/${HOSTNAME%%.*}}"
+    raw="${raw//\\w/${PWD/$HOME/\~}}"
+    _BLE_PLEN=${#raw}
+}
 
-    clear
-    printf '%s🐟 BLE v1.0  %s(Ctrl+D sai  •  Ctrl+C cancela linha  •  Ctrl+R busca)%s\n\n' \
-        "$C_CMD_OK$BOLD" "$C_GHOST" "$R"
+_ble_prompt_cmd() {
+    _BLE_EXIT=$?
+    _ble_build_ps1
+    history -a 2>/dev/null
+}
 
-    while true; do
-        _make_prompt
-        LAST_EXIT=0
-        INPUT=""
-        CURSOR=0
-        HIST_IDX=-1
-        HIST_SAVED=""
-        SUGGESTION=""
+# ══════════════════════════════════════════════════════════════
+# INSTALAÇÃO
+# ══════════════════════════════════════════════════════════════
+_ble_install() {
+    # Teclas de controle e navegação
+    bind -x '"\t":    _ble_complete'           2>/dev/null
+    bind -x '"\C-r":  _ble_history_search'     2>/dev/null
+    bind -x '"\C-f":  _ble_accept_ghost'       2>/dev/null
+    bind -x '"\e[C":  _ble_right_or_ghost'     2>/dev/null
+    bind -x '"\eOC":  _ble_right_or_ghost'     2>/dev/null
+    bind -x '"\e[D":  _ble_move_left'          2>/dev/null
+    bind -x '"\eOD":  _ble_move_left'          2>/dev/null
+    bind -x '"\C-h":  _ble_backspace'          2>/dev/null
+    bind -x '"\x7f":  _ble_backspace'          2>/dev/null
+    bind -x '"\e[3~": _ble_delete_char'        2>/dev/null
+    bind -x '"\C-k":  _ble_kill_line'          2>/dev/null
+    bind -x '"\C-u":  _ble_kill_to_start'      2>/dev/null
+    bind -x '"\C-w":  _ble_kill_word'          2>/dev/null
+    bind -x '"\C-a":  _ble_home'               2>/dev/null
+    bind -x '"\e[H":  _ble_home'               2>/dev/null
+    bind -x '"\eOH":  _ble_home'               2>/dev/null
+    bind -x '"\C-e":  _ble_end'                2>/dev/null
+    bind -x '"\e[F":  _ble_end'                2>/dev/null
+    bind -x '"\eOF":  _ble_end'                2>/dev/null
 
-        printf '%s' "$PROMPT"
+    # Teclas printáveis: self-insert + overlay de highlight/ghost
+    local c
+    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
+             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
+             0 1 2 3 4 5 6 7 8 9; do
+        bind -x "\"${c}\": _ble_self_insert ${c}" 2>/dev/null
+    done
+    # Espaço
+    bind -x '" ": _ble_self_insert " "' 2>/dev/null
+    # Símbolos — bind separado para evitar problemas de quoting
+    local -A sym_map=(
+        ['!']=1 ['@']=1 ['#']=1 ['\$']=1 ['%']=1 ['^']=1
+        ['&']=1 ['*']=1 ['(']=1 [')']=1 ['-']=1 ['_']=1
+        ['=']=1 ['+']=1 ['[']=1 [']']=1 ['{']=1 ['}']=1
+        [',']=1 ['.']=1 ['/']=1 ['<']=1 ['>']=1 ['?']=1
+        ['`']=1 ['~']=1 ["'"]=1
+    )
+    # Símbolos simples que não precisam de escape especial
+    for c in '!' '%' '^' '&' '*' '(' ')' '-' '_' '=' '+' \
+             '[' ']' '{' '}' ',' '.' '/' '<' '>' '?' '`' '~'; do
+        bind -x "\"${c}\": _ble_self_insert ${c}" 2>/dev/null
+    done
+    # Símbolos que precisam de tratamento especial
+    bind -x '"@":  _ble_self_insert @'  2>/dev/null
+    bind -x '"#":  _ble_self_insert #'  2>/dev/null
+    bind -x '";":  _ble_self_insert ;'  2>/dev/null
+    bind -x '":":  _ble_self_insert :'  2>/dev/null
+    bind -x '"\\": _ble_self_insert \\' 2>/dev/null
+    bind -x '"|":  _ble_self_insert |'  2>/dev/null
 
-        while true; do
-            _redraw
-            _read_key
+    # PROMPT_COMMAND
+    local epc="${PROMPT_COMMAND:-}"
+    if [[ -z "$epc" ]]; then
+        PROMPT_COMMAND="_ble_prompt_cmd"
+    elif [[ "$epc" != *"_ble_prompt_cmd"* ]]; then
+        PROMPT_COMMAND="_ble_prompt_cmd; ${epc}"
+    fi
 
-            case "$KEY_TYPE" in
+    # Readline settings
+    bind 'set completion-ignore-case on'     2>/dev/null
+    bind 'set colored-stats on'              2>/dev/null
+    bind 'set visible-stats on'              2>/dev/null
+    bind 'set mark-symlinked-directories on' 2>/dev/null
+    bind 'set skip-completed-text on'        2>/dev/null
 
-                char)
-                    INPUT="${INPUT:0:$CURSOR}${KEY_SEQ}${INPUT:$CURSOR}"
-                    (( CURSOR++ ))
-                    HIST_IDX=-1
-                    ;;
+    # Histórico
+    HISTCONTROL=ignoredups:erasedups
+    HISTSIZE=10000; HISTFILESIZE=20000
+    shopt -s histappend cmdhist 2>/dev/null
 
-                bs)
-                    if (( CURSOR > 0 )); then
-                        INPUT="${INPUT:0:$(( CURSOR-1 ))}${INPUT:$CURSOR}"
-                        (( CURSOR-- ))
-                    fi
-                    HIST_IDX=-1
-                    ;;
+    # Globbing
+    shopt -s globstar extglob nullglob 2>/dev/null
 
-                del)
-                    if (( CURSOR < ${#INPUT} )); then
-                        INPUT="${INPUT:0:$CURSOR}${INPUT:$(( CURSOR+1 ))}"
-                    fi
-                    ;;
-
-                left)
-                    (( CURSOR > 0 )) && (( CURSOR-- ))
-                    ;;
-
-                right)
-                    if (( CURSOR == ${#INPUT} )) && \
-                       [[ -n "$SUGGESTION" && "$SUGGESTION" == "${INPUT}"* ]]; then
-                        local rest="${SUGGESTION:${#INPUT}}"
-                        local tok="${rest%% *}"
-                        if [[ "$tok" == "$rest" ]]; then
-                            INPUT="$SUGGESTION"
-                        else
-                            INPUT="${INPUT}${tok} "
-                        fi
-                        CURSOR="${#INPUT}"
-                    else
-                        (( CURSOR < ${#INPUT} )) && (( CURSOR++ ))
-                    fi
-                    ;;
-
-                up)
-                    if (( HIST_IDX == -1 )); then
-                        HIST_SAVED="$INPUT"
-                    fi
-                    local next=$(( HIST_IDX + 1 ))
-                    local hlen="${#HIST[@]}"
-                    if (( next < hlen )); then
-                        HIST_IDX=$next
-                        INPUT="${HIST[$(( hlen - 1 - HIST_IDX ))]}"
-                        CURSOR="${#INPUT}"
-                    fi
-                    ;;
-
-                down)
-                    if (( HIST_IDX > 0 )); then
-                        (( HIST_IDX-- ))
-                        INPUT="${HIST[$(( ${#HIST[@]} - 1 - HIST_IDX ))]}"
-                        CURSOR="${#INPUT}"
-                    elif (( HIST_IDX == 0 )); then
-                        HIST_IDX=-1
-                        INPUT="$HIST_SAVED"
-                        CURSOR="${#INPUT}"
-                    fi
-                    ;;
-
-                home|ctrla)
-                    CURSOR=0
-                    ;;
-
-                end|ctrle)
-                    CURSOR="${#INPUT}"
-                    ;;
-
-                ctrlf)
-                    if [[ -n "$SUGGESTION" && "$SUGGESTION" == "${INPUT}"* ]]; then
-                        INPUT="$SUGGESTION"
-                        CURSOR="${#INPUT}"
-                    fi
-                    ;;
-
-                ctrlk)
-                    INPUT="${INPUT:0:$CURSOR}"
-                    ;;
-
-                ctrlu)
-                    INPUT="${INPUT:$CURSOR}"
-                    CURSOR=0
-                    ;;
-
-                ctrlw)
-                    if (( CURSOR > 0 )); then
-                        local before="${INPUT:0:$CURSOR}"
-                        local after="${INPUT:$CURSOR}"
-                        before="${before% }"
-                        before="${before% *}"
-                        [[ "$before" != "${INPUT:0:$CURSOR}" ]] && before+=" " 2>/dev/null || true
-                        local new_before="${before% *} "
-                        [[ "$new_before" == " " ]] && new_before=""
-                        INPUT="${new_before}${after}"
-                        CURSOR="${#new_before}"
-                    fi
-                    ;;
-
-                ctrll)
-                    clear
-                    printf '%s' "$PROMPT"
-                    ;;
-
-                ctrlr)
-                    _history_search
-                    CURSOR="${#INPUT}"
-                    ;;
-
-                tab)
-                    local before_cur="${INPUT:0:$CURSOR}"
-                    local word="${before_cur##* }"
-                    local prefix_line="${before_cur%$word}"
-
-                    _collect_completions "$INPUT" "$word"
-
-                    if (( ${#COMP_ITEMS[@]} == 0 )); then
-                        printf '\a'
-                    else
-                        _redraw 0
-                        _run_menu "$word" "$prefix_line"
-                        local menu_result=$?
-                        _redraw
-                        
-                        # Se o menu retornou 2, significa que Enter foi pressionado e devemos executar
-                        if (( menu_result == 2 )); then
-                            printf '\n'
-                            
-                            if [[ -n "$INPUT" ]]; then
-                                if [[ "${HIST[-1]}" != "$INPUT" ]]; then
-                                    HIST+=("$INPUT")
-                                fi
-
-                                _term_restore
-                                eval "$INPUT"
-                                LAST_EXIT=$?
-                                _term_raw
-                                printf '\n'
-                            fi
-                            break
-                        fi
-                    fi
-                    ;;
-
-                enter)
-                    printf '\n'
-
-                    if [[ -n "$INPUT" ]]; then
-                        if [[ "${HIST[-1]}" != "$INPUT" ]]; then
-                            HIST+=("$INPUT")
-                        fi
-
-                        _term_restore
-                        eval "$INPUT"
-                        LAST_EXIT=$?
-                        _term_raw
-                        printf '\n'
-                    fi
-                    break
-                    ;;
-
-                ctrlc)
-                    printf '^C\n'
-                    LAST_EXIT=130
-                    break
-                    ;;
-
-                ctrld)
-                    if [[ -z "$INPUT" ]]; then
-                        printf '\n%sbye 👋%s\n' "$C_CMD_OK" "$R"
-                        _save_history
-                        _term_restore
-                        exit 0
-                    fi
-                    ;;
-
-            esac
+    # bash-completion
+    if [[ -z "${BASH_COMPLETION_VERSINFO:-}" ]]; then
+        local f
+        for f in /usr/share/bash-completion/bash_completion \
+                 /etc/bash_completion \
+                 /usr/local/share/bash-completion/bash_completion; do
+            [[ -f "$f" ]] && { source "$f" &>/dev/null; break; }
         done
-    done
+    fi
+
+    _ble_build_ps1
+
+    printf '%s╔══════════════════════════════════════════════╗%s\n' "${_bG}${_bb}" "$_b0"
+    printf '%s║  🐚 ble.sh ativo                             ║%s\n' "${_bG}${_bb}" "$_b0"
+    printf '%s║  Digitar  → highlight + ghost text           ║%s\n' "$_bH" "$_b0"
+    printf '%s║  → / Ctrl+F → aceitar sugestão do histórico  ║%s\n' "$_bH" "$_b0"
+    printf '%s║  Tab (1x) → menu / Tab (no menu) → confirma  ║%s\n' "$_bH" "$_b0"
+    printf '%s║  ↑ ↓      → histórico filtrado por prefixo   ║%s\n' "$_bH" "$_b0"
+    printf '%s║  Ctrl+R   → busca incremental no histórico   ║%s\n' "$_bH" "$_b0"
+    printf '%s║  Ctrl+C   → cancela linha (shell continua)   ║%s\n' "$_bH" "$_b0"
+    printf '%s╚══════════════════════════════════════════════╝%s\n' "${_bG}${_bb}" "$_b0"
 }
 
-_ble_main
+# ══════════════════════════════════════════════════════════════
+# DESINSTALAÇÃO
+# ══════════════════════════════════════════════════════════════
+ble-detach() {
+    local c
+    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
+             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
+             0 1 2 3 4 5 6 7 8 9; do
+        bind -r "\"${c}\"" 2>/dev/null
+    done
+    bind -r '"\t"' '"\C-r"' '"\C-f"' '"\C-h"' '"\x7f"' \
+         '"\e[3~"' '"\C-k"' '"\C-u"' '"\C-w"' '"\C-a"' \
+         '"\C-e"' '"\e[C"' '"\eOC"' '"\e[D"' '"\eOD"' \
+         '"\e[H"' '"\eOH"' '"\e[F"' '"\eOF"' '" "' 2>/dev/null
+    bind '"\e[C": forward-char'  2>/dev/null
+    bind '"\eOC": forward-char'  2>/dev/null
+    bind '"\e[D": backward-char' 2>/dev/null
+    bind '"\eOD": backward-char' 2>/dev/null
+    PROMPT_COMMAND="${PROMPT_COMMAND//_ble_prompt_cmd; /}"
+    PROMPT_COMMAND="${PROMPT_COMMAND//_ble_prompt_cmd/}"
+    PS1='\u@\h:\w\$ '
+    _BLE_LOADED=0
+    printf 'ble.sh desanexado.\n'
+}
+
+# ══════════════════════════════════════════════════════════════
+_ble_install
