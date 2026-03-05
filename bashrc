@@ -494,3 +494,8 @@ shopt -s no_empty_cmd_completion
 #complete -o default -o bashdefault -F _filedir_xspec -E code
 complete -o default -o bashdefault -F _filedir_xspec -E 
 complete -o default -o filenames codium
+
+if [[ "$BLE_BASH_ENABLED" == 3 ]]; then
+    # shellcheck source=/dev/null
+    source ~/.shell_utils/scripts/ble-simple
+fi
