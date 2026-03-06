@@ -1,0 +1,626 @@
+#!/usr/bin/env bash
+# custom-shell.bash — Shell personalizado com indicador ❯ colorido
+#
+# INSTALAÇÃO: última linha do ~/.bashrc:
+#   source ~/custom-shell.bash
+
+[[ "${_CS_LOADED:-}" == "1" ]] && return 0
+_CS_LOADED=1
+
+(( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
+    printf 'custom-shell: requer Bash 4.3+\n' >&2
+    return 1
+}
+
+# ── Cores ──────────────────────────────────────────────────────
+_cs_green=$'\e[32m'
+_cs_red=$'\e[31m'
+_cs_reset=$'\e[0m'
+
+# ── Estado ─────────────────────────────────────────────────────
+_CS_BUFFER=""
+_CS_POS=0
+_CS_INDICATOR="❯"
+_CS_HIST_POS=-1
+_CS_HIST_SAVED=""
+_CS_HIST_PREFIX=""
+_CS_HIST_CACHE=()
+_CS_HIST_MAX=0
+_CS_ENTER_HANDLED=0
+
+# Estado do Tab
+# -1 = inativo
+# >=0 = índice atual no ciclo de menu-complete
+_CS_TAB_STATE=-1
+_CS_TAB_COMPLETIONS=()
+_CS_TAB_WORD_START=0
+_CS_TAB_ORIG_BUFFER=""
+_CS_TAB_ORIG_POS=0
+
+PS1=""
+
+# ── Validação ──────────────────────────────────────────────────
+_cs_cmd_valid() {
+    local cmd="${1%% *}"
+    [[ -z "$cmd" ]] && return 1
+    command -v "$cmd" &>/dev/null
+}
+
+# ── Prompt ─────────────────────────────────────────────────────
+_cs_show_prompt() {
+    if [[ -n "$_CS_BUFFER" ]] && ! _cs_cmd_valid "$_CS_BUFFER"; then
+        printf '%s%s%s ' "$_cs_red" "$_CS_INDICATOR" "$_cs_reset" >&2
+    else
+        printf '%s%s%s ' "$_cs_green" "$_CS_INDICATOR" "$_cs_reset" >&2
+    fi
+}
+
+# ── Redesenho ──────────────────────────────────────────────────
+# READLINE_LINE="" ao retornar faz rl_redisplay imprimir apenas \r
+# sem sobrescrever nossa saída manual.
+_cs_redraw() {
+    printf '\r\e[2K' >&2
+    _cs_show_prompt
+    printf '%s' "$_CS_BUFFER" >&2
+    printf '\r\e[%dG' "$(( _CS_POS + 3 ))" >&2
+    READLINE_LINE=""
+    READLINE_POINT=0
+}
+
+# ── Reset do ciclo Tab ─────────────────────────────────────────
+_cs_tab_reset() {
+    _CS_TAB_STATE=-1
+    _CS_TAB_COMPLETIONS=()
+    _CS_TAB_WORD_START=0
+    _CS_TAB_ORIG_BUFFER=""
+    _CS_TAB_ORIG_POS=0
+}
+
+# ── Prefixo comum ──────────────────────────────────────────────
+_cs_common_prefix() {
+    local prefix="${1}"; shift
+    local s
+    for s in "$@"; do
+        while [[ "${s:0:${#prefix}}" != "$prefix" ]]; do
+            prefix="${prefix:0:$(( ${#prefix}-1 ))}"
+            [[ -z "$prefix" ]] && { printf ''; return; }
+        done
+    done
+    printf '%s' "$prefix"
+}
+
+# ── Tab: 1º Tab = complete nativo, 2º Tab = ciclo ──────────────
+_cs_do_tab() {
+    # ── Já estamos no ciclo: avançar ──────────────────────────
+    if (( _CS_TAB_STATE >= 0 )); then
+        local n=${#_CS_TAB_COMPLETIONS[@]}
+        _CS_TAB_STATE=$(( (_CS_TAB_STATE + 1) % (n + 1) ))
+
+        if (( _CS_TAB_STATE == n )); then
+            # Voltou ao original
+            _CS_BUFFER="$_CS_TAB_ORIG_BUFFER"
+            _CS_POS=$_CS_TAB_ORIG_POS
+        else
+            local completion="${_CS_TAB_COMPLETIONS[$_CS_TAB_STATE]}"
+            local after="${_CS_TAB_ORIG_BUFFER:$_CS_TAB_ORIG_POS}"
+            _CS_BUFFER="${_CS_TAB_ORIG_BUFFER:0:$_CS_TAB_WORD_START}${completion}${after}"
+            _CS_POS=$(( _CS_TAB_WORD_START + ${#completion} ))
+        fi
+        _cs_redraw
+        return
+    fi
+
+    # ── Primeiro Tab: delegar ao complete nativo do readline ───
+    # Sincroniza READLINE_LINE com _CS_BUFFER para que o complete
+    # nativo veja o buffer correto, incluindo colored-stats do inputrc.
+    READLINE_LINE="$_CS_BUFFER"
+    READLINE_POINT=$_CS_POS
+
+    # Chama o complete nativo via bind (não bind -x, não consome Tab)
+    # O truque: executar a função readline 'complete' injetando via
+    # macro. Como estamos dentro de bind -x, não podemos chamar bind
+    # diretamente. Usamos a abordagem de restaurar READLINE_LINE e
+    # marcar que o próximo Tab deve ciclar.
+    #
+    # Na prática: retornamos com READLINE_LINE correto (não vazio)
+    # para que rl_redisplay redesenhe normalmente COM o complete nativo
+    # sendo invocado. Mas bind -x não pode chamar outro bind readline.
+    #
+    # SOLUÇÃO: usar dois binds separados no inputrc:
+    # 1º Tab → _cs_tab_first (restaura READLINE_LINE, seta flag, retorna)
+    #           o readline então executa 'complete' normalmente após bind -x
+    # Isso não é possível diretamente.
+    #
+    # SOLUÇÃO REAL: não usar bind -x para o Tab do 1º acionamento.
+    # Usar bind macro que: executa complete nativo + seta flag via \C-x\C-f
+    # bind '"\t": "complete\C-x\C-f"' — não funciona assim.
+    #
+    # A ÚNICA forma que funciona:
+    # bind -x '"\t": _cs_do_tab' onde _cs_do_tab no 1º Tab faz:
+    #   READLINE_LINE = buffer correto, retorna SEM zerar READLINE_LINE
+    #   O rl_redisplay redesenha a linha com READLINE_LINE correto.
+    #   MAS o complete nativo não é chamado — bind -x consumiu o Tab.
+    #
+    # PORTANTO: precisamos reimplementar o "complete com colored-stats"
+    # dentro do _cs_do_tab. Fazemos isso chamando compgen e usando
+    # as mesmas cores que o readline usaria (via LS_COLORS/dircolors).
+
+    local line="$_CS_BUFFER"
+    local point=$_CS_POS
+    local after="${line:$point}"
+
+    # Encontrar início da palavra atual
+    local word_start=$point
+    while (( word_start > 0 )) && [[ "${line:$((word_start-1)):1}" != " " ]]; do
+        (( word_start-- ))
+    done
+    local cur="${line:$word_start:$((point - word_start))}"
+    local before_word="${line:0:$word_start}"
+    local is_cmd=0
+    [[ -z "${before_word// /}" ]] && is_cmd=1
+
+    local -a completions=()
+    local cmd="${_CS_BUFFER%% *}"
+
+    # bash-completion específico
+    if (( ! is_cmd )) && declare -f _completion_loader &>/dev/null; then
+        _completion_loader "$cmd" 2>/dev/null
+        local comp_spec comp_func
+        comp_spec=$(complete -p "$cmd" 2>/dev/null)
+        comp_func=$(awk 'NF>=2{print $(NF-1)}' <<< "$comp_spec")
+        if [[ -n "$comp_func" ]] && declare -f "$comp_func" &>/dev/null; then
+            local -a all_words
+            eval "all_words=( $line )" 2>/dev/null || read -ra all_words <<< "$line"
+            local cword=${#all_words[@]}
+            [[ "$line" =~ [[:space:]]$ ]] || (( cword-- ))
+            (( cword < 0 )) && cword=0
+            COMP_LINE="$line"; COMP_POINT=$point
+            COMP_WORDS=("${all_words[@]}"); COMP_CWORD=$cword
+            COMPREPLY=()
+            "$comp_func" "$cmd" "$cur" "${all_words[$((cword-1))]:-}" 2>/dev/null
+            completions=("${COMPREPLY[@]}")
+        fi
+    fi
+
+    # Fallback genérico
+    if (( ${#completions[@]} == 0 )); then
+        if (( is_cmd )); then
+            mapfile -t completions < <(compgen -c -- "$cur" 2>/dev/null | sort -u)
+        else
+            mapfile -t completions < <(compgen -f -- "$cur" 2>/dev/null | sort -u)
+            local i
+            for (( i=0; i < ${#completions[@]}; i++ )); do
+                [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
+                    && completions[$i]+="/"
+            done
+        fi
+    fi
+
+    local n=${#completions[@]}
+
+    # 0 resultados: beep
+    if (( n == 0 )); then
+        printf '\a' >&2
+        _cs_redraw
+        return
+    fi
+
+    # 1 resultado: inserir diretamente
+    if (( n == 1 )); then
+        local completion="${completions[0]}"
+        local suffix=""; [[ "${completion}" != */ ]] && suffix=" "
+        _CS_BUFFER="${line:0:$word_start}${completion}${suffix}${after}"
+        _CS_POS=$(( word_start + ${#completion} + ${#suffix} ))
+        _cs_tab_reset
+        _cs_redraw
+        return
+    fi
+
+    # Múltiplos: calcular prefixo comum
+    local common
+    common=$(_cs_common_prefix "${completions[@]}")
+
+    if [[ "${#common}" -gt "${#cur}" ]]; then
+        # Avança prefixo silenciosamente, sem listar ainda
+        _CS_BUFFER="${line:0:$word_start}${common}${after}"
+        _CS_POS=$(( word_start + ${#common} ))
+        # Recalcular completions para o novo prefixo
+        if (( is_cmd )); then
+            mapfile -t completions < <(compgen -c -- "$common" 2>/dev/null | sort -u)
+        else
+            mapfile -t completions < <(compgen -f -- "$common" 2>/dev/null | sort -u)
+            local i
+            for (( i=0; i < ${#completions[@]}; i++ )); do
+                [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
+                    && completions[$i]+="/"
+            done
+        fi
+        if (( ${#completions[@]} == 1 )); then
+            local suffix=""; [[ "${completions[0]}" != */ ]] && suffix=" "
+            _CS_BUFFER="${line:0:$word_start}${completions[0]}${suffix}${after}"
+            _CS_POS=$(( word_start + ${#completions[0]} + ${#suffix} ))
+            _cs_tab_reset
+            _cs_redraw
+            return
+        fi
+        # Preparar ciclo para o próximo Tab, mas listar agora
+        _CS_TAB_COMPLETIONS=("${completions[@]}")
+        _CS_TAB_STATE=-1  # próximo Tab inicia ciclo
+        _CS_TAB_WORD_START=$word_start
+        _CS_TAB_ORIG_BUFFER="$_CS_BUFFER"
+        _CS_TAB_ORIG_POS=$_CS_POS
+        # Listar como o bash nativo faria
+        _cs_list_completions "$common" "${completions[@]}"
+        _cs_redraw
+        return
+    fi
+
+    # Prefixo não avança: listar (comportamento do 1º Tab nativo)
+    # e preparar ciclo para o 2º Tab
+    _CS_TAB_COMPLETIONS=("${completions[@]}")
+    _CS_TAB_STATE=-1
+    _CS_TAB_WORD_START=$word_start
+    _CS_TAB_ORIG_BUFFER="$line"
+    _CS_TAB_ORIG_POS=$point
+
+    if (( n > 50 )); then
+        printf '\nExibir todos %d possíveis? (s/n) ' "$n" >&2
+        local ans; read -r -n1 ans </dev/tty; printf '\n' >&2
+        if [[ "$ans" != [sySY] ]]; then
+            # Não listou: próximo Tab inicia ciclo direto
+            _CS_TAB_STATE=0
+            # Inserir primeiro item já
+            local first="${_CS_TAB_COMPLETIONS[0]}"
+            _CS_BUFFER="${line:0:$word_start}${first}${after}"
+            _CS_POS=$(( word_start + ${#first} ))
+            _cs_redraw
+            return
+        fi
+    fi
+
+    _cs_list_completions "$cur" "${completions[@]}"
+    # Marcar que o próximo Tab inicia o ciclo no índice 0
+    _CS_TAB_STATE=0
+    # Inserir primeiro item no buffer para o ciclo começar
+    local first="${_CS_TAB_COMPLETIONS[0]}"
+    _CS_BUFFER="${line:0:$word_start}${first}${after}"
+    _CS_POS=$(( word_start + ${#first} ))
+    _cs_redraw
+}
+
+# ── Listagem com cores ─────────────────────────────────────────
+# $1 = prefixo digitado (colored-completion-prefix)
+# $2.. = itens a listar
+_cs_list_completions() {
+    local prefix="$1"; shift
+    local -a items=("$@")
+    printf '\n' >&2
+
+    local max_len=0 item
+    for item in "${items[@]}"; do
+        (( ${#item} > max_len )) && max_len=${#item}
+    done
+    local term_cols; term_cols=$(tput cols 2>/dev/null || printf '80')
+    local col_width=$(( max_len + 2 ))
+    local num_cols=$(( term_cols / col_width ))
+    (( num_cols < 1 )) && num_cols=1
+
+    local idx=0
+    for item in "${items[@]}"; do
+        local colored_item
+        colored_item=$(_cs_colorize "$item" "$prefix")
+        local pad=$(( col_width - ${#item} ))
+        printf '%s%*s' "$colored_item" "$pad" '' >&2
+        (( ++idx % num_cols == 0 )) && printf '\n' >&2
+    done
+    (( idx % num_cols != 0 )) && printf '\n' >&2
+}
+
+# ── Colorize com colored-completion-prefix ─────────────────────
+# $1 = item completo, $2 = prefixo digitado pelo usuário
+# Replica: colored-stats + colored-completion-prefix do readline
+_cs_colorize() {
+    local item="$1"
+    local prefix="$2"
+    local rest="${item:${#prefix}}"
+
+    # Cor do item baseada no tipo (colored-stats)
+    local item_color=""
+    if [[ "$item" == */ ]]; then
+        item_color="01;34"   # diretório: azul negrito
+    elif [[ -x "$item" && -f "$item" ]] 2>/dev/null; then
+        item_color="01;32"   # executável: verde negrito
+    elif [[ -L "$item" ]] 2>/dev/null; then
+        item_color="01;36"   # symlink: ciano negrito
+    elif [[ -d "$item" ]] 2>/dev/null; then
+        item_color="01;34"   # diretório (sem trailing /)
+    fi
+
+    # colored-completion-prefix: prefixo em negrito sublinhado
+    # (mesmo comportamento do readline com colored-completion-prefix On)
+    local prefix_fmt="\e[01;04m"   # negrito + sublinhado
+    local reset="\e[0m"
+
+    if [[ -n "$item_color" ]]; then
+        if [[ -n "$prefix" ]]; then
+            # prefixo: negrito+sublinhado na cor do item
+            # resto: cor normal do item
+            printf "\e[${item_color};04m%s${reset}\e[${item_color}m%s${reset}"                 "$prefix" "$rest"
+        else
+            printf "\e[${item_color}m%s${reset}" "$item"
+        fi
+    else
+        if [[ -n "$prefix" ]]; then
+            # prefixo: negrito+sublinhado, resto: normal
+            printf "${prefix_fmt}%s${reset}%s" "$prefix" "$rest"
+        else
+            printf '%s' "$item"
+        fi
+    fi
+}
+
+# ── Inserção ───────────────────────────────────────────────────
+_cs_insert() {
+    _cs_tab_reset
+    _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${1}${_CS_BUFFER:$_CS_POS}"
+    (( _CS_POS++ ))
+    _cs_redraw
+}
+
+# ── Backspace / Delete ─────────────────────────────────────────
+_cs_backspace() {
+    (( _CS_POS > 0 )) || return
+    _cs_tab_reset
+    _CS_BUFFER="${_CS_BUFFER:0:$((_CS_POS-1))}${_CS_BUFFER:$_CS_POS}"
+    (( _CS_POS-- ))
+    _cs_redraw
+}
+
+_cs_delete() {
+    (( _CS_POS < ${#_CS_BUFFER} )) || return
+    _cs_tab_reset
+    _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_BUFFER:$((_CS_POS+1))}"
+    _cs_redraw
+}
+
+# ── Movimentação ───────────────────────────────────────────────
+_cs_left() {
+    _cs_tab_reset
+    (( _CS_POS > 0 )) || return
+    (( _CS_POS-- )); printf '\e[D' >&2
+    READLINE_LINE=""; READLINE_POINT=0
+}
+_cs_right() {
+    _cs_tab_reset
+    (( _CS_POS < ${#_CS_BUFFER} )) || return
+    (( _CS_POS++ )); printf '\e[C' >&2
+    READLINE_LINE=""; READLINE_POINT=0
+}
+_cs_home() {
+    _cs_tab_reset; _CS_POS=0
+    printf '\r\e[3G' >&2; READLINE_LINE=""; READLINE_POINT=0
+}
+_cs_end() {
+    _cs_tab_reset; _CS_POS=${#_CS_BUFFER}
+    printf '\r\e[%dG' "$(( _CS_POS + 3 ))" >&2
+    READLINE_LINE=""; READLINE_POINT=0
+}
+
+# ── Kill ───────────────────────────────────────────────────────
+_cs_kill_to_start() {
+    _cs_tab_reset; _CS_BUFFER="${_CS_BUFFER:$_CS_POS}"; _CS_POS=0; _cs_redraw
+}
+_cs_kill_to_end() {
+    _cs_tab_reset; _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}"; _cs_redraw
+}
+_cs_kill_word() {
+    _cs_tab_reset
+    (( _CS_POS > 0 )) || return
+    local before after
+    before=$(printf '%s' "${_CS_BUFFER:0:$_CS_POS}" | sed 's/[^ ]*[[:space:]]*$//')
+    after="${_CS_BUFFER:$_CS_POS}"
+    _CS_POS=${#before}; _CS_BUFFER="${before}${after}"; _cs_redraw
+}
+
+# ── Histórico ──────────────────────────────────────────────────
+_cs_hist_load() {
+    _CS_HIST_CACHE=(); _CS_HIST_MAX=0
+    local num cmd
+    while read -r num cmd; do
+        _CS_HIST_CACHE[$num]="$cmd"; _CS_HIST_MAX=$num
+    done < <(HISTTIMEFORMAT='' history)
+}
+
+_cs_hist_up() {
+    _cs_tab_reset
+    if (( _CS_HIST_POS == -1 )); then
+        _cs_hist_load
+        (( _CS_HIST_MAX == 0 )) && return
+        _CS_HIST_SAVED="$_CS_BUFFER"; _CS_HIST_PREFIX="$_CS_BUFFER"
+        _CS_HIST_POS=$(( _CS_HIST_MAX + 1 ))
+    fi
+    local i entry prefix="$_CS_HIST_PREFIX"
+    for (( i = _CS_HIST_POS - 1; i >= 1; i-- )); do
+        entry="${_CS_HIST_CACHE[$i]:-}"
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == "$prefix"* && "$entry" != "$_CS_BUFFER" ]]; then
+            _CS_HIST_POS=$i; _CS_BUFFER="$entry"; _CS_POS=${#_CS_BUFFER}
+            _cs_redraw; return
+        fi
+    done
+}
+
+_cs_hist_down() {
+    _cs_tab_reset
+    (( _CS_HIST_POS == -1 )) && return
+    local i entry prefix="$_CS_HIST_PREFIX"
+    for (( i = _CS_HIST_POS + 1; i <= _CS_HIST_MAX; i++ )); do
+        entry="${_CS_HIST_CACHE[$i]:-}"
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == "$prefix"* && "$entry" != "$_CS_BUFFER" ]]; then
+            _CS_HIST_POS=$i; _CS_BUFFER="$entry"; _CS_POS=${#_CS_BUFFER}
+            _cs_redraw; return
+        fi
+    done
+    _CS_HIST_POS=-1; _CS_BUFFER="$_CS_HIST_SAVED"; _CS_POS=${#_CS_BUFFER}
+    _cs_redraw
+}
+
+# ── Enter ──────────────────────────────────────────────────────
+_cs_enter() {
+    _cs_tab_reset
+    printf '\r\e[2K' >&2; _cs_show_prompt; printf '%s\n' "$_CS_BUFFER" >&2
+    _CS_HIST_POS=-1; _CS_HIST_SAVED=""; _CS_HIST_PREFIX=""
+    if [[ -n "$_CS_BUFFER" ]]; then
+        history -s -- "$_CS_BUFFER"; eval -- "$_CS_BUFFER"
+    fi
+    _CS_BUFFER=""; _CS_POS=0
+    READLINE_LINE=""; READLINE_POINT=0
+    _CS_ENTER_HANDLED=1
+}
+
+_cs_clear_screen() { _cs_tab_reset; clear; _cs_redraw; }
+
+# ── Ctrl+C ─────────────────────────────────────────────────────
+_cs_sigint() {
+    _cs_tab_reset
+    _CS_BUFFER=""; _CS_POS=0
+    _CS_HIST_POS=-1; _CS_HIST_SAVED=""; _CS_HIST_PREFIX=""
+    READLINE_LINE=""; READLINE_POINT=0
+}
+
+# ── PROMPT_COMMAND ─────────────────────────────────────────────
+_cs_prompt_cmd() {
+    if (( _CS_ENTER_HANDLED )); then _CS_ENTER_HANDLED=0; return; fi
+    _CS_BUFFER=""; _CS_POS=0; _cs_show_prompt
+}
+
+# ── Instala binds ──────────────────────────────────────────────
+_cs_install_binds() {
+    bind 'set echo-control-characters off' 2>/dev/null
+    bind 'set enable-bracketed-paste off'  2>/dev/null
+
+    local c
+    for c in {a..z}; do
+        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
+    done
+    for c in {A..Z}; do
+        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
+    done
+    for c in {0..9}; do
+        eval "_cs_k_n${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_n${c}" 2>/dev/null
+    done
+
+    _cs_k_space()    { _cs_insert ' ';  }; bind -x '" ":  _cs_k_space'    2>/dev/null
+    _cs_k_tilde()    { _cs_insert '~';  }; bind -x '"~":  _cs_k_tilde'    2>/dev/null
+    _cs_k_bang()     { _cs_insert '!';  }; bind -x '"!":  _cs_k_bang'     2>/dev/null
+    _cs_k_at()       { _cs_insert '@';  }; bind -x '"@":  _cs_k_at'       2>/dev/null
+    _cs_k_hash()     { _cs_insert '#';  }; bind -x '"#":  _cs_k_hash'     2>/dev/null
+    _cs_k_dollar()   { _cs_insert '$';  }; bind -x '"$":  _cs_k_dollar'   2>/dev/null
+    _cs_k_percent()  { _cs_insert '%';  }; bind -x '"%":  _cs_k_percent'  2>/dev/null
+    _cs_k_caret()    { _cs_insert '^';  }; bind -x '"^":  _cs_k_caret'    2>/dev/null
+    _cs_k_amp()      { _cs_insert '&';  }; bind -x '"&":  _cs_k_amp'      2>/dev/null
+    _cs_k_star()     { _cs_insert '*';  }; bind -x '"*":  _cs_k_star'     2>/dev/null
+    _cs_k_lparen()   { _cs_insert '(';  }; bind -x '"(":  _cs_k_lparen'   2>/dev/null
+    _cs_k_rparen()   { _cs_insert ')';  }; bind -x '")":  _cs_k_rparen'   2>/dev/null
+    _cs_k_minus()    { _cs_insert '-';  }; bind -x '"-":  _cs_k_minus'    2>/dev/null
+    _cs_k_under()    { _cs_insert '_';  }; bind -x '"_":  _cs_k_under'    2>/dev/null
+    _cs_k_equal()    { _cs_insert '=';  }; bind -x '"=":  _cs_k_equal'    2>/dev/null
+    _cs_k_plus()     { _cs_insert '+';  }; bind -x '"+":  _cs_k_plus'     2>/dev/null
+    _cs_k_lbrack()   { _cs_insert '[';  }; bind -x '"[":  _cs_k_lbrack'   2>/dev/null
+    _cs_k_rbrack()   { _cs_insert ']';  }; bind -x '"]":  _cs_k_rbrack'   2>/dev/null
+    _cs_k_lbrace()   { _cs_insert '{';  }; bind -x '"{":  _cs_k_lbrace'   2>/dev/null
+    _cs_k_rbrace()   { _cs_insert '}';  }; bind -x '"}":  _cs_k_rbrace'   2>/dev/null
+    _cs_k_pipe()     { _cs_insert '|';  }; bind -x '"|":  _cs_k_pipe'     2>/dev/null
+    _cs_k_semi()     { _cs_insert ';';  }; bind -x '";":  _cs_k_semi'     2>/dev/null
+    _cs_k_colon()    { _cs_insert ':';  }; bind -x '":":  _cs_k_colon'    2>/dev/null
+    _cs_k_squote()   { _cs_insert "'";  }; bind -x "\"'\": _cs_k_squote"  2>/dev/null
+    _cs_k_dquote()   { _cs_insert '"';  }; bind -x '"\"": _cs_k_dquote'   2>/dev/null
+    _cs_k_comma()    { _cs_insert ',';  }; bind -x '",":  _cs_k_comma'    2>/dev/null
+    _cs_k_dot()      { _cs_insert '.';  }; bind -x '".":  _cs_k_dot'      2>/dev/null
+    _cs_k_slash()    { _cs_insert '/';  }; bind -x '"/":  _cs_k_slash'    2>/dev/null
+    _cs_k_lt()       { _cs_insert '<';  }; bind -x '"<":  _cs_k_lt'       2>/dev/null
+    _cs_k_gt()       { _cs_insert '>';  }; bind -x '">":  _cs_k_gt'       2>/dev/null
+    _cs_k_question() { _cs_insert '?';  }; bind -x '"?":  _cs_k_question' 2>/dev/null
+    _cs_k_bslash()   { _cs_insert '\'; }; bind -x '"\\": _cs_k_bslash'   2>/dev/null
+    _cs_k_backtick() { _cs_insert '`';  }; bind -x '"`":  _cs_k_backtick' 2>/dev/null
+
+    # Backspace via inputrc
+    local _cs_rc _cs_old_inputrc
+    _cs_old_inputrc="${INPUTRC:-}"
+    _cs_rc=$(mktemp /tmp/cs-inputrc.XXXXXX 2>/dev/null)
+    {
+        local _cs_user_rc="${INPUTRC:-$HOME/.inputrc}"
+        [[ -f "$_cs_user_rc" ]] && printf '$include %s\n' "$_cs_user_rc"
+        printf '"\C-?": "\C-x\C-b"\n'
+        printf '"\C-h": "\C-x\C-b"\n'
+    } > "$_cs_rc" 2>/dev/null
+    INPUTRC="$_cs_rc" bind -f "$_cs_rc" 2>/dev/null
+    rm -f "$_cs_rc" 2>/dev/null
+    if [[ -z "$_cs_old_inputrc" ]]; then unset INPUTRC
+    else INPUTRC="$_cs_old_inputrc"; fi
+
+    bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
+    bind -x '"\t":        _cs_do_tab'     2>/dev/null
+    bind -x '"\e[3~": _cs_delete'        2>/dev/null
+    bind -x '"\e[D":  _cs_left'          2>/dev/null
+    bind -x '"\eOD":  _cs_left'          2>/dev/null
+    bind -x '"\e[C":  _cs_right'         2>/dev/null
+    bind -x '"\eOC":  _cs_right'         2>/dev/null
+    bind -x '"\C-a":  _cs_home'          2>/dev/null
+    bind -x '"\e[H":  _cs_home'          2>/dev/null
+    bind -x '"\eOH":  _cs_home'          2>/dev/null
+    bind -x '"\C-e":  _cs_end'           2>/dev/null
+    bind -x '"\e[F":  _cs_end'           2>/dev/null
+    bind -x '"\eOF":  _cs_end'           2>/dev/null
+    bind -x '"\C-u":  _cs_kill_to_start' 2>/dev/null
+    bind -x '"\C-k":  _cs_kill_to_end'   2>/dev/null
+    bind -x '"\C-w":  _cs_kill_word'     2>/dev/null
+    bind -x '"\C-l":  _cs_clear_screen'  2>/dev/null
+    bind -x '"\C-m":  _cs_enter'         2>/dev/null
+    bind -x '"\e[A":  _cs_hist_up'       2>/dev/null
+    bind -x '"\eOA":  _cs_hist_up'       2>/dev/null
+    bind -x '"\e[B":  _cs_hist_down'     2>/dev/null
+    bind -x '"\eOB":  _cs_hist_down'     2>/dev/null
+
+    # Shift+Tab e Shift+Setas: herdam do bashrc (menu-complete-backward)
+    # Não sobrescrevemos \e[Z, \e[1;2C, \e[1;2D pois o bashrc os configura
+
+    trap '_cs_sigint' INT
+}
+
+# ── Desinstalar ────────────────────────────────────────────────
+custom-shell-detach() {
+    local c
+    for c in {a..z} {A..Z} {0..9}; do bind -r "\"$c\"" 2>/dev/null; done
+    local s
+    for s in ' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' \
+             '-' '_' '=' '+' '[' ']' '{' '}' '|' ';' ':' \
+             ',' '.' '/' '<' '>' '?' '`'; do
+        bind -r "\"$s\"" 2>/dev/null
+    done
+    bind -r "\"'\"" 2>/dev/null; bind -r '"\""' 2>/dev/null; bind -r '"\\"' 2>/dev/null
+    bind -r '"\t"' '"\C-x\C-b"' '"\e[3~"' \
+         '"\e[D"' '"\eOD"' '"\e[C"' '"\eOC"' \
+         '"\C-a"' '"\e[H"' '"\eOH"' \
+         '"\C-e"' '"\e[F"' '"\eOF"' \
+         '"\C-u"' '"\C-k"' '"\C-w"' '"\C-l"' '"\C-m"' \
+         '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' 2>/dev/null
+    trap - INT
+    PS1='$ '; _CS_LOADED=0
+    printf 'custom-shell desanexado.\n'
+}
+
+# ── Ativa ──────────────────────────────────────────────────────
+_cs_install_binds
+
+if [[ -z "${PROMPT_COMMAND:-}" ]]; then
+    PROMPT_COMMAND="_cs_prompt_cmd"
+else
+    PROMPT_COMMAND="${PROMPT_COMMAND}; _cs_prompt_cmd"
+fi
+
+_cs_show_prompt

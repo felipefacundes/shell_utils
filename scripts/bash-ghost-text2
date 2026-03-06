@@ -1,0 +1,509 @@
+#!/usr/bin/env bash
+# ghost-text.bash — Ghost text do histórico (estilo fish/zsh) com comportamento inteligente
+#
+# INSTALAÇÃO: última linha do ~/.bashrc:
+#   source ~/ghost-text.bash
+#
+# Atalhos:
+#   →  ou Ctrl+F  : aceita sugestão completa
+#   ←             : completa até a próxima palavra do ghost
+#   ↑ ↓           : histórico filtrado pelo prefixo digitado
+#   Backspace/Del : revela gradualmente o ghost text
+#   ghost-detach  : desativa
+
+[[ "${_GT_LOADED:-}" == "1" ]] && return 0
+_GT_LOADED=1
+
+(( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
+    printf 'ghost-text: requer Bash 4.3+\n' >&2; return 1
+}
+
+_gt_b0=$'\e[0m'
+_gt_gh=$'\e[38;5;240m'   # cinza — ghost text
+
+_GT_SUGGESTION=""
+_GT_PLEN=0
+declare -ga _GT_HIST=()
+_GT_HIST_IDX=-1
+_GT_HIST_SAVED=""
+_GT_HIST_PREFIX=""
+_GT_ORIGINAL_PS1="$PS1"
+_GT_SIMPLE_PS1='$ '
+_GT_LAST_LINE=""        # Última linha digitada
+_GT_LAST_SUGGESTION=""  # Última sugestão mostrada
+
+# ── Histórico ─────────────────────────────────────────────────
+_gt_load_hist() {
+    history -a 2>/dev/null; history -n 2>/dev/null
+    local hfile="${HISTFILE:-$HOME/.bash_history}"
+    _GT_HIST=()
+    [[ -f "$hfile" ]] && \
+        mapfile -t _GT_HIST < <(grep -v '^#[0-9]\+$' "$hfile" 2>/dev/null)
+}
+
+_gt_sync_hist() {
+    history -a 2>/dev/null; history -n 2>/dev/null
+    local hfile="${HISTFILE:-$HOME/.bash_history}"
+    [[ -f "$hfile" ]] && \
+        mapfile -t _GT_HIST < <(grep -v '^#[0-9]\+$' "$hfile" 2>/dev/null)
+}
+
+_gt_hist_reset() { 
+    _GT_HIST_IDX=-1
+    _GT_HIST_SAVED=""
+    _GT_HIST_PREFIX=""
+}
+
+# ── Sugestão inteligente ──────────────────────────────────────
+_gt_get_suggestion() {
+    local cur="$1"
+    _GT_SUGGESTION=""
+    
+    [[ ${#cur} -lt 1 ]] && return
+    
+    # Se a linha atual é um prefixo da última sugestão, mantém ela
+    if [[ -n "$_GT_LAST_SUGGESTION" && "$_GT_LAST_SUGGESTION" == "$cur"* ]]; then
+        _GT_SUGGESTION="$_GT_LAST_SUGGESTION"
+        return
+    fi
+    
+    # Procura no histórico
+    local i
+    for (( i=${#_GT_HIST[@]}-1; i>=0; i-- )); do
+        if [[ "${_GT_HIST[$i]}" == "${cur}"* && "${_GT_HIST[$i]}" != "$cur" ]]; then
+            _GT_SUGGESTION="${_GT_HIST[$i]}"
+            _GT_LAST_SUGGESTION="$_GT_SUGGESTION"
+            return
+        fi
+    done
+    
+    _GT_LAST_SUGGESTION=""
+}
+
+# ── Calcula comprimento do PS1 simples ────────────────────────
+_gt_calc_plen() {
+    local ps1="$_GT_SIMPLE_PS1"
+    
+    # Remove os delimitadores \[ e \] se houverem
+    ps1="${ps1//\\[/}"
+    ps1="${ps1//\\]/}"
+    
+    # Converte \033 para caractere ESC literal
+    ps1=$(printf '%s' "$ps1" | sed 's/\\033/\x1b/g')
+    
+    # Remove sequências ANSI
+    ps1=$(printf '%s' "$ps1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+    
+    # Expansões básicas
+    ps1="${ps1//\\u/$USER}"
+    ps1="${ps1//\\h/${HOSTNAME%%.*}}"
+    ps1="${ps1//\\H/$HOSTNAME}"
+    ps1="${ps1//\\w/${PWD/#$HOME/\~}}"
+    ps1="${ps1//\\W/${PWD##*/}}"
+    ps1="${ps1//\\$/$( (( EUID == 0 )) && echo '#' || echo '$' )}"
+    
+    # Remove outros escapes
+    ps1="${ps1//\\n/}"
+    ps1="${ps1//\\r/}"
+    ps1="${ps1//\\t/}"
+    
+    # Calcula comprimento
+    _GT_PLEN=$(printf '%s' "$ps1" | wc -m)
+}
+
+# ── Overlay com ghost inteligente ─────────────────────────────
+_gt_overlay() {
+    local line="$READLINE_LINE"
+    local point="$READLINE_POINT"
+    
+    _gt_get_suggestion "$line"
+    
+    local ghost=""
+    if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "$line"* ]]; then
+        if [[ "$_GT_SUGGESTION" != "$line" ]]; then
+            # Mostra apenas a parte não digitada
+            ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
+        fi
+    fi
+    
+    # Guarda para referência
+    _GT_LAST_LINE="$line"
+    
+    # Se não tem ghost, limpa qualquer ghost anterior
+    if [[ -z "$ghost" ]]; then
+        printf '\e7\e[%dG\e[K\e8' "$(( _GT_PLEN + ${#line} + 1 ))" >&2
+        return
+    fi
+    
+    # Calcula posição para mostrar o ghost
+    local line_len=$(printf '%s' "$line" | wc -m)
+    local col=$(( _GT_PLEN + line_len + 1 ))
+    
+    # Salva posição, move para coluna, escreve ghost, restaura
+    printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
+}
+
+# ── Comportamento inteligente das setas ───────────────────────
+_gt_left_or_partial() {
+    if (( READLINE_POINT > 0 )); then
+        # Se não está no início, move para esquerda normalmente
+        (( READLINE_POINT-- ))
+        _gt_overlay
+    else
+        # Se está no início, completa com a próxima palavra do ghost
+        _gt_get_suggestion "$READLINE_LINE"
+        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
+            local rest="${_GT_SUGGESTION:${#READLINE_LINE}}"
+            if [[ -n "$rest" ]]; then
+                # Adiciona a próxima palavra
+                if [[ "$rest" == *' '* ]]; then
+                    READLINE_LINE="${READLINE_LINE}${rest%% *} "
+                else
+                    READLINE_LINE="$_GT_SUGGESTION"
+                fi
+                READLINE_POINT=${#READLINE_LINE}
+            fi
+        fi
+        _gt_overlay
+    fi
+}
+
+_gt_right_or_ghost() {
+    if (( READLINE_POINT < ${#READLINE_LINE} )); then
+        # Move para direita normalmente
+        (( READLINE_POINT++ ))
+    else
+        # No final, completa com o ghost inteiro
+        _gt_get_suggestion "$READLINE_LINE"
+        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
+            READLINE_LINE="$_GT_SUGGESTION"
+            READLINE_POINT=${#READLINE_LINE}
+        fi
+    fi
+    _gt_overlay
+}
+
+# ── Backspace inteligente ─────────────────────────────────────
+_gt_backspace_smart() {
+    if (( READLINE_POINT > 0 )); then
+        local old_line="$READLINE_LINE"
+        local old_point="$READLINE_POINT"
+        
+        # Remove o caractere anterior
+        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
+        (( READLINE_POINT-- ))
+        
+        # Verifica se a nova linha é prefixo de alguma sugestão
+        _gt_get_suggestion "$READLINE_LINE"
+        
+        # Se não encontrou sugestão para a nova linha, tenta encontrar uma
+        # sugestão que corresponda ao que estava sendo digitado antes
+        if [[ -z "$_GT_SUGGESTION" && -n "$_GT_LAST_SUGGESTION" ]]; then
+            if [[ "$_GT_LAST_SUGGESTION" == "$READLINE_LINE"* ]]; then
+                _GT_SUGGESTION="$_GT_LAST_SUGGESTION"
+            fi
+        fi
+        
+        _gt_overlay
+    fi
+}
+
+# ── Delete inteligente ────────────────────────────────────────
+_gt_delete_smart() {
+    if (( READLINE_POINT < ${#READLINE_LINE} )); then
+        READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
+        
+        # Verifica sugestão para a nova linha
+        _gt_get_suggestion "$READLINE_LINE"
+        
+        _gt_overlay
+    fi
+}
+
+# ── Wrappers com PS1 simples ──────────────────────────────────
+_gt_with_simple_ps1() {
+    local cmd="$1"
+    shift
+    
+    local original_ps1="$PS1"
+    PS1="$_GT_SIMPLE_PS1"
+    
+    "$cmd" "$@"
+    
+    PS1="$original_ps1"
+}
+
+# Wrappers para cada comando
+_gt_self_insert_wrap()      { _gt_with_simple_ps1 _gt_self_insert; }
+_gt_backspace_smart_wrap()  { _gt_with_simple_ps1 _gt_backspace_smart; }
+_gt_delete_smart_wrap()     { _gt_with_simple_ps1 _gt_delete_smart; }
+_gt_left_or_partial_wrap()  { _gt_with_simple_ps1 _gt_left_or_partial; }
+_gt_right_or_ghost_wrap()   { _gt_with_simple_ps1 _gt_right_or_ghost; }
+_gt_accept_ghost_wrap()     { _gt_with_simple_ps1 _gt_accept_ghost; }
+_gt_home_wrap()             { _gt_with_simple_ps1 _gt_home; }
+_gt_end_wrap()              { _gt_with_simple_ps1 _gt_end; }
+_gt_kill_line_wrap()        { _gt_with_simple_ps1 _gt_kill_line; }
+_gt_kill_to_start_wrap()    { _gt_with_simple_ps1 _gt_kill_to_start; }
+_gt_kill_word_wrap()        { _gt_with_simple_ps1 _gt_kill_word; }
+_gt_clear_screen_wrap()     { _gt_with_simple_ps1 _gt_clear_screen; }
+_gt_hist_up_wrap()          { _gt_with_simple_ps1 _gt_hist_up; }
+_gt_hist_down_wrap()        { _gt_with_simple_ps1 _gt_hist_down; }
+
+# ── Edição (versões originais) ────────────────────────────────
+_gt_self_insert() {
+    local char="$_GT_CHAR"
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${char}${READLINE_LINE:$READLINE_POINT}"
+    (( READLINE_POINT++ ))
+    _gt_hist_reset
+    _gt_overlay
+}
+
+_gt_accept_ghost() {
+    _gt_get_suggestion "$READLINE_LINE"
+    if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
+        READLINE_LINE="$_GT_SUGGESTION"
+        READLINE_POINT=${#READLINE_LINE}
+    fi
+    _gt_overlay
+}
+
+_gt_home()          { READLINE_POINT=0; _gt_overlay; }
+_gt_end()           { READLINE_POINT=${#READLINE_LINE}; _gt_overlay; }
+_gt_kill_line()     { READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}"; _gt_hist_reset; _gt_overlay; }
+_gt_kill_to_start() { READLINE_LINE="${READLINE_LINE:$READLINE_POINT}"; READLINE_POINT=0; _gt_hist_reset; _gt_overlay; }
+
+_gt_clear_screen()  { 
+    clear
+    printf '%s' "$READLINE_LINE" >&2
+    _gt_overlay
+}
+
+_gt_kill_word() {
+    if (( READLINE_POINT > 0 )); then
+        local b="${READLINE_LINE:0:$READLINE_POINT}" a="${READLINE_LINE:$READLINE_POINT}"
+        b="${b% }"; b="${b% *}"
+        READLINE_LINE="${b:+${b} }${a}"
+        READLINE_POINT=${#b}
+        (( ${#b} > 0 )) && (( READLINE_POINT++ ))
+    fi
+    _gt_hist_reset
+    _gt_overlay
+}
+
+# ── Histórico filtrado ────────────────────────────────────────
+_gt_hist_up() {
+    local hlen="${#_GT_HIST[@]}"
+    (( hlen == 0 )) && return
+    if (( _GT_HIST_IDX == -1 )); then
+        _GT_HIST_SAVED="$READLINE_LINE"
+        _GT_HIST_PREFIX="$READLINE_LINE"
+        _GT_HIST_IDX=$hlen
+    fi
+    local i
+    for (( i=_GT_HIST_IDX-1; i>=0; i-- )); do
+        if [[ "${_GT_HIST[$i]}" == "${_GT_HIST_PREFIX}"* && \
+              "${_GT_HIST[$i]}" != "$READLINE_LINE" ]]; then
+            _GT_HIST_IDX=$i
+            READLINE_LINE="${_GT_HIST[$i]}"
+            READLINE_POINT=${#READLINE_LINE}
+            _gt_overlay
+            return
+        fi
+    done
+}
+
+_gt_hist_down() {
+    (( _GT_HIST_IDX == -1 )) && return
+    local hlen="${#_GT_HIST[@]}" i
+    for (( i=_GT_HIST_IDX+1; i<hlen; i++ )); do
+        if [[ "${_GT_HIST[$i]}" == "${_GT_HIST_PREFIX}"* ]]; then
+            _GT_HIST_IDX=$i
+            READLINE_LINE="${_GT_HIST[$i]}"
+            READLINE_POINT=${#READLINE_LINE}
+            _gt_overlay
+            return
+        fi
+    done
+    _GT_HIST_IDX=-1
+    READLINE_LINE="$_GT_HIST_SAVED"
+    READLINE_POINT=${#READLINE_LINE}
+    _gt_overlay
+}
+
+# ── PROMPT_COMMAND ────────────────────────────────────────────
+_gt_prompt_cmd() {
+    _gt_sync_hist
+    _gt_calc_plen
+    _GT_HIST_IDX=-1
+    _GT_HIST_SAVED=""
+    _GT_HIST_PREFIX=""
+    _GT_LAST_LINE=""
+    _GT_LAST_SUGGESTION=""
+}
+
+# ── Binds com comportamento inteligente ───────────────────────
+_gt_install_binds() {
+    local c i
+
+    # Letras e números
+    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
+             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
+             0 1 2 3 4 5 6 7 8 9; do
+        eval "_gti_${c}() { _GT_CHAR='${c}'; _gt_self_insert_wrap; }"
+        bind -x "\"${c}\": _gti_${c}" 2>/dev/null
+    done
+
+    # Espaço
+    _gti_space() { _GT_CHAR=' '; _gt_self_insert_wrap; }
+    bind -x '" ": _gti_space' 2>/dev/null
+
+    # Símbolos (mantém mesmo padrão)
+    _gti_tilde()     { _GT_CHAR='~';  _gt_self_insert_wrap; }
+    _gti_bang()      { _GT_CHAR='!';  _gt_self_insert_wrap; }
+    _gti_at()        { _GT_CHAR='@';  _gt_self_insert_wrap; }
+    _gti_hash()      { _GT_CHAR='#';  _gt_self_insert_wrap; }
+    _gti_dollar()    { _GT_CHAR='$';  _gt_self_insert_wrap; }
+    _gti_percent()   { _GT_CHAR='%';  _gt_self_insert_wrap; }
+    _gti_caret()     { _GT_CHAR='^';  _gt_self_insert_wrap; }
+    _gti_amp()       { _GT_CHAR='&';  _gt_self_insert_wrap; }
+    _gti_star()      { _GT_CHAR='*';  _gt_self_insert_wrap; }
+    _gti_lparen()    { _GT_CHAR='(';  _gt_self_insert_wrap; }
+    _gti_rparen()    { _GT_CHAR=')';  _gt_self_insert_wrap; }
+    _gti_minus()     { _GT_CHAR='-';  _gt_self_insert_wrap; }
+    _gti_under()     { _GT_CHAR='_';  _gt_self_insert_wrap; }
+    _gti_equal()     { _GT_CHAR='=';  _gt_self_insert_wrap; }
+    _gti_plus()      { _GT_CHAR='+';  _gt_self_insert_wrap; }
+    _gti_lbrack()    { _GT_CHAR='[';  _gt_self_insert_wrap; }
+    _gti_rbrack()    { _GT_CHAR=']';  _gt_self_insert_wrap; }
+    _gti_lbrace()    { _GT_CHAR='{';  _gt_self_insert_wrap; }
+    _gti_rbrace()    { _GT_CHAR='}';  _gt_self_insert_wrap; }
+    _gti_pipe()      { _GT_CHAR='|';  _gt_self_insert_wrap; }
+    _gti_semi()      { _GT_CHAR=';';  _gt_self_insert_wrap; }
+    _gti_colon()     { _GT_CHAR=':';  _gt_self_insert_wrap; }
+    _gti_squote()    { _GT_CHAR="'";  _gt_self_insert_wrap; }
+    _gti_dquote()    { _GT_CHAR='"';  _gt_self_insert_wrap; }
+    _gti_comma()     { _GT_CHAR=',';  _gt_self_insert_wrap; }
+    _gti_dot()       { _GT_CHAR='.';  _gt_self_insert_wrap; }
+    _gti_slash()     { _GT_CHAR='/';  _gt_self_insert_wrap; }
+    _gti_lt()        { _GT_CHAR='<';  _gt_self_insert_wrap; }
+    _gti_gt()        { _GT_CHAR='>';  _gt_self_insert_wrap; }
+    _gti_question()  { _GT_CHAR='?';  _gt_self_insert_wrap; }
+    _gti_bslash()    { _GT_CHAR='\\'; _gt_self_insert_wrap; }
+    _gti_backtick()  { _GT_CHAR='`';  _gt_self_insert_wrap; }
+
+    # Bind dos símbolos
+    bind -x '"~":  _gti_tilde'    2>/dev/null
+    bind -x '"!":  _gti_bang'     2>/dev/null
+    bind -x '"@":  _gti_at'       2>/dev/null
+    bind -x '"#":  _gti_hash'     2>/dev/null
+    bind -x '"$":  _gti_dollar'   2>/dev/null
+    bind -x '"%":  _gti_percent'  2>/dev/null
+    bind -x '"^":  _gti_caret'    2>/dev/null
+    bind -x '"&":  _gti_amp'      2>/dev/null
+    bind -x '"*":  _gti_star'     2>/dev/null
+    bind -x '"(":  _gti_lparen'   2>/dev/null
+    bind -x '")":  _gti_rparen'   2>/dev/null
+    bind -x '"-":  _gti_minus'    2>/dev/null
+    bind -x '"_":  _gti_under'    2>/dev/null
+    bind -x '"=":  _gti_equal'    2>/dev/null
+    bind -x '"+":  _gti_plus'     2>/dev/null
+    bind -x '"[":  _gti_lbrack'   2>/dev/null
+    bind -x '"]":  _gti_rbrack'   2>/dev/null
+    bind -x '"{":  _gti_lbrace'   2>/dev/null
+    bind -x '"}":  _gti_rbrace'   2>/dev/null
+    bind -x '"|":  _gti_pipe'     2>/dev/null
+    bind -x '";":  _gti_semi'     2>/dev/null
+    bind -x '":":  _gti_colon'    2>/dev/null
+    bind -x "\"'\": _gti_squote"  2>/dev/null
+    bind -x '"\"": _gti_dquote'   2>/dev/null
+    bind -x '",":  _gti_comma'    2>/dev/null
+    bind -x '".":  _gti_dot'      2>/dev/null
+    bind -x '"/":  _gti_slash'    2>/dev/null
+    bind -x '"<":  _gti_lt'       2>/dev/null
+    bind -x '">":  _gti_gt'       2>/dev/null
+    bind -x '"?":  _gti_question' 2>/dev/null
+    bind -x '"\\": _gti_bslash'   2>/dev/null
+    bind -x '"`":  _gti_backtick' 2>/dev/null
+
+    # Comandos especiais com comportamento inteligente
+    bind -x '"\C-h":    _gt_backspace_smart_wrap'  2>/dev/null  # Backspace
+    bind -x '"\x7f":    _gt_backspace_smart_wrap'  2>/dev/null  # Backspace (alternativo)
+    bind -x '"\e[3~":   _gt_delete_smart_wrap'     2>/dev/null  # Delete
+    bind -x '"\e[D":    _gt_left_or_partial_wrap'  2>/dev/null  # ← (normal)
+    bind -x '"\eOD":    _gt_left_or_partial_wrap'  2>/dev/null  # ← (alternativo)
+    bind -x '"\e[C":    _gt_right_or_ghost_wrap'   2>/dev/null  # →
+    bind -x '"\eOC":    _gt_right_or_ghost_wrap'   2>/dev/null  # → (alternativo)
+    bind -x '"\C-f":    _gt_accept_ghost_wrap'     2>/dev/null  # Ctrl+F aceita ghost
+    
+    # Comandos padrão
+    bind -x '"\C-a":    _gt_home_wrap'             2>/dev/null
+    bind -x '"\e[H":    _gt_home_wrap'             2>/dev/null
+    bind -x '"\eOH":    _gt_home_wrap'             2>/dev/null
+    bind -x '"\C-e":    _gt_end_wrap'              2>/dev/null
+    bind -x '"\e[F":    _gt_end_wrap'              2>/dev/null
+    bind -x '"\eOF":    _gt_end_wrap'              2>/dev/null
+    bind -x '"\C-k":    _gt_kill_line_wrap'        2>/dev/null
+    bind -x '"\C-u":    _gt_kill_to_start_wrap'    2>/dev/null
+    bind -x '"\C-w":    _gt_kill_word_wrap'        2>/dev/null
+    bind -x '"\C-l":    _gt_clear_screen_wrap'     2>/dev/null
+    bind -x '"\e[A":    _gt_hist_up_wrap'          2>/dev/null
+    bind -x '"\eOA":    _gt_hist_up_wrap'          2>/dev/null
+    bind -x '"\e[B":    _gt_hist_down_wrap'        2>/dev/null
+    bind -x '"\eOB":    _gt_hist_down_wrap'        2>/dev/null
+}
+
+# ── Desinstalar ───────────────────────────────────────────────
+ghost-detach() {
+    local c
+    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
+             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
+             0 1 2 3 4 5 6 7 8 9; do
+        bind -r "\"${c}\"" 2>/dev/null
+    done
+    
+    local syms=('~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
+                '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' ',' '.'
+                '/' '<' '>' '?' '\\' '`' ' ')
+    local s
+    for s in "${syms[@]}"; do
+        bind -r "\"${s}\"" 2>/dev/null
+    done
+    
+    bind -r '"\C-h"' '"\x7f"' '"\e[3~"' '"\e[D"' '"\eOD"' \
+         '"\e[C"'   '"\eOC"' '"\C-f"'  '"\C-a"' '"\e[H"' \
+         '"\eOH"'   '"\C-e"' '"\e[F"'  '"\eOF"' '"\C-k"' \
+         '"\C-u"'   '"\C-w"' '"\C-l"'  '"\e[A"' '"\eOA"' \
+         '"\e[B"'   '"\eOB"' 2>/dev/null
+         
+    bind '"\e[A": previous-history' '"\eOA": previous-history' 2>/dev/null
+    bind '"\e[B": next-history'     '"\eOB": next-history'     2>/dev/null
+    bind '"\e[C": forward-char'     '"\eOC": forward-char'     2>/dev/null
+    bind '"\e[D": backward-char'    '"\eOD": backward-char'    2>/dev/null
+    bind '"\C-l": clear-screen'                                2>/dev/null
+    
+    # Restaura PS1 original
+    if [[ -n "$_GT_ORIGINAL_PS1" ]]; then
+        PS1="$_GT_ORIGINAL_PS1"
+    fi
+    
+    # Remove do PROMPT_COMMAND
+    PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd; /}"
+    PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd/}"
+    PROMPT_COMMAND="${PROMPT_COMMAND//;/}"
+    PROMPT_COMMAND="${PROMPT_COMMAND## }"
+    PROMPT_COMMAND="${PROMPT_COMMAND%% }"
+    
+    _GT_LOADED=0
+    printf 'ghost-text desanexado.\n'
+}
+
+# ── Ativa ─────────────────────────────────────────────────────
+_gt_install_binds
+_gt_load_hist
+_gt_calc_plen
+
+if [[ -z "${PROMPT_COMMAND:-}" ]]; then
+    PROMPT_COMMAND="_gt_prompt_cmd"
+elif [[ "$PROMPT_COMMAND" != *"_gt_prompt_cmd"* ]]; then
+    PROMPT_COMMAND="_gt_prompt_cmd; ${PROMPT_COMMAND}"
+fi

@@ -1,0 +1,532 @@
+#!/usr/bin/env bash
+# syntax-highlight.bash — Syntax highlighting para bash (estilo fish/zsh)
+#
+# INSTALAÇÃO: última linha do ~/.bashrc:
+#   source ~/syntax-highlight.bash
+
+[[ "${_SH_LOADED:-}" == "1" ]] && return 0
+_SH_LOADED=1
+
+(( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
+    printf 'syntax-highlight: requer Bash 4.3+\n' >&2; return 1
+}
+
+# Cores
+_sh_red=$'\e[31m'
+_sh_green=$'\e[32m'
+_sh_yellow=$'\e[33m'
+_sh_blue=$'\e[34m'
+_sh_magenta=$'\e[35m'
+_sh_cyan=$'\e[36m'
+_sh_bold=$'\e[1m'
+_sh_underline=$'\e[4m'
+_sh_reset=$'\e[0m'
+
+# Variáveis globais
+_SH_ORIGINAL_PS1="$PS1"
+_SH_SIMPLE_PS1='$ '
+_SH_PLEN=0
+_SH_LAST_LINE=""
+_SH_LAST_POINT=0
+
+# ── Verifica se comando é válido ──────────────────────────────
+_sh_is_valid_command() {
+    local cmd="$1"
+    [[ -z "$cmd" ]] && return 1
+    
+    if [[ "$cmd" == /* || "$cmd" == ./* || "$cmd" == ../* ]]; then
+        [[ -x "$cmd" ]] && return 0
+        return 1
+    fi
+    
+    command -v "$cmd" &>/dev/null && return 0
+    alias "$cmd" &>/dev/null && return 0
+    
+    return 1
+}
+
+_sh_is_valid_path() {
+    local path="$1"
+    [[ -z "$path" ]] && return 1
+    
+    path="${path#[\'\"]}"
+    path="${path%[\'\"]}"
+    path="${path/#\~/$HOME}"
+    
+    [[ -e "$path" ]] && return 0
+    return 1
+}
+
+_sh_is_executable() {
+    local file="$1"
+    [[ -z "$file" ]] && return 1
+    
+    file="${file#[\'\"]}"
+    file="${file%[\'\"]}"
+    file="${file/#\~/$HOME}"
+    
+    [[ -x "$file" && ! -d "$file" ]] && return 0
+    return 1
+}
+
+# ── Syntax highlighting ───────────────────────────────────────
+_sh_highlight() {
+    local line="$1"
+    local result=""
+    local token=""
+    local i=0
+    local in_string=0
+    local string_char=""
+    local is_first_token=1
+    local c
+    
+    while (( i < ${#line} )); do
+        c="${line:$i:1}"
+        
+        # Strings
+        if [[ $in_string -eq 0 && ("$c" == '"' || "$c" == "'") ]]; then
+            if [[ -n "$token" ]]; then
+                if [[ $is_first_token -eq 1 ]]; then
+                    if _sh_is_valid_command "$token"; then
+                        result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
+                    else
+                        result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
+                    fi
+                    is_first_token=0
+                else
+                    if _sh_is_valid_path "$token"; then
+                        if _sh_is_executable "$token"; then
+                            result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
+                        else
+                            result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
+                        fi
+                    else
+                        result+="$token"
+                    fi
+                fi
+                token=""
+            fi
+            in_string=1
+            string_char="$c"
+            result+="${_sh_magenta}$c"
+            ((i++))
+            continue
+        elif [[ $in_string -eq 1 ]]; then
+            result+="$c"
+            if [[ "$c" == "$string_char" ]]; then
+                in_string=0
+                result+="$_sh_reset"
+            fi
+            ((i++))
+            continue
+        fi
+        
+        # Espaços
+        if [[ "$c" == " " || "$c" == $'\t' ]]; then
+            if [[ -n "$token" ]]; then
+                if [[ $is_first_token -eq 1 ]]; then
+                    if _sh_is_valid_command "$token"; then
+                        result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
+                    else
+                        result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
+                    fi
+                    is_first_token=0
+                else
+                    if _sh_is_valid_path "$token"; then
+                        if _sh_is_executable "$token"; then
+                            result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
+                        else
+                            result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
+                        fi
+                    else
+                        result+="$token"
+                    fi
+                fi
+                token=""
+            fi
+            result+="$c"
+            ((i++))
+            continue
+        fi
+        
+        # Operadores
+        if [[ "$c" == "&" || "$c" == "|" || "$c" == ";" || "$c" == "<" || "$c" == ">" || 
+              "$c" == "(" || "$c" == ")" || "$c" == "[" || "$c" == "]" || 
+              "$c" == "{" || "$c" == "}" || "$c" == "=" || "$c" == "+" ]]; then
+            if [[ -n "$token" ]]; then
+                if [[ $is_first_token -eq 1 ]]; then
+                    if _sh_is_valid_command "$token"; then
+                        result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
+                    else
+                        result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
+                    fi
+                    is_first_token=0
+                else
+                    if _sh_is_valid_path "$token"; then
+                        if _sh_is_executable "$token"; then
+                            result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
+                        else
+                            result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
+                        fi
+                    else
+                        result+="$token"
+                    fi
+                fi
+                token=""
+            fi
+            result+="${_sh_cyan}${c}${_sh_reset}"
+            ((i++))
+            continue
+        fi
+        
+        token+="$c"
+        ((i++))
+    done
+    
+    # Processa último token
+    if [[ -n "$token" ]]; then
+        if [[ $is_first_token -eq 1 ]]; then
+            if _sh_is_valid_command "$token"; then
+                result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
+            else
+                result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
+            fi
+        else
+            if _sh_is_valid_path "$token"; then
+                if _sh_is_executable "$token"; then
+                    result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
+                else
+                    result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
+                fi
+            else
+                result+="$token"
+            fi
+        fi
+    fi
+    
+    printf '%s' "$result"
+}
+
+# ── Calcula comprimento do prompt simples ─────────────────────
+_sh_calc_plen() {
+    local ps1="$_SH_SIMPLE_PS1"
+    
+    # Remove os delimitadores \[ e \]
+    ps1="${ps1//\\[/}"
+    ps1="${ps1//\\]/}"
+    
+    # Converte \033 para caractere ESC literal
+    ps1=$(printf '%s' "$ps1" | sed 's/\\033/\x1b/g')
+    
+    # Remove sequências ANSI
+    ps1=$(printf '%s' "$ps1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+    
+    # Expansões básicas
+    ps1="${ps1//\\u/$USER}"
+    ps1="${ps1//\\h/${HOSTNAME%%.*}}"
+    ps1="${ps1//\\H/$HOSTNAME}"
+    ps1="${ps1//\\w/${PWD/#$HOME/\~}}"
+    ps1="${ps1//\\W/${PWD##*/}}"
+    ps1="${ps1//\\$/$( (( EUID == 0 )) && echo '#' || echo '$' )}"
+    
+    # Remove outros escapes
+    ps1="${ps1//\\n/}"
+    ps1="${ps1//\\r/}"
+    ps1="${ps1//\\t/}"
+    
+    # Calcula comprimento
+    _SH_PLEN=$(printf '%s' "$ps1" | wc -m)
+}
+
+# ── Redesenha a linha com syntax highlighting ──────────────────
+_sh_redraw() {
+    # Proteção contra recursão
+    [[ -n "${_SH_REDRAWING:-}" ]] && return
+    _SH_REDRAWING=1
+    
+    local line="$READLINE_LINE"
+    local point="$READLINE_POINT"
+    
+    # Evita redesenhar se não mudou
+    if [[ "$line" == "$_SH_LAST_LINE" && "$point" == "$_SH_LAST_POINT" ]]; then
+        _SH_REDRAWING=
+        return
+    fi
+    
+    _SH_LAST_LINE="$line"
+    _SH_LAST_POINT="$point"
+    
+    # Salva posição atual
+    printf '\e7' >&2
+    
+    # Move para o início da linha e limpa tudo depois do prompt
+    printf '\r\e[%dG\e[0J' "$((_SH_PLEN + 1))" >&2
+    
+    if [[ -n "$line" ]]; then
+        # Aplica syntax highlighting
+        local highlighted=$(_sh_highlight "$line")
+        printf '%s' "$highlighted" >&2
+    fi
+    
+    # Restaura posição e move cursor para lugar correto
+    printf '\e8' >&2
+    printf '\r\e[%dG' "$((_SH_PLEN + point + 1))" >&2
+    
+    _SH_REDRAWING=
+}
+
+# ── Wrapper com PS1 simples ───────────────────────────────────
+_sh_with_simple_ps1() {
+    # Troca PS1 temporariamente
+    local original_ps1="$PS1"
+    PS1="$_SH_SIMPLE_PS1"
+    
+    # Redesenha
+    _sh_redraw
+    
+    # Restaura PS1
+    PS1="$original_ps1"
+}
+
+# ── Hooks do readline ─────────────────────────────────────────
+_sh_insert_char() {
+    local char="$1"
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${char}${READLINE_LINE:$READLINE_POINT}"
+    (( READLINE_POINT++ ))
+    _sh_with_simple_ps1
+}
+
+_sh_backspace() {
+    if (( READLINE_POINT > 0 )); then
+        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
+        (( READLINE_POINT-- ))
+        _sh_with_simple_ps1
+    fi
+}
+
+_sh_delete() {
+    if (( READLINE_POINT < ${#READLINE_LINE} )); then
+        READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
+        _sh_with_simple_ps1
+    fi
+}
+
+_sh_left() {
+    if (( READLINE_POINT > 0 )); then
+        (( READLINE_POINT-- ))
+        _sh_with_simple_ps1
+    fi
+}
+
+_sh_right() {
+    if (( READLINE_POINT < ${#READLINE_LINE} )); then
+        (( READLINE_POINT++ ))
+        _sh_with_simple_ps1
+    fi
+}
+
+_sh_home() {
+    READLINE_POINT=0
+    _sh_with_simple_ps1
+}
+
+_sh_end() {
+    READLINE_POINT=${#READLINE_LINE}
+    _sh_with_simple_ps1
+}
+
+_sh_kill_to_start() {
+    READLINE_LINE="${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=0
+    _sh_with_simple_ps1
+}
+
+_sh_kill_to_end() {
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}"
+    _sh_with_simple_ps1
+}
+
+_sh_kill_word() {
+    if (( READLINE_POINT > 0 )); then
+        local b="${READLINE_LINE:0:$READLINE_POINT}" a="${READLINE_LINE:$READLINE_POINT}"
+        b="${b% }"
+        b="${b% *}"
+        READLINE_LINE="${b:+${b} }${a}"
+        READLINE_POINT=${#b}
+        (( ${#b} > 0 )) && (( READLINE_POINT++ ))
+        _sh_with_simple_ps1
+    fi
+}
+
+_sh_clear_screen() {
+    clear
+    _sh_with_simple_ps1
+}
+
+# ── PROMPT_COMMAND ────────────────────────────────────────────
+_sh_prompt_cmd() {
+    _sh_calc_plen
+    _SH_LAST_LINE=""
+    _SH_LAST_POINT=0
+}
+
+# ── Binds ─────────────────────────────────────────────────────
+_sh_install_binds() {
+    # Letras minúsculas
+    local c
+    for c in {a..z}; do
+        eval "_sh_key_$c() { _sh_insert_char '$c'; }"
+        bind -x "\"$c\": _sh_key_$c" 2>/dev/null
+    done
+    
+    # Letras maiúsculas
+    for c in {A..Z}; do
+        eval "_sh_key_$c() { _sh_insert_char '$c'; }"
+        bind -x "\"$c\": _sh_key_$c" 2>/dev/null
+    done
+    
+    # Números
+    for c in {0..9}; do
+        eval "_sh_key_$c() { _sh_insert_char '$c'; }"
+        bind -x "\"$c\": _sh_key_$c" 2>/dev/null
+    done
+    
+    # Espaço
+    _sh_key_space() { _sh_insert_char ' '; }
+    bind -x '" ": _sh_key_space' 2>/dev/null
+    
+    # Símbolos
+    _sh_key_tilde() { _sh_insert_char '~'; }
+    _sh_key_bang() { _sh_insert_char '!'; }
+    _sh_key_at() { _sh_insert_char '@'; }
+    _sh_key_hash() { _sh_insert_char '#'; }
+    _sh_key_dollar() { _sh_insert_char '$'; }
+    _sh_key_percent() { _sh_insert_char '%'; }
+    _sh_key_caret() { _sh_insert_char '^'; }
+    _sh_key_amp() { _sh_insert_char '&'; }
+    _sh_key_star() { _sh_insert_char '*'; }
+    _sh_key_lparen() { _sh_insert_char '('; }
+    _sh_key_rparen() { _sh_insert_char ')'; }
+    _sh_key_minus() { _sh_insert_char '-'; }
+    _sh_key_under() { _sh_insert_char '_'; }
+    _sh_key_equal() { _sh_insert_char '='; }
+    _sh_key_plus() { _sh_insert_char '+'; }
+    _sh_key_lbrack() { _sh_insert_char '['; }
+    _sh_key_rbrack() { _sh_insert_char ']'; }
+    _sh_key_lbrace() { _sh_insert_char '{'; }
+    _sh_key_rbrace() { _sh_insert_char '}'; }
+    _sh_key_pipe() { _sh_insert_char '|'; }
+    _sh_key_semi() { _sh_insert_char ';'; }
+    _sh_key_colon() { _sh_insert_char ':'; }
+    _sh_key_squote() { _sh_insert_char "'"; }
+    _sh_key_dquote() { _sh_insert_char '"'; }
+    _sh_key_comma() { _sh_insert_char ','; }
+    _sh_key_dot() { _sh_insert_char '.'; }
+    _sh_key_slash() { _sh_insert_char '/'; }
+    _sh_key_lt() { _sh_insert_char '<'; }
+    _sh_key_gt() { _sh_insert_char '>'; }
+    _sh_key_question() { _sh_insert_char '?'; }
+    _sh_key_bslash() { _sh_insert_char '\\'; }
+    _sh_key_backtick() { _sh_insert_char '`'; }
+    
+    # Bind dos símbolos
+    bind -x '"~": _sh_key_tilde' 2>/dev/null
+    bind -x '"!": _sh_key_bang' 2>/dev/null
+    bind -x '"@": _sh_key_at' 2>/dev/null
+    bind -x '"#": _sh_key_hash' 2>/dev/null
+    bind -x '"$": _sh_key_dollar' 2>/dev/null
+    bind -x '"%": _sh_key_percent' 2>/dev/null
+    bind -x '"^": _sh_key_caret' 2>/dev/null
+    bind -x '"&": _sh_key_amp' 2>/dev/null
+    bind -x '"*": _sh_key_star' 2>/dev/null
+    bind -x '"(": _sh_key_lparen' 2>/dev/null
+    bind -x '")": _sh_key_rparen' 2>/dev/null
+    bind -x '"-": _sh_key_minus' 2>/dev/null
+    bind -x '"_": _sh_key_under' 2>/dev/null
+    bind -x '"=": _sh_key_equal' 2>/dev/null
+    bind -x '"+": _sh_key_plus' 2>/dev/null
+    bind -x '"[" : _sh_key_lbrack' 2>/dev/null
+    bind -x '"]": _sh_key_rbrack' 2>/dev/null
+    bind -x '"{": _sh_key_lbrace' 2>/dev/null
+    bind -x '"}": _sh_key_rbrace' 2>/dev/null
+    bind -x '"|": _sh_key_pipe' 2>/dev/null
+    bind -x '";": _sh_key_semi' 2>/dev/null
+    bind -x '":": _sh_key_colon' 2>/dev/null
+    bind -x "\"'\": _sh_key_squote" 2>/dev/null
+    bind -x '"\"": _sh_key_dquote' 2>/dev/null
+    bind -x '",": _sh_key_comma' 2>/dev/null
+    bind -x '".": _sh_key_dot' 2>/dev/null
+    bind -x '"/": _sh_key_slash' 2>/dev/null
+    bind -x '"<": _sh_key_lt' 2>/dev/null
+    bind -x '">": _sh_key_gt' 2>/dev/null
+    bind -x '"?": _sh_key_question' 2>/dev/null
+    bind -x '"\\": _sh_key_bslash' 2>/dev/null
+    bind -x '"`": _sh_key_backtick' 2>/dev/null
+    
+    # Comandos especiais
+    bind -x '"\C-h": _sh_backspace' 2>/dev/null
+    bind -x '"\x7f": _sh_backspace' 2>/dev/null
+    bind -x '"\e[3~": _sh_delete' 2>/dev/null
+    bind -x '"\e[D": _sh_left' 2>/dev/null
+    bind -x '"\eOD": _sh_left' 2>/dev/null
+    bind -x '"\e[C": _sh_right' 2>/dev/null
+    bind -x '"\eOC": _sh_right' 2>/dev/null
+    bind -x '"\C-a": _sh_home' 2>/dev/null
+    bind -x '"\e[H": _sh_home' 2>/dev/null
+    bind -x '"\eOH": _sh_home' 2>/dev/null
+    bind -x '"\C-e": _sh_end' 2>/dev/null
+    bind -x '"\e[F": _sh_end' 2>/dev/null
+    bind -x '"\eOF": _sh_end' 2>/dev/null
+    bind -x '"\C-u": _sh_kill_to_start' 2>/dev/null
+    bind -x '"\C-k": _sh_kill_to_end' 2>/dev/null
+    bind -x '"\C-w": _sh_kill_word' 2>/dev/null
+    bind -x '"\C-l": _sh_clear_screen' 2>/dev/null
+    
+    # Não bind do Enter - deixamos o bash processar
+}
+
+# ── Desinstalar ───────────────────────────────────────────────
+syntax-detach() {
+    # Remove binds
+    local c
+    for c in {a..z} {A..Z} {0..9}; do
+        bind -r "\"$c\"" 2>/dev/null
+    done
+    
+    local syms=('~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
+                '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' ',' '.'
+                '/' '<' '>' '?' '\\' '`' ' ')
+    for s in "${syms[@]}"; do
+        bind -r "\"$s\"" 2>/dev/null
+    done
+    
+    bind -r '"\C-h"' '"\x7f"' '"\e[3~"' '"\e[D"' '"\eOD"' \
+         '"\e[C"' '"\eOC"' '"\C-a"' '"\e[H"' '"\eOH"' \
+         '"\C-e"' '"\e[F"' '"\eOF"' '"\C-u"' '"\C-k"' \
+         '"\C-w"' '"\C-l"' 2>/dev/null
+    
+    # Restaura PS1 original
+    if [[ -n "$_SH_ORIGINAL_PS1" ]]; then
+        PS1="$_SH_ORIGINAL_PS1"
+    fi
+    
+    # Remove do PROMPT_COMMAND
+    PROMPT_COMMAND="${PROMPT_COMMAND//_sh_prompt_cmd; /}"
+    PROMPT_COMMAND="${PROMPT_COMMAND//_sh_prompt_cmd/}"
+    PROMPT_COMMAND="${PROMPT_COMMAND##; }"
+    PROMPT_COMMAND="${PROMPT_COMMAND%% }"
+    
+    _SH_LOADED=0
+    printf 'syntax-highlight desanexado.\n'
+}
+
+# ── Ativa ─────────────────────────────────────────────────────
+_sh_install_binds
+_sh_calc_plen
+
+# Adiciona ao PROMPT_COMMAND
+if [[ -z "${PROMPT_COMMAND:-}" ]]; then
+    PROMPT_COMMAND="_sh_prompt_cmd"
+else
+    PROMPT_COMMAND="_sh_prompt_cmd; $PROMPT_COMMAND"
+fi
