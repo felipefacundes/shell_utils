@@ -1,532 +1,716 @@
 #!/usr/bin/env bash
-# syntax-highlight.bash — Syntax highlighting para bash (estilo fish/zsh)
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# bash-sintax-highlight — Syntax highlight em tempo real no texto digitado
 #
 # INSTALAÇÃO: última linha do ~/.bashrc:
-#   source ~/syntax-highlight.bash
+#   source ~/.shell_utils/scripts/bash-sintax-highlight
 
-[[ "${_SH_LOADED:-}" == "1" ]] && return 0
-_SH_LOADED=1
+[[ "${_CS_LOADED:-}" == "1" ]] && return 0
+_CS_LOADED=1
 
 (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
-    printf 'syntax-highlight: requer Bash 4.3+\n' >&2; return 1
+    printf 'bash-sintax-highlight: requer Bash 4.3+\n' >&2
+    return 1
 }
 
-# Cores
-_sh_red=$'\e[31m'
-_sh_green=$'\e[32m'
-_sh_yellow=$'\e[33m'
-_sh_blue=$'\e[34m'
-_sh_magenta=$'\e[35m'
-_sh_cyan=$'\e[36m'
-_sh_bold=$'\e[1m'
-_sh_underline=$'\e[4m'
-_sh_reset=$'\e[0m'
+# ── Cores ──────────────────────────────────────────────────────
+_cs_green=$'\e[32m'
+_cs_red=$'\e[31m'
+_cs_reset=$'\e[0m'
 
-# Variáveis globais
-_SH_ORIGINAL_PS1="$PS1"
-_SH_SIMPLE_PS1='$ '
-_SH_PLEN=0
-_SH_LAST_LINE=""
-_SH_LAST_POINT=0
+# ── Estado ─────────────────────────────────────────────────────
+_CS_BUFFER=""
+_CS_POS=0
+_CS_HIST_POS=-1
+_CS_HIST_SAVED=""
+_CS_HIST_PREFIX=""
+_CS_HIST_CACHE=()
+_CS_HIST_MAX=0
+_CS_HIST_PAGE_POS=-1      # Posição para Page-Up/Down
+_CS_HIST_SAVED_PAGE=""    # Buffer salvo para Page-Up/Down
+_CS_ENTER_HANDLED=0
 
-# ── Verifica se comando é válido ──────────────────────────────
-_sh_is_valid_command() {
-    local cmd="$1"
+# Estado do Tab
+_CS_TAB_STATE=-1
+_CS_TAB_COMPLETIONS=()
+_CS_TAB_WORD_START=0
+_CS_TAB_ORIG_BUFFER=""
+_CS_TAB_ORIG_POS=0
+
+# PS1 original guardado; PS1 real será impresso manualmente
+_CS_PS1_ORIG=""
+_CS_PS1_EXPANDED=""
+_CS_PS1_LEN=0
+
+# ── Captura PS1 original e zera PS1 ───────────────────────────
+# Precisa acontecer ANTES do primeiro PROMPT_COMMAND rodar.
+# O bash já imprimiu o PS1 original para o prompt atual —
+# zeramos agora para que o próximo prompt seja controlado por nós.
+_CS_PS1_ORIG="${PS1}"
+PS1=""
+
+# ── Atualiza PS1 expandido e comprimento visível ───────────────
+# Chamado no PROMPT_COMMAND. Expande _CS_PS1_ORIG com ${var@P}.
+_cs_ps1_update() {
+    if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+        local _save_ps1="$PS1"
+        PS1="$_CS_PS1_ORIG"
+        _CS_PS1_EXPANDED="${PS1@P}"
+        PS1="$_save_ps1"
+    else
+        local e="$_CS_PS1_ORIG"
+        e="${e//\\u/$USER}"
+        e="${e//\\h/${HOSTNAME%%.*}}"
+        e="${e//\\w/$PWD}"
+        e="${e//\\W/${PWD##*/}}"
+        e="${e//\\$/$(( EUID == 0 ? '#' : '$' ))}"
+        _CS_PS1_EXPANDED="$e"
+    fi
+    local plain
+    plain=$(printf '%s' "$_CS_PS1_EXPANDED" \
+        | sed 's/\x1b\[[0-9;]*[A-Za-z]//g;
+               s/\x1b(B//g;
+               s/\x1b][^\x07]*\x07//g;
+               s/\x1b][^\x1b]*\x1b\\//g')
+    local last="${plain##*$'\n'}"
+    _CS_PS1_LEN=${#last}
+}
+
+# ── Validação ──────────────────────────────────────────────────
+_cs_cmd_valid() {
+    local cmd="${1%% *}"
     [[ -z "$cmd" ]] && return 1
-    
-    if [[ "$cmd" == /* || "$cmd" == ./* || "$cmd" == ../* ]]; then
-        [[ -x "$cmd" ]] && return 0
-        return 1
+    command -v "$cmd" &>/dev/null
+}
+
+# ── Imprime prompt ─────────────────────────────────────────────
+_cs_show_prompt() {
+    printf '%s' "$_CS_PS1_EXPANDED" >&2
+}
+
+# ── Buffer colorido ────────────────────────────────────────────
+_cs_buffer_colored() {
+    local buf="$_CS_BUFFER"
+    [[ -z "$buf" ]] && { printf '%s' "$buf"; return; }
+    local cmd="${buf%% *}"
+    if _cs_cmd_valid "$cmd"; then
+        printf '%s%s%s' "$_cs_green" "$buf" "$_cs_reset"
+    else
+        printf '%s%s%s' "$_cs_red" "$buf" "$_cs_reset"
     fi
-    
-    command -v "$cmd" &>/dev/null && return 0
-    alias "$cmd" &>/dev/null && return 0
-    
-    return 1
 }
 
-_sh_is_valid_path() {
-    local path="$1"
-    [[ -z "$path" ]] && return 1
-    
-    path="${path#[\'\"]}"
-    path="${path%[\'\"]}"
-    path="${path/#\~/$HOME}"
-    
-    [[ -e "$path" ]] && return 0
-    return 1
+# ── Redesenho ──────────────────────────────────────────────────
+_cs_redraw() {
+    # Garante que PS1 expandido está disponível
+    [[ -z "$_CS_PS1_EXPANDED" ]] && _cs_ps1_update
+    local colored
+    colored=$(_cs_buffer_colored)
+    printf '\r\e[2K%s%s' "$_CS_PS1_EXPANDED" "$colored" >&2
+    printf '\r\e[%dG' "$(( _CS_PS1_LEN + _CS_POS + 1 ))" >&2
+    READLINE_LINE=""
+    READLINE_POINT=0
 }
 
-_sh_is_executable() {
-    local file="$1"
-    [[ -z "$file" ]] && return 1
-    
-    file="${file#[\'\"]}"
-    file="${file%[\'\"]}"
-    file="${file/#\~/$HOME}"
-    
-    [[ -x "$file" && ! -d "$file" ]] && return 0
-    return 1
+# ── Reset do ciclo Tab ─────────────────────────────────────────
+_cs_tab_reset() {
+    _CS_TAB_STATE=-1
+    _CS_TAB_COMPLETIONS=()
+    _CS_TAB_WORD_START=0
+    _CS_TAB_ORIG_BUFFER=""
+    _CS_TAB_ORIG_POS=0
 }
 
-# ── Syntax highlighting ───────────────────────────────────────
-_sh_highlight() {
-    local line="$1"
-    local result=""
-    local token=""
-    local i=0
-    local in_string=0
-    local string_char=""
-    local is_first_token=1
-    local c
-    
-    while (( i < ${#line} )); do
-        c="${line:$i:1}"
-        
-        # Strings
-        if [[ $in_string -eq 0 && ("$c" == '"' || "$c" == "'") ]]; then
-            if [[ -n "$token" ]]; then
-                if [[ $is_first_token -eq 1 ]]; then
-                    if _sh_is_valid_command "$token"; then
-                        result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
-                    else
-                        result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
-                    fi
-                    is_first_token=0
-                else
-                    if _sh_is_valid_path "$token"; then
-                        if _sh_is_executable "$token"; then
-                            result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
-                        else
-                            result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
-                        fi
-                    else
-                        result+="$token"
-                    fi
-                fi
-                token=""
-            fi
-            in_string=1
-            string_char="$c"
-            result+="${_sh_magenta}$c"
-            ((i++))
-            continue
-        elif [[ $in_string -eq 1 ]]; then
-            result+="$c"
-            if [[ "$c" == "$string_char" ]]; then
-                in_string=0
-                result+="$_sh_reset"
-            fi
-            ((i++))
-            continue
-        fi
-        
-        # Espaços
-        if [[ "$c" == " " || "$c" == $'\t' ]]; then
-            if [[ -n "$token" ]]; then
-                if [[ $is_first_token -eq 1 ]]; then
-                    if _sh_is_valid_command "$token"; then
-                        result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
-                    else
-                        result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
-                    fi
-                    is_first_token=0
-                else
-                    if _sh_is_valid_path "$token"; then
-                        if _sh_is_executable "$token"; then
-                            result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
-                        else
-                            result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
-                        fi
-                    else
-                        result+="$token"
-                    fi
-                fi
-                token=""
-            fi
-            result+="$c"
-            ((i++))
-            continue
-        fi
-        
-        # Operadores
-        if [[ "$c" == "&" || "$c" == "|" || "$c" == ";" || "$c" == "<" || "$c" == ">" || 
-              "$c" == "(" || "$c" == ")" || "$c" == "[" || "$c" == "]" || 
-              "$c" == "{" || "$c" == "}" || "$c" == "=" || "$c" == "+" ]]; then
-            if [[ -n "$token" ]]; then
-                if [[ $is_first_token -eq 1 ]]; then
-                    if _sh_is_valid_command "$token"; then
-                        result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
-                    else
-                        result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
-                    fi
-                    is_first_token=0
-                else
-                    if _sh_is_valid_path "$token"; then
-                        if _sh_is_executable "$token"; then
-                            result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
-                        else
-                            result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
-                        fi
-                    else
-                        result+="$token"
-                    fi
-                fi
-                token=""
-            fi
-            result+="${_sh_cyan}${c}${_sh_reset}"
-            ((i++))
-            continue
-        fi
-        
-        token+="$c"
-        ((i++))
+# ── Prefixo comum ──────────────────────────────────────────────
+_cs_common_prefix() {
+    local prefix="${1}"; shift
+    local s
+    for s in "$@"; do
+        while [[ "${s:0:${#prefix}}" != "$prefix" ]]; do
+            prefix="${prefix:0:$(( ${#prefix}-1 ))}"
+            [[ -z "$prefix" ]] && { printf ''; return; }
+        done
     done
-    
-    # Processa último token
-    if [[ -n "$token" ]]; then
-        if [[ $is_first_token -eq 1 ]]; then
-            if _sh_is_valid_command "$token"; then
-                result+="${_sh_green}${_sh_bold}${token}${_sh_reset}"
-            else
-                result+="${_sh_red}${_sh_bold}${token}${_sh_reset}"
-            fi
+    printf '%s' "$prefix"
+}
+
+# ── Tab ────────────────────────────────────────────────────────
+_cs_do_tab() {
+    if (( _CS_TAB_STATE >= 0 )); then
+        local n=${#_CS_TAB_COMPLETIONS[@]}
+        _CS_TAB_STATE=$(( (_CS_TAB_STATE + 1) % (n + 1) ))
+        if (( _CS_TAB_STATE == n )); then
+            _CS_BUFFER="$_CS_TAB_ORIG_BUFFER"
+            _CS_POS=$_CS_TAB_ORIG_POS
         else
-            if _sh_is_valid_path "$token"; then
-                if _sh_is_executable "$token"; then
-                    result+="${_sh_green}${_sh_underline}${token}${_sh_reset}"
-                else
-                    result+="${_sh_blue}${_sh_underline}${token}${_sh_reset}"
-                fi
-            else
-                result+="$token"
-            fi
+            local completion="${_CS_TAB_COMPLETIONS[$_CS_TAB_STATE]}"
+            local after="${_CS_TAB_ORIG_BUFFER:$_CS_TAB_ORIG_POS}"
+            _CS_BUFFER="${_CS_TAB_ORIG_BUFFER:0:$_CS_TAB_WORD_START}${completion}${after}"
+            _CS_POS=$(( _CS_TAB_WORD_START + ${#completion} ))
+        fi
+        _cs_redraw
+        return
+    fi
+
+    local line="$_CS_BUFFER"
+    local point=$_CS_POS
+    local after="${line:$point}"
+
+    local word_start=$point
+    while (( word_start > 0 )) && [[ "${line:$((word_start-1)):1}" != " " ]]; do
+        (( word_start-- ))
+    done
+    local cur="${line:$word_start:$((point - word_start))}"
+    local before_word="${line:0:$word_start}"
+    local is_cmd=0
+    [[ -z "${before_word// /}" ]] && is_cmd=1
+
+    local -a completions=()
+    local cmd="${_CS_BUFFER%% *}"
+
+    if (( ! is_cmd )) && declare -f _completion_loader &>/dev/null; then
+        _completion_loader "$cmd" 2>/dev/null
+        local comp_spec comp_func
+        comp_spec=$(complete -p "$cmd" 2>/dev/null)
+        comp_func=$(awk 'NF>=2{print $(NF-1)}' <<< "$comp_spec")
+        if [[ -n "$comp_func" ]] && declare -f "$comp_func" &>/dev/null; then
+            local -a all_words
+            eval "all_words=( $line )" 2>/dev/null || read -ra all_words <<< "$line"
+            local cword=${#all_words[@]}
+            [[ "$line" =~ [[:space:]]$ ]] || (( cword-- ))
+            (( cword < 0 )) && cword=0
+            COMP_LINE="$line"; COMP_POINT=$point
+            COMP_WORDS=("${all_words[@]}"); COMP_CWORD=$cword
+            COMPREPLY=()
+            "$comp_func" "$cmd" "$cur" "${all_words[$((cword-1))]:-}" 2>/dev/null
+            completions=("${COMPREPLY[@]}")
         fi
     fi
-    
-    printf '%s' "$result"
+
+    if (( ${#completions[@]} == 0 )); then
+        if (( is_cmd )); then
+            mapfile -t completions < <(compgen -c -- "$cur" 2>/dev/null | sort -u)
+        else
+            mapfile -t completions < <(compgen -f -- "$cur" 2>/dev/null | sort -u)
+            local i
+            for (( i=0; i < ${#completions[@]}; i++ )); do
+                [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
+                    && completions[$i]+="/"
+            done
+        fi
+    fi
+
+    local n=${#completions[@]}
+
+    if (( n == 0 )); then
+        printf '\a' >&2; _cs_redraw; return
+    fi
+
+    if (( n == 1 )); then
+        local completion="${completions[0]}"
+        local suffix=""; [[ "${completion}" != */ ]] && suffix=" "
+        _CS_BUFFER="${line:0:$word_start}${completion}${suffix}${after}"
+        _CS_POS=$(( word_start + ${#completion} + ${#suffix} ))
+        _cs_tab_reset; _cs_redraw; return
+    fi
+
+    local common
+    common=$(_cs_common_prefix "${completions[@]}")
+
+    if [[ "${#common}" -gt "${#cur}" ]]; then
+        _CS_BUFFER="${line:0:$word_start}${common}${after}"
+        _CS_POS=$(( word_start + ${#common} ))
+        if (( is_cmd )); then
+            mapfile -t completions < <(compgen -c -- "$common" 2>/dev/null | sort -u)
+        else
+            mapfile -t completions < <(compgen -f -- "$common" 2>/dev/null | sort -u)
+            local i
+            for (( i=0; i < ${#completions[@]}; i++ )); do
+                [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
+                    && completions[$i]+="/"
+            done
+        fi
+        if (( ${#completions[@]} == 1 )); then
+            local suffix=""; [[ "${completions[0]}" != */ ]] && suffix=" "
+            _CS_BUFFER="${line:0:$word_start}${completions[0]}${suffix}${after}"
+            _CS_POS=$(( word_start + ${#completions[0]} + ${#suffix} ))
+            _cs_tab_reset; _cs_redraw; return
+        fi
+        _CS_TAB_COMPLETIONS=("${completions[@]}")
+        _CS_TAB_STATE=-1
+        _CS_TAB_WORD_START=$word_start
+        _CS_TAB_ORIG_BUFFER="$_CS_BUFFER"
+        _CS_TAB_ORIG_POS=$_CS_POS
+        _cs_list_completions "$common" "${completions[@]}"
+        _cs_redraw; return
+    fi
+
+    _CS_TAB_COMPLETIONS=("${completions[@]}")
+    _CS_TAB_STATE=-1
+    _CS_TAB_WORD_START=$word_start
+    _CS_TAB_ORIG_BUFFER="$line"
+    _CS_TAB_ORIG_POS=$point
+
+    if (( n > 50 )); then
+        printf '\nExibir todos %d possíveis? (s/n) ' "$n" >&2
+        local ans; read -r -n1 ans </dev/tty; printf '\n' >&2
+        if [[ "$ans" != [sySY] ]]; then
+            _CS_TAB_STATE=0
+            local first="${_CS_TAB_COMPLETIONS[0]}"
+            _CS_BUFFER="${line:0:$word_start}${first}${after}"
+            _CS_POS=$(( word_start + ${#first} ))
+            _cs_redraw; return
+        fi
+    fi
+
+    _cs_list_completions "$cur" "${completions[@]}"
+    _CS_TAB_STATE=0
+    local first="${_CS_TAB_COMPLETIONS[0]}"
+    _CS_BUFFER="${line:0:$word_start}${first}${after}"
+    _CS_POS=$(( word_start + ${#first} ))
+    _cs_redraw
 }
 
-# ── Calcula comprimento do prompt simples ─────────────────────
-_sh_calc_plen() {
-    local ps1="$_SH_SIMPLE_PS1"
-    
-    # Remove os delimitadores \[ e \]
-    ps1="${ps1//\\[/}"
-    ps1="${ps1//\\]/}"
-    
-    # Converte \033 para caractere ESC literal
-    ps1=$(printf '%s' "$ps1" | sed 's/\\033/\x1b/g')
-    
-    # Remove sequências ANSI
-    ps1=$(printf '%s' "$ps1" | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g')
-    
-    # Expansões básicas
-    ps1="${ps1//\\u/$USER}"
-    ps1="${ps1//\\h/${HOSTNAME%%.*}}"
-    ps1="${ps1//\\H/$HOSTNAME}"
-    ps1="${ps1//\\w/${PWD/#$HOME/\~}}"
-    ps1="${ps1//\\W/${PWD##*/}}"
-    ps1="${ps1//\\$/$( (( EUID == 0 )) && echo '#' || echo '$' )}"
-    
-    # Remove outros escapes
-    ps1="${ps1//\\n/}"
-    ps1="${ps1//\\r/}"
-    ps1="${ps1//\\t/}"
-    
-    # Calcula comprimento
-    _SH_PLEN=$(printf '%s' "$ps1" | wc -m)
+# ── Listagem com cores ─────────────────────────────────────────
+_cs_list_completions() {
+    local prefix="$1"; shift
+    local -a items=("$@")
+    printf '\n' >&2
+    local max_len=0 item
+    for item in "${items[@]}"; do
+        (( ${#item} > max_len )) && max_len=${#item}
+    done
+    local term_cols; term_cols=$(tput cols 2>/dev/null || printf '80')
+    local col_width=$(( max_len + 2 ))
+    local num_cols=$(( term_cols / col_width ))
+    (( num_cols < 1 )) && num_cols=1
+    local idx=0
+    for item in "${items[@]}"; do
+        local colored_item
+        colored_item=$(_cs_colorize "$item" "$prefix")
+        local pad=$(( col_width - ${#item} ))
+        printf '%s%*s' "$colored_item" "$pad" '' >&2
+        (( ++idx % num_cols == 0 )) && printf '\n' >&2
+    done
+    (( idx % num_cols != 0 )) && printf '\n' >&2
 }
 
-# ── Redesenha a linha com syntax highlighting ──────────────────
-_sh_redraw() {
-    # Proteção contra recursão
-    [[ -n "${_SH_REDRAWING:-}" ]] && return
-    _SH_REDRAWING=1
+# ── Colorize itens do menu de completions ──────────────────────
+_cs_colorize() {
+    local item="$1" prefix="$2"
+    local rest="${item:${#prefix}}"
+    local item_color=""
+    if [[ "$item" == */ ]]; then item_color="01;34"
+    elif [[ -x "$item" && -f "$item" ]] 2>/dev/null; then item_color="01;32"
+    elif [[ -L "$item" ]] 2>/dev/null; then item_color="01;36"
+    elif [[ -d "$item" ]] 2>/dev/null; then item_color="01;34"
+    fi
+    local reset="\e[0m"
+    if [[ -n "$item_color" ]]; then
+        if [[ -n "$prefix" ]]; then
+            printf "\e[${item_color};04m%s${reset}\e[${item_color}m%s${reset}" "$prefix" "$rest"
+        else
+            printf "\e[${item_color}m%s${reset}" "$item"
+        fi
+    else
+        if [[ -n "$prefix" ]]; then
+            printf "\e[01;04m%s${reset}%s" "$prefix" "$rest"
+        else
+            printf '%s' "$item"
+        fi
+    fi
+}
+
+# ── Inserção ───────────────────────────────────────────────────
+_cs_insert() {
+    _cs_tab_reset
+    _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${1}${_CS_BUFFER:$_CS_POS}"
+    (( _CS_POS++ ))
+    _cs_redraw
+}
+
+# ── Backspace / Delete ─────────────────────────────────────────
+_cs_backspace() {
+    if (( _CS_POS == 0 )); then
+        _cs_redraw  # restaura PS1 caso o readline tenha apagado algo
+        return
+    fi
+    _cs_tab_reset
+    _CS_BUFFER="${_CS_BUFFER:0:$((_CS_POS-1))}${_CS_BUFFER:$_CS_POS}"
+    (( _CS_POS-- ))
+    _cs_redraw
+}
+
+_cs_delete() {
+    (( _CS_POS < ${#_CS_BUFFER} )) || return
+    _cs_tab_reset
+    _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_BUFFER:$((_CS_POS+1))}"
+    _cs_redraw
+}
+
+# ── Movimentação ───────────────────────────────────────────────
+_cs_left() {
+    _cs_tab_reset
     
-    local line="$READLINE_LINE"
-    local point="$READLINE_POINT"
-    
-    # Evita redesenhar se não mudou
-    if [[ "$line" == "$_SH_LAST_LINE" && "$point" == "$_SH_LAST_POINT" ]]; then
-        _SH_REDRAWING=
+    # Se já está no início, apenas redesenha para garantir que o texto está visível
+    if (( _CS_POS == 0 )); then
+        # Redesenha completamente a linha para garantir que o texto não sumiu
+        local colored
+        colored=$(_cs_buffer_colored)
+        printf '\r\e[2K%s%s' "$_CS_PS1_EXPANDED" "$colored" >&2
+        printf '\r\e[%dG' "$(( _CS_PS1_LEN + 1 ))" >&2
+        READLINE_LINE=""
+        READLINE_POINT=0
         return
     fi
     
-    _SH_LAST_LINE="$line"
-    _SH_LAST_POINT="$point"
+    # Movimento normal
+    (( _CS_POS-- ))
     
-    # Salva posição atual
-    printf '\e7' >&2
-    
-    # Move para o início da linha e limpa tudo depois do prompt
-    printf '\r\e[%dG\e[0J' "$((_SH_PLEN + 1))" >&2
-    
-    if [[ -n "$line" ]]; then
-        # Aplica syntax highlighting
-        local highlighted=$(_sh_highlight "$line")
-        printf '%s' "$highlighted" >&2
-    fi
-    
-    # Restaura posição e move cursor para lugar correto
-    printf '\e8' >&2
-    printf '\r\e[%dG' "$((_SH_PLEN + point + 1))" >&2
-    
-    _SH_REDRAWING=
-}
-
-# ── Wrapper com PS1 simples ───────────────────────────────────
-_sh_with_simple_ps1() {
-    # Troca PS1 temporariamente
-    local original_ps1="$PS1"
-    PS1="$_SH_SIMPLE_PS1"
-    
-    # Redesenha
-    _sh_redraw
-    
-    # Restaura PS1
-    PS1="$original_ps1"
-}
-
-# ── Hooks do readline ─────────────────────────────────────────
-_sh_insert_char() {
-    local char="$1"
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${char}${READLINE_LINE:$READLINE_POINT}"
-    (( READLINE_POINT++ ))
-    _sh_with_simple_ps1
-}
-
-_sh_backspace() {
-    if (( READLINE_POINT > 0 )); then
-        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
-        (( READLINE_POINT-- ))
-        _sh_with_simple_ps1
-    fi
-}
-
-_sh_delete() {
-    if (( READLINE_POINT < ${#READLINE_LINE} )); then
-        READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
-        _sh_with_simple_ps1
-    fi
-}
-
-_sh_left() {
-    if (( READLINE_POINT > 0 )); then
-        (( READLINE_POINT-- ))
-        _sh_with_simple_ps1
-    fi
-}
-
-_sh_right() {
-    if (( READLINE_POINT < ${#READLINE_LINE} )); then
-        (( READLINE_POINT++ ))
-        _sh_with_simple_ps1
-    fi
-}
-
-_sh_home() {
+    # Redesenha a linha para garantir consistência
+    local colored
+    colored=$(_cs_buffer_colored)
+    printf '\r\e[2K%s%s' "$_CS_PS1_EXPANDED" "$colored" >&2
+    printf '\r\e[%dG' "$(( _CS_PS1_LEN + _CS_POS + 1 ))" >&2
+    READLINE_LINE=""
     READLINE_POINT=0
-    _sh_with_simple_ps1
 }
-
-_sh_end() {
-    READLINE_POINT=${#READLINE_LINE}
-    _sh_with_simple_ps1
-}
-
-_sh_kill_to_start() {
-    READLINE_LINE="${READLINE_LINE:$READLINE_POINT}"
+_cs_right() {
+    _cs_tab_reset
+    
+    # Só permite movimento se não estiver no final
+    if (( _CS_POS < ${#_CS_BUFFER} )); then
+        (( _CS_POS++ ))
+    fi
+    
+    # SEMPRE redesenha a linha completa, independente do movimento
+    local colored
+    colored=$(_cs_buffer_colored)
+    printf '\r\e[2K%s%s' "$_CS_PS1_EXPANDED" "$colored" >&2
+    printf '\r\e[%dG' "$(( _CS_PS1_LEN + _CS_POS + 1 ))" >&2
+    READLINE_LINE=""
     READLINE_POINT=0
-    _sh_with_simple_ps1
+}
+_cs_home() {
+    _cs_tab_reset
+    _CS_POS=0
+    
+    # Redesenha a linha completa na posição inicial
+    local colored
+    colored=$(_cs_buffer_colored)
+    printf '\r\e[2K%s%s' "$_CS_PS1_EXPANDED" "$colored" >&2
+    printf '\r\e[%dG' "$(( _CS_PS1_LEN + 1 ))" >&2
+    READLINE_LINE=""
+    READLINE_POINT=0
 }
 
-_sh_kill_to_end() {
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}"
-    _sh_with_simple_ps1
+_cs_end() {
+    _cs_tab_reset
+    _CS_POS=${#_CS_BUFFER}
+    
+    # Redesenha a linha completa na posição final
+    local colored
+    colored=$(_cs_buffer_colored)
+    printf '\r\e[2K%s%s' "$_CS_PS1_EXPANDED" "$colored" >&2
+    printf '\r\e[%dG' "$(( _CS_PS1_LEN + _CS_POS + 1 ))" >&2
+    READLINE_LINE=""
+    READLINE_POINT=0
 }
 
-_sh_kill_word() {
-    if (( READLINE_POINT > 0 )); then
-        local b="${READLINE_LINE:0:$READLINE_POINT}" a="${READLINE_LINE:$READLINE_POINT}"
-        b="${b% }"
-        b="${b% *}"
-        READLINE_LINE="${b:+${b} }${a}"
-        READLINE_POINT=${#b}
-        (( ${#b} > 0 )) && (( READLINE_POINT++ ))
-        _sh_with_simple_ps1
+# ── Kill ───────────────────────────────────────────────────────
+_cs_kill_to_start() {
+    _cs_tab_reset; _CS_BUFFER="${_CS_BUFFER:$_CS_POS}"; _CS_POS=0; _cs_redraw
+}
+_cs_kill_to_end() {
+    _cs_tab_reset; _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}"; _cs_redraw
+}
+_cs_kill_word() {
+    _cs_tab_reset
+    (( _CS_POS > 0 )) || return
+    local before after
+    before=$(printf '%s' "${_CS_BUFFER:0:$_CS_POS}" | sed 's/[^ ]*[[:space:]]*$//')
+    after="${_CS_BUFFER:$_CS_POS}"
+    _CS_POS=${#before}; _CS_BUFFER="${before}${after}"; _cs_redraw
+}
+
+# ── Histórico ──────────────────────────────────────────────────
+_cs_hist_load() {
+    _CS_HIST_CACHE=(); _CS_HIST_MAX=0
+    local num cmd
+    while read -r num cmd; do
+        _CS_HIST_CACHE[$num]="$cmd"; _CS_HIST_MAX=$num
+    done < <(HISTTIMEFORMAT='' history)
+}
+
+_cs_hist_up() {
+    _cs_tab_reset
+    if (( _CS_HIST_POS == -1 )); then
+        _cs_hist_load
+        (( _CS_HIST_MAX == 0 )) && return
+        _CS_HIST_SAVED="$_CS_BUFFER"; _CS_HIST_PREFIX="$_CS_BUFFER"
+        _CS_HIST_POS=$(( _CS_HIST_MAX + 1 ))
+    fi
+    local i entry prefix="$_CS_HIST_PREFIX"
+    for (( i = _CS_HIST_POS - 1; i >= 1; i-- )); do
+        entry="${_CS_HIST_CACHE[$i]:-}"
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == "$prefix"* && "$entry" != "$_CS_BUFFER" ]]; then
+            _CS_HIST_POS=$i; _CS_BUFFER="$entry"; _CS_POS=${#_CS_BUFFER}
+            _cs_redraw; return
+        fi
+    done
+}
+
+_cs_hist_down() {
+    _cs_tab_reset
+    
+    # Se não está no modo histórico, não faz nada
+    if (( _CS_HIST_POS == -1 )); then
+        # Garante que o PS1 está visível
+        printf '\r\e[2K%s' "$_CS_PS1_EXPANDED" >&2
+        printf '\r\e[%dG' "$(( _CS_PS1_LEN + 1 ))" >&2
+        READLINE_LINE=""
+        READLINE_POINT=0
+        return
+    fi
+    
+    local i entry prefix="$_CS_HIST_PREFIX"
+    for (( i = _CS_HIST_POS + 1; i <= _CS_HIST_MAX; i++ )); do
+        entry="${_CS_HIST_CACHE[$i]:-}"
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == "$prefix"* && "$entry" != "$_CS_BUFFER" ]]; then
+            _CS_HIST_POS=$i; _CS_BUFFER="$entry"; _CS_POS=${#_CS_BUFFER}
+            _cs_redraw; return
+        fi
+    done
+    _CS_HIST_POS=-1; _CS_BUFFER="$_CS_HIST_SAVED"; _CS_POS=${#_CS_BUFFER}
+    _cs_redraw
+}
+
+# ── Page-Up / Page-Down ────────────────────────────────────────
+_cs_page_up() {
+    _cs_tab_reset
+    
+    # Carrega histórico se necessário
+    if (( _CS_HIST_MAX == 0 )); then
+        _cs_hist_load
+        (( _CS_HIST_MAX == 0 )) && return
+    fi
+    
+    # Vai para o primeiro comando do histórico (o mais antigo, índice 1)
+    local first_entry="${_CS_HIST_CACHE[1]:-}"
+    
+    if [[ -n "$first_entry" ]]; then
+        _CS_BUFFER="$first_entry"
+        _CS_POS=${#_CS_BUFFER}
+        
+        # Redesenha
+        local colored
+        colored=$(_cs_buffer_colored)
+        printf '\r\e[2K%s%s' "$_CS_PS1_EXPANDED" "$colored" >&2
+        printf '\r\e[%dG' "$(( _CS_PS1_LEN + _CS_POS + 1 ))" >&2
+        READLINE_LINE=""
+        READLINE_POINT=0
+    else
+        printf '\a' >&2
     fi
 }
 
-_sh_clear_screen() {
-    clear
-    _sh_with_simple_ps1
+_cs_page_down() {
+    _cs_tab_reset
+    
+    # Limpa a linha completamente
+    _CS_BUFFER=""
+    _CS_POS=0
+    
+    # Redesenha apenas o PS1
+    printf '\r\e[2K%s' "$_CS_PS1_EXPANDED" >&2
+    printf '\r\e[%dG' "$(( _CS_PS1_LEN + 1 ))" >&2
+    READLINE_LINE=""
+    READLINE_POINT=0
 }
 
-# ── PROMPT_COMMAND ────────────────────────────────────────────
-_sh_prompt_cmd() {
-    _sh_calc_plen
-    _SH_LAST_LINE=""
-    _SH_LAST_POINT=0
+# ── Enter ──────────────────────────────────────────────────────
+_cs_enter() {
+    _cs_tab_reset
+    printf '\r\e[2K' >&2
+    _cs_show_prompt
+    printf '%s\n' "$_CS_BUFFER" >&2
+    
+    _CS_HIST_POS=-1
+    _CS_HIST_SAVED=""
+    _CS_HIST_PREFIX=""
+    
+    local cmd="$_CS_BUFFER"
+    _CS_BUFFER=""
+    _CS_POS=0
+    
+    if [[ -n "$cmd" ]]; then
+        history -s -- "$cmd"
+        eval -- "$cmd"
+    fi
+    
+    # Mostra o prompt novamente após o comando
+    _cs_show_prompt
+    READLINE_LINE=""
+    READLINE_POINT=0
 }
 
-# ── Binds ─────────────────────────────────────────────────────
-_sh_install_binds() {
-    # Letras minúsculas
+_cs_clear_screen() { _cs_tab_reset; clear; _cs_redraw; }
+
+# ── Ctrl+C ─────────────────────────────────────────────────────
+_cs_sigint() {
+    _cs_tab_reset
+    _CS_BUFFER=""; _CS_POS=0
+    _CS_HIST_POS=-1; _CS_HIST_SAVED=""; _CS_HIST_PREFIX=""
+    READLINE_LINE=""; READLINE_POINT=0
+}
+
+# ── PROMPT_COMMAND ─────────────────────────────────────────────
+_cs_prompt_cmd() {
+    # Se o Enter já mostrou o prompt, não faz nada
+    if (( _CS_ENTER_HANDLED )); then
+        _CS_ENTER_HANDLED=0
+        return 0
+    fi
+    
+    # Caso contrário (Ctrl+C ou outra situação), mostra o prompt
+    _cs_ps1_update
+    _cs_show_prompt
+    _CS_BUFFER=""
+    _CS_POS=0
+    READLINE_LINE=""
+    READLINE_POINT=0
+}
+
+# ── Instala binds ──────────────────────────────────────────────
+_cs_install_binds() {
+    bind 'set echo-control-characters off' 2>/dev/null
+    bind 'set enable-bracketed-paste off'  2>/dev/null
+
     local c
     for c in {a..z}; do
-        eval "_sh_key_$c() { _sh_insert_char '$c'; }"
-        bind -x "\"$c\": _sh_key_$c" 2>/dev/null
+        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
     done
-    
-    # Letras maiúsculas
     for c in {A..Z}; do
-        eval "_sh_key_$c() { _sh_insert_char '$c'; }"
-        bind -x "\"$c\": _sh_key_$c" 2>/dev/null
+        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
     done
-    
-    # Números
     for c in {0..9}; do
-        eval "_sh_key_$c() { _sh_insert_char '$c'; }"
-        bind -x "\"$c\": _sh_key_$c" 2>/dev/null
+        eval "_cs_k_n${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_n${c}" 2>/dev/null
     done
-    
-    # Espaço
-    _sh_key_space() { _sh_insert_char ' '; }
-    bind -x '" ": _sh_key_space' 2>/dev/null
-    
-    # Símbolos
-    _sh_key_tilde() { _sh_insert_char '~'; }
-    _sh_key_bang() { _sh_insert_char '!'; }
-    _sh_key_at() { _sh_insert_char '@'; }
-    _sh_key_hash() { _sh_insert_char '#'; }
-    _sh_key_dollar() { _sh_insert_char '$'; }
-    _sh_key_percent() { _sh_insert_char '%'; }
-    _sh_key_caret() { _sh_insert_char '^'; }
-    _sh_key_amp() { _sh_insert_char '&'; }
-    _sh_key_star() { _sh_insert_char '*'; }
-    _sh_key_lparen() { _sh_insert_char '('; }
-    _sh_key_rparen() { _sh_insert_char ')'; }
-    _sh_key_minus() { _sh_insert_char '-'; }
-    _sh_key_under() { _sh_insert_char '_'; }
-    _sh_key_equal() { _sh_insert_char '='; }
-    _sh_key_plus() { _sh_insert_char '+'; }
-    _sh_key_lbrack() { _sh_insert_char '['; }
-    _sh_key_rbrack() { _sh_insert_char ']'; }
-    _sh_key_lbrace() { _sh_insert_char '{'; }
-    _sh_key_rbrace() { _sh_insert_char '}'; }
-    _sh_key_pipe() { _sh_insert_char '|'; }
-    _sh_key_semi() { _sh_insert_char ';'; }
-    _sh_key_colon() { _sh_insert_char ':'; }
-    _sh_key_squote() { _sh_insert_char "'"; }
-    _sh_key_dquote() { _sh_insert_char '"'; }
-    _sh_key_comma() { _sh_insert_char ','; }
-    _sh_key_dot() { _sh_insert_char '.'; }
-    _sh_key_slash() { _sh_insert_char '/'; }
-    _sh_key_lt() { _sh_insert_char '<'; }
-    _sh_key_gt() { _sh_insert_char '>'; }
-    _sh_key_question() { _sh_insert_char '?'; }
-    _sh_key_bslash() { _sh_insert_char '\\'; }
-    _sh_key_backtick() { _sh_insert_char '`'; }
-    
-    # Bind dos símbolos
-    bind -x '"~": _sh_key_tilde' 2>/dev/null
-    bind -x '"!": _sh_key_bang' 2>/dev/null
-    bind -x '"@": _sh_key_at' 2>/dev/null
-    bind -x '"#": _sh_key_hash' 2>/dev/null
-    bind -x '"$": _sh_key_dollar' 2>/dev/null
-    bind -x '"%": _sh_key_percent' 2>/dev/null
-    bind -x '"^": _sh_key_caret' 2>/dev/null
-    bind -x '"&": _sh_key_amp' 2>/dev/null
-    bind -x '"*": _sh_key_star' 2>/dev/null
-    bind -x '"(": _sh_key_lparen' 2>/dev/null
-    bind -x '")": _sh_key_rparen' 2>/dev/null
-    bind -x '"-": _sh_key_minus' 2>/dev/null
-    bind -x '"_": _sh_key_under' 2>/dev/null
-    bind -x '"=": _sh_key_equal' 2>/dev/null
-    bind -x '"+": _sh_key_plus' 2>/dev/null
-    bind -x '"[" : _sh_key_lbrack' 2>/dev/null
-    bind -x '"]": _sh_key_rbrack' 2>/dev/null
-    bind -x '"{": _sh_key_lbrace' 2>/dev/null
-    bind -x '"}": _sh_key_rbrace' 2>/dev/null
-    bind -x '"|": _sh_key_pipe' 2>/dev/null
-    bind -x '";": _sh_key_semi' 2>/dev/null
-    bind -x '":": _sh_key_colon' 2>/dev/null
-    bind -x "\"'\": _sh_key_squote" 2>/dev/null
-    bind -x '"\"": _sh_key_dquote' 2>/dev/null
-    bind -x '",": _sh_key_comma' 2>/dev/null
-    bind -x '".": _sh_key_dot' 2>/dev/null
-    bind -x '"/": _sh_key_slash' 2>/dev/null
-    bind -x '"<": _sh_key_lt' 2>/dev/null
-    bind -x '">": _sh_key_gt' 2>/dev/null
-    bind -x '"?": _sh_key_question' 2>/dev/null
-    bind -x '"\\": _sh_key_bslash' 2>/dev/null
-    bind -x '"`": _sh_key_backtick' 2>/dev/null
-    
-    # Comandos especiais
-    bind -x '"\C-h": _sh_backspace' 2>/dev/null
-    bind -x '"\x7f": _sh_backspace' 2>/dev/null
-    bind -x '"\e[3~": _sh_delete' 2>/dev/null
-    bind -x '"\e[D": _sh_left' 2>/dev/null
-    bind -x '"\eOD": _sh_left' 2>/dev/null
-    bind -x '"\e[C": _sh_right' 2>/dev/null
-    bind -x '"\eOC": _sh_right' 2>/dev/null
-    bind -x '"\C-a": _sh_home' 2>/dev/null
-    bind -x '"\e[H": _sh_home' 2>/dev/null
-    bind -x '"\eOH": _sh_home' 2>/dev/null
-    bind -x '"\C-e": _sh_end' 2>/dev/null
-    bind -x '"\e[F": _sh_end' 2>/dev/null
-    bind -x '"\eOF": _sh_end' 2>/dev/null
-    bind -x '"\C-u": _sh_kill_to_start' 2>/dev/null
-    bind -x '"\C-k": _sh_kill_to_end' 2>/dev/null
-    bind -x '"\C-w": _sh_kill_word' 2>/dev/null
-    bind -x '"\C-l": _sh_clear_screen' 2>/dev/null
-    
-    # Não bind do Enter - deixamos o bash processar
+
+    _cs_k_space()    { _cs_insert ' ';  }; bind -x '" ":  _cs_k_space'    2>/dev/null
+    _cs_k_tilde()    { _cs_insert '~';  }; bind -x '"~":  _cs_k_tilde'    2>/dev/null
+    _cs_k_bang()     { _cs_insert '!';  }; bind -x '"!":  _cs_k_bang'     2>/dev/null
+    _cs_k_at()       { _cs_insert '@';  }; bind -x '"@":  _cs_k_at'       2>/dev/null
+    _cs_k_hash()     { _cs_insert '#';  }; bind -x '"#":  _cs_k_hash'     2>/dev/null
+    _cs_k_dollar()   { _cs_insert '$';  }; bind -x '"$":  _cs_k_dollar'   2>/dev/null
+    _cs_k_percent()  { _cs_insert '%';  }; bind -x '"%":  _cs_k_percent'  2>/dev/null
+    _cs_k_caret()    { _cs_insert '^';  }; bind -x '"^":  _cs_k_caret'    2>/dev/null
+    _cs_k_amp()      { _cs_insert '&';  }; bind -x '"&":  _cs_k_amp'      2>/dev/null
+    _cs_k_star()     { _cs_insert '*';  }; bind -x '"*":  _cs_k_star'     2>/dev/null
+    _cs_k_lparen()   { _cs_insert '(';  }; bind -x '"(":  _cs_k_lparen'   2>/dev/null
+    _cs_k_rparen()   { _cs_insert ')';  }; bind -x '")":  _cs_k_rparen'   2>/dev/null
+    _cs_k_minus()    { _cs_insert '-';  }; bind -x '"-":  _cs_k_minus'    2>/dev/null
+    _cs_k_under()    { _cs_insert '_';  }; bind -x '"_":  _cs_k_under'    2>/dev/null
+    _cs_k_equal()    { _cs_insert '=';  }; bind -x '"=":  _cs_k_equal'    2>/dev/null
+    _cs_k_plus()     { _cs_insert '+';  }; bind -x '"+":  _cs_k_plus'     2>/dev/null
+    _cs_k_lbrack()   { _cs_insert '[';  }; bind -x '"[":  _cs_k_lbrack'   2>/dev/null
+    _cs_k_rbrack()   { _cs_insert ']';  }; bind -x '"]":  _cs_k_rbrack'   2>/dev/null
+    _cs_k_lbrace()   { _cs_insert '{';  }; bind -x '"{":  _cs_k_lbrace'   2>/dev/null
+    _cs_k_rbrace()   { _cs_insert '}';  }; bind -x '"}":  _cs_k_rbrace'   2>/dev/null
+    _cs_k_pipe()     { _cs_insert '|';  }; bind -x '"|":  _cs_k_pipe'     2>/dev/null
+    _cs_k_semi()     { _cs_insert ';';  }; bind -x '";":  _cs_k_semi'     2>/dev/null
+    _cs_k_colon()    { _cs_insert ':';  }; bind -x '":":  _cs_k_colon'    2>/dev/null
+    _cs_k_squote()   { _cs_insert "'";  }; bind -x "\"'\": _cs_k_squote"  2>/dev/null
+    _cs_k_dquote()   { _cs_insert '"';  }; bind -x '"\"": _cs_k_dquote'   2>/dev/null
+    _cs_k_comma()    { _cs_insert ',';  }; bind -x '",":  _cs_k_comma'    2>/dev/null
+    _cs_k_dot()      { _cs_insert '.';  }; bind -x '".":  _cs_k_dot'      2>/dev/null
+    _cs_k_slash()    { _cs_insert '/';  }; bind -x '"/":  _cs_k_slash'    2>/dev/null
+    _cs_k_lt()       { _cs_insert '<';  }; bind -x '"<":  _cs_k_lt'       2>/dev/null
+    _cs_k_gt()       { _cs_insert '>';  }; bind -x '">":  _cs_k_gt'       2>/dev/null
+    _cs_k_question() { _cs_insert '?';  }; bind -x '"?":  _cs_k_question' 2>/dev/null
+    _cs_k_bslash()   { _cs_insert '\'; }; bind -x '"\\": _cs_k_bslash'   2>/dev/null
+    _cs_k_backtick() { _cs_insert '`';  }; bind -x '"`":  _cs_k_backtick' 2>/dev/null
+
+    local _cs_rc _cs_old_inputrc
+    _cs_old_inputrc="${INPUTRC:-}"
+    _cs_rc=$(mktemp /tmp/cs-inputrc.XXXXXX 2>/dev/null)
+    {
+        local _cs_user_rc="${INPUTRC:-$HOME/.inputrc}"
+        [[ -f "$_cs_user_rc" ]] && printf '$include %s\n' "$_cs_user_rc"
+        printf '"\C-?": "\C-x\C-b"\n'
+        printf '"\C-h": "\C-x\C-b"\n'
+    } > "$_cs_rc" 2>/dev/null
+    INPUTRC="$_cs_rc" bind -f "$_cs_rc" 2>/dev/null
+    rm -f "$_cs_rc" 2>/dev/null
+    if [[ -z "$_cs_old_inputrc" ]]; then unset INPUTRC
+    else INPUTRC="$_cs_old_inputrc"; fi
+
+    bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
+    bind -x '"\t":        _cs_do_tab'     2>/dev/null
+    bind -x '"\e[3~": _cs_delete'        2>/dev/null
+    bind -x '"\e[D":  _cs_left'          2>/dev/null
+    bind -x '"\eOD":  _cs_left'          2>/dev/null
+    bind -x '"\e[C":  _cs_right'         2>/dev/null
+    bind -x '"\eOC":  _cs_right'         2>/dev/null
+    bind -x '"\C-a":  _cs_home'          2>/dev/null
+    bind -x '"\e[H":  _cs_home'          2>/dev/null
+    bind -x '"\eOH":  _cs_home'          2>/dev/null
+    bind -x '"\C-e":  _cs_end'           2>/dev/null
+    bind -x '"\e[F":  _cs_end'           2>/dev/null
+    bind -x '"\eOF":  _cs_end'           2>/dev/null
+    bind -x '"\C-u":  _cs_kill_to_start' 2>/dev/null
+    bind -x '"\C-k":  _cs_kill_to_end'   2>/dev/null
+    bind -x '"\C-w":  _cs_kill_word'     2>/dev/null
+    bind -x '"\C-l":  _cs_clear_screen'  2>/dev/null
+    bind -x '"\C-m":  _cs_enter'         2>/dev/null
+    bind -x '"\e[A":  _cs_hist_up'       2>/dev/null
+    bind -x '"\eOA":  _cs_hist_up'       2>/dev/null
+    bind -x '"\e[B":  _cs_hist_down'     2>/dev/null
+    bind -x '"\eOB":  _cs_hist_down'     2>/dev/null
+
+    # Na função _cs_install_binds:
+    bind -x '"\e[5~": _cs_page_up'   2>/dev/null  # Page-Up
+    bind -x '"\e[6~": _cs_page_down' 2>/dev/null  # Page-Down
+
+    trap '_cs_sigint' INT
 }
 
-# ── Desinstalar ───────────────────────────────────────────────
-syntax-detach() {
-    # Remove binds
+# ── Desinstalar ────────────────────────────────────────────────
+custom-shell-detach() {
     local c
-    for c in {a..z} {A..Z} {0..9}; do
-        bind -r "\"$c\"" 2>/dev/null
-    done
-    
-    local syms=('~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
-                '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' ',' '.'
-                '/' '<' '>' '?' '\\' '`' ' ')
-    for s in "${syms[@]}"; do
+    for c in {a..z} {A..Z} {0..9}; do bind -r "\"$c\"" 2>/dev/null; done
+    local s
+    for s in ' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' \
+             '-' '_' '=' '+' '[' ']' '{' '}' '|' ';' ':' \
+             ',' '.' '/' '<' '>' '?' '`'; do
         bind -r "\"$s\"" 2>/dev/null
     done
-    
-    bind -r '"\C-h"' '"\x7f"' '"\e[3~"' '"\e[D"' '"\eOD"' \
-         '"\e[C"' '"\eOC"' '"\C-a"' '"\e[H"' '"\eOH"' \
-         '"\C-e"' '"\e[F"' '"\eOF"' '"\C-u"' '"\C-k"' \
-         '"\C-w"' '"\C-l"' 2>/dev/null
-    
-    # Restaura PS1 original
-    if [[ -n "$_SH_ORIGINAL_PS1" ]]; then
-        PS1="$_SH_ORIGINAL_PS1"
-    fi
-    
-    # Remove do PROMPT_COMMAND
-    PROMPT_COMMAND="${PROMPT_COMMAND//_sh_prompt_cmd; /}"
-    PROMPT_COMMAND="${PROMPT_COMMAND//_sh_prompt_cmd/}"
-    PROMPT_COMMAND="${PROMPT_COMMAND##; }"
-    PROMPT_COMMAND="${PROMPT_COMMAND%% }"
-    
-    _SH_LOADED=0
-    printf 'syntax-highlight desanexado.\n'
+    bind -r "\"'\"" 2>/dev/null; bind -r '"\""' 2>/dev/null; bind -r '"\\"' 2>/dev/null
+    bind -r '"\t"' '"\C-x\C-b"' '"\e[3~"' \
+         '"\e[D"' '"\eOD"' '"\e[C"' '"\eOC"' \
+         '"\C-a"' '"\e[H"' '"\eOH"' \
+         '"\C-e"' '"\e[F"' '"\eOF"' \
+         '"\C-u"' '"\C-k"' '"\C-w"' '"\C-l"' '"\C-m"' \
+         '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' 2>/dev/null
+    trap - INT
+    PS1="$_CS_PS1_ORIG"
+    _CS_LOADED=0
+    printf 'custom-shell desanexado.\n'
 }
 
-# ── Ativa ─────────────────────────────────────────────────────
-_sh_install_binds
-_sh_calc_plen
+# ── Ativa ──────────────────────────────────────────────────────
+_cs_install_binds
+_cs_ps1_update
 
-# Adiciona ao PROMPT_COMMAND
 if [[ -z "${PROMPT_COMMAND:-}" ]]; then
-    PROMPT_COMMAND="_sh_prompt_cmd"
+    PROMPT_COMMAND="_cs_prompt_cmd"
 else
-    PROMPT_COMMAND="_sh_prompt_cmd; $PROMPT_COMMAND"
+    PROMPT_COMMAND="${PROMPT_COMMAND}; _cs_prompt_cmd"
 fi
