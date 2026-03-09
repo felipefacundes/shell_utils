@@ -39,6 +39,59 @@ BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
 BLE_PATH="$HOME/.local/share/blesh/ble.sh"
 BLE_REPO="$HOME/.ble.sh"
 
+ble_enable() {
+    local BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
+
+    _ble_comment() {
+        echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" | tee "$BLE_CONF" &>/dev/null
+        echo "# and if set to 2, it enables an alternative, simple but functional version of ble." | tee -a "$BLE_CONF" &>/dev/null
+    }
+    
+    _show_help() {
+        cat <<'EOF'
+Usage: ble_enable <mode>
+
+Manages the BLE_BASH_ENABLED variable that controls which line editor is active.
+Changes take effect on the next terminal session.
+
+Modes:
+  0   Disable all line editors (use default bash readline)
+  1   Enable ble.sh (official, from akinomyoga's GitHub repository)
+  2   Enable ble-simple (alternative minimal version at ~/.shell_utils/scripts/ble-simple)
+
+Examples:
+  ble_enable 0   # Disable
+  ble_enable 1   # Enable ble.sh
+  ble_enable 2   # Enable ble-simple
+EOF
+    }
+
+    if [[ -z "${1:-}" ]]; then
+        _show_help
+        return 0
+    fi
+
+    local mode="$1"
+
+    if [[ "$mode" != "0" && "$mode" != "1" && "$mode" != "2" ]]; then
+        printf 'ble_enable: invalid mode "%s". Valid values: 0, 1, 2\n' "$mode" >&2
+        _show_help
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$BLE_CONF")" 2>/dev/null
+    _ble_comment
+    printf 'BLE_BASH_ENABLED=%s\n' "$mode" | tee -a "$BLE_CONF" &>/dev/null
+
+    case "$mode" in
+        0) printf 'ble_enable: mode set to 0 — all line editors disabled.\n' ;;
+        1) printf 'ble_enable: mode set to 1 — ble.sh will be loaded on next session.\n' ;;
+        2) printf 'ble_enable: mode set to 2 — ble-simple will be loaded on next session.\n' ;;
+    esac
+
+    printf 'Restart your terminal or run: source ~/.bashrc\n'
+}
+
 _ble_comment() {
     echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" | tee "$BLE_CONF" &>/dev/null
     echo "# and if set to 2, it enables an alternative, simple but functional version of ble." | tee -a "$BLE_CONF" &>/dev/null
@@ -130,8 +183,8 @@ export HISTSIZE=
 export HISTIGNORE=' *'
 ### ignoreboth:erasedups:ignorespace:ignoredups
 export HISTCONTROL="ignoreboth:erasedups:cmdfail"
-export HISTTIMEFORMAT="[%F %T] "
-#export HISTTIMEFORMAT=''
+#export HISTTIMEFORMAT="[%F %T] "
+export HISTTIMEFORMAT=''
 # Change the file location because certain bash sessions truncate .bash_history file upon close.
 # http://superuser.com/questions/575479/bash-history-truncated-to-500-lines-on-each-login
 export HISTFILE=~/.bash_history
@@ -457,7 +510,7 @@ shopt -s histverify
 ###############################################################################################################################
 ## Com essa opção ativada, o histórico será armazenado no formato de linha única, em vez do formato de várias linhas padrão. 
 ## Isso facilita a pesquisa e manipulação do histórico usando ferramentas como grep ou scripts.
-shopt -s lithist
+#shopt -s lithist
 
 ## By enabling this option, the history will not store duplicate consecutive commands. This can help reduce the history size and preventrepeated 
 ## commands from taking up unnecessary space.

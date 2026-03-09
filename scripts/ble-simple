@@ -827,12 +827,18 @@ _cs_delete() {
 }
 
 _cs_left() {
+    if  (( _CS_ML_LINES > 0 )); then
+        MULT_ON="$_CS_ML_LINES"
+    fi
     _cs_tab_reset
     (( _CS_POS > 0 )) && (( _CS_POS-- ))
     _cs_redraw
 }
 
 _cs_right() {
+    if  (( _CS_ML_LINES > 0 )); then
+        MULT_ON="$_CS_ML_LINES"
+    fi
     _cs_tab_reset
 
     local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
@@ -1004,6 +1010,10 @@ _cs_hist_load() {
         MULT_ON="$_CS_ML_LINES"
     fi
     if [[ -z "$MULT_ON" ]]; then
+        if  (( _CS_ML_LINES > 0 )); then
+            MULT_ON="$_CS_ML_LINES"
+            return
+        fi
         _CS_HIST_CACHE=(); _CS_HIST_MAX=0
         local num cmd
         while read -r num cmd; do
@@ -1026,6 +1036,9 @@ _cs_hist_load() {
 }
 
 _cs_hist_up() {
+    if  (( _CS_ML_LINES > 0 )); then
+        MULT_ON="$_CS_ML_LINES"
+    fi
     _cs_tab_reset
     if (( _CS_HIST_POS == -1 )); then
         _cs_hist_load
@@ -1163,7 +1176,21 @@ _cs_enter() {
     _CS_BUFFER=""; _CS_POS=0
 
     if [[ -n "$cmd_str" ]]; then
-        history -s -- "$cmd_str"
+        # Grava apenas se for comando de linha única (sem newlines internos)
+        # Comandos multiline são gravados pelo próprio bash ao executar
+        if [[ "$cmd_str" != *$'\n'* ]]; then
+            history -s -- "$cmd_str"
+        else
+            # Para multiline: apaga o que o bash gravou linha a linha e grava o bloco completo
+            # Descobre quantas linhas foram adicionadas e remove todas
+            local _cs_nl_count
+            _cs_nl_count=$(printf '%s' "$cmd_str" | grep -c $'\n')
+            local _cs_i
+            for (( _cs_i=0; _cs_i <= _cs_nl_count; _cs_i++ )); do
+                history -d $(history 1 | awk '{print $1}') 2>/dev/null
+            done
+            history -s -- "$cmd_str"
+        fi
 
         local stty_save
         stty_save=$(stty -g 2>/dev/null)
