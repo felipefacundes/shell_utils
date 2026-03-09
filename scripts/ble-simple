@@ -1141,6 +1141,11 @@ _cs_enter() {
 
     # Testa se o comando está sintaticamente completo
     if [[ -n "$full_cmd" ]] && ! bash -n <(printf '%s\n' "$full_cmd") 2>/dev/null; then
+        # Seta MULT_ON imediatamente ao detectar sintaxe incompleta.
+        # Necessário para que _cs_hist_load use o parser robusto após a execução.
+        # Se setado apenas no final de _cs_enter, _CS_ML_LINES já foi zerado
+        # e o MULT_ON nunca seria ativado para funções digitadas linha a linha.
+        MULT_ON=1
         # Sintaxe incompleta: acumula e mostra prompt secundário
         _CS_ML_BUFFER="$full_cmd"
         printf '\r\e[2K' >&2

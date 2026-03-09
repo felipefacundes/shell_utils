@@ -39,7 +39,7 @@ BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
 BLE_PATH="$HOME/.local/share/blesh/ble.sh"
 BLE_REPO="$HOME/.ble.sh"
 
-ble_enable() {
+ble-enable() {
     local BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
 
     _ble_comment() {
@@ -49,7 +49,7 @@ ble_enable() {
     
     _show_help() {
         cat <<'EOF'
-Usage: ble_enable <mode>
+Usage: ble-enable <mode>
 
 Manages the BLE_BASH_ENABLED variable that controls which line editor is active.
 Changes take effect on the next terminal session.
@@ -60,9 +60,9 @@ Modes:
   2   Enable ble-simple (alternative minimal version at ~/.shell_utils/scripts/ble-simple)
 
 Examples:
-  ble_enable 0   # Disable
-  ble_enable 1   # Enable ble.sh
-  ble_enable 2   # Enable ble-simple
+  ble-enable 0   # Disable
+  ble-enable 1   # Enable ble.sh
+  ble-enable 2   # Enable ble-simple
 EOF
     }
 
@@ -74,7 +74,7 @@ EOF
     local mode="$1"
 
     if [[ "$mode" != "0" && "$mode" != "1" && "$mode" != "2" ]]; then
-        printf 'ble_enable: invalid mode "%s". Valid values: 0, 1, 2\n' "$mode" >&2
+        printf 'ble-enable: invalid mode "%s". Valid values: 0, 1, 2\n' "$mode" >&2
         _show_help
         return 1
     fi
@@ -84,9 +84,9 @@ EOF
     printf 'BLE_BASH_ENABLED=%s\n' "$mode" | tee -a "$BLE_CONF" &>/dev/null
 
     case "$mode" in
-        0) printf 'ble_enable: mode set to 0 — all line editors disabled.\n' ;;
-        1) printf 'ble_enable: mode set to 1 — ble.sh will be loaded on next session.\n' ;;
-        2) printf 'ble_enable: mode set to 2 — ble-simple will be loaded on next session.\n' ;;
+        0) printf 'ble-enable: mode set to 0 — all line editors disabled.\n' ;;
+        1) printf 'ble-enable: mode set to 1 — ble.sh will be loaded on next session.\n' ;;
+        2) printf 'ble-enable: mode set to 2 — ble-simple will be loaded on next session.\n' ;;
     esac
 
     printf 'Restart your terminal or run: source ~/.bashrc\n'
@@ -95,11 +95,10 @@ EOF
 _ble_comment() {
     echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" | tee "$BLE_CONF" &>/dev/null
     echo "# and if set to 2, it enables an alternative, simple but functional version of ble." | tee -a "$BLE_CONF" &>/dev/null
+    echo "BLE_BASH_ENABLED=2" | tee -a "$BLE_CONF" &>/dev/null
 }
 
-if [[ ! -f "$BLE_CONF" ]] && [[ -n $TERMUX_VERSION ]]; then
-    _ble_comment
-elif [[ ! -f "$BLE_CONF" ]]; then
+if [[ ! -f "$BLE_CONF" ]]; then
     # We use BLE disabled by default even though it is not termux, 
     # because BLE, no matter how excellent it is, can cause crashes and slowdowns
     _ble_comment
@@ -127,7 +126,7 @@ else
     _cs_exit_code=0
     _cs_exit_show() {
         (( _cs_exit_code == 0 )) && return
-        printf ' \e[1;31m%d\e[0m' "$_cs_exit_code"
+        printf ' \e[0;31m%d\e[0m' "$_cs_exit_code"
     }
     PS1='\[\e[0;35m\]\u\[\e[0m\] at \[\e[0;36m\]\H\[\e[0m\] in \[\e[0;32m\]\w\[\e[0m\]$(_cs_exit_show)\n\$ '
 fi
@@ -144,7 +143,7 @@ fi
 
 # Bash-it
 # shellcheck source=/dev/null
-[[ "$BLE_BASH_ENABLED" != 2 ]] && [[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
+[[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
 
 ##### STARTUP
 ##### INPUTRC
@@ -510,7 +509,7 @@ shopt -s histverify
 ###############################################################################################################################
 ## Com essa opção ativada, o histórico será armazenado no formato de linha única, em vez do formato de várias linhas padrão. 
 ## Isso facilita a pesquisa e manipulação do histórico usando ferramentas como grep ou scripts.
-#shopt -s lithist
+shopt -s lithist
 
 ## By enabling this option, the history will not store duplicate consecutive commands. This can help reduce the history size and preventrepeated 
 ## commands from taking up unnecessary space.
