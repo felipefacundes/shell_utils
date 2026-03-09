@@ -1,35 +1,391 @@
 #!/usr/bin/env bash
-# ghost-text.bash — Ghost text do histórico (estilo fish/zsh)
+# License: GPLv3
+# Credits: Felipe Facundes
+#
+# bash-sintax-highlight-ghost — Syntax highlight em tempo real + Ghost text do histórico
 #
 # INSTALAÇÃO: última linha do ~/.bashrc:
-#   source ~/ghost-text.bash
+#   source ~/.shell_utils/scripts/bash-sintax-highlight-ghost
 #
-# Atalhos:
-#   →  ou Ctrl+F  : aceita sugestão completa
-#   ↑ ↓           : histórico filtrado pelo prefixo digitado
-#   ghost-detach  : desativa
+# Modos de ghost text (variável BASH_GHOST_TEXT):
+#   0 - Ghost text desativado
+#   1 - Completa com um toque (seta direita ou Ctrl+F)  [padrão]
+#   2 - Completa por palavras (cada seta adiciona uma palavra)
+#   3 - Completa por caracteres (cada seta adiciona um caractere)
+#
+# Atalhos do ghost text:
+#   →  ou Ctrl+F  : aceita sugestão (comportamento depende do modo)
+#   Ctrl+G        : aceita sugestão completa (todos os modos)
+#
+# Desativar: custom-shell-detach
 
-[[ "${_GT_LOADED:-}" == "1" ]] && return 0
-_GT_LOADED=1
+[[ "${_CS_LOADED:-}" == "1" ]] && return 0
+_CS_LOADED=1
 
 (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
-    printf 'ghost-text: requer Bash 4.3+\n' >&2; return 1
+    printf 'bash-sintax-highlight-ghost: requer Bash 4.3+\n' >&2
+    return 1
 }
 
-_gt_b0=$'\e[0m'
+# ── Modo ghost text ────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 1 — CORES E ESTADO (sintax highlight)
+# ══════════════════════════════════════════════════════════════
+
+_cs_green=$'\e[32m'
+_cs_red=$'\e[31m'
+_cs_reset=$'\e[0m'
+
+_CS_BUFFER=""
+_CS_POS=0
+_CS_ML_BUFFER=""    # buffer acumulado para comandos multiline
+_CS_ML_LINES=0      # quantas linhas multiline estão desenhadas na tela
+_CS_PASTING=0       # 1 durante bracketed paste
+_CS_PASTE_BUF=""    # acumula texto durante bracketed paste
+_CS_HIST_POS=-1
+_CS_HIST_SAVED=""
+_CS_HIST_PREFIX=""
+_CS_HIST_CACHE=()
+_CS_HIST_MAX=0
+_CS_HIST_PAGE_POS=-1
+_CS_HIST_SAVED_PAGE=""
+_CS_ENTER_HANDLED=0
+
+_CS_TAB_STATE=-1
+_CS_TAB_COMPLETIONS=()
+_CS_TAB_WORD_START=0
+_CS_TAB_ORIG_BUFFER=""
+_CS_TAB_ORIG_POS=0
+
+_CS_PS1_ORIG=""
+_CS_PS1_EXPANDED=""
+_CS_PS1_UPPER=""
+_CS_PS1_LAST=""
+_CS_PS1_LEN=0
+
+_CS_PS1_ORIG="${PS1}"
+PS1=""
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 2 — ESTADO DO GHOST TEXT
+# ══════════════════════════════════════════════════════════════
+
 _gt_gh=$'\e[38;5;240m'   # cinza — ghost text
+_gt_b0=$'\e[0m'
 
 _GT_SUGGESTION=""
-_GT_SUG_LOCKED=""         # sugestão travada para o backspace progressivo
-_GT_PLEN=0
-declare -ga _GT_HIST=()
-_GT_HIST_IDX=-1
-_GT_HIST_SAVED=""
-_GT_HIST_PREFIX=""
-_GT_ORIGINAL_PS1=""
-_GT_SIMPLE_PS1='$ '
+_GT_SUG_LOCKED=""
+# Arquivo de configuração persistente
+_GT_CONF_FILE="${HOME}/.cache/bash-modes.conf"
+mkdir -p "${HOME}/.cache" 2>/dev/null
 
-# ── Histórico ─────────────────────────────────────────────────
+# Lê o modo salvo; se não existir, usa BASH_GHOST_TEXT ou padrão 1
+_gt_conf_read() {
+    local key="$1" default="$2"
+    if [[ -f "$_GT_CONF_FILE" ]]; then
+        local val
+        val=$(grep -m1 "^${key}=" "$_GT_CONF_FILE" 2>/dev/null | cut -d= -f2-)
+        [[ -n "$val" ]] && { printf '%s' "$val"; return; }
+    fi
+    printf '%s' "$default"
+}
+
+_gt_conf_write() {
+    local key="$1" val="$2"
+    mkdir -p "${HOME}/.cache" 2>/dev/null
+    if [[ -f "$_GT_CONF_FILE" ]] && grep -q "^${key}=" "$_GT_CONF_FILE" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${val}|" "$_GT_CONF_FILE"
+    else
+        printf '%s=%s\n' "$key" "$val" >> "$_GT_CONF_FILE"
+    fi
+}
+
+# Arquivo de estado por PID (compartilhado com subshells do bind -x)
+_GT_STATE_FILE="/tmp/.bash_ghost_mode_$$"
+
+# Inicializa: prioridade → variável de ambiente → conf salva → padrão 1
+BASH_GHOST_TEXT="${BASH_GHOST_TEXT:-$(_gt_conf_read BASH_GHOST_TEXT 1)}"
+printf "%s" "$BASH_GHOST_TEXT" > "$_GT_STATE_FILE"
+
+# Arquivo de estado para sintax highlight
+_CS_SINTAX_FILE="/tmp/.bash_sintax_mode_$$"
+
+# Inicializa sintax: conf salva → padrão 1 (ativo)
+BASH_SINTAX="${BASH_SINTAX:-$(_gt_conf_read BASH_SINTAX 1)}"
+printf "%s" "$BASH_SINTAX" > "$_CS_SINTAX_FILE"
+
+# Função unificada para alterar modos em tempo real e persistir
+bash-mode() {
+    local sub="${1:-}" val="${2:-}"
+    case "$sub" in
+        ghost)
+            if [[ -z "$val" ]]; then
+                printf 'uso: bash-mode ghost <0|1|2|3>\n' >&2; return 1
+            fi
+            printf "%s" "$val" > "$_GT_STATE_FILE"
+            BASH_GHOST_TEXT="$val"
+            _gt_conf_write BASH_GHOST_TEXT "$val"
+            printf "ghost-text: modo %s\n" "$val"
+            ;;
+        sintax)
+            if [[ -z "$val" ]]; then
+                printf 'uso: bash-mode sintax <0|1>\n' >&2; return 1
+            fi
+            printf "%s" "$val" > "$_CS_SINTAX_FILE"
+            BASH_SINTAX="$val"
+            _gt_conf_write BASH_SINTAX "$val"
+            printf "sintax-highlight: modo %s\n" "$val"
+            ;;
+        *)
+            printf 'uso:\n'
+            printf '  bash-mode ghost <0|1|2|3>  — ghost text (0=off, 1=completo, 2=por token, 3=por char)\n'
+            printf '  bash-mode sintax <0|1>     — syntax highlight (0=off, 1=on)\n'
+            ;;
+    esac
+}
+declare -ga _GT_HIST=()
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 3 — PS1 (sintax highlight)
+# ══════════════════════════════════════════════════════════════
+
+_cs_ps1_update() {
+    if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+        local _save_ps1="$PS1"
+        PS1="$_CS_PS1_ORIG"
+        _CS_PS1_EXPANDED="${PS1@P}"
+        PS1="$_save_ps1"
+    else
+        local e="$_CS_PS1_ORIG"
+        e="${e//\\u/$USER}"
+        e="${e//\\h/${HOSTNAME%%.*}}"
+        e="${e//\\w/$PWD}"
+        e="${e//\\W/${PWD##*/}}"
+        e="${e//\\$/$(( EUID == 0 ? '#' : '$' ))}"
+        _CS_PS1_EXPANDED="$e"
+    fi
+    local plain
+    plain=$(printf '%s' "$_CS_PS1_EXPANDED" \
+        | sed 's/\x1b\[[0-9;]*[A-Za-z]//g;
+               s/\x1b(B//g;
+               s/\x1b][^\x07]*\x07//g;
+               s/\x1b][^\x1b]*\x1b\\//g')
+
+    # Separa em linha(s) superiores e última linha (onde o usuário digita)
+    if [[ "$_CS_PS1_EXPANDED" == *$'\n'* ]]; then
+        _CS_PS1_UPPER="${_CS_PS1_EXPANDED%$'\n'*}"$'\n'
+        _CS_PS1_LAST="${_CS_PS1_EXPANDED##*$'\n'}"
+    else
+        _CS_PS1_UPPER=""
+        _CS_PS1_LAST="$_CS_PS1_EXPANDED"
+    fi
+
+    local last="${plain##*$'\n'}"
+    _CS_PS1_LEN=${#last}
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 4 — VALIDAÇÃO E COLORIZAÇÃO (sintax highlight)
+# ══════════════════════════════════════════════════════════════
+
+_cs_cmd_valid() {
+    local full_cmd="$1"
+    local cmd="${full_cmd%% *}"
+    [[ -z "$cmd" ]] && return 1
+    if [[ "$cmd" =~ ^~ ]]; then
+        cmd="${cmd/#\~/$HOME}"
+    fi
+    if [[ "$cmd" == */* ]]; then
+        local test_cmd="$cmd"
+        [[ "$cmd" != /* ]] && test_cmd="$PWD/$cmd"
+        [[ -x "$test_cmd" ]] && return 0
+        return 1
+    fi
+    command -v "$cmd" &>/dev/null && return 0
+    alias "$cmd" &>/dev/null && return 0
+    return 1
+}
+
+_cs_colorize_token() {
+    local token="$1"
+    local is_first="${2:-0}"
+    local blue=$'\e[34m'
+    local green=$'\e[32m'
+    local red=$'\e[31m'
+    local reset=$'\e[0m'
+
+    if [[ "$token" == */* ]]; then
+        local expanded="$token"
+        [[ "$expanded" =~ ^~ ]] && expanded="${expanded/#\~/$HOME}"
+        local dir_part="${expanded%/*}"
+        local original_dir="${token%/*}"
+        local original_file="${token##*/}"
+        [[ -z "$dir_part" ]] && dir_part="/"
+
+        if [[ -d "$dir_part" ]] || [[ -d "$expanded" ]]; then
+            printf '%s%s%s' "$blue" "$original_dir/" "$reset"
+        else
+            printf '%s%s%s' "$red" "$original_dir/" "$reset"
+        fi
+
+        if [[ -x "$expanded" && ! -d "$expanded" ]]; then
+            printf '%s%s%s' "$green" "$original_file" "$reset"
+        else
+            printf '%s' "$original_file"
+        fi
+        return
+    fi
+
+    # Só aplica verde/vermelho no primeiro token (o comando)
+    if (( is_first )); then
+        if _cs_cmd_valid "$token"; then
+            printf '%s%s%s' "$green" "$token" "$reset"
+        else
+            printf '%s%s%s' "$red" "$token" "$reset"
+        fi
+    else
+        # Argumento sem /: verifica se é arquivo executável no diretório atual
+        if [[ -x "$token" && -f "$token" ]]; then
+            printf '%s%s%s' "$green" "$token" "$reset"
+        elif [[ -f "$token" ]]; then
+            printf '%s' "$token"
+        else
+            printf '%s' "$token"
+        fi
+    fi
+}
+
+_cs_buffer_colored() {
+    local buf="$_CS_BUFFER"
+    [[ -z "$buf" ]] && { printf '%s' "$buf"; return; }
+
+    # Cores
+    local green=$'\e[32m'
+    local red=$'\e[31m'
+    local blue=$'\e[34m'
+    local yellow=$'\e[33m'    # operadores: | && || ; & 
+    local cyan=$'\e[36m'      # redireções: > >> < 2>
+    local magenta=$'\e[35m'   # strings: "..." '...'
+    local reset=$'\e[0m'
+
+    local result=""
+    local token=""
+    local is_first=1          # 1 = próximo token de palavra é comando
+    local i=0
+    local c c2
+
+    while (( i < ${#buf} )); do
+        c="${buf:$i:1}"
+        c2="${buf:$i:2}"
+
+        # ── Strings entre aspas duplas ────────────────────────
+        if [[ "$c" == '"' ]]; then
+            # Flush token pendente
+            if [[ -n "$token" ]]; then
+                result+="$(_cs_colorize_token "$token" "$is_first")"
+                token=""; is_first=0
+            fi
+            local str="" sc; (( i++ ))
+            while (( i < ${#buf} )); do
+                sc="${buf:$i:1}"
+                (( i++ ))
+                [[ "$sc" == '\\' ]] && (( i < ${#buf} )) && {
+                    str+="$sc${buf:$i:1}"; (( i++ )); continue
+                }
+                [[ "$sc" == '"' ]] && break
+                str+="$sc"
+            done
+            # Se o conteúdo parece caminho ou arquivo, coloriza como token
+            if [[ "$str" == */* || "$str" == ~* ]]; then
+                result+="\"$(_cs_colorize_token "$str" 0)\""
+            else
+                result+="${magenta}\"${str}\"${reset}"
+            fi
+            continue
+        fi
+
+        # ── Strings entre aspas simples ───────────────────────
+        if [[ "$c" == "'" ]]; then
+            if [[ -n "$token" ]]; then
+                result+="$(_cs_colorize_token "$token" "$is_first")"
+                token=""; is_first=0
+            fi
+            local str="" sc; (( i++ ))
+            while (( i < ${#buf} )); do
+                sc="${buf:$i:1}"
+                (( i++ ))
+                [[ "$sc" == "'" ]] && break
+                str+="$sc"
+            done
+            # Se o conteúdo parece caminho ou arquivo, coloriza como token
+            if [[ "$str" == */* || "$str" == ~* ]]; then
+                result+="'$(_cs_colorize_token "$str" 0)'"
+            else
+                result+="${magenta}'${str}'${reset}"
+            fi
+            continue
+        fi
+
+        # ── Operadores duplos: && || >> ───────────────────────
+        if [[ "$c2" == '&&' || "$c2" == '||' || "$c2" == '>>' ]]; then
+            if [[ -n "$token" ]]; then
+                result+="$(_cs_colorize_token "$token" "$is_first")"
+                token=""
+            fi
+            if [[ "$c2" == '>>' ]]; then
+                result+="${cyan}${c2}${reset}"
+            else
+                result+="${yellow}${c2}${reset}"
+            fi
+            is_first=1   # após operador lógico, próxima palavra é comando
+            (( i += 2 )); continue
+        fi
+
+        # ── Operadores simples: | ; & > < ────────────────────
+        if [[ "$c" == '|' || "$c" == ';' || "$c" == '&' ]]; then
+            if [[ -n "$token" ]]; then
+                result+="$(_cs_colorize_token "$token" "$is_first")"
+                token=""
+            fi
+            result+="${yellow}${c}${reset}"
+            is_first=1   # após operador, próxima palavra é comando
+            (( i++ )); continue
+        fi
+
+        if [[ "$c" == '>' || "$c" == '<' ]]; then
+            if [[ -n "$token" ]]; then
+                result+="$(_cs_colorize_token "$token" "$is_first")"
+                token=""
+                # após redireção, próxima palavra é argumento (arquivo)
+                is_first=0
+            fi
+            result+="${cyan}${c}${reset}"
+            (( i++ )); continue
+        fi
+
+        # ── Espaço: flush token ───────────────────────────────
+        if [[ "$c" == ' ' ]]; then
+            if [[ -n "$token" ]]; then
+                result+="$(_cs_colorize_token "$token" "$is_first")"
+                token=""; is_first=0
+            fi
+            result+="$c"; (( i++ )); continue
+        fi
+
+        token+="$c"; (( i++ ))
+    done
+
+    # Flush token final
+    [[ -n "$token" ]] && result+="$(_cs_colorize_token "$token" "$is_first")"
+
+    printf '%s' "$result"
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 5 — GHOST TEXT: HISTÓRICO E SUGESTÃO
+# ══════════════════════════════════════════════════════════════
+
 _gt_load_hist() {
     history -a 2>/dev/null; history -n 2>/dev/null
     local hfile="${HISTFILE:-$HOME/.bash_history}"
@@ -45,23 +401,17 @@ _gt_sync_hist() {
         mapfile -t _GT_HIST < <(grep -v '^#[0-9]\+$' "$hfile" 2>/dev/null)
 }
 
-_gt_hist_reset() { _GT_HIST_IDX=-1; _GT_HIST_SAVED=""; _GT_HIST_PREFIX=""; }
-
-# ── Sugestão ──────────────────────────────────────────────────
-# Busca no histórico + arquivos locais se parecer caminho
 _gt_find_suggestion() {
     _GT_SUGGESTION=""
     local cur="$1"
     [[ ${#cur} -lt 1 ]] && return
 
-    # 1. Histórico (mais recente primeiro)
     local i
     for (( i=${#_GT_HIST[@]}-1; i>=0; i-- )); do
         [[ "${_GT_HIST[$i]}" == "${cur}"* && "${_GT_HIST[$i]}" != "$cur" ]] \
             && { _GT_SUGGESTION="${_GT_HIST[$i]}"; return; }
     done
 
-    # 2. Arquivos/diretórios locais (se última palavra parecer caminho)
     local last_word="${cur##* }"
     if [[ -n "$last_word" ]]; then
         local match
@@ -73,338 +423,975 @@ _gt_find_suggestion() {
     fi
 }
 
-# Sugestão com lock — estilo zsh:
-# Ao apagar (backspace), mantém a sugestão travada enquanto a linha
-# ainda for prefixo dela, revelando progressivamente o ghost.
-# Ao inserir, força busca nova (lock liberado).
 _gt_get_suggestion() {
     local cur="$1"
     if [[ -z "$cur" ]]; then
         _GT_SUGGESTION=""; _GT_SUG_LOCKED=""; return
     fi
-    # Linha ainda é prefixo da sugestão travada → mantém (backspace progressivo)
     if [[ -n "$_GT_SUG_LOCKED" && \
           "$_GT_SUG_LOCKED" == "${cur}"* && \
           "$_GT_SUG_LOCKED" != "$cur" ]]; then
         _GT_SUGGESTION="$_GT_SUG_LOCKED"
         return
     fi
-    # Lock expirou ou não existe → busca nova
     _gt_find_suggestion "$cur"
     _GT_SUG_LOCKED="$_GT_SUGGESTION"
 }
 
-# Inserção: libera lock e busca novo (usuário digitou algo novo)
 _gt_get_suggestion_fresh() {
     _GT_SUG_LOCKED=""
     _gt_get_suggestion "$1"
 }
 
-# ── Calcula PLEN a partir do PS1 simples ──────────────────────
-_gt_calc_plen() {
-    local ps1="$_GT_SIMPLE_PS1"
-    ps1="${ps1//\\[/}"; ps1="${ps1//\\]/}"
-    ps1=$(printf '%s' "$ps1" | sed 's/\\033/\x1b/g; s/\x1b\[[0-9;]*[a-zA-Z]//g')
-    ps1="${ps1//\\u/$USER}"
-    ps1="${ps1//\\h/${HOSTNAME%%.*}}"
-    ps1="${ps1//\\w/${PWD/#$HOME/\~}}"
-    ps1="${ps1//\\W/${PWD##*/}}"
-    ps1="${ps1//\\n/}"; ps1="${ps1//\\r/}"
-    _GT_PLEN=$(printf '%s' "$ps1" | wc -m)
-}
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 6 — GHOST TEXT: OVERLAY
+# Lê _CS_BUFFER e _CS_PS1_LEN (não READLINE_LINE)
+# ══════════════════════════════════════════════════════════════
 
-# ── Overlay com PS1 temporariamente resetado ──────────────────
-# O swap de PS1 garante que o readline mede o prompt corretamente
-# durante o bind -x, sem ser enganado por OSC/multiline/cores.
 _gt_overlay() {
-    local line="$READLINE_LINE"
+    local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
+    [[ "$_gt_mode" == "0" ]] && return
+
+    local line="$_CS_BUFFER"
     local ghost=""
+
     if [[ -n "$_GT_SUGGESTION" && \
           "$_GT_SUGGESTION" == "${line}"* && \
           "$_GT_SUGGESTION" != "$line" ]]; then
         ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
     fi
-    [[ -z "$ghost" ]] && { printf '\e7\e[%dG\e[K\e8' \
-        "$(( _GT_PLEN + $(printf '%s' "$line" | wc -m) + 1 ))" >&2; return; }
-    local col=$(( _GT_PLEN + $(printf '%s' "$line" | wc -m) + 1 ))
-    printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
-}
 
-# ── Wrappers que resetam PS1 temporariamente ──────────────────
-_gt_with_simple_ps1() {
-    local orig_ps1="$PS1"
-    PS1="$_GT_SIMPLE_PS1"
-    "$1"
-    PS1="$orig_ps1"
-}
+    # Posição: após o prompt + toda a linha (não apenas até o cursor),
+    # pois o texto colorido já foi desenhado pelo _cs_redraw até o fim.
+    # O ghost vai colado ao final do conteúdo atual do buffer.
+    local col=$(( _CS_PS1_LEN + ${#line} + 1 ))
 
-# ── Edição ────────────────────────────────────────────────────
-_gt_self_insert() {
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${_GT_CHAR}${READLINE_LINE:$READLINE_POINT}"
-    (( READLINE_POINT++ ))
-    _gt_hist_reset
-    _gt_get_suggestion_fresh "$READLINE_LINE"   # busca fresca ao digitar
-    _gt_overlay
-}
-
-# Backspace estilo zsh: mantém lock → revela ghost progressivamente
-_gt_backspace() {
-    (( READLINE_POINT > 0 )) && {
-        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
-        (( READLINE_POINT-- ))
-    }
-    _gt_hist_reset
-    _gt_get_suggestion "$READLINE_LINE"   # com lock → revela progressivamente
-    _gt_overlay
-}
-
-_gt_delete_char() {
-    (( READLINE_POINT < ${#READLINE_LINE} )) && \
-        READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
-    _gt_get_suggestion "$READLINE_LINE"
-    _gt_overlay
-}
-
-_gt_move_left() {
-    (( READLINE_POINT > 0 )) && (( READLINE_POINT-- ))
-    _gt_overlay
-}
-
-_gt_right_or_ghost() {
-    if (( READLINE_POINT < ${#READLINE_LINE} )); then
-        (( READLINE_POINT++ ))
+    if [[ -z "$ghost" ]]; then
+        printf '\e7\e[%dG\e[K\e8' "$col" >&2
     else
-        # Cursor no fim: aceita ghost COMPLETO de uma vez
-        _gt_get_suggestion "$READLINE_LINE"
-        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-            READLINE_LINE="$_GT_SUGGESTION"
-            READLINE_POINT=${#READLINE_LINE}
-            _GT_SUG_LOCKED=""
+        printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
+    fi
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 7 — REDESENHO COMBINADO
+# Redesenha highlight + ghost em uma única chamada
+# ══════════════════════════════════════════════════════════════
+
+_cs_redraw() {
+    [[ -z "$_CS_PS1_EXPANDED" ]] && _cs_ps1_update
+    local _sintax_mode; _sintax_mode=$(cat "$_CS_SINTAX_FILE" 2>/dev/null || printf "1")
+
+    # Verifica se o buffer tem múltiplas linhas
+    if [[ "$_CS_BUFFER" == *$'\n'* ]]; then
+        local -a lines=()
+        mapfile -t lines <<< "$_CS_BUFFER"
+        local nlines=${#lines[@]}
+
+        # Sobe até a linha onde está o prompt ($) e limpa dali para baixo
+        # _CS_ML_LINES guarda quantas linhas foram desenhadas (incluindo a do prompt)
+        if (( _CS_ML_LINES > 1 )); then
+            printf '\e[%dA' "$(( _CS_ML_LINES - 1 ))" >&2
+        fi
+        printf '\r\e[J' >&2
+
+        # Desenha todas as linhas
+        local li colored_line _save_buf
+        for (( li=0; li < nlines; li++ )); do
+            _save_buf="$_CS_BUFFER"
+            _CS_BUFFER="${lines[$li]}"
+            if [[ "$_sintax_mode" == "1" ]]; then
+                colored_line=$(_cs_buffer_colored)
+            else
+                colored_line="${lines[$li]}"
+            fi
+            _CS_BUFFER="$_save_buf"
+
+            if (( li == 0 )); then
+                printf '%s%s' "$_CS_PS1_LAST" "$colored_line" >&2
+            else
+                printf '\n> %s' "$colored_line" >&2
+            fi
+        done
+
+        _CS_ML_LINES=$nlines
+
+        # Calcula linha e coluna do cursor
+        local pos_remaining=$_CS_POS cur_line=0 cur_col=0
+        for (( li=0; li < nlines; li++ )); do
+            if (( pos_remaining <= ${#lines[$li]} )); then
+                cur_line=$li; cur_col=$pos_remaining; break
+            fi
+            (( pos_remaining -= ${#lines[$li]} + 1 ))
+        done
+
+        local lines_from_bottom=$(( nlines - 1 - cur_line ))
+        (( lines_from_bottom > 0 )) && printf '\e[%dA' "$lines_from_bottom" >&2
+
+        local col
+        if (( cur_line == 0 )); then
+            col=$(( _CS_PS1_LEN + cur_col + 1 ))
+        else
+            col=$(( 3 + cur_col ))
+        fi
+        printf '\r\e[%dG' "$col" >&2
+
+    else
+        # Buffer de linha única
+        _CS_ML_LINES=0
+        local colored
+        if [[ "$_sintax_mode" == "1" ]]; then
+            colored=$(_cs_buffer_colored)
+        else
+            colored="$_CS_BUFFER"
+        fi
+        printf '\r\e[2K%s%s' "$_CS_PS1_LAST" "$colored" >&2
+        printf '\r\e[%dG' "$(( _CS_PS1_LEN + _CS_POS + 1 ))" >&2
+        _gt_overlay
+    fi
+
+    READLINE_LINE=""
+    READLINE_POINT=0
+}
+
+_cs_show_prompt() {
+    printf '\e[0m' >&2
+    # Imprime o PS1 completo (com linha superior se houver)
+    printf '%s' "$_CS_PS1_EXPANDED" >&2
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 8 — TAB COMPLETION (sintax highlight, inalterado)
+# ══════════════════════════════════════════════════════════════
+
+_cs_tab_reset() {
+    _CS_TAB_STATE=-1
+    _CS_TAB_COMPLETIONS=()
+    _CS_TAB_WORD_START=0
+    _CS_TAB_ORIG_BUFFER=""
+    _CS_TAB_ORIG_POS=0
+}
+
+_cs_common_prefix() {
+    local prefix="${1}"; shift
+    local s
+    for s in "$@"; do
+        while [[ "${s:0:${#prefix}}" != "$prefix" ]]; do
+            prefix="${prefix:0:$(( ${#prefix}-1 ))}"
+            [[ -z "$prefix" ]] && { printf ''; return; }
+        done
+    done
+    printf '%s' "$prefix"
+}
+
+_cs_do_tab() {
+    if (( _CS_TAB_STATE >= 0 )); then
+        local n=${#_CS_TAB_COMPLETIONS[@]}
+        _CS_TAB_STATE=$(( (_CS_TAB_STATE + 1) % (n + 1) ))
+        if (( _CS_TAB_STATE == n )); then
+            _CS_BUFFER="$_CS_TAB_ORIG_BUFFER"
+            _CS_POS=$_CS_TAB_ORIG_POS
+        else
+            local completion="${_CS_TAB_COMPLETIONS[$_CS_TAB_STATE]}"
+            local after="${_CS_TAB_ORIG_BUFFER:$_CS_TAB_ORIG_POS}"
+            _CS_BUFFER="${_CS_TAB_ORIG_BUFFER:0:$_CS_TAB_WORD_START}${completion}${after}"
+            _CS_POS=$(( _CS_TAB_WORD_START + ${#completion} ))
+        fi
+        _cs_redraw; return
+    fi
+
+    local line="$_CS_BUFFER" point=$_CS_POS
+    local after="${line:$point}"
+    local word_start=$point
+    while (( word_start > 0 )) && [[ "${line:$((word_start-1)):1}" != " " ]]; do
+        (( word_start-- ))
+    done
+    local cur="${line:$word_start:$((point - word_start))}"
+    local before_word="${line:0:$word_start}"
+    local is_cmd=0
+    [[ -z "${before_word// /}" ]] && is_cmd=1
+
+    local -a completions=()
+    local cmd="${_CS_BUFFER%% *}"
+
+    if (( ! is_cmd )) && declare -f _completion_loader &>/dev/null; then
+        _completion_loader "$cmd" 2>/dev/null
+        local comp_spec comp_func
+        comp_spec=$(complete -p "$cmd" 2>/dev/null)
+        comp_func=$(awk 'NF>=2{print $(NF-1)}' <<< "$comp_spec")
+        if [[ -n "$comp_func" ]] && declare -f "$comp_func" &>/dev/null; then
+            local -a all_words
+            eval "all_words=( $line )" 2>/dev/null || read -ra all_words <<< "$line"
+            local cword=${#all_words[@]}
+            [[ "$line" =~ [[:space:]]$ ]] || (( cword-- ))
+            (( cword < 0 )) && cword=0
+            COMP_LINE="$line"; COMP_POINT=$point
+            COMP_WORDS=("${all_words[@]}"); COMP_CWORD=$cword
+            COMPREPLY=()
+            "$comp_func" "$cmd" "$cur" "${all_words[$((cword-1))]:-}" 2>/dev/null
+            completions=("${COMPREPLY[@]}")
         fi
     fi
-    _gt_overlay
+
+    if (( ${#completions[@]} == 0 )); then
+        # ── Variáveis: $PREFIXO<TAB> ─────────────────────────
+        if [[ "$cur" == \$* ]]; then
+            local var_prefix="${cur#\$}"
+            local -a var_matches=()
+            mapfile -t var_matches < <(compgen -v -- "$var_prefix" 2>/dev/null | sort -u)
+            if (( ${#var_matches[@]} > 0 )); then
+                local i
+                for (( i=0; i < ${#var_matches[@]}; i++ )); do
+                    completions+=( "\$${var_matches[$i]}" )
+                done
+            fi
+        fi
+
+        if (( ${#completions[@]} == 0 )); then
+            if (( is_cmd )); then
+                mapfile -t completions < <(compgen -c -- "$cur" 2>/dev/null | sort -u)
+            else
+                mapfile -t completions < <(compgen -f -- "$cur" 2>/dev/null | sort -u)
+                local i
+                for (( i=0; i < ${#completions[@]}; i++ )); do
+                    [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
+                        && completions[$i]+="/"
+                done
+            fi
+        fi
+    fi
+
+    local n=${#completions[@]}
+    if (( n == 0 )); then
+        printf '\a' >&2; _cs_redraw; return
+    fi
+
+    if (( n == 1 )); then
+        local completion="${completions[0]}"
+        local suffix=""; [[ "${completion}" != */ ]] && suffix=" "
+        _CS_BUFFER="${line:0:$word_start}${completion}${suffix}${after}"
+        _CS_POS=$(( word_start + ${#completion} + ${#suffix} ))
+        _cs_tab_reset; _cs_redraw; return
+    fi
+
+    local common
+    common=$(_cs_common_prefix "${completions[@]}")
+
+    if [[ "${#common}" -gt "${#cur}" ]]; then
+        _CS_BUFFER="${line:0:$word_start}${common}${after}"
+        _CS_POS=$(( word_start + ${#common} ))
+        if (( is_cmd )); then
+            mapfile -t completions < <(compgen -c -- "$common" 2>/dev/null | sort -u)
+        else
+            mapfile -t completions < <(compgen -f -- "$common" 2>/dev/null | sort -u)
+            local i
+            for (( i=0; i < ${#completions[@]}; i++ )); do
+                [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
+                    && completions[$i]+="/"
+            done
+        fi
+        if (( ${#completions[@]} == 1 )); then
+            local suffix=""; [[ "${completions[0]}" != */ ]] && suffix=" "
+            _CS_BUFFER="${line:0:$word_start}${completions[0]}${suffix}${after}"
+            _CS_POS=$(( word_start + ${#completions[0]} + ${#suffix} ))
+            _cs_tab_reset; _cs_redraw; return
+        fi
+        _CS_TAB_COMPLETIONS=("${completions[@]}")
+        _CS_TAB_STATE=-1
+        _CS_TAB_WORD_START=$word_start
+        _CS_TAB_ORIG_BUFFER="$_CS_BUFFER"
+        _CS_TAB_ORIG_POS=$_CS_POS
+        _cs_list_completions "$common" "${completions[@]}"
+        _cs_redraw; return
+    fi
+
+    _CS_TAB_COMPLETIONS=("${completions[@]}")
+    _CS_TAB_STATE=-1
+    _CS_TAB_WORD_START=$word_start
+    _CS_TAB_ORIG_BUFFER="$line"
+    _CS_TAB_ORIG_POS=$point
+
+    if (( n > 50 )); then
+        printf '\nExibir todos %d possíveis? (s/n) ' "$n" >&2
+        local ans; read -r -n1 ans </dev/tty; printf '\n' >&2
+        if [[ "$ans" != [sySY] ]]; then
+            _CS_TAB_STATE=0
+            local first="${_CS_TAB_COMPLETIONS[0]}"
+            _CS_BUFFER="${line:0:$word_start}${first}${after}"
+            _CS_POS=$(( word_start + ${#first} ))
+            _cs_redraw; return
+        fi
+    fi
+
+    _cs_list_completions "$cur" "${completions[@]}"
+    _CS_TAB_STATE=0
+    local first="${_CS_TAB_COMPLETIONS[0]}"
+    _CS_BUFFER="${line:0:$word_start}${first}${after}"
+    _CS_POS=$(( word_start + ${#first} ))
+    _cs_redraw
 }
 
-_gt_accept_ghost() {
-    _gt_get_suggestion "$READLINE_LINE"
-    if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-        READLINE_LINE="$_GT_SUGGESTION"
-        READLINE_POINT=${#READLINE_LINE}
+_cs_colorize() {
+    local item="$1" prefix="$2"
+    local rest="${item:${#prefix}}"
+    local item_color=""
+    if [[ "$item" == */ ]]; then item_color="01;34"
+    elif [[ -x "$item" && -f "$item" ]] 2>/dev/null; then item_color="01;32"
+    elif [[ -L "$item" ]] 2>/dev/null; then item_color="01;36"
+    elif [[ -d "$item" ]] 2>/dev/null; then item_color="01;34"
+    fi
+    local reset="\e[0m"
+    if [[ -n "$item_color" ]]; then
+        if [[ -n "$prefix" ]]; then
+            printf "\e[${item_color};04m%s${reset}\e[${item_color}m%s${reset}" "$prefix" "$rest"
+        else
+            printf "\e[${item_color}m%s${reset}" "$item"
+        fi
+    else
+        if [[ -n "$prefix" ]]; then
+            printf "\e[01;04m%s${reset}%s" "$prefix" "$rest"
+        else
+            printf '%s' "$item"
+        fi
+    fi
+}
+
+_cs_list_completions() {
+    local prefix="$1"; shift
+    local -a items=("$@")
+    printf '\n' >&2
+    local max_len=0 item
+    for item in "${items[@]}"; do
+        (( ${#item} > max_len )) && max_len=${#item}
+    done
+    local term_cols; term_cols=$(tput cols 2>/dev/null || printf '80')
+    local col_width=$(( max_len + 2 ))
+    local num_cols=$(( term_cols / col_width ))
+    (( num_cols < 1 )) && num_cols=1
+    local idx=0
+    for item in "${items[@]}"; do
+        local colored_item
+        colored_item=$(_cs_colorize "$item" "$prefix")
+        local pad=$(( col_width - ${#item} ))
+        printf '%s%*s' "$colored_item" "$pad" '' >&2
+        (( ++idx % num_cols == 0 )) && printf '\n' >&2
+    done
+    (( idx % num_cols != 0 )) && printf '\n' >&2
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 9 — EDIÇÃO: inserção, backspace, delete, movimento
+# Cada função de edição chama _cs_redraw (que inclui _gt_overlay)
+# ══════════════════════════════════════════════════════════════
+
+_cs_insert() {
+    # Durante paste, acumula no buffer temporário — sem redesenhar a cada char
+    if (( _CS_PASTING )); then
+        _CS_PASTE_BUF+="$1"
+        return
+    fi
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""                          # inserção → libera lock
+    _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${1}${_CS_BUFFER:$_CS_POS}"
+    (( _CS_POS++ ))
+    _gt_get_suggestion_fresh "$_CS_BUFFER"     # busca fresca
+    _cs_redraw
+}
+
+_cs_backspace() {
+    if (( _CS_POS == 0 )); then
+        _cs_redraw; return
+    fi
+    _cs_tab_reset
+    _CS_BUFFER="${_CS_BUFFER:0:$((_CS_POS-1))}${_CS_BUFFER:$_CS_POS}"
+    (( _CS_POS-- ))
+    _gt_get_suggestion "$_CS_BUFFER"           # com lock → revela progressivamente
+    _cs_redraw
+}
+
+_cs_delete() {
+    _cs_tab_reset
+    if (( _CS_POS < ${#_CS_BUFFER} )); then
+        _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_BUFFER:$((_CS_POS+1))}"
+        _gt_get_suggestion "$_CS_BUFFER"
+    fi
+    _cs_redraw
+}
+
+_cs_left() {
+    _cs_tab_reset
+    (( _CS_POS > 0 )) && (( _CS_POS-- ))
+    _cs_redraw
+}
+
+_cs_right() {
+    _cs_tab_reset
+
+    local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
+    if [[ "$_gt_mode" != "0" ]] && (( _CS_POS == ${#_CS_BUFFER} )); then
+        # Busca sugestão sempre fresca (ignora lock para ter a sugestão completa)
+        _gt_find_suggestion "$_CS_BUFFER"
+        local sug="$_GT_SUGGESTION"
+
+        if [[ -n "$sug" && "$sug" != "$_CS_BUFFER" ]]; then
+            local mode="$_gt_mode"
+
+            # Modo 1: aceita tudo de uma vez
+            if [[ "$mode" == "1" ]]; then
+                _CS_BUFFER="$sug"
+                _CS_POS=${#_CS_BUFFER}
+                _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+                _cs_redraw; return
+
+            # Modo 2: aceita próximo token (palavra)
+            elif [[ "$mode" == "2" ]]; then
+                local rest="${sug:${#_CS_BUFFER}}"
+                if [[ "$rest" =~ ^([^[:space:]]+)([[:space:]]*) ]]; then
+                    _CS_BUFFER+="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+                else
+                    _CS_BUFFER="$sug"
+                fi
+                _CS_POS=${#_CS_BUFFER}
+                if [[ "$_CS_BUFFER" == "$sug" ]]; then
+                    _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+                else
+                    _GT_SUGGESTION="$sug"; _GT_SUG_LOCKED="$sug"
+                fi
+                _cs_redraw; return
+
+            # Modo 3: aceita próximo caractere
+            elif [[ "$mode" == "3" ]]; then
+                _CS_BUFFER+="${sug:${#_CS_BUFFER}:1}"
+                _CS_POS=${#_CS_BUFFER}
+                if [[ "$_CS_BUFFER" == "$sug" ]]; then
+                    _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+                else
+                    _GT_SUGGESTION="$sug"; _GT_SUG_LOCKED="$sug"
+                fi
+                _cs_redraw; return
+            fi
+        fi
+    fi
+
+    # Sem sugestão ou cursor não está no fim: move normalmente
+    (( _CS_POS < ${#_CS_BUFFER} )) && (( _CS_POS++ ))
+    _cs_redraw
+}
+
+# Ctrl+G / Ctrl+F: aceita sugestão completa (todos os modos)
+_cs_accept_ghost() {
+    local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
+    [[ "$_gt_mode" == "0" ]] && return
+    _gt_get_suggestion "$_CS_BUFFER"
+    if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_CS_BUFFER}"* ]]; then
+        _CS_BUFFER="$_GT_SUGGESTION"
+        _CS_POS=${#_CS_BUFFER}
         _GT_SUG_LOCKED=""
     fi
-    _gt_overlay
+    _cs_redraw
 }
 
-_gt_home()          { READLINE_POINT=0; _gt_overlay; }
-_gt_end()           { READLINE_POINT=${#READLINE_LINE}; _gt_overlay; }
-_gt_kill_line()     { READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}"; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_overlay; }
-_gt_kill_to_start() { READLINE_LINE="${READLINE_LINE:$READLINE_POINT}"; READLINE_POINT=0; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_overlay; }
-_gt_clear_screen()  { clear; _gt_overlay; }
-
-_gt_kill_word() {
-    if (( READLINE_POINT > 0 )); then
-        local b="${READLINE_LINE:0:$READLINE_POINT}" a="${READLINE_LINE:$READLINE_POINT}"
-        b="${b% }"; b="${b% *}"
-        READLINE_LINE="${b:+${b} }${a}"
-        READLINE_POINT=${#b}
-        (( ${#b} > 0 )) && (( READLINE_POINT++ ))
-    fi
-    _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_overlay
+_cs_home() {
+    _cs_tab_reset
+    _CS_POS=0
+    _cs_redraw
 }
 
-# ── Histórico filtrado ────────────────────────────────────────
-_gt_hist_up() {
-    local hlen="${#_GT_HIST[@]}"
-    (( hlen == 0 )) && return
-    if (( _GT_HIST_IDX == -1 )); then
-        _GT_HIST_SAVED="$READLINE_LINE"
-        _GT_HIST_PREFIX="$READLINE_LINE"
-        _GT_HIST_IDX=$hlen
+_cs_end() {
+    _cs_tab_reset
+    _CS_POS=${#_CS_BUFFER}
+    _cs_redraw
+}
+
+_cs_kill_to_start() {
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""
+    _CS_BUFFER="${_CS_BUFFER:$_CS_POS}"
+    _CS_POS=0
+    _gt_get_suggestion "$_CS_BUFFER"
+    _cs_redraw
+}
+
+_cs_kill_to_end() {
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""
+    _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}"
+    _gt_get_suggestion "$_CS_BUFFER"
+    _cs_redraw
+}
+
+_cs_kill_word() {
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""
+    (( _CS_POS > 0 )) || return
+    local before after
+    before=$(printf '%s' "${_CS_BUFFER:0:$_CS_POS}" | sed 's/[^ ]*[[:space:]]*$//')
+    after="${_CS_BUFFER:$_CS_POS}"
+    _CS_POS=${#before}
+    _CS_BUFFER="${before}${after}"
+    _gt_get_suggestion "$_CS_BUFFER"
+    _cs_redraw
+}
+
+_cs_clear_screen() {
+    _cs_tab_reset
+    clear
+    _cs_redraw
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 10 — HISTÓRICO (usa _CS_BUFFER; ghost atualizado junto)
+# ══════════════════════════════════════════════════════════════
+
+_cs_hist_load() {
+    _CS_HIST_CACHE=(); _CS_HIST_MAX=0
+    local num cmd
+    while read -r num cmd; do
+        _CS_HIST_CACHE[$num]="$cmd"; _CS_HIST_MAX=$num
+    done < <(HISTTIMEFORMAT='' history)
+}
+
+_cs_hist_up() {
+    _cs_tab_reset
+    if (( _CS_HIST_POS == -1 )); then
+        _cs_hist_load
+        (( _CS_HIST_MAX == 0 )) && return
+        _CS_HIST_SAVED="$_CS_BUFFER"
+        _CS_HIST_PREFIX="$_CS_BUFFER"
+        _CS_HIST_POS=$(( _CS_HIST_MAX + 1 ))
     fi
-    local i
-    for (( i=_GT_HIST_IDX-1; i>=0; i-- )); do
-        if [[ "${_GT_HIST[$i]}" == "${_GT_HIST_PREFIX}"* && \
-              "${_GT_HIST[$i]}" != "$READLINE_LINE" ]]; then
-            _GT_HIST_IDX=$i
-            READLINE_LINE="${_GT_HIST[$i]}"
-            READLINE_POINT=${#READLINE_LINE}
-            _GT_SUG_LOCKED=""; _gt_find_suggestion "$READLINE_LINE"
-            _gt_overlay; return
+    local i entry prefix="$_CS_HIST_PREFIX"
+    for (( i = _CS_HIST_POS - 1; i >= 1; i-- )); do
+        entry="${_CS_HIST_CACHE[$i]:-}"
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == "$prefix"* && "$entry" != "$_CS_BUFFER" ]]; then
+            _CS_HIST_POS=$i
+            _CS_BUFFER="$entry"
+            _CS_POS=${#_CS_BUFFER}
+            _GT_SUG_LOCKED=""
+            _gt_find_suggestion "$_CS_BUFFER"
+            _cs_redraw; return
         fi
     done
+    _cs_redraw  # topo do histórico: mantém linha atual visível
 }
 
-_gt_hist_down() {
-    (( _GT_HIST_IDX == -1 )) && return
-    local hlen="${#_GT_HIST[@]}" i
-    for (( i=_GT_HIST_IDX+1; i<hlen; i++ )); do
-        if [[ "${_GT_HIST[$i]}" == "${_GT_HIST_PREFIX}"* ]]; then
-            _GT_HIST_IDX=$i
-            READLINE_LINE="${_GT_HIST[$i]}"
-            READLINE_POINT=${#READLINE_LINE}
-            _GT_SUG_LOCKED=""; _gt_find_suggestion "$READLINE_LINE"
-            _gt_overlay; return
+_cs_hist_down() {
+    _cs_tab_reset
+    if (( _CS_HIST_POS == -1 )); then
+        _cs_redraw; return
+    fi
+    local i entry prefix="$_CS_HIST_PREFIX"
+    for (( i = _CS_HIST_POS + 1; i <= _CS_HIST_MAX; i++ )); do
+        entry="${_CS_HIST_CACHE[$i]:-}"
+        [[ -z "$entry" ]] && continue
+        if [[ "$entry" == "$prefix"* && "$entry" != "$_CS_BUFFER" ]]; then
+            _CS_HIST_POS=$i
+            _CS_BUFFER="$entry"
+            _CS_POS=${#_CS_BUFFER}
+            _GT_SUG_LOCKED=""
+            _gt_find_suggestion "$_CS_BUFFER"
+            _cs_redraw; return
         fi
     done
-    _GT_HIST_IDX=-1
-    READLINE_LINE="$_GT_HIST_SAVED"
-    READLINE_POINT=${#READLINE_LINE}
-    _GT_SUG_LOCKED=""; _gt_find_suggestion "$READLINE_LINE"
-    _gt_overlay
+    _CS_HIST_POS=-1
+    _CS_BUFFER="$_CS_HIST_SAVED"
+    _CS_POS=${#_CS_BUFFER}
+    _GT_SUG_LOCKED=""
+    _gt_find_suggestion "$_CS_BUFFER"
+    _cs_redraw
 }
 
-# ── PROMPT_COMMAND ────────────────────────────────────────────
-_gt_prompt_cmd() {
-    _gt_sync_hist
-    # Atualiza PS1 original (pode ter mudado por git, venv, etc.)
-    _GT_ORIGINAL_PS1="$PS1"
-    _gt_calc_plen
-    _GT_HIST_IDX=-1; _GT_HIST_SAVED=""; _GT_HIST_PREFIX=""
+_cs_page_up() {
+    _cs_tab_reset
+    if (( _CS_HIST_MAX == 0 )); then
+        _cs_hist_load
+        (( _CS_HIST_MAX == 0 )) && return
+    fi
+    local first_entry="${_CS_HIST_CACHE[1]:-}"
+    if [[ -n "$first_entry" ]]; then
+        _CS_BUFFER="$first_entry"
+        _CS_POS=${#_CS_BUFFER}
+        _GT_SUG_LOCKED=""
+        _gt_find_suggestion "$_CS_BUFFER"
+        _cs_redraw
+    else
+        printf '\a' >&2
+    fi
+}
+
+_cs_page_down() {
+    _cs_tab_reset
+    _CS_BUFFER=""
+    _CS_POS=0
+    _GT_SUGGESTION=""
+    _GT_SUG_LOCKED=""
+    _cs_redraw
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 11 — ENTER
+# ══════════════════════════════════════════════════════════════
+
+_cs_enter() {
+    # Durante bracketed paste, \n é parte do conteúdo colado
+    if (( _CS_PASTING )); then
+        _CS_PASTE_BUF+=$'\n'
+        return
+    fi
+
+    _cs_tab_reset
     _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+
+    # Verifica se a sintaxe está incompleta (multiline)
+    # Acumula linhas anteriores + linha atual
+    local full_cmd
+    if [[ -n "$_CS_ML_BUFFER" ]]; then
+        full_cmd="${_CS_ML_BUFFER}"$'\n'"${_CS_BUFFER}"
+    else
+        full_cmd="$_CS_BUFFER"
+    fi
+
+    # Testa se o comando está sintaticamente completo
+    if [[ -n "$full_cmd" ]] && ! bash -n <(printf '%s\n' "$full_cmd") 2>/dev/null; then
+        # Sintaxe incompleta: acumula e mostra prompt secundário
+        _CS_ML_BUFFER="$full_cmd"
+        printf '\r\e[2K' >&2
+        _cs_show_prompt
+        printf '%s\n' "$_CS_BUFFER" >&2
+        _CS_BUFFER=""
+        _CS_POS=0
+        _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+        # Mostra prompt secundário (PS2)
+        local ps2="${PS2:-"> "}"
+        printf '%s' "$ps2" >&2
+        READLINE_LINE=""; READLINE_POINT=0
+        return
+    fi
+
+    # Sintaxe completa: executa
+    local cmd_str="$full_cmd"
+    _CS_ML_BUFFER=""   # limpa buffer multiline
+
+    printf '\r\e[2K' >&2
+    _cs_show_prompt # Esse causa um efeito duplicado
+    printf '%s\n' "$_CS_BUFFER" >&2
+
+    _CS_HIST_POS=-1; _CS_HIST_SAVED=""; _CS_HIST_PREFIX=""
+    _CS_BUFFER=""; _CS_POS=0
+
+    if [[ -n "$cmd_str" ]]; then
+        history -s -- "$cmd_str"
+
+        local stty_save
+        stty_save=$(stty -g 2>/dev/null)
+
+        # Remove binds para execução limpa do comando
+        for c in {a..z} {A..Z} {0..9}; do
+            bind -r "\"$c\"" 2>/dev/null
+        done
+        local symbols=(' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
+                       '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' '\' ',' '.'
+                       '/' '<' '>' '?' '`')
+        for s in "${symbols[@]}"; do
+            bind -r "\"$s\"" 2>/dev/null 2>&1
+        done
+        bind -r '"\C-m"' '"\C-j"' '"\r"' '"\C-x\C-b"' \
+                '"\e[3~"' '"\e[D"' '"\eOD"' '"\e[C"' '"\eOC"' \
+                '"\C-a"' '"\e[H"' '"\eOH"' '"\C-e"' '"\e[F"' '"\eOF"' \
+                '"\C-u"' '"\C-k"' '"\C-w"' '"\C-l"' \
+                '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' \
+                '"\e[5~"' '"\e[6~"' '"\C-f"' '"\C-g"' 2>/dev/null
+
+        stty icanon echo icrnl 2>/dev/null
+        PS1="$_CS_PS1_ORIG"
+
+        eval "$cmd_str"
+        local exit_code=$?
+
+        [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
+        PS1=""
+        _cs_ps1_update
+
+        # Reinstala binds de caracteres
+        for c in {a..z}; do
+            eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+            bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
+        done
+        for c in {A..Z}; do
+            eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+            bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
+        done
+        for c in {0..9}; do
+            eval "_cs_k_n${c}() { _cs_insert '${c}'; }"
+            bind -x "\"${c}\": _cs_k_n${c}" 2>/dev/null
+        done
+
+        # Reinstala símbolos
+        _cs_k_space()    { _cs_insert ' ';  }; bind -x '" ":  _cs_k_space'    2>/dev/null
+        _cs_k_tilde()    { _cs_insert '~';  }; bind -x '"~":  _cs_k_tilde'    2>/dev/null
+        _cs_k_bang()     { _cs_insert '!';  }; bind -x '"!":  _cs_k_bang'     2>/dev/null
+        _cs_k_at()       { _cs_insert '@';  }; bind -x '"@":  _cs_k_at'       2>/dev/null
+        _cs_k_hash()     { _cs_insert '#';  }; bind -x '"#":  _cs_k_hash'     2>/dev/null
+        _cs_k_dollar()   { _cs_insert '$';  }; bind -x '"$":  _cs_k_dollar'   2>/dev/null
+        _cs_k_percent()  { _cs_insert '%';  }; bind -x '"%":  _cs_k_percent'  2>/dev/null
+        _cs_k_caret()    { _cs_insert '^';  }; bind -x '"^":  _cs_k_caret'    2>/dev/null
+        _cs_k_amp()      { _cs_insert '&';  }; bind -x '"&":  _cs_k_amp'      2>/dev/null
+        _cs_k_star()     { _cs_insert '*';  }; bind -x '"*":  _cs_k_star'     2>/dev/null
+        _cs_k_lparen()   { _cs_insert '(';  }; bind -x '"(":  _cs_k_lparen'   2>/dev/null
+        _cs_k_rparen()   { _cs_insert ')';  }; bind -x '")":  _cs_k_rparen'   2>/dev/null
+        _cs_k_minus()    { _cs_insert '-';  }; bind -x '"-":  _cs_k_minus'    2>/dev/null
+        _cs_k_under()    { _cs_insert '_';  }; bind -x '"_":  _cs_k_under'    2>/dev/null
+        _cs_k_equal()    { _cs_insert '=';  }; bind -x '"=":  _cs_k_equal'    2>/dev/null
+        _cs_k_plus()     { _cs_insert '+';  }; bind -x '"+":  _cs_k_plus'     2>/dev/null
+        _cs_k_lbrack()   { _cs_insert '[';  }; bind -x '"[":  _cs_k_lbrack'   2>/dev/null
+        _cs_k_rbrack()   { _cs_insert ']';  }; bind -x '"]":  _cs_k_rbrack'   2>/dev/null
+        _cs_k_lbrace()   { _cs_insert '{';  }; bind -x '"{":  _cs_k_lbrace'   2>/dev/null
+        _cs_k_rbrace()   { _cs_insert '}';  }; bind -x '"}":  _cs_k_rbrace'   2>/dev/null
+        _cs_k_pipe()     { _cs_insert '|';  }; bind -x '"|":  _cs_k_pipe'     2>/dev/null
+        _cs_k_semi()     { _cs_insert ';';  }; bind -x '";":  _cs_k_semi'     2>/dev/null
+        _cs_k_colon()    { _cs_insert ':';  }; bind -x '":":  _cs_k_colon'    2>/dev/null
+        _cs_k_squote()   { _cs_insert "'";  }; bind -x "\"'\": _cs_k_squote"  2>/dev/null
+        _cs_k_dquote()   { _cs_insert '"';  }; bind -x '"\"": _cs_k_dquote'   2>/dev/null
+        _cs_k_comma()    { _cs_insert ',';  }; bind -x '",":  _cs_k_comma'    2>/dev/null
+        _cs_k_dot()      { _cs_insert '.';  }; bind -x '".":  _cs_k_dot'      2>/dev/null
+        _cs_k_slash()    { _cs_insert '/';  }; bind -x '"/":  _cs_k_slash'    2>/dev/null
+        _cs_k_lt()       { _cs_insert '<';  }; bind -x '"<":  _cs_k_lt'       2>/dev/null
+        _cs_k_gt()       { _cs_insert '>';  }; bind -x '">":  _cs_k_gt'       2>/dev/null
+        _cs_k_question() { _cs_insert '?';  }; bind -x '"?":  _cs_k_question' 2>/dev/null
+        _cs_k_bslash()   { _cs_insert '\'; }; bind -x '"\\": _cs_k_bslash'   2>/dev/null
+        _cs_k_backtick() { _cs_insert '`';  }; bind -x '"`":  _cs_k_backtick' 2>/dev/null
+
+        # Reinstala binds de controle
+        bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
+        bind -x '"\t":        _cs_do_tab'     2>/dev/null
+        bind -x '"\e[3~": _cs_delete'        2>/dev/null
+        bind -x '"\e[D":  _cs_left'          2>/dev/null
+        bind -x '"\eOD":  _cs_left'          2>/dev/null
+        bind -x '"\e[C":  _cs_right'         2>/dev/null
+        bind -x '"\eOC":  _cs_right'         2>/dev/null
+        bind -x '"\C-a":  _cs_home'          2>/dev/null
+        bind -x '"\e[H":  _cs_home'          2>/dev/null
+        bind -x '"\eOH":  _cs_home'          2>/dev/null
+        bind -x '"\C-e":  _cs_end'           2>/dev/null
+        bind -x '"\e[F":  _cs_end'           2>/dev/null
+        bind -x '"\eOF":  _cs_end'           2>/dev/null
+        bind -x '"\C-u":  _cs_kill_to_start' 2>/dev/null
+        bind -x '"\C-k":  _cs_kill_to_end'   2>/dev/null
+        bind -x '"\C-w":  _cs_kill_word'     2>/dev/null
+        bind -x '"\C-l":  _cs_clear_screen'  2>/dev/null
+        bind -x '"\e[A":  _cs_hist_up'       2>/dev/null
+        bind -x '"\eOA":  _cs_hist_up'       2>/dev/null
+        bind -x '"\e[B":  _cs_hist_down'     2>/dev/null
+        bind -x '"\eOB":  _cs_hist_down'     2>/dev/null
+        bind -x '"\e[5~": _cs_page_up'       2>/dev/null
+        bind -x '"\e[6~": _cs_page_down'     2>/dev/null
+        bind -x '"\C-f":  _cs_accept_ghost'  2>/dev/null
+        bind -x '"\C-g":  _cs_accept_ghost'  2>/dev/null
+        bind -x '"\C-m":  _cs_enter'         2>/dev/null
+        bind -x '"\e[200~": _cs_paste_start' 2>/dev/null
+        bind -x '"\e[201~": _cs_paste_end'   2>/dev/null
+
+        # Sincroniza histórico ghost após comando
+        _gt_sync_hist
+    fi
+
+    _cs_show_prompt
+    READLINE_LINE=""; READLINE_POINT=0
+    tput sgr0
 }
 
-# ── Binds ─────────────────────────────────────────────────────
-_gt_install_binds() {
-    local c
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 12 — CTRL+C E PROMPT_COMMAND
+# ══════════════════════════════════════════════════════════════
 
-    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
-             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
-             0 1 2 3 4 5 6 7 8 9; do
-        eval "_gti_${c}() { _GT_CHAR='${c}'; _gt_self_insert; }"
-        bind -x "\"${c}\": _gti_${c}" 2>/dev/null
-    done
-
-    _gti_space()    { _GT_CHAR=' ';  _gt_self_insert; }
-    _gti_tilde()    { _GT_CHAR='~';  _gt_self_insert; }
-    _gti_bang()     { _GT_CHAR='!';  _gt_self_insert; }
-    _gti_at()       { _GT_CHAR='@';  _gt_self_insert; }
-    _gti_hash()     { _GT_CHAR='#';  _gt_self_insert; }
-    _gti_dollar()   { _GT_CHAR='$';  _gt_self_insert; }
-    _gti_percent()  { _GT_CHAR='%';  _gt_self_insert; }
-    _gti_caret()    { _GT_CHAR='^';  _gt_self_insert; }
-    _gti_amp()      { _GT_CHAR='&';  _gt_self_insert; }
-    _gti_star()     { _GT_CHAR='*';  _gt_self_insert; }
-    _gti_lparen()   { _GT_CHAR='(';  _gt_self_insert; }
-    _gti_rparen()   { _GT_CHAR=')';  _gt_self_insert; }
-    _gti_minus()    { _GT_CHAR='-';  _gt_self_insert; }
-    _gti_under()    { _GT_CHAR='_';  _gt_self_insert; }
-    _gti_equal()    { _GT_CHAR='=';  _gt_self_insert; }
-    _gti_plus()     { _GT_CHAR='+';  _gt_self_insert; }
-    _gti_lbrack()   { _GT_CHAR='[';  _gt_self_insert; }
-    _gti_rbrack()   { _GT_CHAR=']';  _gt_self_insert; }
-    _gti_lbrace()   { _GT_CHAR='{';  _gt_self_insert; }
-    _gti_rbrace()   { _GT_CHAR='}';  _gt_self_insert; }
-    _gti_pipe()     { _GT_CHAR='|';  _gt_self_insert; }
-    _gti_semi()     { _GT_CHAR=';';  _gt_self_insert; }
-    _gti_colon()    { _GT_CHAR=':';  _gt_self_insert; }
-    _gti_squote()   { _GT_CHAR="'";  _gt_self_insert; }
-    _gti_dquote()   { _GT_CHAR='"';  _gt_self_insert; }
-    _gti_comma()    { _GT_CHAR=',';  _gt_self_insert; }
-    _gti_dot()      { _GT_CHAR='.';  _gt_self_insert; }
-    _gti_slash()    { _GT_CHAR='/';  _gt_self_insert; }
-    _gti_lt()       { _GT_CHAR='<';  _gt_self_insert; }
-    _gti_gt()       { _GT_CHAR='>';  _gt_self_insert; }
-    _gti_question() { _GT_CHAR='?';  _gt_self_insert; }
-    _gti_bslash()   { _GT_CHAR='\\'; _gt_self_insert; }
-    _gti_backtick() { _GT_CHAR='`';  _gt_self_insert; }
-
-    bind -x '" ":  _gti_space'    2>/dev/null
-    bind -x '"~":  _gti_tilde'    2>/dev/null
-    bind -x '"!":  _gti_bang'     2>/dev/null
-    bind -x '"@":  _gti_at'       2>/dev/null
-    bind -x '"#":  _gti_hash'     2>/dev/null
-    bind -x '"$":  _gti_dollar'   2>/dev/null
-    bind -x '"%":  _gti_percent'  2>/dev/null
-    bind -x '"^":  _gti_caret'    2>/dev/null
-    bind -x '"&":  _gti_amp'      2>/dev/null
-    bind -x '"*":  _gti_star'     2>/dev/null
-    bind -x '"(":  _gti_lparen'   2>/dev/null
-    bind -x '")":  _gti_rparen'   2>/dev/null
-    bind -x '"-":  _gti_minus'    2>/dev/null
-    bind -x '"_":  _gti_under'    2>/dev/null
-    bind -x '"=":  _gti_equal'    2>/dev/null
-    bind -x '"+":  _gti_plus'     2>/dev/null
-    bind -x '"[":  _gti_lbrack'   2>/dev/null
-    bind -x '"]":  _gti_rbrack'   2>/dev/null
-    bind -x '"{":  _gti_lbrace'   2>/dev/null
-    bind -x '"}":  _gti_rbrace'   2>/dev/null
-    bind -x '"|":  _gti_pipe'     2>/dev/null
-    bind -x '";":  _gti_semi'     2>/dev/null
-    bind -x '":":  _gti_colon'    2>/dev/null
-    bind -x "\"'\": _gti_squote"  2>/dev/null
-    bind -x '"\"": _gti_dquote'   2>/dev/null
-    bind -x '",":  _gti_comma'    2>/dev/null
-    bind -x '".":  _gti_dot'      2>/dev/null
-    bind -x '"/":  _gti_slash'    2>/dev/null
-    bind -x '"<":  _gti_lt'       2>/dev/null
-    bind -x '">":  _gti_gt'       2>/dev/null
-    bind -x '"?":  _gti_question' 2>/dev/null
-    bind -x '"\\": _gti_bslash'   2>/dev/null
-    bind -x '"`":  _gti_backtick' 2>/dev/null
-
-    bind -x '"\C-h":    _gt_backspace'       2>/dev/null
-    bind -x '"\x7f":    _gt_backspace'       2>/dev/null
-    bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
-    bind -x '"\e[D":    _gt_move_left'       2>/dev/null
-    bind -x '"\eOD":    _gt_move_left'       2>/dev/null
-    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
-    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
-    bind -x '"\C-f":    _gt_accept_ghost'    2>/dev/null
-    bind -x '"\C-a":    _gt_home'            2>/dev/null
-    bind -x '"\e[H":    _gt_home'            2>/dev/null
-    bind -x '"\eOH":    _gt_home'            2>/dev/null
-    bind -x '"\C-e":    _gt_end'             2>/dev/null
-    bind -x '"\e[F":    _gt_end'             2>/dev/null
-    bind -x '"\eOF":    _gt_end'             2>/dev/null
-    bind -x '"\C-k":    _gt_kill_line'       2>/dev/null
-    bind -x '"\C-u":    _gt_kill_to_start'   2>/dev/null
-    bind -x '"\C-w":    _gt_kill_word'       2>/dev/null
-    bind -x '"\C-l":    _gt_clear_screen'    2>/dev/null
-    bind -x '"\e[A":    _gt_hist_up'         2>/dev/null
-    bind -x '"\eOA":    _gt_hist_up'         2>/dev/null
-    bind -x '"\e[B":    _gt_hist_down'       2>/dev/null
-    bind -x '"\eOB":    _gt_hist_down'       2>/dev/null
+_cs_sigint() {
+    _cs_tab_reset
+    _CS_BUFFER=""; _CS_POS=0; _CS_ML_BUFFER=""; _CS_ML_LINES=0
+    _CS_PASTING=0; _CS_PASTE_BUF=""
+    _CS_HIST_POS=-1; _CS_HIST_SAVED=""; _CS_HIST_PREFIX=""
+    _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+    READLINE_LINE=""; READLINE_POINT=0
 }
 
-# ── Desinstalar ───────────────────────────────────────────────
-ghost-detach() {
+_cs_prompt_cmd() {
+    if (( _CS_ENTER_HANDLED )); then
+        _CS_ENTER_HANDLED=0
+        return 0
+    fi
+    _cs_ps1_update
+    _gt_sync_hist
+    _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+    _CS_ML_BUFFER=""
+    _cs_show_prompt
+    _CS_BUFFER=""; _CS_POS=0
+    READLINE_LINE=""; READLINE_POINT=0
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 13 — INSTALAÇÃO DE BINDS
+# ══════════════════════════════════════════════════════════════
+
+_cs_install_binds() {
+    bind 'set echo-control-characters off' 2>/dev/null
+    bind 'set enable-bracketed-paste on'   2>/dev/null
+
+    # ── Bracketed paste ───────────────────────────────────────
+    # \e[200~ = início do paste; \e[201~= fim do paste
+    _CS_PASTING=0
+    _CS_PASTE_BUF=""
+
+    _cs_paste_start() {
+        _CS_PASTING=1
+        _CS_PASTE_BUF=""
+    }
+    _cs_paste_end() {
+        _CS_PASTING=0
+        _CS_PASTE_BUF="${_CS_PASTE_BUF//$'\r'/}"
+        _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_PASTE_BUF}${_CS_BUFFER:$_CS_POS}"
+        _CS_POS=$(( _CS_POS + ${#_CS_PASTE_BUF} ))
+        _CS_PASTE_BUF=""
+        # A linha do prompt já está na tela — redraw deve sobrescrever a partir dela
+        _CS_ML_LINES=1
+        _gt_get_suggestion_fresh "$_CS_BUFFER"
+        _cs_redraw
+    }
+    bind -x '"\e[200~": _cs_paste_start' 2>/dev/null
+    bind -x '"\e[201~": _cs_paste_end'   2>/dev/null
+
     local c
-    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
-             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
-             0 1 2 3 4 5 6 7 8 9; do
-        bind -r "\"${c}\"" 2>/dev/null
+    for c in {a..z}; do
+        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
     done
-    local syms=('~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
-                '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' ',' '.'
-                '/' '<' '>' '?' '\\' '`' ' ')
+    for c in {A..Z}; do
+        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
+    done
+    for c in {0..9}; do
+        eval "_cs_k_n${c}() { _cs_insert '${c}'; }"
+        bind -x "\"${c}\": _cs_k_n${c}" 2>/dev/null
+    done
+
+    _cs_k_space()    { _cs_insert ' ';  }; bind -x '" ":  _cs_k_space'    2>/dev/null
+    _cs_k_tilde()    { _cs_insert '~';  }; bind -x '"~":  _cs_k_tilde'    2>/dev/null
+    _cs_k_bang()     { _cs_insert '!';  }; bind -x '"!":  _cs_k_bang'     2>/dev/null
+    _cs_k_at()       { _cs_insert '@';  }; bind -x '"@":  _cs_k_at'       2>/dev/null
+    _cs_k_hash()     { _cs_insert '#';  }; bind -x '"#":  _cs_k_hash'     2>/dev/null
+    _cs_k_dollar()   { _cs_insert '$';  }; bind -x '"$":  _cs_k_dollar'   2>/dev/null
+    _cs_k_percent()  { _cs_insert '%';  }; bind -x '"%":  _cs_k_percent'  2>/dev/null
+    _cs_k_caret()    { _cs_insert '^';  }; bind -x '"^":  _cs_k_caret'    2>/dev/null
+    _cs_k_amp()      { _cs_insert '&';  }; bind -x '"&":  _cs_k_amp'      2>/dev/null
+    _cs_k_star()     { _cs_insert '*';  }; bind -x '"*":  _cs_k_star'     2>/dev/null
+    _cs_k_lparen()   { _cs_insert '(';  }; bind -x '"(":  _cs_k_lparen'   2>/dev/null
+    _cs_k_rparen()   { _cs_insert ')';  }; bind -x '")":  _cs_k_rparen'   2>/dev/null
+    _cs_k_minus()    { _cs_insert '-';  }; bind -x '"-":  _cs_k_minus'    2>/dev/null
+    _cs_k_under()    { _cs_insert '_';  }; bind -x '"_":  _cs_k_under'    2>/dev/null
+    _cs_k_equal()    { _cs_insert '=';  }; bind -x '"=":  _cs_k_equal'    2>/dev/null
+    _cs_k_plus()     { _cs_insert '+';  }; bind -x '"+":  _cs_k_plus'     2>/dev/null
+    _cs_k_lbrack()   { _cs_insert '[';  }; bind -x '"[":  _cs_k_lbrack'   2>/dev/null
+    _cs_k_rbrack()   { _cs_insert ']';  }; bind -x '"]":  _cs_k_rbrack'   2>/dev/null
+    _cs_k_lbrace()   { _cs_insert '{';  }; bind -x '"{":  _cs_k_lbrace'   2>/dev/null
+    _cs_k_rbrace()   { _cs_insert '}';  }; bind -x '"}":  _cs_k_rbrace'   2>/dev/null
+    _cs_k_pipe()     { _cs_insert '|';  }; bind -x '"|":  _cs_k_pipe'     2>/dev/null
+    _cs_k_semi()     { _cs_insert ';';  }; bind -x '";":  _cs_k_semi'     2>/dev/null
+    _cs_k_colon()    { _cs_insert ':';  }; bind -x '":":  _cs_k_colon'    2>/dev/null
+    _cs_k_squote()   { _cs_insert "'";  }; bind -x "\"'\": _cs_k_squote"  2>/dev/null
+    _cs_k_dquote()   { _cs_insert '"';  }; bind -x '"\"": _cs_k_dquote'   2>/dev/null
+    _cs_k_comma()    { _cs_insert ',';  }; bind -x '",":  _cs_k_comma'    2>/dev/null
+    _cs_k_dot()      { _cs_insert '.';  }; bind -x '".":  _cs_k_dot'      2>/dev/null
+    _cs_k_slash()    { _cs_insert '/';  }; bind -x '"/":  _cs_k_slash'    2>/dev/null
+    _cs_k_lt()       { _cs_insert '<';  }; bind -x '"<":  _cs_k_lt'       2>/dev/null
+    _cs_k_gt()       { _cs_insert '>';  }; bind -x '">":  _cs_k_gt'       2>/dev/null
+    _cs_k_question() { _cs_insert '?';  }; bind -x '"?":  _cs_k_question' 2>/dev/null
+    _cs_k_bslash()   { _cs_insert '\'; }; bind -x '"\\": _cs_k_bslash'   2>/dev/null
+    _cs_k_backtick() { _cs_insert '`';  }; bind -x '"`":  _cs_k_backtick' 2>/dev/null
+
+    # Backspace via inputrc temporário
+    local _cs_rc _cs_old_inputrc
+    _cs_old_inputrc="${INPUTRC:-}"
+    _cs_rc=$(mktemp /tmp/cs-inputrc.XXXXXX 2>/dev/null)
+    {
+        local _cs_user_rc="${INPUTRC:-$HOME/.inputrc}"
+        [[ -f "$_cs_user_rc" ]] && printf '$include %s\n' "$_cs_user_rc"
+        printf '"\C-?": "\C-x\C-b"\n'
+        printf '"\C-h": "\C-x\C-b"\n'
+    } > "$_cs_rc" 2>/dev/null
+    INPUTRC="$_cs_rc" bind -f "$_cs_rc" 2>/dev/null
+    rm -f "$_cs_rc" 2>/dev/null
+    if [[ -z "$_cs_old_inputrc" ]]; then unset INPUTRC
+    else INPUTRC="$_cs_old_inputrc"; fi
+
+    bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
+    bind -x '"\t":        _cs_do_tab'     2>/dev/null
+    bind -x '"\e[3~": _cs_delete'        2>/dev/null
+    bind -x '"\e[D":  _cs_left'          2>/dev/null
+    bind -x '"\eOD":  _cs_left'          2>/dev/null
+    bind -x '"\e[C":  _cs_right'         2>/dev/null
+    bind -x '"\eOC":  _cs_right'         2>/dev/null
+    bind -x '"\C-a":  _cs_home'          2>/dev/null
+    bind -x '"\e[H":  _cs_home'          2>/dev/null
+    bind -x '"\eOH":  _cs_home'          2>/dev/null
+    bind -x '"\C-e":  _cs_end'           2>/dev/null
+    bind -x '"\e[F":  _cs_end'           2>/dev/null
+    bind -x '"\eOF":  _cs_end'           2>/dev/null
+    bind -x '"\C-u":  _cs_kill_to_start' 2>/dev/null
+    bind -x '"\C-k":  _cs_kill_to_end'   2>/dev/null
+    bind -x '"\C-w":  _cs_kill_word'     2>/dev/null
+    bind -x '"\C-l":  _cs_clear_screen'  2>/dev/null
+    bind -x '"\C-m":  _cs_enter'         2>/dev/null
+    bind -x '"\e[A":  _cs_hist_up'       2>/dev/null
+    bind -x '"\eOA":  _cs_hist_up'       2>/dev/null
+    bind -x '"\e[B":  _cs_hist_down'     2>/dev/null
+    bind -x '"\eOB":  _cs_hist_down'     2>/dev/null
+    bind -x '"\e[5~": _cs_page_up'       2>/dev/null
+    bind -x '"\e[6~": _cs_page_down'     2>/dev/null
+    bind -x '"\C-f":  _cs_accept_ghost'  2>/dev/null
+    bind -x '"\C-g":  _cs_accept_ghost'  2>/dev/null
+
+    trap '_cs_sigint' INT
+}
+
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 14 — DESINSTALAR
+# ══════════════════════════════════════════════════════════════
+
+custom-shell-detach() {
+    local c
+    for c in {a..z} {A..Z} {0..9}; do bind -r "\"$c\"" 2>/dev/null; done
     local s
-    for s in "${syms[@]}"; do bind -r "\"${s}\"" 2>/dev/null; done
-    bind -r '"\C-h"' '"\x7f"' '"\e[3~"' '"\e[D"' '"\eOD"' \
-         '"\e[C"'   '"\eOC"' '"\C-f"'  '"\C-a"' '"\e[H"' \
-         '"\eOH"'   '"\C-e"' '"\e[F"'  '"\eOF"' '"\C-k"' \
-         '"\C-u"'   '"\C-w"' '"\C-l"'  '"\e[A"' '"\eOA"' \
-         '"\e[B"'   '"\eOB"' 2>/dev/null
-    bind '"\e[A": previous-history' '"\eOA": previous-history' 2>/dev/null
-    bind '"\e[B": next-history'     '"\eOB": next-history'     2>/dev/null
-    bind '"\e[C": forward-char'     '"\eOC": forward-char'     2>/dev/null
-    bind '"\e[D": backward-char'    '"\eOD": backward-char'    2>/dev/null
-    bind '"\C-l": clear-screen'                                2>/dev/null
-    [[ -n "$_GT_ORIGINAL_PS1" ]] && PS1="$_GT_ORIGINAL_PS1"
-    PROMPT_COMMAND="${PROMPT_COMMAND//; _gt_prompt_cmd/}"
-    PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd; /}"
-    PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd/}"
-    _GT_LOADED=0
-    printf 'ghost-text desanexado.\n'
+    for s in ' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' \
+             '-' '_' '=' '+' '[' ']' '{' '}' '|' ';' ':' \
+             ',' '.' '/' '<' '>' '?' '`'; do
+        bind -r "\"$s\"" 2>/dev/null
+    done
+    bind -r "\"'\"" 2>/dev/null
+    bind -r '"\""' 2>/dev/null
+    bind -r '"\\"' 2>/dev/null
+    bind -r '"\t"' '"\C-x\C-b"' '"\e[3~"' \
+         '"\e[D"' '"\eOD"' '"\e[C"' '"\eOC"' \
+         '"\C-a"' '"\e[H"' '"\eOH"' \
+         '"\C-e"' '"\e[F"' '"\eOF"' \
+         '"\C-u"' '"\C-k"' '"\C-w"' '"\C-l"' '"\C-m"' \
+         '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' \
+         '"\e[5~"' '"\e[6~"' '"\C-f"' '"\C-g"' 2>/dev/null
+    trap - INT
+    PS1="$_CS_PS1_ORIG"
+    rm -f "$_GT_STATE_FILE" "$_CS_SINTAX_FILE" 2>/dev/null
+    _CS_LOADED=0
+    printf 'custom-shell-ghost desanexado.\n'
 }
 
-# ── Ativa ─────────────────────────────────────────────────────
-_GT_ORIGINAL_PS1="$PS1"
-_gt_install_binds
+# ══════════════════════════════════════════════════════════════
+# SEÇÃO 15 — ATIVAÇÃO
+# ══════════════════════════════════════════════════════════════
+
+_cs_install_binds
+_cs_ps1_update
 _gt_load_hist
-_gt_calc_plen
 
 if [[ -z "${PROMPT_COMMAND:-}" ]]; then
-    PROMPT_COMMAND="_gt_prompt_cmd"
-elif [[ "$PROMPT_COMMAND" != *"_gt_prompt_cmd"* ]]; then
-    PROMPT_COMMAND="${PROMPT_COMMAND}; _gt_prompt_cmd"
+    PROMPT_COMMAND="_cs_prompt_cmd"
+else
+    PROMPT_COMMAND="${PROMPT_COMMAND}; _cs_prompt_cmd"
 fi

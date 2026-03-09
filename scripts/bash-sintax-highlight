@@ -79,26 +79,204 @@ _cs_ps1_update() {
 }
 
 # ── Validação ──────────────────────────────────────────────────
+# _cs_cmd_valid() {
+#     local cmd="${1%% *}"
+#     [[ -z "$cmd" ]] && return 1
+#     command -v "$cmd" &>/dev/null
+# }
+
+# ── Validação (versão melhorada) ──────────────────────────────
 _cs_cmd_valid() {
-    local cmd="${1%% *}"
+    local full_cmd="$1"
+    local cmd="${full_cmd%% *}"  # Pega o primeiro argumento
+    
     [[ -z "$cmd" ]] && return 1
-    command -v "$cmd" &>/dev/null
+    
+    # Expande ~ para o home directory
+    if [[ "$cmd" =~ ^~ ]]; then
+        cmd="${cmd/#\~/$HOME}"
+    fi
+    
+    # Caso 1: É um caminho (contém /)
+    if [[ "$cmd" == */* ]]; then
+        # Se for caminho relativo, converte para absoluto
+        if [[ "$cmd" != /* ]]; then
+            local test_cmd="$PWD/$cmd"
+        else
+            local test_cmd="$cmd"
+        fi
+        
+        # Verifica se é executável
+        if [[ -x "$test_cmd" ]]; then
+            return 0
+        fi
+        
+        # Se não for executável, verifica se é um comando válido
+        # (para casos como ./script.sh)
+        if [[ -f "$test_cmd" ]] && [[ -x "$test_cmd" ]]; then
+            return 0
+        fi
+        
+        return 1
+    fi
+    
+    # Caso 2: Comando normal (verifica com command -v)
+    if command -v "$cmd" &>/dev/null; then
+        return 0
+    fi
+    
+    # Caso 3: Verifica se é um alias
+    if alias "$cmd" &>/dev/null; then
+        return 0
+    fi
+    
+    return 1
 }
 
 # ── Imprime prompt ─────────────────────────────────────────────
 _cs_show_prompt() {
+    printf '\e[0m' >&2  # Garante que as cores foram resetadas
     printf '%s' "$_CS_PS1_EXPANDED" >&2
 }
 
 # ── Buffer colorido ────────────────────────────────────────────
+# _cs_buffer_colored() {
+#     local buf="$_CS_BUFFER"
+#     [[ -z "$buf" ]] && { printf '%s' "$buf"; return; }
+#     local cmd="${buf%% *}"
+#     if _cs_cmd_valid "$cmd"; then
+#         printf '%s%s%s' "$_cs_green" "$buf" "$_cs_reset"
+#     else
+#         printf '%s%s%s' "$_cs_red" "$buf" "$_cs_reset"
+#     fi
+# }
+
+# ── Buffer colorido com highlight de diretórios e arquivos ───
 _cs_buffer_colored() {
     local buf="$_CS_BUFFER"
     [[ -z "$buf" ]] && { printf '%s' "$buf"; return; }
-    local cmd="${buf%% *}"
-    if _cs_cmd_valid "$cmd"; then
-        printf '%s%s%s' "$_cs_green" "$buf" "$_cs_reset"
+    
+    local result=""
+    local in_quote=0
+    local quote_char=""
+    local token=""
+    local i=0
+    local c
+    
+    # Cores
+    local blue=$'\e[34m'
+    local green=$'\e[32m'
+    local reset=$'\e[0m'
+    
+    # Parseia o buffer respeitando aspas
+    while (( i < ${#buf} )); do
+        c="${buf:$i:1}"
+        
+        # Lidando com aspas
+        if [[ "$c" == '"' || "$c" == "'" ]]; then
+            if (( in_quote == 0 )); then
+                in_quote=1
+                quote_char="$c"
+            elif [[ "$c" == "$quote_char" ]]; then
+                in_quote=0
+            fi
+            token+="$c"
+            ((i++))
+            continue
+        fi
+        
+        # Se está dentro de aspas, adiciona tudo sem processar
+        if (( in_quote == 1 )); then
+            token+="$c"
+            ((i++))
+            continue
+        fi
+        
+        # Separador de argumentos (espaço)
+        if [[ "$c" == " " ]]; then
+            # Processa o token atual antes do espaço
+            if [[ -n "$token" ]]; then
+                result+="$(_cs_colorize_token "$token")"
+                token=""
+            fi
+            result+="$c"
+            ((i++))
+            continue
+        fi
+        
+        token+="$c"
+        ((i++))
+    done
+    
+    # Processa o último token
+    if [[ -n "$token" ]]; then
+        result+="$(_cs_colorize_token "$token")"
+    fi
+    
+    printf '%s' "$result"
+}
+
+# ── Coloriza um token (comando, caminho, etc) ─────────────────
+_cs_colorize_token() {
+    local token="$1"
+    
+    # Cores
+    local blue=$'\e[34m'
+    local green=$'\e[32m'
+    local red=$'\e[31m'
+    local reset=$'\e[0m'
+    
+    # Verifica se é um caminho (contém /)
+    if [[ "$token" == */* ]]; then
+        # Expande ~ se presente
+        local expanded="$token"
+        if [[ "$expanded" =~ ^~ ]]; then
+            expanded="${expanded/#\~/$HOME}"
+        fi
+        
+        # Separa o diretório do arquivo
+        local dir_part="${expanded%/*}"
+        local file_part="${expanded##*/}"
+        local original_dir="${token%/*}"
+        local original_file="${token##*/}"
+        
+        # Se o diretório for vazio, é um arquivo na raiz
+        if [[ -z "$dir_part" ]]; then
+            dir_part="/"
+            original_dir=""
+        fi
+        
+        # Verifica se o diretório existe
+        local dir_exists=0
+        if [[ -d "$dir_part" ]] || [[ -d "$expanded" ]] || [[ -d "$original_dir" && -z "$original_dir" ]]; then
+            dir_exists=1
+        fi
+        
+        # Coloriza o diretório
+        if (( dir_exists )); then
+            printf '%s%s%s' "$blue" "$original_dir/" "$reset"
+        else
+            printf '%s%s%s' "$red" "$original_dir/" "$reset"
+        fi
+        
+        # Coloriza o arquivo
+        if [[ -x "$expanded" ]] && [[ ! -d "$expanded" ]]; then
+            printf '%s%s%s' "$green" "$original_file" "$reset"
+        elif [[ -f "$expanded" ]]; then
+            printf '%s' "$original_file"
+        else
+            # Se o arquivo não existe, fica sem cor especial
+            printf '%s' "$original_file"
+        fi
+        
+        return
+    fi
+    
+    # Não é caminho, verifica se é comando
+    if _cs_cmd_valid "$token"; then
+        printf '%s%s%s' "$green" "$token" "$reset"
     else
-        printf '%s%s%s' "$_cs_red" "$buf" "$_cs_reset"
+        printf '%s' "$token"
     fi
 }
 
@@ -534,6 +712,10 @@ _cs_page_down() {
 
 # ── Enter ──────────────────────────────────────────────────────
 _cs_enter() {
+    # Debug: inicio da função
+    echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: INICIO" >> /tmp/cs_debug.log
+    echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: BUFFER='$_CS_BUFFER'" >> /tmp/cs_debug.log
+    
     _cs_tab_reset
     printf '\r\e[2K' >&2
     _cs_show_prompt
@@ -543,19 +725,200 @@ _cs_enter() {
     _CS_HIST_SAVED=""
     _CS_HIST_PREFIX=""
     
-    local cmd="$_CS_BUFFER"
+    local cmd_str="$_CS_BUFFER"
     _CS_BUFFER=""
     _CS_POS=0
     
-    if [[ -n "$cmd" ]]; then
-        history -s -- "$cmd"
-        eval -- "$cmd"
+    if [[ -n "$cmd_str" ]]; then
+        history -s -- "$cmd_str"
+        
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Comando='$cmd_str'" >> /tmp/cs_debug.log
+        
+        # ========== SALVA ESTADO COMPLETO ==========
+        # Salva configurações do terminal
+        local stty_save
+        stty_save=$(stty -g 2>/dev/null)
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: stty_save='$stty_save'" >> /tmp/cs_debug.log
+        
+        # Salva o PS1 original
+        local ps1_save="$PS1"
+        
+        # Salva binds atuais para debug
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Salvando estado..." >> /tmp/cs_debug.log
+        
+        # ========== REMOVE NOSSOS BIDS ==========
+        # Remove TODOS os nossos binds
+        for c in {a..z} {A..Z} {0..9}; do
+            bind -r "\"$c\"" 2>/dev/null
+        done
+        
+        # Remove símbolos
+        local symbols=(' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_' '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' '\' ',' '.' '/' '<' '>' '?' '`')
+        for s in "${symbols[@]}"; do
+            bind -r "\"$s\"" 2>/dev/null 2>&1
+        done
+        
+        # Remove binds de controle
+        bind -r '"\C-m"' 2>/dev/null  # Enter
+        bind -r '"\C-j"' 2>/dev/null  # Line feed
+        bind -r '"\r"' 2>/dev/null    # Carriage return
+        bind -r '"\C-x\C-b"' 2>/dev/null
+        bind -r '"\e[3~"' 2>/dev/null  # Delete
+        bind -r '"\e[D"' 2>/dev/null   # Seta esquerda
+        bind -r '"\eOD"' 2>/dev/null   # Seta esquerda
+        bind -r '"\e[C"' 2>/dev/null   # Seta direita
+        bind -r '"\eOC"' 2>/dev/null   # Seta direita
+        bind -r '"\C-a"' 2>/dev/null   # Home
+        bind -r '"\e[H"' 2>/dev/null   # Home
+        bind -r '"\eOH"' 2>/dev/null   # Home
+        bind -r '"\C-e"' 2>/dev/null   # End
+        bind -r '"\e[F"' 2>/dev/null   # End
+        bind -r '"\eOF"' 2>/dev/null   # End
+        bind -r '"\C-u"' 2>/dev/null   # Kill to start
+        bind -r '"\C-k"' 2>/dev/null   # Kill to end
+        bind -r '"\C-w"' 2>/dev/null   # Kill word
+        bind -r '"\C-l"' 2>/dev/null   # Clear screen
+        bind -r '"\e[A"' 2>/dev/null   # Seta up
+        bind -r '"\eOA"' 2>/dev/null   # Seta up
+        bind -r '"\e[B"' 2>/dev/null   # Seta down
+        bind -r '"\eOB"' 2>/dev/null   # Seta down
+        bind -r '"\e[5~"' 2>/dev/null  # Page up
+        bind -r '"\e[6~"' 2>/dev/null  # Page down
+        
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Todos os binds removidos" >> /tmp/cs_debug.log
+        
+        # Configura o terminal para modo canônico
+        stty icanon echo icrnl 2>/dev/null
+        
+        # Restaura o PS1 original para o prompt do bash
+        PS1="$_CS_PS1_ORIG"
+        
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Executando comando..." >> /tmp/cs_debug.log
+        
+        # ========== EXECUTA O COMANDO ==========
+        # Executa o comando com configurações de terminal apropriadas
+        (
+            # Garante que o terminal está configurado corretamente
+            stty icanon echo icrnl 2>/dev/null
+            
+            # Executa o comando
+            eval "$cmd_str"
+        )
+        local exit_code=$?
+        
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Comando terminou com código $exit_code" >> /tmp/cs_debug.log
+        
+        # ========== RESTAURA TUDO ==========
+        # Restaura configurações do terminal
+        if [[ -n "$stty_save" ]]; then
+            stty "$stty_save" 2>/dev/null
+            echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Terminal restaurado" >> /tmp/cs_debug.log
+        fi
+        
+        # Zera o PS1 novamente (nosso modo)
+        PS1=""
+        
+        # Força atualização do PS1 expandido
+        _cs_ps1_update
+        
+        # Reinstala TODOS os nossos binds
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Reinstalando binds..." >> /tmp/cs_debug.log
+        
+        # Limpa qualquer bind residual
+        bind -r '"\C-m"' 2>/dev/null
+        
+        # Reinstala binds de caracteres
+        for c in {a..z}; do
+            eval "_cs_k_${c}() { _cs_insert '$c'; }"
+            bind -x "\"$c\": _cs_k_$c" 2>/dev/null
+        done
+        for c in {A..Z}; do
+            eval "_cs_k_${c}() { _cs_insert '$c'; }"
+            bind -x "\"$c\": _cs_k_$c" 2>/dev/null
+        done
+        for c in {0..9}; do
+            eval "_cs_k_n${c}() { _cs_insert '$c'; }"
+            bind -x "\"$c\": _cs_k_n$c" 2>/dev/null
+        done
+        
+        # Reinstala símbolos
+        _cs_k_space() { _cs_insert ' '; }; bind -x '" ": _cs_k_space' 2>/dev/null
+        _cs_k_tilde() { _cs_insert '~'; }; bind -x '"~": _cs_k_tilde' 2>/dev/null
+        _cs_k_bang() { _cs_insert '!'; }; bind -x '"!": _cs_k_bang' 2>/dev/null
+        _cs_k_at() { _cs_insert '@'; }; bind -x '"@": _cs_k_at' 2>/dev/null
+        _cs_k_hash() { _cs_insert '#'; }; bind -x '"#": _cs_k_hash' 2>/dev/null
+        _cs_k_dollar() { _cs_insert '$'; }; bind -x '"$": _cs_k_dollar' 2>/dev/null
+        _cs_k_percent() { _cs_insert '%'; }; bind -x '"%": _cs_k_percent' 2>/dev/null
+        _cs_k_caret() { _cs_insert '^'; }; bind -x '"^": _cs_k_caret' 2>/dev/null
+        _cs_k_amp() { _cs_insert '&'; }; bind -x '"&": _cs_k_amp' 2>/dev/null
+        _cs_k_star() { _cs_insert '*'; }; bind -x '"*": _cs_k_star' 2>/dev/null
+        _cs_k_lparen() { _cs_insert '('; }; bind -x '"(": _cs_k_lparen' 2>/dev/null
+        _cs_k_rparen() { _cs_insert ')'; }; bind -x '")": _cs_k_rparen' 2>/dev/null
+        _cs_k_minus() { _cs_insert '-'; }; bind -x '"-": _cs_k_minus' 2>/dev/null
+        _cs_k_under() { _cs_insert '_'; }; bind -x '"_": _cs_k_under' 2>/dev/null
+        _cs_k_equal() { _cs_insert '='; }; bind -x '"=": _cs_k_equal' 2>/dev/null
+        _cs_k_plus() { _cs_insert '+'; }; bind -x '"+": _cs_k_plus' 2>/dev/null
+        _cs_k_lbrack() { _cs_insert '['; }; bind -x '"[" : _cs_k_lbrack' 2>/dev/null
+        _cs_k_rbrack() { _cs_insert ']'; }; bind -x '"]": _cs_k_rbrack' 2>/dev/null
+        _cs_k_lbrace() { _cs_insert '{'; }; bind -x '"{": _cs_k_lbrace' 2>/dev/null
+        _cs_k_rbrace() { _cs_insert '}'; }; bind -x '"}": _cs_k_rbrace' 2>/dev/null
+        _cs_k_pipe() { _cs_insert '|'; }; bind -x '"|": _cs_k_pipe' 2>/dev/null
+        _cs_k_semi() { _cs_insert ';'; }; bind -x '";": _cs_k_semi' 2>/dev/null
+        _cs_k_colon() { _cs_insert ':'; }; bind -x '":": _cs_k_colon' 2>/dev/null
+        _cs_k_squote() { _cs_insert "'"; }; bind -x "\"'\": _cs_k_squote" 2>/dev/null
+        _cs_k_dquote() { _cs_insert '"'; }; bind -x '"\"": _cs_k_dquote' 2>/dev/null
+        _cs_k_comma() { _cs_insert ','; }; bind -x '",": _cs_k_comma' 2>/dev/null
+        _cs_k_dot() { _cs_insert '.'; }; bind -x '".": _cs_k_dot' 2>/dev/null
+        _cs_k_slash() { _cs_insert '/'; }; bind -x '"/": _cs_k_slash' 2>/dev/null
+        _cs_k_lt() { _cs_insert '<'; }; bind -x '"<": _cs_k_lt' 2>/dev/null
+        _cs_k_gt() { _cs_insert '>'; }; bind -x '">": _cs_k_gt' 2>/dev/null
+        _cs_k_question() { _cs_insert '?'; }; bind -x '"?": _cs_k_question' 2>/dev/null
+        _cs_k_bslash() { _cs_insert '\\'; }; bind -x '"\\": _cs_k_bslash' 2>/dev/null
+        _cs_k_backtick() { _cs_insert '`'; }; bind -x '"`": _cs_k_backtick' 2>/dev/null
+        
+        # Reinstala binds de controle
+        bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
+        bind -x '"\t":        _cs_do_tab'     2>/dev/null
+        bind -x '"\e[3~": _cs_delete'        2>/dev/null
+        bind -x '"\e[D":  _cs_left'          2>/dev/null
+        bind -x '"\eOD":  _cs_left'          2>/dev/null
+        bind -x '"\e[C":  _cs_right'         2>/dev/null
+        bind -x '"\eOC":  _cs_right'         2>/dev/null
+        bind -x '"\C-a":  _cs_home'          2>/dev/null
+        bind -x '"\e[H":  _cs_home'          2>/dev/null
+        bind -x '"\eOH":  _cs_home'          2>/dev/null
+        bind -x '"\C-e":  _cs_end'           2>/dev/null
+        bind -x '"\e[F":  _cs_end'           2>/dev/null
+        bind -x '"\eOF":  _cs_end'           2>/dev/null
+        bind -x '"\C-u":  _cs_kill_to_start' 2>/dev/null
+        bind -x '"\C-k":  _cs_kill_to_end'   2>/dev/null
+        bind -x '"\C-w":  _cs_kill_word'     2>/dev/null
+        bind -x '"\C-l":  _cs_clear_screen'  2>/dev/null
+        bind -x '"\e[A":  _cs_hist_up'       2>/dev/null
+        bind -x '"\eOA":  _cs_hist_up'       2>/dev/null
+        bind -x '"\e[B":  _cs_hist_down'     2>/dev/null
+        bind -x '"\eOB":  _cs_hist_down'     2>/dev/null
+        bind -x '"\e[5~": _cs_page_up'       2>/dev/null
+        bind -x '"\e[6~": _cs_page_down'     2>/dev/null
+        
+        # Restaura o bind do Enter por último
+        bind -x '"\C-m": _cs_enter' 2>/dev/null
+        
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Todos os binds reinstalados" >> /tmp/cs_debug.log
+        
+        # Verifica binds finais
+        echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: Verificando binds finais:" >> /tmp/cs_debug.log
+        bind -p | grep -E "^\"(\\\C-m|\\\e\[[ABCD])\"" >> /tmp/cs_debug.log 2>&1
     fi
     
     # Mostra o prompt novamente após o comando
     _cs_show_prompt
     READLINE_LINE=""
     READLINE_POINT=0
+    
+    echo "[$(date '+%H:%M:%S.%3N')] _cs_enter: FIM" >> /tmp/cs_debug.log
+    echo "---" >> /tmp/cs_debug.log
+    tput sgr0
 }
 
 _cs_clear_screen() { _cs_tab_reset; clear; _cs_redraw; }

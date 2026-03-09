@@ -4,13 +4,22 @@
 # INSTALAÇÃO: última linha do ~/.bashrc:
 #   source ~/ghost-text.bash
 #
+# Modos de operação:
+#   BASH_GHOST_TEXT=0 - Ghost text desativado
+#   BASH_GHOST_TEXT=1 - Completa com um toque (seta direita ou Ctrl+F)
+#   BASH_GHOST_TEXT=2 - Completa por palavras (cada seta adiciona uma palavra)
+#   BASH_GHOST_TEXT=3 - Completa por caracteres (cada seta adiciona um caractere)
+#
 # Atalhos:
-#   →  ou Ctrl+F  : aceita sugestão completa
+#   →  ou Ctrl+F  : aceita sugestão (comportamento depende do modo)
 #   ↑ ↓           : histórico filtrado pelo prefixo digitado
 #   ghost-detach  : desativa
 
 [[ "${_GT_LOADED:-}" == "1" ]] && return 0
 _GT_LOADED=1
+
+# Modo de operação (padrão: 1)
+: "${BASH_GHOST_TEXT:=1}"
 
 (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
     printf 'ghost-text: requer Bash 4.3+\n' >&2; return 1
@@ -27,7 +36,6 @@ _GT_HIST_IDX=-1
 _GT_HIST_SAVED=""
 _GT_HIST_PREFIX=""
 _GT_ORIGINAL_PS1=""
-_GT_SIMPLE_PS1='$ '
 
 # ── Histórico ─────────────────────────────────────────────────
 _gt_load_hist() {
@@ -100,23 +108,49 @@ _gt_get_suggestion_fresh() {
     _gt_get_suggestion "$1"
 }
 
-# ── Calcula PLEN a partir do PS1 simples ──────────────────────
-_gt_calc_plen() {
-    local ps1="$_GT_SIMPLE_PS1"
-    ps1="${ps1//\\[/}"; ps1="${ps1//\\]/}"
-    ps1=$(printf '%s' "$ps1" | sed 's/\\033/\x1b/g; s/\x1b\[[0-9;]*[a-zA-Z]//g')
+# ── Calcula o comprimento real do PS1 (removendo códigos ESC) ─
+_gt_calc_ps1_length() {
+    local ps1="$1"
+    # Remove códigos de escape do PS1 para contar caracteres visíveis
+    # Primeiro, converte \e, \033, \x1b para ESC real
+    ps1=$(printf '%s' "$ps1" | sed 's/\\e/\x1b/g; s/\\033/\x1b/g; s/\\x1b/\x1b/g')
+    # Depois remove sequências ESC [...] (códigos de cor)
+    ps1=$(printf '%s' "$ps1" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+    # Remove outros escapes comuns do bash
     ps1="${ps1//\\u/$USER}"
     ps1="${ps1//\\h/${HOSTNAME%%.*}}"
+    ps1="${ps1//\\H/$HOSTNAME}"
     ps1="${ps1//\\w/${PWD/#$HOME/\~}}"
     ps1="${ps1//\\W/${PWD##*/}}"
-    ps1="${ps1//\\n/}"; ps1="${ps1//\\r/}"
-    _GT_PLEN=$(printf '%s' "$ps1" | wc -m)
+    ps1="${ps1//\\$/$}"
+    ps1="${ps1//\\n/}"
+    ps1="${ps1//\\r/}"
+    ps1="${ps1//\\t/}"
+    ps1="${ps1//\\d/}"
+    ps1="${ps1//\\@/}"
+    ps1="${ps1//\\A/}"
+    ps1="${ps1//\\u/}"
+    
+    # Retorna o comprimento
+    printf '%s' "$ps1" | wc -m
 }
 
-# ── Overlay com PS1 temporariamente resetado ──────────────────
-# O swap de PS1 garante que o readline mede o prompt corretamente
-# durante o bind -x, sem ser enganado por OSC/multiline/cores.
+# ── Calcula PLEN a partir do PS1 atual ────────────────────────
+_gt_calc_plen() {
+    local expanded
+    expanded="${PS1@P}"
+    # Remove sequências de escape ANSI (cores, etc.)
+    expanded=$(printf '%s' "$expanded" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b[^[[][a-zA-Z]//g')
+    _GT_PLEN=${#expanded}
+}
+
+# ── Overlay sem reset de PS1 ──────────────────────────────────
+# Em vez de trocar o PS1, calculamos a posição correta baseado no
+# comprimento real do prompt atual
 _gt_overlay() {
+    # Se ghost text estiver desativado, não faz nada
+    [[ "$BASH_GHOST_TEXT" == "0" ]] && return
+    
     local line="$READLINE_LINE"
     local ghost=""
     if [[ -n "$_GT_SUGGESTION" && \
@@ -124,18 +158,18 @@ _gt_overlay() {
           "$_GT_SUGGESTION" != "$line" ]]; then
         ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
     fi
-    [[ -z "$ghost" ]] && { printf '\e7\e[%dG\e[K\e8' \
-        "$(( _GT_PLEN + $(printf '%s' "$line" | wc -m) + 1 ))" >&2; return; }
-    local col=$(( _GT_PLEN + $(printf '%s' "$line" | wc -m) + 1 ))
-    printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
-}
-
-# ── Wrappers que resetam PS1 temporariamente ──────────────────
-_gt_with_simple_ps1() {
-    local orig_ps1="$PS1"
-    PS1="$_GT_SIMPLE_PS1"
-    "$1"
-    PS1="$orig_ps1"
+    
+    # Calcula a posição do cursor: comprimento do prompt + linha atual + 1
+    local line_len=$(printf '%s' "$line" | wc -m)
+    local col=$(( _GT_PLEN + line_len + 1 ))
+    
+    if [[ -z "$ghost" ]]; then
+        # Apenas limpa o ghost text
+        printf '\e7\e[%dG\e[K\e8' "$col" >&2
+    else
+        # Mostra o ghost text
+        printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
+    fi
 }
 
 # ── Edição ────────────────────────────────────────────────────
@@ -170,22 +204,92 @@ _gt_move_left() {
     _gt_overlay
 }
 
+# Função modificada para suportar os 4 modos (0, 1, 2, 3)
 _gt_right_or_ghost() {
-    if (( READLINE_POINT < ${#READLINE_LINE} )); then
-        (( READLINE_POINT++ ))
-    else
-        # Cursor no fim: aceita ghost COMPLETO de uma vez
+    # Modo 0: Ghost text desativado - apenas move para direita
+    if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
+        if (( READLINE_POINT < ${#READLINE_LINE} )); then
+            (( READLINE_POINT++ ))
+        fi
+        _gt_overlay
+        return
+    fi
+    
+    # Modo 1: Completa com um toque (comportamento original)
+    if [[ "$BASH_GHOST_TEXT" == "1" ]]; then
+        if (( READLINE_POINT < ${#READLINE_LINE} )); then
+            (( READLINE_POINT++ ))
+        else
+            # Cursor no fim: aceita ghost COMPLETO de uma vez
+            _gt_get_suggestion "$READLINE_LINE"
+            if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
+                READLINE_LINE="$_GT_SUGGESTION"
+                READLINE_POINT=${#READLINE_LINE}
+                _GT_SUG_LOCKED=""
+            fi
+        fi
+    
+    # Modo 2: Completa por palavras (tokens)
+    elif [[ "$BASH_GHOST_TEXT" == "2" ]]; then
         _gt_get_suggestion "$READLINE_LINE"
         if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-            READLINE_LINE="$_GT_SUGGESTION"
-            READLINE_POINT=${#READLINE_LINE}
-            _GT_SUG_LOCKED=""
+            if (( READLINE_POINT < ${#_GT_SUGGESTION} )); then
+                # Pega o resto da sugestão
+                local rest="${_GT_SUGGESTION:${#READLINE_LINE}}"
+                
+                # Encontra o próximo token (palavra)
+                # Tokens são separados por espaços
+                if [[ "$rest" =~ ^([^[:space:]]+)([[:space:]]*)(.*) ]]; then
+                    local next_token="${BASH_REMATCH[1]}"
+                    local spaces="${BASH_REMATCH[2]}"
+                    
+                    # Adiciona o token completo mais os espaços que o seguem
+                    READLINE_LINE+="${next_token}${spaces}"
+                    READLINE_POINT=${#READLINE_LINE}
+                    
+                    # Se completou toda a sugestão, limpa o lock
+                    if [[ "$READLINE_LINE" == "$_GT_SUGGESTION" ]]; then
+                        _GT_SUG_LOCKED=""
+                    fi
+                else
+                    # Se não conseguir separar por tokens, adiciona o resto todo
+                    READLINE_LINE="$_GT_SUGGESTION"
+                    READLINE_POINT=${#READLINE_LINE}
+                    _GT_SUG_LOCKED=""
+                fi
+            fi
+        elif (( READLINE_POINT < ${#READLINE_LINE} )); then
+            # Se não há sugestão, apenas move o cursor
+            (( READLINE_POINT++ ))
+        fi
+    
+    # Modo 3: Completa progressivamente (um caractere por toque)
+    elif [[ "$BASH_GHOST_TEXT" == "3" ]]; then
+        _gt_get_suggestion "$READLINE_LINE"
+        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
+            if (( READLINE_POINT < ${#_GT_SUGGESTION} )); then
+                # Adiciona apenas o próximo caractere da sugestão
+                local next_char="${_GT_SUGGESTION:${#READLINE_LINE}:1}"
+                READLINE_LINE+="$next_char"
+                READLINE_POINT=${#READLINE_LINE}
+                
+                # Se completou toda a sugestão, limpa o lock
+                if [[ "$READLINE_LINE" == "$_GT_SUGGESTION" ]]; then
+                    _GT_SUG_LOCKED=""
+                fi
+            fi
+        elif (( READLINE_POINT < ${#READLINE_LINE} )); then
+            # Se não há sugestão, apenas move o cursor
+            (( READLINE_POINT++ ))
         fi
     fi
+    
     _gt_overlay
 }
 
 _gt_accept_ghost() {
+    [[ "$BASH_GHOST_TEXT" == "0" ]] && return
+    
     _gt_get_suggestion "$READLINE_LINE"
     if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
         READLINE_LINE="$_GT_SUGGESTION"

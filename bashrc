@@ -70,10 +70,19 @@ if [[ "$BLE_BASH_ENABLED" != 2 ]]; then
     if [[ "$OMB_THEME" == "agnoster" ]]; then
         prompt_theme_agnoster
     fi
+else
+    PS1='\[\e[1;35m\]\u\[\e[0m\] at \[\e[1;36m\]\H\[\e[0m\] in \[\e[1;34m\]\w\[\e[0m\]\n\$ '
 fi
 
 # Remove all existing completions
 complete -r
+
+# shellcheck source=/dev/null
+if [[ "$BLE_BASH_ENABLED" == 0 ]] && [[ "$OMB_THEME" == "demula" ]]; then
+    source ~/.shell_utils/scripts/bash-ghost-text2
+elif [[ "$BLE_BASH_ENABLED" == 0 ]]; then
+    source ~/.shell_utils/scripts/bash-ghost-text
+fi
 
 # Bash-it
 # shellcheck source=/dev/null
@@ -278,10 +287,7 @@ if [[ ! -f "$BLE_PATH" && ! -d "$BLE_REPO" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]];
 fi
 
 # Load ble.sh if it exists
-if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
-    # shellcheck source=/dev/null
-    source ~/.shell_utils/scripts/bash-line-editor
-elif [[ -f "$BLE_PATH" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
+if [[ -f "$BLE_PATH" ]] && [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     # shellcheck source=/dev/null
     source -- "$BLE_PATH"
     
@@ -495,7 +501,11 @@ shopt -s no_empty_cmd_completion
 complete -o default -o bashdefault -F _filedir_xspec -E 
 complete -o default -o filenames codium
 
-if [[ "$BLE_BASH_ENABLED" == 3 ]]; then
+if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
+    echo
     # shellcheck source=/dev/null
     source ~/.shell_utils/scripts/ble-simple
+    #source ~/.shell_utils/scripts/bash-ghost-text
+    #source ~/.shell_utils/scripts/bash-command-indicator
+    #source ~/.shell_utils/scripts/bash-sintax-highlight
 fi

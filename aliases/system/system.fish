@@ -26,13 +26,10 @@ alias sls='screen -ls'
 alias suspend_log='cat /tmp/suspend_if_inert.log'
 alias suspend_if_inert_log='suspend_log'
 
-
 alias clipboard='clip' #for https://getclipboard.app Use: cb command
 alias clipcopy='clip'
 alias pbcopy='clip'
 alias copy='clip'
-
-alias c='clear'
 
 alias gpu-list='list-gpu'
 alias INTEL='~/.shell_utils/scripts/faqs/intel-modesetting'
