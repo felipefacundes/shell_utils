@@ -213,9 +213,11 @@ _cs_cmd_valid() {
 _cs_colorize_token() {
     local token="$1"
     local is_first="${2:-0}"
-    local blue=$'\e[34m'
+    local cyan=$'\e[36m'
     local green=$'\e[32m'
     local red=$'\e[31m'
+    local yellow=$'\e[33m'            # aliases
+    local purple=$'\e[38;5;135m'      # funções
     local reset=$'\e[0m'
 
     if [[ "$token" == */* ]]; then
@@ -227,7 +229,7 @@ _cs_colorize_token() {
         [[ -z "$dir_part" ]] && dir_part="/"
 
         if [[ -d "$dir_part" ]] || [[ -d "$expanded" ]]; then
-            printf '%s%s%s' "$blue" "$original_dir/" "$reset"
+            printf '%s%s%s' "$cyan" "$original_dir/" "$reset"
         else
             printf '%s%s%s' "$red" "$original_dir/" "$reset"
         fi
@@ -240,19 +242,19 @@ _cs_colorize_token() {
         return
     fi
 
-    # Só aplica verde/vermelho no primeiro token (o comando)
     if (( is_first )); then
-        if _cs_cmd_valid "$token"; then
+        if declare -f "$token" &>/dev/null; then
+            printf '%s%s%s' "$purple" "$token" "$reset"
+        elif alias "$token" &>/dev/null 2>&1; then
+            printf '%s%s%s' "$yellow" "$token" "$reset"
+        elif _cs_cmd_valid "$token"; then
             printf '%s%s%s' "$green" "$token" "$reset"
         else
             printf '%s%s%s' "$red" "$token" "$reset"
         fi
     else
-        # Argumento sem /: verifica se é arquivo executável no diretório atual
         if [[ -x "$token" && -f "$token" ]]; then
             printf '%s%s%s' "$green" "$token" "$reset"
-        elif [[ -f "$token" ]]; then
-            printf '%s' "$token"
         else
             printf '%s' "$token"
         fi
