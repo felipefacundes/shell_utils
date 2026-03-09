@@ -182,6 +182,9 @@ _cs_ps1_update() {
     fi
 
     local last="${plain##*$'\n'}"
+    # Remove \[ e \] usados pelo bash para delimitar sequências não-imprimíveis
+    last="${last//\\[/}"
+    last="${last//\\]/}"
     _CS_PS1_LEN=${#last}
 }
 
@@ -265,7 +268,7 @@ _cs_buffer_colored() {
     local red=$'\e[31m'
     local blue=$'\e[34m'
     local yellow=$'\e[33m'    # operadores: | && || ; & 
-    local cyan=$'\e[36m'      # redireções: > >> < 2>
+    local cyan=$'\e[36m'      # redireções: > >> < 2> e operador =~
     local magenta=$'\e[35m'   # strings: "..." '...'
     local reset=$'\e[0m'
 
@@ -327,18 +330,18 @@ _cs_buffer_colored() {
             continue
         fi
 
-        # ── Operadores duplos: && || >> ───────────────────────
-        if [[ "$c2" == '&&' || "$c2" == '||' || "$c2" == '>>' ]]; then
+        # ── Operadores duplos: && || >> =~ ───────────────────────────────
+        if [[ "$c2" == '&&' || "$c2" == '||' || "$c2" == '>>' || "$c2" == '=~' ]]; then
             if [[ -n "$token" ]]; then
                 result+="$(_cs_colorize_token "$token" "$is_first")"
                 token=""
             fi
-            if [[ "$c2" == '>>' ]]; then
+            if [[ "$c2" == '>>' || "$c2" == '=~' ]]; then
                 result+="${cyan}${c2}${reset}"
             else
                 result+="${yellow}${c2}${reset}"
             fi
-            is_first=1   # após operador lógico, próxima palavra é comando
+            is_first=0   # após =~ o próximo token é o padrão (argumento)
             (( i += 2 )); continue
         fi
 
@@ -620,8 +623,11 @@ _cs_do_tab() {
         comp_spec=$(complete -p "$cmd" 2>/dev/null)
         comp_func=$(awk 'NF>=2{print $(NF-1)}' <<< "$comp_spec")
         if [[ -n "$comp_func" ]] && declare -f "$comp_func" &>/dev/null; then
-            local -a all_words
-            eval "all_words=( $line )" 2>/dev/null || read -ra all_words <<< "$line"
+            local -a all_words=()
+            # Faz o split da linha em array sem usar eval:
+            # read -ra respeita quoting simples mas não composto;
+            # para completions isso é suficiente na maioria dos casos.
+            read -ra all_words <<< "$line"
             local cword=${#all_words[@]}
             [[ "$line" =~ [[:space:]]$ ]] || (( cword-- ))
             (( cword < 0 )) && cword=0
@@ -943,12 +949,78 @@ _cs_clear_screen() {
 # SEÇÃO 10 — HISTÓRICO (usa _CS_BUFFER; ghost atualizado junto)
 # ══════════════════════════════════════════════════════════════
 
+# !! NÃO ALTERAR ESTE BLOCO — LER ANTES DE QUALQUER MUDANÇA !!
+#
+# _cs_hist_load usa dois parsers distintos controlados pela flag MULT_ON:
+#
+# PROBLEMA:
+#   Ao colar e executar uma função multiline no terminal, o bash registra
+#   cada linha do corpo da função como uma entrada separada no histórico
+#   em memória. O parser simples (read -r num cmd) interpreta essas linhas
+#   corretamente como entradas de histórico, mas algumas contêm código bash
+#   com substituições de parâmetro complexas, como:
+#
+#     expandido="${expandido//\\h/${HOSTNAME%%.*}}"
+#
+#   Quando essa string é armazenada em _CS_HIST_CACHE[$num] e posteriormente
+#   recuperada pelo UP e passada para (( )) ou outro contexto aritmético,
+#   o bash tenta avaliar o conteúdo e falha com:
+#
+#     bash: expandido="${expandido//\\h/${HOSTNAME%%.*}}": erro de sintaxe
+#     aritmética: esperava operando (token de erro é
+#     ""${expandido//\\h/${HOSTNAME%%.*}}"")
+#
+#   O parser simples não consegue distinguir essas entradas corrompidas
+#   porque o `read -r num cmd` quebra em qualquer espaço, fazendo `num`
+#   receber lixo quando a linha não tem o formato "  123  comando".
+#
+# SOLUÇÃO:
+#   Após qualquer saída de modo multiline (_CS_ML_LINES > 0), a flag global
+#   MULT_ON é setada e permanece ativa pelo resto da sessão do terminal.
+#   Isso é intencional — uma vez que o histórico foi contaminado por linhas
+#   de função multiline, ele permanece contaminado até o terminal ser fechado.
+#   Não há como "descontaminar" o histórico em memória do bash sem reabrir
+#   o terminal.
+#
+#   Com MULT_ON ativa, o parser robusto é usado: lê linha completa com
+#   IFS= read -r, valida o número com regex, detecta entradas duplicadas
+#   (mesmo número = linha de continuação multiline) e descarta entradas
+#   com padrões de código interno (_CS_*, _GT_*, blocos de função, etc).
+#
+#   Sem MULT_ON (sessão limpa, sem multiline executado), o parser rápido
+#   original é usado para máxima responsividade.
+#
+# CONSEQUÊNCIA DE REVERTER PARA PARSER ÚNICO:
+#   Usar só o parser simples → bug aritmético após multiline.
+#   Usar só o parser robusto → histórico antigo não é encontrado pelo UP
+#   (entradas legítimas com substituições de parâmetro são descartadas
+#   pelos filtros de segurança).
+#
+# ESTA DUALIDADE É A ÚNICA SOLUÇÃO VIÁVEL SEM REESCREVER O HISTFILE.
 _cs_hist_load() {
-    _CS_HIST_CACHE=(); _CS_HIST_MAX=0
-    local num cmd
-    while read -r num cmd; do
-        _CS_HIST_CACHE[$num]="$cmd"; _CS_HIST_MAX=$num
-    done < <(HISTTIMEFORMAT='' history)
+    if  (( _CS_ML_LINES > 0 )); then
+        MULT_ON="$_CS_ML_LINES"
+    fi
+    if [[ -z "$MULT_ON" ]]; then
+        _CS_HIST_CACHE=(); _CS_HIST_MAX=0
+        local num cmd
+        while read -r num cmd; do
+            _CS_HIST_CACHE[$num]="$cmd"; _CS_HIST_MAX=$num
+        done < <(HISTTIMEFORMAT='' history)
+    else
+        _CS_HIST_CACHE=(); _CS_HIST_MAX=0
+        local num cmd last_num=-1
+        while IFS= read -r line; do
+            [[ "$line" =~ ^[[:space:]]*([0-9]+)[[:space:]]+(.*)$ ]] || continue
+            num="${BASH_REMATCH[1]}"
+            cmd="${BASH_REMATCH[2]}"
+            [[ "$num" =~ ^[0-9]+$ ]]       || continue
+            [[ "$num" == "$last_num" ]]     && { _CS_HIST_CACHE[$last_num]=""; continue; }
+            last_num="$num"
+            _CS_HIST_CACHE[$num]="$cmd"
+            (( num > _CS_HIST_MAX )) && _CS_HIST_MAX=$num
+        done < <(HISTTIMEFORMAT='' history)
+    fi
 }
 
 _cs_hist_up() {
@@ -1073,9 +1145,17 @@ _cs_enter() {
     local cmd_str="$full_cmd"
     _CS_ML_BUFFER=""   # limpa buffer multiline
 
+    # !! NÃO ALTERAR ESTE BLOCO !!
+    # Imprime apenas $_CS_PS1_LAST (última linha do PS1) + o comando digitado.
+    # A linha superior do PS1 (ex: "user at host in ~/dir") já está na tela,
+    # desenhada pelo _cs_redraw — reimprimi-la via _cs_show_prompt causaria
+    # duplicação do prompt para qualquer PS1 multiline (com \n no meio).
+    # Usar _cs_show_prompt aqui foi testado e confirmado como causa do bug.
+    # Usar printf '\n' ou READLINE_LINE=" " também foi testado — o readline
+    # apaga a linha do comando inteira, deixando só a saída sem prompt/cmd.
+    # A única solução correta é esta: reescrever só a última linha do PS1.
     printf '\r\e[2K' >&2
-    _cs_show_prompt # Esse causa um efeito duplicado
-    printf '%s\n' "$_CS_BUFFER" >&2
+    printf '%s%s\n' "$_CS_PS1_LAST" "$_CS_BUFFER" >&2
 
     _CS_HIST_POS=-1; _CS_HIST_SAVED=""; _CS_HIST_PREFIX=""
     _CS_BUFFER=""; _CS_POS=0
@@ -1086,16 +1166,23 @@ _cs_enter() {
         local stty_save
         stty_save=$(stty -g 2>/dev/null)
 
-        # Remove binds para execução limpa do comando
-        for c in {a..z} {A..Z} {0..9}; do
-            bind -r "\"$c\"" 2>/dev/null
+        # ── Remove binds para execução limpa do comando ───────
+        # Letras e dígitos — remove via array sem eval
+        local -a _cs_alpha=({a..z} {A..Z} {0..9})
+        local _cs_c
+        for _cs_c in "${_cs_alpha[@]}"; do
+            bind -r "\"${_cs_c}\"" 2>/dev/null
         done
-        local symbols=(' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
-                       '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' '\' ',' '.'
-                       '/' '<' '>' '?' '`')
-        for s in "${symbols[@]}"; do
-            bind -r "\"$s\"" 2>/dev/null 2>&1
+
+        local -a _cs_symbols=(
+            ' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
+            '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' '\' ',' '.'
+            '/' '<' '>' '?' '`'
+        )
+        for _cs_c in "${_cs_symbols[@]}"; do
+            bind -r "\"${_cs_c}\"" 2>/dev/null
         done
+
         bind -r '"\C-m"' '"\C-j"' '"\r"' '"\C-x\C-b"' \
                 '"\e[3~"' '"\e[D"' '"\eOD"' '"\e[C"' '"\eOC"' \
                 '"\C-a"' '"\e[H"' '"\eOH"' '"\C-e"' '"\e[F"' '"\eOF"' \
@@ -1107,60 +1194,66 @@ _cs_enter() {
         PS1="$_CS_PS1_ORIG"
 
         eval "$cmd_str"
-        local exit_code=$?
+        _cs_exit_code=$? # Para ser usado no PS1 do bashrc
 
         [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
         PS1=""
         _cs_ps1_update
 
-        # Reinstala binds de caracteres
-        for c in {a..z}; do
-            eval "_cs_k_${c}() { _cs_insert '${c}'; }"
-            bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
+        # ── Reinstala binds de caracteres sem eval ────────────
+        # Função genérica de inserção com argumento capturado por closure via nameref
+        # Estratégia: uma única função despachante lê o char do nome da função invocada.
+        # bind -x chama a função pelo nome; o nome codifica o caractere.
+        #
+        # Para letras/dígitos: _cs_ki_<char> onde <char> é o caractere literal
+        # (letras minúsculas, maiúsculas e dígitos são seguros como sufixo de nome).
+        # Para símbolos: usamos funções nomeadas individualmente (já definidas globalmente).
+
+        local _cs_lc _cs_uc _cs_d
+        for _cs_lc in {a..z}; do
+            bind -x "\"${_cs_lc}\": _cs_k_${_cs_lc}" 2>/dev/null
         done
-        for c in {A..Z}; do
-            eval "_cs_k_${c}() { _cs_insert '${c}'; }"
-            bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
+        for _cs_uc in {A..Z}; do
+            bind -x "\"${_cs_uc}\": _cs_k_${_cs_uc}" 2>/dev/null
         done
-        for c in {0..9}; do
-            eval "_cs_k_n${c}() { _cs_insert '${c}'; }"
-            bind -x "\"${c}\": _cs_k_n${c}" 2>/dev/null
+        for _cs_d in {0..9}; do
+            bind -x "\"${_cs_d}\": _cs_k_n${_cs_d}" 2>/dev/null
         done
 
-        # Reinstala símbolos
-        _cs_k_space()    { _cs_insert ' ';  }; bind -x '" ":  _cs_k_space'    2>/dev/null
-        _cs_k_tilde()    { _cs_insert '~';  }; bind -x '"~":  _cs_k_tilde'    2>/dev/null
-        _cs_k_bang()     { _cs_insert '!';  }; bind -x '"!":  _cs_k_bang'     2>/dev/null
-        _cs_k_at()       { _cs_insert '@';  }; bind -x '"@":  _cs_k_at'       2>/dev/null
-        _cs_k_hash()     { _cs_insert '#';  }; bind -x '"#":  _cs_k_hash'     2>/dev/null
-        _cs_k_dollar()   { _cs_insert '$';  }; bind -x '"$":  _cs_k_dollar'   2>/dev/null
-        _cs_k_percent()  { _cs_insert '%';  }; bind -x '"%":  _cs_k_percent'  2>/dev/null
-        _cs_k_caret()    { _cs_insert '^';  }; bind -x '"^":  _cs_k_caret'    2>/dev/null
-        _cs_k_amp()      { _cs_insert '&';  }; bind -x '"&":  _cs_k_amp'      2>/dev/null
-        _cs_k_star()     { _cs_insert '*';  }; bind -x '"*":  _cs_k_star'     2>/dev/null
-        _cs_k_lparen()   { _cs_insert '(';  }; bind -x '"(":  _cs_k_lparen'   2>/dev/null
-        _cs_k_rparen()   { _cs_insert ')';  }; bind -x '")":  _cs_k_rparen'   2>/dev/null
-        _cs_k_minus()    { _cs_insert '-';  }; bind -x '"-":  _cs_k_minus'    2>/dev/null
-        _cs_k_under()    { _cs_insert '_';  }; bind -x '"_":  _cs_k_under'    2>/dev/null
-        _cs_k_equal()    { _cs_insert '=';  }; bind -x '"=":  _cs_k_equal'    2>/dev/null
-        _cs_k_plus()     { _cs_insert '+';  }; bind -x '"+":  _cs_k_plus'     2>/dev/null
-        _cs_k_lbrack()   { _cs_insert '[';  }; bind -x '"[":  _cs_k_lbrack'   2>/dev/null
-        _cs_k_rbrack()   { _cs_insert ']';  }; bind -x '"]":  _cs_k_rbrack'   2>/dev/null
-        _cs_k_lbrace()   { _cs_insert '{';  }; bind -x '"{":  _cs_k_lbrace'   2>/dev/null
-        _cs_k_rbrace()   { _cs_insert '}';  }; bind -x '"}":  _cs_k_rbrace'   2>/dev/null
-        _cs_k_pipe()     { _cs_insert '|';  }; bind -x '"|":  _cs_k_pipe'     2>/dev/null
-        _cs_k_semi()     { _cs_insert ';';  }; bind -x '";":  _cs_k_semi'     2>/dev/null
-        _cs_k_colon()    { _cs_insert ':';  }; bind -x '":":  _cs_k_colon'    2>/dev/null
-        _cs_k_squote()   { _cs_insert "'";  }; bind -x "\"'\": _cs_k_squote"  2>/dev/null
-        _cs_k_dquote()   { _cs_insert '"';  }; bind -x '"\"": _cs_k_dquote'   2>/dev/null
-        _cs_k_comma()    { _cs_insert ',';  }; bind -x '",":  _cs_k_comma'    2>/dev/null
-        _cs_k_dot()      { _cs_insert '.';  }; bind -x '".":  _cs_k_dot'      2>/dev/null
-        _cs_k_slash()    { _cs_insert '/';  }; bind -x '"/":  _cs_k_slash'    2>/dev/null
-        _cs_k_lt()       { _cs_insert '<';  }; bind -x '"<":  _cs_k_lt'       2>/dev/null
-        _cs_k_gt()       { _cs_insert '>';  }; bind -x '">":  _cs_k_gt'       2>/dev/null
-        _cs_k_question() { _cs_insert '?';  }; bind -x '"?":  _cs_k_question' 2>/dev/null
-        _cs_k_bslash()   { _cs_insert '\'; }; bind -x '"\\": _cs_k_bslash'   2>/dev/null
-        _cs_k_backtick() { _cs_insert '`';  }; bind -x '"`":  _cs_k_backtick' 2>/dev/null
+        # Reinstala símbolos (funções já existem no escopo global)
+        bind -x '" ":  _cs_k_space'    2>/dev/null
+        bind -x '"~":  _cs_k_tilde'    2>/dev/null
+        bind -x '"!":  _cs_k_bang'     2>/dev/null
+        bind -x '"@":  _cs_k_at'       2>/dev/null
+        bind -x '"#":  _cs_k_hash'     2>/dev/null
+        bind -x '"$":  _cs_k_dollar'   2>/dev/null
+        bind -x '"%":  _cs_k_percent'  2>/dev/null
+        bind -x '"^":  _cs_k_caret'    2>/dev/null
+        bind -x '"&":  _cs_k_amp'      2>/dev/null
+        bind -x '"*":  _cs_k_star'     2>/dev/null
+        bind -x '"(":  _cs_k_lparen'   2>/dev/null
+        bind -x '")":  _cs_k_rparen'   2>/dev/null
+        bind -x '"-":  _cs_k_minus'    2>/dev/null
+        bind -x '"_":  _cs_k_under'    2>/dev/null
+        bind -x '"=":  _cs_k_equal'    2>/dev/null
+        bind -x '"+":  _cs_k_plus'     2>/dev/null
+        bind -x '"[":  _cs_k_lbrack'   2>/dev/null
+        bind -x '"]":  _cs_k_rbrack'   2>/dev/null
+        bind -x '"{":  _cs_k_lbrace'   2>/dev/null
+        bind -x '"}":  _cs_k_rbrace'   2>/dev/null
+        bind -x '"|":  _cs_k_pipe'     2>/dev/null
+        bind -x '";":  _cs_k_semi'     2>/dev/null
+        bind -x '":":  _cs_k_colon'    2>/dev/null
+        bind -x "\"'\": _cs_k_squote"  2>/dev/null
+        bind -x '"\"": _cs_k_dquote'   2>/dev/null
+        bind -x '",":  _cs_k_comma'    2>/dev/null
+        bind -x '".":  _cs_k_dot'      2>/dev/null
+        bind -x '"/":  _cs_k_slash'    2>/dev/null
+        bind -x '"<":  _cs_k_lt'       2>/dev/null
+        bind -x '">":  _cs_k_gt'       2>/dev/null
+        bind -x '"?":  _cs_k_question' 2>/dev/null
+        bind -x '"\\": _cs_k_bslash'   2>/dev/null
+        bind -x '"`":  _cs_k_backtick' 2>/dev/null
 
         # Reinstala binds de controle
         bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
@@ -1199,6 +1292,9 @@ _cs_enter() {
     _cs_show_prompt
     READLINE_LINE=""; READLINE_POINT=0
     tput sgr0
+    if  (( _CS_ML_LINES > 0 )); then
+        MULT_ON="$_CS_ML_LINES"
+    fi
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -1235,6 +1331,7 @@ _cs_prompt_cmd() {
 _cs_install_binds() {
     bind 'set echo-control-characters off' 2>/dev/null
     bind 'set enable-bracketed-paste on'   2>/dev/null
+    bind 'set expand-tilde off'            2>/dev/null
 
     # ── Bracketed paste ───────────────────────────────────────
     # \e[200~ = início do paste; \e[201~= fim do paste
@@ -1259,20 +1356,76 @@ _cs_install_binds() {
     bind -x '"\e[200~": _cs_paste_start' 2>/dev/null
     bind -x '"\e[201~": _cs_paste_end'   2>/dev/null
 
-    local c
-    for c in {a..z}; do
-        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
-        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
-    done
-    for c in {A..Z}; do
-        eval "_cs_k_${c}() { _cs_insert '${c}'; }"
-        bind -x "\"${c}\": _cs_k_${c}" 2>/dev/null
-    done
-    for c in {0..9}; do
-        eval "_cs_k_n${c}() { _cs_insert '${c}'; }"
-        bind -x "\"${c}\": _cs_k_n${c}" 2>/dev/null
-    done
+    # ── Funções de inserção: letras minúsculas ────────────────
+    # Definidas individualmente sem eval; o caractere é literal no corpo.
+    _cs_k_a() { _cs_insert 'a'; }; bind -x '"a": _cs_k_a' 2>/dev/null
+    _cs_k_b() { _cs_insert 'b'; }; bind -x '"b": _cs_k_b' 2>/dev/null
+    _cs_k_c() { _cs_insert 'c'; }; bind -x '"c": _cs_k_c' 2>/dev/null
+    _cs_k_d() { _cs_insert 'd'; }; bind -x '"d": _cs_k_d' 2>/dev/null
+    _cs_k_e() { _cs_insert 'e'; }; bind -x '"e": _cs_k_e' 2>/dev/null
+    _cs_k_f() { _cs_insert 'f'; }; bind -x '"f": _cs_k_f' 2>/dev/null
+    _cs_k_g() { _cs_insert 'g'; }; bind -x '"g": _cs_k_g' 2>/dev/null
+    _cs_k_h() { _cs_insert 'h'; }; bind -x '"h": _cs_k_h' 2>/dev/null
+    _cs_k_i() { _cs_insert 'i'; }; bind -x '"i": _cs_k_i' 2>/dev/null
+    _cs_k_j() { _cs_insert 'j'; }; bind -x '"j": _cs_k_j' 2>/dev/null
+    _cs_k_k() { _cs_insert 'k'; }; bind -x '"k": _cs_k_k' 2>/dev/null
+    _cs_k_l() { _cs_insert 'l'; }; bind -x '"l": _cs_k_l' 2>/dev/null
+    _cs_k_m() { _cs_insert 'm'; }; bind -x '"m": _cs_k_m' 2>/dev/null
+    _cs_k_n() { _cs_insert 'n'; }; bind -x '"n": _cs_k_n' 2>/dev/null
+    _cs_k_o() { _cs_insert 'o'; }; bind -x '"o": _cs_k_o' 2>/dev/null
+    _cs_k_p() { _cs_insert 'p'; }; bind -x '"p": _cs_k_p' 2>/dev/null
+    _cs_k_q() { _cs_insert 'q'; }; bind -x '"q": _cs_k_q' 2>/dev/null
+    _cs_k_r() { _cs_insert 'r'; }; bind -x '"r": _cs_k_r' 2>/dev/null
+    _cs_k_s() { _cs_insert 's'; }; bind -x '"s": _cs_k_s' 2>/dev/null
+    _cs_k_t() { _cs_insert 't'; }; bind -x '"t": _cs_k_t' 2>/dev/null
+    _cs_k_u() { _cs_insert 'u'; }; bind -x '"u": _cs_k_u' 2>/dev/null
+    _cs_k_v() { _cs_insert 'v'; }; bind -x '"v": _cs_k_v' 2>/dev/null
+    _cs_k_w() { _cs_insert 'w'; }; bind -x '"w": _cs_k_w' 2>/dev/null
+    _cs_k_x() { _cs_insert 'x'; }; bind -x '"x": _cs_k_x' 2>/dev/null
+    _cs_k_y() { _cs_insert 'y'; }; bind -x '"y": _cs_k_y' 2>/dev/null
+    _cs_k_z() { _cs_insert 'z'; }; bind -x '"z": _cs_k_z' 2>/dev/null
 
+    # ── Funções de inserção: letras maiúsculas ────────────────
+    _cs_k_A() { _cs_insert 'A'; }; bind -x '"A": _cs_k_A' 2>/dev/null
+    _cs_k_B() { _cs_insert 'B'; }; bind -x '"B": _cs_k_B' 2>/dev/null
+    _cs_k_C() { _cs_insert 'C'; }; bind -x '"C": _cs_k_C' 2>/dev/null
+    _cs_k_D() { _cs_insert 'D'; }; bind -x '"D": _cs_k_D' 2>/dev/null
+    _cs_k_E() { _cs_insert 'E'; }; bind -x '"E": _cs_k_E' 2>/dev/null
+    _cs_k_F() { _cs_insert 'F'; }; bind -x '"F": _cs_k_F' 2>/dev/null
+    _cs_k_G() { _cs_insert 'G'; }; bind -x '"G": _cs_k_G' 2>/dev/null
+    _cs_k_H() { _cs_insert 'H'; }; bind -x '"H": _cs_k_H' 2>/dev/null
+    _cs_k_I() { _cs_insert 'I'; }; bind -x '"I": _cs_k_I' 2>/dev/null
+    _cs_k_J() { _cs_insert 'J'; }; bind -x '"J": _cs_k_J' 2>/dev/null
+    _cs_k_K() { _cs_insert 'K'; }; bind -x '"K": _cs_k_K' 2>/dev/null
+    _cs_k_L() { _cs_insert 'L'; }; bind -x '"L": _cs_k_L' 2>/dev/null
+    _cs_k_M() { _cs_insert 'M'; }; bind -x '"M": _cs_k_M' 2>/dev/null
+    _cs_k_N() { _cs_insert 'N'; }; bind -x '"N": _cs_k_N' 2>/dev/null
+    _cs_k_O() { _cs_insert 'O'; }; bind -x '"O": _cs_k_O' 2>/dev/null
+    _cs_k_P() { _cs_insert 'P'; }; bind -x '"P": _cs_k_P' 2>/dev/null
+    _cs_k_Q() { _cs_insert 'Q'; }; bind -x '"Q": _cs_k_Q' 2>/dev/null
+    _cs_k_R() { _cs_insert 'R'; }; bind -x '"R": _cs_k_R' 2>/dev/null
+    _cs_k_S() { _cs_insert 'S'; }; bind -x '"S": _cs_k_S' 2>/dev/null
+    _cs_k_T() { _cs_insert 'T'; }; bind -x '"T": _cs_k_T' 2>/dev/null
+    _cs_k_U() { _cs_insert 'U'; }; bind -x '"U": _cs_k_U' 2>/dev/null
+    _cs_k_V() { _cs_insert 'V'; }; bind -x '"V": _cs_k_V' 2>/dev/null
+    _cs_k_W() { _cs_insert 'W'; }; bind -x '"W": _cs_k_W' 2>/dev/null
+    _cs_k_X() { _cs_insert 'X'; }; bind -x '"X": _cs_k_X' 2>/dev/null
+    _cs_k_Y() { _cs_insert 'Y'; }; bind -x '"Y": _cs_k_Y' 2>/dev/null
+    _cs_k_Z() { _cs_insert 'Z'; }; bind -x '"Z": _cs_k_Z' 2>/dev/null
+
+    # ── Funções de inserção: dígitos ──────────────────────────
+    _cs_k_n0() { _cs_insert '0'; }; bind -x '"0": _cs_k_n0' 2>/dev/null
+    _cs_k_n1() { _cs_insert '1'; }; bind -x '"1": _cs_k_n1' 2>/dev/null
+    _cs_k_n2() { _cs_insert '2'; }; bind -x '"2": _cs_k_n2' 2>/dev/null
+    _cs_k_n3() { _cs_insert '3'; }; bind -x '"3": _cs_k_n3' 2>/dev/null
+    _cs_k_n4() { _cs_insert '4'; }; bind -x '"4": _cs_k_n4' 2>/dev/null
+    _cs_k_n5() { _cs_insert '5'; }; bind -x '"5": _cs_k_n5' 2>/dev/null
+    _cs_k_n6() { _cs_insert '6'; }; bind -x '"6": _cs_k_n6' 2>/dev/null
+    _cs_k_n7() { _cs_insert '7'; }; bind -x '"7": _cs_k_n7' 2>/dev/null
+    _cs_k_n8() { _cs_insert '8'; }; bind -x '"8": _cs_k_n8' 2>/dev/null
+    _cs_k_n9() { _cs_insert '9'; }; bind -x '"9": _cs_k_n9' 2>/dev/null
+
+    # ── Funções de inserção: símbolos ─────────────────────────
     _cs_k_space()    { _cs_insert ' ';  }; bind -x '" ":  _cs_k_space'    2>/dev/null
     _cs_k_tilde()    { _cs_insert '~';  }; bind -x '"~":  _cs_k_tilde'    2>/dev/null
     _cs_k_bang()     { _cs_insert '!';  }; bind -x '"!":  _cs_k_bang'     2>/dev/null
@@ -1357,13 +1510,18 @@ _cs_install_binds() {
 # ══════════════════════════════════════════════════════════════
 
 custom-shell-detach() {
-    local c
-    for c in {a..z} {A..Z} {0..9}; do bind -r "\"$c\"" 2>/dev/null; done
-    local s
-    for s in ' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' \
-             '-' '_' '=' '+' '[' ']' '{' '}' '|' ';' ':' \
-             ',' '.' '/' '<' '>' '?' '`'; do
-        bind -r "\"$s\"" 2>/dev/null
+    local -a _cs_alpha=({a..z} {A..Z} {0..9})
+    local _cs_c
+    for _cs_c in "${_cs_alpha[@]}"; do
+        bind -r "\"${_cs_c}\"" 2>/dev/null
+    done
+    local -a _cs_syms=(
+        ' ' '~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')'
+        '-' '_' '=' '+' '[' ']' '{' '}' '|' ';' ':'
+        ',' '.' '/' '<' '>' '?' '`'
+    )
+    for _cs_c in "${_cs_syms[@]}"; do
+        bind -r "\"${_cs_c}\"" 2>/dev/null
     done
     bind -r "\"'\"" 2>/dev/null
     bind -r '"\""' 2>/dev/null

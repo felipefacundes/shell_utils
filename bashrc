@@ -71,7 +71,12 @@ if [[ "$BLE_BASH_ENABLED" != 2 ]]; then
         prompt_theme_agnoster
     fi
 else
-    PS1='\[\e[1;35m\]\u\[\e[0m\] at \[\e[1;36m\]\H\[\e[0m\] in \[\e[1;34m\]\w\[\e[0m\]\n\$ '
+    _cs_exit_code=0
+    _cs_exit_show() {
+        (( _cs_exit_code == 0 )) && return
+        printf ' \e[1;31m%d\e[0m' "$_cs_exit_code"
+    }
+    PS1='\[\e[1;35m\]\u\[\e[0m\] at \[\e[1;32m\]\H\[\e[0m\] in \[\e[1;36m\]\w\[\e[0m\]$(_cs_exit_show)\n\$ '
 fi
 
 # Remove all existing completions
@@ -126,7 +131,7 @@ export HISTIGNORE=' *'
 ### ignoreboth:erasedups:ignorespace:ignoredups
 export HISTCONTROL="ignoreboth:erasedups:cmdfail"
 export HISTTIMEFORMAT="[%F %T] "
-#export HISTTIMEFORMAT=
+#export HISTTIMEFORMAT=''
 # Change the file location because certain bash sessions truncate .bash_history file upon close.
 # http://superuser.com/questions/575479/bash-history-truncated-to-500-lines-on-each-login
 export HISTFILE=~/.bash_history
@@ -505,7 +510,4 @@ if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
     echo
     # shellcheck source=/dev/null
     source ~/.shell_utils/scripts/ble-simple
-    #source ~/.shell_utils/scripts/bash-ghost-text
-    #source ~/.shell_utils/scripts/bash-command-indicator
-    #source ~/.shell_utils/scripts/bash-sintax-highlight
 fi
