@@ -1311,6 +1311,12 @@ _cs_sigint() {
 }
 
 _cs_prompt_cmd() {
+    # Executa _prompt_command se ela existir no escopo atual (definida no ~/.bashrc).
+    # Isso garante que notificações, fix_bash_history e demais hooks do usuário
+    # sejam disparados normalmente, sem precisar duplicá-los aqui.
+    if declare -f _prompt_command &>/dev/null; then
+        _prompt_command
+    fi
     if (( _CS_ENTER_HANDLED )); then
         _CS_ENTER_HANDLED=0
         return 0
@@ -1551,5 +1557,5 @@ _gt_load_hist
 if [[ -z "${PROMPT_COMMAND:-}" ]]; then
     PROMPT_COMMAND="_cs_prompt_cmd"
 else
-    PROMPT_COMMAND="${PROMPT_COMMAND}; _cs_prompt_cmd"
+    PROMPT_COMMAND="_cs_prompt_cmd ${PROMPT_COMMAND}"
 fi
