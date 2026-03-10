@@ -167,10 +167,17 @@ _gt_overlay() {
 
 # ── Sincroniza estado interno → readline ──────────────────────
 _gt_sync() {
-    READLINE_LINE="$_GT_BUFFER"
-    READLINE_POINT=$_GT_POS
-    _gt_state_write
-    (( _GT_IS_TERMUX )) || _gt_overlay
+    if (( _GT_IS_TERMUX )); then
+        # No Termux: estado mínimo — qualquer printf/rm após READLINE quebra a linha
+        READLINE_LINE="$_GT_BUFFER"
+        READLINE_POINT=$_GT_POS
+        _gt_state_write
+    else
+        READLINE_LINE="$_GT_BUFFER"
+        READLINE_POINT=$_GT_POS
+        _gt_state_write
+        _gt_overlay
+    fi
 }
 
 # ── Edição ─────────────────────────────────────────────────────
@@ -210,7 +217,6 @@ _gt_move_left() {
 
 _gt_right_or_ghost() {
     _gt_state_read
-    # Sempre busca sugestão fresca — _GT_SUGGESTION não persiste no Termux
     _gt_find_suggestion "$_GT_BUFFER"
 
     if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
@@ -253,7 +259,14 @@ _gt_right_or_ghost() {
         fi
     fi
 
-    _gt_sync
+    # No Termux _gt_sync com overlay quebra READLINE — aplica inline
+    if (( _GT_IS_TERMUX )); then
+        _gt_state_write
+        READLINE_LINE="$_GT_BUFFER"
+        READLINE_POINT=$_GT_POS
+    else
+        _gt_sync
+    fi
 }
 
 _gt_accept_ghost() {
