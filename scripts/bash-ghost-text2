@@ -127,14 +127,14 @@ _gt_calc_plen() {
     expanded="${PS1@P}"
     PS1="$_save_ps1"
     # Remove OSC, CSI, save/restore cursor, delimitadores \x01\x02 do bash
+    # tr remove \x01 e \x02 (sed do Termux não interpreta \x01/\x02)
     plain=$(printf '%s' "$expanded" \
         | sed 's/\x1b][^\x07]*\x07//g;
                s/\x1b][^\x1b]*\x1b\\//g;
                s/\x1b\[[0-9;]*[A-Za-z]//g;
                s/\x1b[78]//g;
-               s/\x1b(B//g;
-               s/\x01//g;
-               s/\x02//g')
+               s/\x1b(B//g' \
+        | tr -d '\001\002')
     # Apenas a última linha do prompt (onde o usuário digita)
     last="${plain##*$'\n'}"
     _GT_PLEN=${#last}
