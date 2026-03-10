@@ -416,6 +416,21 @@ _gt_install_binds() {
     bind -x '"\eOA":    _gt_hist_up'         2>/dev/null
     bind -x '"\e[B":    _gt_hist_down'       2>/dev/null
     bind -x '"\eOB":    _gt_hist_down'       2>/dev/null
+
+    # Reinstala setas no final — o bind de "[", "C", "A", "B" do loop sobrescreve
+    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\e[D":    _gt_move_left'       2>/dev/null
+    bind -x '"\eOD":    _gt_move_left'       2>/dev/null
+    bind -x '"\e[A":    _gt_hist_up'         2>/dev/null
+    bind -x '"\eOA":    _gt_hist_up'         2>/dev/null
+    bind -x '"\e[B":    _gt_hist_down'       2>/dev/null
+    bind -x '"\eOB":    _gt_hist_down'       2>/dev/null
+    bind -x '"\e[H":    _gt_home'            2>/dev/null
+    bind -x '"\eOH":    _gt_home'            2>/dev/null
+    bind -x '"\e[F":    _gt_end'             2>/dev/null
+    bind -x '"\eOF":    _gt_end'             2>/dev/null
+    bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
 }
 
 # ── Desinstalar ───────────────────────────────────────────────
