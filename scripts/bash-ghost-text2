@@ -42,6 +42,10 @@ _GT_HIST_PREFIX=""
 _GT_ORIGINAL_PS1=""
 _GT_SIMPLE_PS1='$ '
 
+# Adiciona estas variáveis globais logo após as existentes:
+_GT_BUFFER=""   # espelho de READLINE_LINE (imune ao bug do Termux)
+_GT_POS=0       # espelho de READLINE_POINT
+
 # ── Histórico ─────────────────────────────────────────────────
 _gt_load_hist() {
     history -a 2>/dev/null; history -n 2>/dev/null
@@ -156,26 +160,28 @@ _gt_with_simple_ps1() {
 
 # ── Edição ────────────────────────────────────────────────────
 _gt_self_insert() {
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${_GT_CHAR}${READLINE_LINE:$READLINE_POINT}"
-    (( READLINE_POINT++ ))
+    _GT_BUFFER="${READLINE_LINE:0:$READLINE_POINT}${_GT_CHAR}${READLINE_LINE:$READLINE_POINT}"
+    _GT_POS=$(( READLINE_POINT + 1 ))
+    READLINE_LINE="${_GT_BUFFER}"
+    READLINE_POINT=${_GT_POS}
     _gt_hist_reset
-    _gt_get_suggestion_fresh "$READLINE_LINE"   # busca fresca ao digitar
+    _gt_get_suggestion_fresh "$_GT_BUFFER"
     _gt_overlay
-    _GT_LINE="$READLINE_LINE"
-    _GT_POINT="$READLINE_POINT"
 }
 
 # Backspace estilo zsh: mantém lock → revela ghost progressivamente
 _gt_backspace() {
-    (( READLINE_POINT > 0 )) && {
-        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
-        (( READLINE_POINT-- ))
+    _GT_BUFFER="${READLINE_LINE}"
+    _GT_POS="${READLINE_POINT}"
+    (( _GT_POS > 0 )) && {
+        _GT_BUFFER="${_GT_BUFFER:0:$((_GT_POS-1))}${_GT_BUFFER:$_GT_POS}"
+        (( _GT_POS-- ))
     }
+    READLINE_LINE="${_GT_BUFFER}"
+    READLINE_POINT=${_GT_POS}
     _gt_hist_reset
-    _gt_get_suggestion "$READLINE_LINE"   # com lock → revela progressivamente
+    _gt_get_suggestion "$_GT_BUFFER"
     _gt_overlay
-    _GT_LINE="$READLINE_LINE"
-    _GT_POINT="$READLINE_POINT"
 }
 
 _gt_delete_char() {
@@ -195,109 +201,78 @@ _gt_move_left() {
 # Função modificada para suportar os 3 modos
 # Função modificada para suportar os 4 modos (0, 1, 2, 3)
 _gt_right_or_ghost() {
-    local line="${_GT_LINE:-$READLINE_LINE}"
-    local point="${_GT_POINT:-$READLINE_POINT}"
-    # Modo 0: Ghost text desativado - apenas move para direita
-    if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
-        if (( READLINE_POINT < ${#READLINE_LINE} )); then
-            (( READLINE_POINT++ ))
-        fi
-        _gt_overlay
-        return
+    # Sincroniza buffer próprio com o estado atual do readline
+    # Se READLINE_LINE chegou vazio (bug Termux), usa _GT_BUFFER salvo
+    if [[ -n "$READLINE_LINE" ]]; then
+        _GT_BUFFER="$READLINE_LINE"
+        _GT_POS="$READLINE_POINT"
     fi
-    
-    # Modo 1: Completa com um toque (comportamento original)
+    # A partir daqui usa só _GT_BUFFER/_GT_POS
+
+    if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
+        (( _GT_POS < ${#_GT_BUFFER} )) && (( _GT_POS++ ))
+        READLINE_LINE="$_GT_BUFFER"
+        READLINE_POINT=$_GT_POS
+        _gt_overlay; return
+    fi
+
     if [[ "$BASH_GHOST_TEXT" == "1" ]]; then
-        if (( READLINE_POINT < ${#READLINE_LINE} )); then
-            (( READLINE_POINT++ ))
+        if (( _GT_POS < ${#_GT_BUFFER} )); then
+            (( _GT_POS++ ))
         else
-            # Cursor no fim: aceita ghost COMPLETO de uma vez
-            _gt_get_suggestion "$READLINE_LINE"
-            if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-                READLINE_LINE="$_GT_SUGGESTION"
-                READLINE_POINT=${#READLINE_LINE}
+            _gt_get_suggestion "$_GT_BUFFER"
+            if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* ]]; then
+                _GT_BUFFER="$_GT_SUGGESTION"
+                _GT_POS=${#_GT_BUFFER}
                 _GT_SUG_LOCKED=""
             fi
         fi
-    
-    # Modo 2: Completa por palavras (tokens)
+
     elif [[ "$BASH_GHOST_TEXT" == "2" ]]; then
-        _gt_get_suggestion "$READLINE_LINE"
-        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-            if (( READLINE_POINT < ${#_GT_SUGGESTION} )); then
-                # Pega o resto da sugestão
-                local rest="${_GT_SUGGESTION:${#READLINE_LINE}}"
-                
-                # Encontra o próximo token (palavra)
-                # Tokens são separados por espaços
-                if [[ "$rest" =~ ^([^[:space:]]+)([[:space:]]*)(.*) ]]; then
-                    local next_token="${BASH_REMATCH[1]}"
-                    local spaces="${BASH_REMATCH[2]}"
-                    
-                    # Adiciona o token completo mais os espaços que o seguem
-                    READLINE_LINE+="${next_token}${spaces}"
-                    READLINE_POINT=${#READLINE_LINE}
-                    
-                    # Se completou toda a sugestão, limpa o lock
-                    if [[ "$READLINE_LINE" == "$_GT_SUGGESTION" ]]; then
-                        _GT_SUG_LOCKED=""
-                    fi
-                else
-                    # Se não conseguir separar por tokens, adiciona o resto todo
-                    READLINE_LINE="$_GT_SUGGESTION"
-                    READLINE_POINT=${#READLINE_LINE}
-                    _GT_SUG_LOCKED=""
-                fi
+        _gt_get_suggestion "$_GT_BUFFER"
+        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* && \
+              (( _GT_POS == ${#_GT_BUFFER} )) ]]; then
+            local rest="${_GT_SUGGESTION:${#_GT_BUFFER}}"
+            if [[ "$rest" =~ ^([^[:space:]]+)([[:space:]]*)(.*) ]]; then
+                _GT_BUFFER+="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+            else
+                _GT_BUFFER="$_GT_SUGGESTION"
             fi
-        elif (( READLINE_POINT < ${#READLINE_LINE} )); then
-            # Se não há sugestão, apenas move o cursor
-            (( READLINE_POINT++ ))
+            _GT_POS=${#_GT_BUFFER}
+            [[ "$_GT_BUFFER" == "$_GT_SUGGESTION" ]] && _GT_SUG_LOCKED=""
+        elif (( _GT_POS < ${#_GT_BUFFER} )); then
+            (( _GT_POS++ ))
         fi
-    
-    # Modo 3: Completa progressivamente (um caractere por toque)
+
     elif [[ "$BASH_GHOST_TEXT" == "3" ]]; then
-        _gt_get_suggestion "$READLINE_LINE"
-        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-            if (( READLINE_POINT < ${#_GT_SUGGESTION} )); then
-                # Adiciona apenas o próximo caractere da sugestão
-                local next_char="${_GT_SUGGESTION:${#READLINE_LINE}:1}"
-                READLINE_LINE+="$next_char"
-                READLINE_POINT=${#READLINE_LINE}
-                
-                # Se completou toda a sugestão, limpa o lock
-                if [[ "$READLINE_LINE" == "$_GT_SUGGESTION" ]]; then
-                    _GT_SUG_LOCKED=""
-                fi
-            fi
-        elif (( READLINE_POINT < ${#READLINE_LINE} )); then
-            # Se não há sugestão, apenas move o cursor
-            (( READLINE_POINT++ ))
+        _gt_get_suggestion "$_GT_BUFFER"
+        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* && \
+              (( _GT_POS == ${#_GT_BUFFER} )) ]]; then
+            _GT_BUFFER+="${_GT_SUGGESTION:${#_GT_BUFFER}:1}"
+            _GT_POS=${#_GT_BUFFER}
+            [[ "$_GT_BUFFER" == "$_GT_SUGGESTION" ]] && _GT_SUG_LOCKED=""
+        elif (( _GT_POS < ${#_GT_BUFFER} )); then
+            (( _GT_POS++ ))
         fi
     fi
-    
+
+    READLINE_LINE="$_GT_BUFFER"
+    READLINE_POINT=$_GT_POS
     _gt_overlay
-    READLINE_LINE="$line"
-    READLINE_POINT="$point"
-    _GT_LINE="$line"
-    _GT_POINT="$point"
 }
 
 _gt_accept_ghost() {
-    local line="${_GT_LINE:-$READLINE_LINE}"
-    local point="${_GT_POINT:-$READLINE_POINT}"
     [[ "$BASH_GHOST_TEXT" == "0" ]] && return
-    
-    _gt_get_suggestion "$READLINE_LINE"
-    if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-        READLINE_LINE="$_GT_SUGGESTION"
-        READLINE_POINT=${#READLINE_LINE}
+    [[ -n "$READLINE_LINE" ]] && { _GT_BUFFER="$READLINE_LINE"; _GT_POS="$READLINE_POINT"; }
+    _gt_get_suggestion "$_GT_BUFFER"
+    if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* ]]; then
+        _GT_BUFFER="$_GT_SUGGESTION"
+        _GT_POS=${#_GT_BUFFER}
         _GT_SUG_LOCKED=""
     fi
+    READLINE_LINE="$_GT_BUFFER"
+    READLINE_POINT=$_GT_POS
     _gt_overlay
-    READLINE_LINE="$line"
-    READLINE_POINT="$point"
-    _GT_LINE="$line"
-    _GT_POINT="$point"
 }
 
 _gt_home()          { READLINE_POINT=0; _gt_overlay; }
