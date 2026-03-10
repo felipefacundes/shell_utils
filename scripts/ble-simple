@@ -1057,6 +1057,34 @@ _cs_right() {
     _cs_redraw
 }
 
+# ── Ctrl+Left / Ctrl+Right: move por palavra ──────────────
+_cs_word_left() {
+    _cs_tab_reset
+    # Recua sobre delimitadores
+    while (( _CS_POS > 0 )) && [[ "${_CS_BUFFER:$((_CS_POS-1)):1}" == [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        (( _CS_POS-- ))
+    done
+    # Recua sobre a palavra
+    while (( _CS_POS > 0 )) && [[ "${_CS_BUFFER:$((_CS_POS-1)):1}" != [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        (( _CS_POS-- ))
+    done
+    _cs_redraw
+}
+
+_cs_word_right() {
+    _cs_tab_reset
+    local len=${#_CS_BUFFER}
+    # Avança sobre delimitadores
+    while (( _CS_POS < len )) && [[ "${_CS_BUFFER:$_CS_POS:1}" == [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        (( _CS_POS++ ))
+    done
+    # Avança sobre a palavra
+    while (( _CS_POS < len )) && [[ "${_CS_BUFFER:$_CS_POS:1}" != [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        (( _CS_POS++ ))
+    done
+    _cs_redraw
+}
+
 # Ctrl+G / Ctrl+F: aceita sugestão completa (todos os modos)
 _cs_accept_ghost() {
     local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
@@ -1509,7 +1537,9 @@ _cs_enter() {
         # Reinstala binds de controle
         bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
         bind -x '"\t":        _cs_do_tab'    2>/dev/null
+        bind -x '"\e[1;2C":   _cs_do_tab'    2>/dev/null
         bind -x '"\e[Z": _cs_do_shift_tab'   2>/dev/null
+        bind -x '"e[1;2D": _cs_do_shift_tab' 2>/dev/null
         bind -x '"\e[3~": _cs_delete'        2>/dev/null
         bind -x '"\e[D":  _cs_left'          2>/dev/null
         bind -x '"\eOD":  _cs_left'          2>/dev/null
@@ -1536,6 +1566,11 @@ _cs_enter() {
         bind -x '"\C-m":  _cs_enter'         2>/dev/null
         bind -x '"\e[200~": _cs_paste_start' 2>/dev/null
         bind -x '"\e[201~": _cs_paste_end'   2>/dev/null
+
+        bind -x '"\e[1;5D": _cs_word_left'   2>/dev/null  # Ctrl+Left
+        bind -x '"\e[1;5B": _cs_word_left'   2>/dev/null  # Ctrl+Down
+        bind -x '"\e[1;5C": _cs_word_right'  2>/dev/null  # Ctrl+Right
+        bind -x '"\e[1;5A": _cs_word_right'  2>/dev/null  # Ctrl+UP
 
         # Sincroniza histórico ghost após comando
         _gt_sync_hist
@@ -1733,33 +1768,40 @@ _cs_install_binds() {
     if [[ -z "$_cs_old_inputrc" ]]; then unset INPUTRC
     else INPUTRC="$_cs_old_inputrc"; fi
 
-    bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
-    bind -x '"\t":        _cs_do_tab'    2>/dev/null
-    bind -x '"\e[Z": _cs_do_shift_tab'   2>/dev/null
-    bind -x '"\e[3~": _cs_delete'        2>/dev/null
-    bind -x '"\e[D":  _cs_left'          2>/dev/null
-    bind -x '"\eOD":  _cs_left'          2>/dev/null
-    bind -x '"\e[C":  _cs_right'         2>/dev/null
-    bind -x '"\eOC":  _cs_right'         2>/dev/null
-    bind -x '"\C-a":  _cs_home'          2>/dev/null
-    bind -x '"\e[H":  _cs_home'          2>/dev/null
-    bind -x '"\eOH":  _cs_home'          2>/dev/null
-    bind -x '"\C-e":  _cs_end'           2>/dev/null
-    bind -x '"\e[F":  _cs_end'           2>/dev/null
-    bind -x '"\eOF":  _cs_end'           2>/dev/null
-    bind -x '"\C-u":  _cs_kill_to_start' 2>/dev/null
-    bind -x '"\C-k":  _cs_kill_to_end'   2>/dev/null
-    bind -x '"\C-w":  _cs_kill_word'     2>/dev/null
-    bind -x '"\C-l":  _cs_clear_screen'  2>/dev/null
-    bind -x '"\C-m":  _cs_enter'         2>/dev/null
-    bind -x '"\e[A":  _cs_hist_up'       2>/dev/null
-    bind -x '"\eOA":  _cs_hist_up'       2>/dev/null
-    bind -x '"\e[B":  _cs_hist_down'     2>/dev/null
-    bind -x '"\eOB":  _cs_hist_down'     2>/dev/null
-    bind -x '"\e[5~": _cs_page_up'       2>/dev/null
-    bind -x '"\e[6~": _cs_page_down'     2>/dev/null
-    bind -x '"\C-f":  _cs_accept_ghost'  2>/dev/null
-    bind -x '"\C-g":  _cs_accept_ghost'  2>/dev/null
+    bind -x '"\C-x\C-b": _cs_backspace'   2>/dev/null
+    bind -x '"\t":        _cs_do_tab'     2>/dev/null
+    bind -x '"\e[1;2C":   _cs_do_tab'     2>/dev/null
+    bind -x '"\e[Z": _cs_do_shift_tab'    2>/dev/null
+    bind -x '"\e[1;2D": _cs_do_shift_tab' 2>/dev/null
+    bind -x '"\e[3~": _cs_delete'         2>/dev/null
+    bind -x '"\e[D":  _cs_left'           2>/dev/null
+    bind -x '"\eOD":  _cs_left'           2>/dev/null
+    bind -x '"\e[C":  _cs_right'          2>/dev/null
+    bind -x '"\eOC":  _cs_right'          2>/dev/null
+    bind -x '"\C-a":  _cs_home'           2>/dev/null
+    bind -x '"\e[H":  _cs_home'           2>/dev/null
+    bind -x '"\eOH":  _cs_home'           2>/dev/null
+    bind -x '"\C-e":  _cs_end'            2>/dev/null
+    bind -x '"\e[F":  _cs_end'            2>/dev/null
+    bind -x '"\eOF":  _cs_end'            2>/dev/null
+    bind -x '"\C-u":  _cs_kill_to_start'  2>/dev/null
+    bind -x '"\C-k":  _cs_kill_to_end'    2>/dev/null
+    bind -x '"\C-w":  _cs_kill_word'      2>/dev/null
+    bind -x '"\C-l":  _cs_clear_screen'   2>/dev/null
+    bind -x '"\C-m":  _cs_enter'          2>/dev/null
+    bind -x '"\e[A":  _cs_hist_up'        2>/dev/null
+    bind -x '"\eOA":  _cs_hist_up'        2>/dev/null
+    bind -x '"\e[B":  _cs_hist_down'      2>/dev/null
+    bind -x '"\eOB":  _cs_hist_down'      2>/dev/null
+    bind -x '"\e[5~": _cs_page_up'        2>/dev/null
+    bind -x '"\e[6~": _cs_page_down'      2>/dev/null
+    bind -x '"\C-f":  _cs_accept_ghost'   2>/dev/null
+    bind -x '"\C-g":  _cs_accept_ghost'   2>/dev/null
+
+    bind -x '"\e[1;5D": _cs_word_left'   2>/dev/null  # Ctrl+Left
+    bind -x '"\e[1;5B": _cs_word_left'   2>/dev/null  # Ctrl+Down
+    bind -x '"\e[1;5C": _cs_word_right'  2>/dev/null  # Ctrl+Right
+    bind -x '"\e[1;5A": _cs_word_right'  2>/dev/null  # Ctrl+UP
 
     trap '_cs_sigint' INT
 }
