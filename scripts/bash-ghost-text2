@@ -173,14 +173,11 @@ _gt_move_left() {
 _gt_right_or_ghost() {
     local line point
 
-    if (( _GT_IS_TERMUX )); then
-        # No Termux READLINE_LINE chega vazio — usa _GT_BUFFER
-        line="$_GT_BUFFER"
-        point=${#line}
-    else
-        line="$READLINE_LINE"
-        point=$READLINE_POINT
-    fi
+    # No Termux READLINE_LINE/POINT chegam vazios — usa _GT_BUFFER como fallback
+    line="$READLINE_LINE"
+    [[ -z "$line" ]] && line="$_GT_BUFFER"
+    point=$READLINE_POINT
+    (( point == 0 )) && point=${#line}
 
     if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
         (( point < ${#line} )) && (( point++ ))
@@ -226,17 +223,13 @@ _gt_right_or_ghost() {
     _GT_BUFFER="$line"
     READLINE_LINE="$line"
     READLINE_POINT=$point
-    (( _GT_IS_TERMUX )) || _gt_overlay
+    _gt_overlay
 }
 
 _gt_accept_ghost() {
     [[ "$BASH_GHOST_TEXT" == "0" ]] && return
-    local line
-    if (( _GT_IS_TERMUX )); then
-        line="$_GT_BUFFER"
-    else
-        line="$READLINE_LINE"
-    fi
+    local line="$READLINE_LINE"
+    [[ -z "$line" ]] && line="$_GT_BUFFER"
     _gt_find_suggestion "$line"
     if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${line}"* ]]; then
         line="$_GT_SUGGESTION"
@@ -245,7 +238,7 @@ _gt_accept_ghost() {
     _GT_BUFFER="$line"
     READLINE_LINE="$line"
     READLINE_POINT=${#line}
-    (( _GT_IS_TERMUX )) || _gt_overlay
+    _gt_overlay
 }
 
 _gt_home()          { READLINE_POINT=0; _gt_overlay; }
