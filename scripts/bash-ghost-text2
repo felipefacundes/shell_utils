@@ -126,17 +126,21 @@ _gt_calc_plen() {
     PS1="$_GT_ORIGINAL_PS1"
     expanded="${PS1@P}"
     PS1="$_save_ps1"
-    # Remove OSC, CSI, save/restore cursor, delimitadores \x01\x02 do bash
-    # tr remove \x01 e \x02 (sed do Termux não interpreta \x01/\x02)
-    plain=$(printf '%s' "$expanded" \
-        | sed 's/\x1b][^\x07]*\x07//g;
-               s/\x1b][^\x1b]*\x1b\\//g;
-               s/\x1b\[[0-9;]*[A-Za-z]//g;
-               s/\x1b[78]//g;
-               s/\x1b(B//g' \
-        | tr -d '\001\002')
-    # Apenas a última linha do prompt (onde o usuário digita)
-    last="${plain##*$'\n'}"
+    # Remove sequências de escape — usa bash puro para compatibilidade com Termux
+    # (sed do Termux/busybox não interpreta \x1b como ESC)
+    local ESC=$'\x1b' BEL=$'\x07' SOH=$'\x01' STX=$'\x02'
+    plain="$expanded"
+    # Remove OSC: ESC ] ... BEL
+    while [[ "$plain" == *"${ESC}]"* ]]; do
+        local _pre="${plain%%${ESC}]*}" _rest="${plain#*${ESC}]}"
+        _rest="${_rest#*${BEL}}"
+        plain="${_pre}${_rest}"
+    done
+    # Remove CSI: ESC [ ... letra  e  ESC 7/8  e  ESC(B
+    plain=$(printf '%s' "$plain" | tr -d '\001\002' \
+        | sed $'s/\033\\[[0-9;]*[A-Za-z]//g; s/\033[78]//g; s/\033(B//g')
+    # Última linha do prompt (onde o usuário digita)
+    local last="${plain##*$'\n'}"
     _GT_PLEN=${#last}
 }
 
