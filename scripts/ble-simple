@@ -992,7 +992,7 @@ _cs_delete() {
 
 _cs_left() {
     if  (( _CS_ML_LINES > 0 )); then
-        MULT_ON="$_CS_ML_LINES"
+        MULT_ON=1
     fi
     _cs_tab_reset
     (( _CS_POS > 0 )) && (( _CS_POS-- ))
@@ -1001,7 +1001,7 @@ _cs_left() {
 
 _cs_right() {
     if  (( _CS_ML_LINES > 0 )); then
-        MULT_ON="$_CS_ML_LINES"
+        MULT_ON=1
     fi
     _cs_tab_reset
 
@@ -1171,11 +1171,11 @@ _cs_clear_screen() {
 # ESTA DUALIDADE É A ÚNICA SOLUÇÃO VIÁVEL SEM REESCREVER O HISTFILE.
 _cs_hist_load() {
     if  (( _CS_ML_LINES > 0 )); then
-        MULT_ON="$_CS_ML_LINES"
+        MULT_ON=1
     fi
     if [[ -z "$MULT_ON" ]]; then
         if  (( _CS_ML_LINES > 0 )); then
-            MULT_ON="$_CS_ML_LINES"
+            MULT_ON=1
             return
         fi
         _CS_HIST_CACHE=(); _CS_HIST_MAX=0
@@ -1201,7 +1201,7 @@ _cs_hist_load() {
 
 _cs_hist_up() {
     if  (( _CS_ML_LINES > 0 )); then
-        MULT_ON="$_CS_ML_LINES"
+        MULT_ON=1
     fi
     _cs_tab_reset
     if (( _CS_HIST_POS == -1 )); then
@@ -1429,6 +1429,7 @@ _cs_enter() {
         #
         # Usar bash -ic seria mais simples mas recarrega o .bashrc inteiro
         # a cada comando alias, tornando a execução muito lenta.
+        { [[ "$cmd_str" =~ zsh ]] || [[ "$cmd_str" =~ bash ]] || [[ "$cmd_str" =~ fish ]]; } && MULT_ON=1
         local _cs_first_token="${cmd_str%% *}"
         if alias "$_cs_first_token" &>/dev/null 2>&1; then
             local _cs_alias_def
@@ -1543,7 +1544,7 @@ _cs_enter() {
     READLINE_LINE=""; READLINE_POINT=0
     tput sgr0
     if  (( _CS_ML_LINES > 0 )); then
-        MULT_ON="$_CS_ML_LINES"
+        MULT_ON=1
     fi
 }
 
