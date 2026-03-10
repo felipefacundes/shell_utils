@@ -166,7 +166,9 @@ _gt_sync() {
     READLINE_LINE="$_GT_BUFFER"
     READLINE_POINT=$_GT_POS
     _gt_state_write
-    _gt_overlay
+    # overlay só em PC — no Termux o printf do overlay cancela READLINE_LINE
+    # detecta Termux pela ausência de DISPLAY e presença de PREFIX do termux
+    [[ -z "${DISPLAY:-}" && -n "${PREFIX:-}" ]] || _gt_overlay
 }
 
 # ── Edição ─────────────────────────────────────────────────────
