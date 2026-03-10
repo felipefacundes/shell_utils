@@ -1085,6 +1085,70 @@ _cs_word_right() {
     _cs_redraw
 }
 
+_cs_kill_word_delim() {
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""
+    (( _CS_POS > 0 )) || { _cs_redraw; return; }
+    local before="${_CS_BUFFER:0:$_CS_POS}"
+    local after="${_CS_BUFFER:$_CS_POS}"
+    # Recua sobre delimitadores
+    while (( ${#before} > 0 )) && [[ "${before: -1}" == [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        before="${before:0:${#before}-1}"
+    done
+    # Recua sobre a palavra
+    while (( ${#before} > 0 )) && [[ "${before: -1}" != [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        before="${before:0:${#before}-1}"
+    done
+    _CS_POS=${#before}
+    _CS_BUFFER="${before}${after}"
+    _gt_get_suggestion "$_CS_BUFFER"
+    _cs_redraw
+}
+
+_cs_kill_5() {
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""
+    (( _CS_POS > 0 )) || { _cs_redraw; return; }
+    local del=$(( _CS_POS < 5 ? _CS_POS : 5 ))
+    _CS_BUFFER="${_CS_BUFFER:0:$((_CS_POS-del))}${_CS_BUFFER:$_CS_POS}"
+    (( _CS_POS -= del ))
+    _gt_get_suggestion "$_CS_BUFFER"
+    _cs_redraw
+}
+
+_cs_kill_5_right() {
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""
+    local len=${#_CS_BUFFER}
+    (( _CS_POS < ${#_CS_BUFFER} )) || { _cs_redraw; return; }
+    (( _CS_POS < len )) || return
+    local del=$(( (len - _CS_POS) < 5 ? (len - _CS_POS) : 5 ))
+    _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_BUFFER:$((_CS_POS+del))}"
+    _gt_get_suggestion "$_CS_BUFFER"
+    _cs_redraw
+}
+
+_cs_kill_word_delim_right() {
+    _cs_tab_reset
+    _GT_SUG_LOCKED=""
+    local len=${#_CS_BUFFER}
+    (( _CS_POS < ${#_CS_BUFFER} )) || { _cs_redraw; return; }
+    (( _CS_POS < len )) || return
+    local after="${_CS_BUFFER:$_CS_POS}"
+    local before="${_CS_BUFFER:0:$_CS_POS}"
+    # Avança sobre delimitadores
+    while (( ${#after} > 0 )) && [[ "${after:0:1}" == [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        after="${after:1}"
+    done
+    # Avança sobre a palavra
+    while (( ${#after} > 0 )) && [[ "${after:0:1}" != [' ''/''\''.|,;:~@!#$%^&*()=+\[\]{}<>?`-'] ]]; do
+        after="${after:1}"
+    done
+    _CS_BUFFER="${before}${after}"
+    _gt_get_suggestion "$_CS_BUFFER"
+    _cs_redraw
+}
+
 # Ctrl+G / Ctrl+F: aceita sugestão completa (todos os modos)
 _cs_accept_ghost() {
     local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
@@ -1572,6 +1636,10 @@ _cs_enter() {
         bind -x '"\e[1;5C": _cs_word_right'  2>/dev/null  # Ctrl+Right
         bind -x '"\e[1;5A": _cs_word_right'  2>/dev/null  # Ctrl+UP
 
+        bind -x '"\e[3;5~": _cs_kill_word_delim_right'  2>/dev/null  # Ctrl+Delete
+        bind -x '"\C-h":    _cs_kill_word_delim'        2>/dev/null  # Ctrl+Backspace
+        bind -x '"\e[1;5F": _cs_kill_5'                 2>/dev/null  # Shift+Delete
+
         # Sincroniza histórico ghost após comando
         _gt_sync_hist
     fi
@@ -1802,6 +1870,11 @@ _cs_install_binds() {
     bind -x '"\e[1;5B": _cs_word_left'   2>/dev/null  # Ctrl+Down
     bind -x '"\e[1;5C": _cs_word_right'  2>/dev/null  # Ctrl+Right
     bind -x '"\e[1;5A": _cs_word_right'  2>/dev/null  # Ctrl+UP
+
+    bind -x '"\e[3;5~": _cs_kill_word_delim_right'  2>/dev/null  # Ctrl+Delete
+    bind -x '"\C-h":    _cs_kill_word_delim'        2>/dev/null  # Ctrl+Backspace
+    bind -x '"\e[1;5F": _cs_kill_5'                 2>/dev/null  # Shift+Delete
+    bind -x '"\e[1;2E": _cs_kill_5_right'           2>/dev/null  # Shift+5
 
     trap '_cs_sigint' INT
 }
