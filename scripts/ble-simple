@@ -37,6 +37,7 @@ _cs_green=$'\e[32m'
 _cs_red=$'\e[31m'
 _cs_reset=$'\e[0m'
 
+TMPDIR="${TMPDIR:-/tmp}"  # Compatibilidade com Termux
 _CS_BUFFER=""
 _CS_POS=0
 _CS_ML_BUFFER=""    # buffer acumulado para comandos multiline
@@ -102,14 +103,14 @@ _gt_conf_write() {
 }
 
 # Arquivo de estado por PID (compartilhado com subshells do bind -x)
-_GT_STATE_FILE="/tmp/.bash_ghost_mode_$$"
+_GT_STATE_FILE="${TMPDIR}/.bash_ghost_mode_$$"
 
 # Inicializa: prioridade → variável de ambiente → conf salva → padrão 1
 BASH_GHOST_TEXT="${BASH_GHOST_TEXT:-$(_gt_conf_read BASH_GHOST_TEXT 1)}"
 printf "%s" "$BASH_GHOST_TEXT" > "$_GT_STATE_FILE"
 
 # Arquivo de estado para sintax highlight
-_CS_SINTAX_FILE="/tmp/.bash_sintax_mode_$$"
+_CS_SINTAX_FILE="${TMPDIR}/.bash_sintax_mode_$$"
 
 # Inicializa sintax: conf salva → padrão 1 (ativo)
 BASH_SINTAX="${BASH_SINTAX:-$(_gt_conf_read BASH_SINTAX 1)}"
@@ -1720,7 +1721,7 @@ _cs_install_binds() {
     # Backspace via inputrc temporário
     local _cs_rc _cs_old_inputrc
     _cs_old_inputrc="${INPUTRC:-}"
-    _cs_rc=$(mktemp /tmp/cs-inputrc.XXXXXX 2>/dev/null)
+    _cs_rc=$(mktemp "${TMPDIR}/cs-inputrc.XXXXXX" 2>/dev/null)
     {
         local _cs_user_rc="${INPUTRC:-$HOME/.inputrc}"
         [[ -f "$_cs_user_rc" ]] && printf '$include %s\n' "$_cs_user_rc"
