@@ -453,8 +453,6 @@ _gt_install_binds() {
     bind -x '"\eOD":    _gt_move_left'       2>/dev/null
     bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
     bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
-    bind    '"\e[C":    _gt_right_or_ghost'  2>/dev/null  # fallback Termux
-    bind    '"\eOC":    _gt_right_or_ghost'  2>/dev/null  # fallback Termux
     bind -x '"\C-f":    _gt_accept_ghost'    2>/dev/null
     bind -x '"\C-a":    _gt_home'            2>/dev/null
     bind -x '"\e[H":    _gt_home'            2>/dev/null
