@@ -493,5 +493,5 @@ _gt_calc_plen
 if [[ -z "${PROMPT_COMMAND:-}" ]]; then
     PROMPT_COMMAND="_gt_prompt_cmd"
 elif [[ "$PROMPT_COMMAND" != *"_gt_prompt_cmd"* ]]; then
-    PROMPT_COMMAND="${PROMPT_COMMAND}; _gt_prompt_cmd"
+    PROMPT_COMMAND="_gt_prompt_cmd ${PROMPT_COMMAND}"
 fi
