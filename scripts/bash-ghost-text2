@@ -30,12 +30,6 @@ _GT_LOADED=1
 
 TMPDIR="${TMPDIR:-/tmp}"
 
-# Detecta Termux — no Termux o overlay quebra o READLINE_LINE
-# Termux sempre define TERMUX_VERSION ou tem PREFIX=/data/data/com.termux/files/usr
-_GT_IS_TERMUX=0
-[[ -n "${TERMUX_VERSION:-}" ]] && _GT_IS_TERMUX=1
-[[ "${PREFIX:-}" == *termux* ]] && _GT_IS_TERMUX=1
-
 _gt_b0=$'\e[0m'
 _gt_gh=$'\e[38;5;240m'
 
@@ -47,33 +41,16 @@ _GT_HIST_IDX=-1
 _GT_HIST_SAVED=""
 _GT_HIST_PREFIX=""
 _GT_ORIGINAL_PS1=""
-
-# Prompt simples fixo para cálculo do PLEN — ignora PS1 complexo com OSC/cores
 _GT_SIMPLE_PS1='$ '
 
-# Estado interno do buffer — nunca lemos READLINE_LINE (vazia no Termux)
-# Escrevemos neles apenas no _gt_sync para o readline renderizar.
+# Estado interno — variáveis globais persistem entre bind -x no Termux
 _GT_BUFFER=""
 _GT_POS=0
 
-# Arquivo temporário para persistir _GT_BUFFER/_GT_POS entre chamadas bind -x
-# (variáveis globais não persistem entre bind -x no Termux — subshell separado)
-_GT_BUF_FILE="${TMPDIR}/.ghost_buf_$$"
-_GT_POS_FILE="${TMPDIR}/.ghost_pos_$$"
-rm -f "$_GT_BUF_FILE" "$_GT_POS_FILE"
-printf ''  > "$_GT_BUF_FILE"
-printf '0' > "$_GT_POS_FILE"
-
-_gt_state_write() {
-    # Usa eval com redireção para evitar noclobber sem subshell
-    { printf '%s' "$_GT_BUFFER"; } >| "$_GT_BUF_FILE"
-    { printf '%s' "$_GT_POS";    } >| "$_GT_POS_FILE"
-}
-
-_gt_state_read() {
-    _GT_BUFFER=$(cat "$_GT_BUF_FILE" 2>/dev/null)
-    _GT_POS=$(cat    "$_GT_POS_FILE" 2>/dev/null || printf '0')
-}
+# Detecta Termux
+_GT_IS_TERMUX=0
+[[ -n "${TERMUX_VERSION:-}" ]] && _GT_IS_TERMUX=1
+[[ "${PREFIX:-}" == *termux* ]] && _GT_IS_TERMUX=1
 
 # ── Histórico ─────────────────────────────────────────────────
 _gt_load_hist() {
@@ -135,7 +112,6 @@ _gt_get_suggestion_fresh() {
 }
 
 # ── Calcula PLEN usando prompt simples fixo ────────────────────
-# Usa _GT_SIMPLE_PS1='$ ' — imune a PS1 complexo com OSC/cores/multiline
 _gt_calc_plen() {
     local ps1="$_GT_SIMPLE_PS1"
     ps1="${ps1//\\[/}"; ps1="${ps1//\\]/}"
@@ -149,7 +125,6 @@ _gt_calc_plen() {
 }
 
 # ── Overlay ────────────────────────────────────────────────────
-# Usa _GT_BUFFER — nunca READLINE_LINE (vazia no Termux)
 _gt_overlay() {
     [[ "$BASH_GHOST_TEXT" == "0" ]] && return
     local line="$_GT_BUFFER"
@@ -169,20 +144,13 @@ _gt_overlay() {
 
 # ── Sincroniza estado interno → readline ──────────────────────
 _gt_sync() {
-    _gt_state_write
-    if (( _GT_IS_TERMUX )); then
-        READLINE_LINE="$_GT_BUFFER"
-        READLINE_POINT=$_GT_POS
-    else
-        READLINE_LINE="$_GT_BUFFER"
-        READLINE_POINT=$_GT_POS
-        _gt_overlay
-    fi
+    READLINE_LINE="$_GT_BUFFER"
+    READLINE_POINT=$_GT_POS
+    (( _GT_IS_TERMUX )) || _gt_overlay
 }
 
 # ── Edição ─────────────────────────────────────────────────────
 _gt_self_insert() {
-    _gt_state_read
     _GT_BUFFER="${_GT_BUFFER:0:$_GT_POS}${_GT_CHAR}${_GT_BUFFER:$_GT_POS}"
     (( _GT_POS++ ))
     _gt_hist_reset
@@ -191,7 +159,6 @@ _gt_self_insert() {
 }
 
 _gt_backspace() {
-    _gt_state_read
     (( _GT_POS > 0 )) && {
         _GT_BUFFER="${_GT_BUFFER:0:$((_GT_POS-1))}${_GT_BUFFER:$_GT_POS}"
         (( _GT_POS-- ))
@@ -202,7 +169,6 @@ _gt_backspace() {
 }
 
 _gt_delete_char() {
-    _gt_state_read
     (( _GT_POS < ${#_GT_BUFFER} )) && \
         _GT_BUFFER="${_GT_BUFFER:0:$_GT_POS}${_GT_BUFFER:$((_GT_POS+1))}"
     _gt_get_suggestion "$_GT_BUFFER"
@@ -210,13 +176,11 @@ _gt_delete_char() {
 }
 
 _gt_move_left() {
-    _gt_state_read
     (( _GT_POS > 0 )) && (( _GT_POS-- ))
     _gt_sync
 }
 
 _gt_right_or_ghost() {
-    _gt_state_read
     _gt_find_suggestion "$_GT_BUFFER"
 
     if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
@@ -259,29 +223,29 @@ _gt_right_or_ghost() {
         fi
     fi
 
-    _gt_sync
+    READLINE_LINE="$_GT_BUFFER"
+    READLINE_POINT=$_GT_POS
 }
 
 _gt_accept_ghost() {
     [[ "$BASH_GHOST_TEXT" == "0" ]] && return
-    _gt_state_read
     _gt_find_suggestion "$_GT_BUFFER"
     if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* ]]; then
         _GT_BUFFER="$_GT_SUGGESTION"
         _GT_POS=${#_GT_BUFFER}
         _GT_SUG_LOCKED=""
     fi
-    _gt_sync
+    READLINE_LINE="$_GT_BUFFER"
+    READLINE_POINT=$_GT_POS
 }
 
-_gt_home()          { _gt_state_read; _GT_POS=0;               _gt_sync; }
-_gt_end()           { _gt_state_read; _GT_POS=${#_GT_BUFFER};  _gt_sync; }
-_gt_kill_line()     { _gt_state_read; _GT_BUFFER="${_GT_BUFFER:0:$_GT_POS}"; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_sync; }
-_gt_kill_to_start() { _gt_state_read; _GT_BUFFER="${_GT_BUFFER:$_GT_POS}"; _GT_POS=0; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_sync; }
+_gt_home()          { _GT_POS=0;              _gt_sync; }
+_gt_end()           { _GT_POS=${#_GT_BUFFER}; _gt_sync; }
+_gt_kill_line()     { _GT_BUFFER="${_GT_BUFFER:0:$_GT_POS}"; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_sync; }
+_gt_kill_to_start() { _GT_BUFFER="${_GT_BUFFER:$_GT_POS}"; _GT_POS=0; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_sync; }
 _gt_clear_screen()  { clear; _gt_sync; }
 
 _gt_kill_word() {
-    _gt_state_read
     if (( _GT_POS > 0 )); then
         local b="${_GT_BUFFER:0:$_GT_POS}" a="${_GT_BUFFER:$_GT_POS}"
         b="${b% }"; b="${b% *}"
@@ -296,7 +260,6 @@ _gt_kill_word() {
 
 # ── Histórico filtrado ─────────────────────────────────────────
 _gt_hist_up() {
-    _gt_state_read
     local hlen="${#_GT_HIST[@]}"
     (( hlen == 0 )) && return
     if (( _GT_HIST_IDX == -1 )); then
@@ -320,7 +283,6 @@ _gt_hist_up() {
 }
 
 _gt_hist_down() {
-    _gt_state_read
     (( _GT_HIST_IDX == -1 )) && { _gt_sync; return; }
     local hlen="${#_GT_HIST[@]}" i
     for (( i=_GT_HIST_IDX+1; i<hlen; i++ )); do
@@ -349,9 +311,6 @@ _gt_prompt_cmd() {
     _GT_HIST_IDX=-1; _GT_HIST_SAVED=""; _GT_HIST_PREFIX=""
     _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
     _GT_BUFFER=""; _GT_POS=0
-    rm -f "$_GT_BUF_FILE" "$_GT_POS_FILE"
-    printf ''  > "$_GT_BUF_FILE"
-    printf '0' > "$_GT_POS_FILE"
 }
 
 # ── Binds ──────────────────────────────────────────────────────
@@ -484,7 +443,6 @@ ghost-detach() {
     PROMPT_COMMAND="${PROMPT_COMMAND//; _gt_prompt_cmd/}"
     PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd; /}"
     PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd/}"
-    rm -f "$_GT_BUF_FILE" "$_GT_POS_FILE" 2>/dev/null
     _GT_LOADED=0
     printf 'ghost-text desanexado.\n'
 }
