@@ -317,6 +317,31 @@ _gt_prompt_cmd() {
 _gt_install_binds() {
     local c
 
+    # Instala teclas especiais PRIMEIRO — antes do loop de letras
+    # para evitar que "[" e "C" do loop sobrescrevam "\e[C"
+    bind -x '"\C-h":    _gt_backspace'       2>/dev/null
+    bind -x '"\x7f":    _gt_backspace'       2>/dev/null
+    bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
+    bind -x '"\e[D":    _gt_move_left'       2>/dev/null
+    bind -x '"\eOD":    _gt_move_left'       2>/dev/null
+    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\C-f":    _gt_accept_ghost'    2>/dev/null
+    bind -x '"\C-a":    _gt_home'            2>/dev/null
+    bind -x '"\e[H":    _gt_home'            2>/dev/null
+    bind -x '"\eOH":    _gt_home'            2>/dev/null
+    bind -x '"\C-e":    _gt_end'             2>/dev/null
+    bind -x '"\e[F":    _gt_end'             2>/dev/null
+    bind -x '"\eOF":    _gt_end'             2>/dev/null
+    bind -x '"\C-k":    _gt_kill_line'       2>/dev/null
+    bind -x '"\C-u":    _gt_kill_to_start'   2>/dev/null
+    bind -x '"\C-w":    _gt_kill_word'       2>/dev/null
+    bind -x '"\C-l":    _gt_clear_screen'    2>/dev/null
+    bind -x '"\e[A":    _gt_hist_up'         2>/dev/null
+    bind -x '"\eOA":    _gt_hist_up'         2>/dev/null
+    bind -x '"\e[B":    _gt_hist_down'       2>/dev/null
+    bind -x '"\eOB":    _gt_hist_down'       2>/dev/null
+
     for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
              A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
              0 1 2 3 4 5 6 7 8 9; do
@@ -392,6 +417,8 @@ _gt_install_binds() {
     bind -x '"\\": _gti_bslash'   2>/dev/null
     bind -x '"`":  _gti_backtick' 2>/dev/null
 
+
+    # Reinstala teclas especiais — garante que loop de letras não sobrescreveu
     bind -x '"\C-h":    _gt_backspace'       2>/dev/null
     bind -x '"\x7f":    _gt_backspace'       2>/dev/null
     bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
