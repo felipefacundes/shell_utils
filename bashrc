@@ -95,7 +95,7 @@ EOF
 _ble_comment() {
     echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" | tee "$BLE_CONF" &>/dev/null
     echo "# and if set to 2, it enables an alternative, simple but functional version of ble." | tee -a "$BLE_CONF" &>/dev/null
-    echo "BLE_BASH_ENABLED=2" | tee -a "$BLE_CONF" &>/dev/null
+    echo "BLE_BASH_ENABLED=0" | tee -a "$BLE_CONF" &>/dev/null
 }
 
 if [[ ! -f "$BLE_CONF" ]]; then
@@ -436,7 +436,7 @@ elif [[ "$BLE_BASH_ENABLED" == 1 ]]; then
     echo "⚠️  ble.sh not found at $BLE_PATH"
 fi
 
-unset -f _ble_comment
+unset -f _ble_comment fzf_bash
 unset BLE_PATH BLE_REPO BLE_CONF
 
 
