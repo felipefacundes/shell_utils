@@ -1416,6 +1416,7 @@ _cs_enter() {
         # Expande ~ se presente
         _cs_path="${_cs_path/#\~/$HOME}"
 
+        { [[ "$cmd_str" =~ zsh ]] || [[ "$cmd_str" =~ bash ]] || [[ "$cmd_str" =~ fish ]]; } && MULT_ON=1
         # Aliases não são expandidos corretamente pelo eval em certos contextos,
         # especialmente quando o script referenciado pelo alias usa argumentos
         # com flags ou caracteres especiais. A solução é expandir o alias
@@ -1429,7 +1430,6 @@ _cs_enter() {
         #
         # Usar bash -ic seria mais simples mas recarrega o .bashrc inteiro
         # a cada comando alias, tornando a execução muito lenta.
-        { [[ "$cmd_str" =~ zsh ]] || [[ "$cmd_str" =~ bash ]] || [[ "$cmd_str" =~ fish ]]; } && MULT_ON=1
         local _cs_first_token="${cmd_str%% *}"
         if alias "$_cs_first_token" &>/dev/null 2>&1; then
             local _cs_alias_def
