@@ -161,6 +161,8 @@ _gt_self_insert() {
     _gt_hist_reset
     _gt_get_suggestion_fresh "$READLINE_LINE"   # busca fresca ao digitar
     _gt_overlay
+    _GT_LINE="$READLINE_LINE"
+    _GT_POINT="$READLINE_POINT"
 }
 
 # Backspace estilo zsh: mantém lock → revela ghost progressivamente
@@ -172,6 +174,8 @@ _gt_backspace() {
     _gt_hist_reset
     _gt_get_suggestion "$READLINE_LINE"   # com lock → revela progressivamente
     _gt_overlay
+    _GT_LINE="$READLINE_LINE"
+    _GT_POINT="$READLINE_POINT"
 }
 
 _gt_delete_char() {
@@ -179,6 +183,8 @@ _gt_delete_char() {
         READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
     _gt_get_suggestion "$READLINE_LINE"
     _gt_overlay
+    _GT_LINE="$READLINE_LINE"
+    _GT_POINT="$READLINE_POINT"
 }
 
 _gt_move_left() {
@@ -189,6 +195,8 @@ _gt_move_left() {
 # Função modificada para suportar os 3 modos
 # Função modificada para suportar os 4 modos (0, 1, 2, 3)
 _gt_right_or_ghost() {
+    local line="${_GT_LINE:-$READLINE_LINE}"
+    local point="${_GT_POINT:-$READLINE_POINT}"
     # Modo 0: Ghost text desativado - apenas move para direita
     if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
         if (( READLINE_POINT < ${#READLINE_LINE} )); then
@@ -268,9 +276,15 @@ _gt_right_or_ghost() {
     fi
     
     _gt_overlay
+    READLINE_LINE="$line"
+    READLINE_POINT="$point"
+    _GT_LINE="$line"
+    _GT_POINT="$point"
 }
 
 _gt_accept_ghost() {
+    local line="${_GT_LINE:-$READLINE_LINE}"
+    local point="${_GT_POINT:-$READLINE_POINT}"
     [[ "$BASH_GHOST_TEXT" == "0" ]] && return
     
     _gt_get_suggestion "$READLINE_LINE"
@@ -280,6 +294,10 @@ _gt_accept_ghost() {
         _GT_SUG_LOCKED=""
     fi
     _gt_overlay
+    READLINE_LINE="$line"
+    READLINE_POINT="$point"
+    _GT_LINE="$line"
+    _GT_POINT="$point"
 }
 
 _gt_home()          { READLINE_POINT=0; _gt_overlay; }
