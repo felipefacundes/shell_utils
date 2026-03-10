@@ -65,8 +65,9 @@ printf ''  > "$_GT_BUF_FILE"
 printf '0' > "$_GT_POS_FILE"
 
 _gt_state_write() {
-    printf '%s' "$_GT_BUFFER" | dd of="$_GT_BUF_FILE" 2>/dev/null
-    printf '%s' "$_GT_POS"    | dd of="$_GT_POS_FILE" 2>/dev/null
+    # Usa eval com redireção para evitar noclobber sem subshell
+    { printf '%s' "$_GT_BUFFER"; } >| "$_GT_BUF_FILE"
+    { printf '%s' "$_GT_POS";    } >| "$_GT_POS_FILE"
 }
 
 _gt_state_read() {
