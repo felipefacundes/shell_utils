@@ -31,8 +31,10 @@ _GT_LOADED=1
 TMPDIR="${TMPDIR:-/tmp}"
 
 # Detecta Termux — no Termux o overlay quebra o READLINE_LINE
+# Termux sempre define TERMUX_VERSION ou tem PREFIX=/data/data/com.termux/files/usr
 _GT_IS_TERMUX=0
-[[ -z "${DISPLAY:-}" && -n "${PREFIX:-}" ]] && _GT_IS_TERMUX=1
+[[ -n "${TERMUX_VERSION:-}" ]] && _GT_IS_TERMUX=1
+[[ "${PREFIX:-}" == *termux* ]] && _GT_IS_TERMUX=1
 
 _gt_b0=$'\e[0m'
 _gt_gh=$'\e[38;5;240m'
