@@ -206,6 +206,8 @@ _gt_move_left() {
 
 _gt_right_or_ghost() {
     _gt_state_read
+    # Sempre busca sugestão fresca — _GT_SUGGESTION não persiste no Termux
+    _gt_find_suggestion "$_GT_BUFFER"
 
     if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
         (( _GT_POS < ${#_GT_BUFFER} )) && (( _GT_POS++ ))
@@ -214,7 +216,6 @@ _gt_right_or_ghost() {
         if (( _GT_POS < ${#_GT_BUFFER} )); then
             (( _GT_POS++ ))
         else
-            _gt_get_suggestion "$_GT_BUFFER"
             if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* ]]; then
                 _GT_BUFFER="$_GT_SUGGESTION"
                 _GT_POS=${#_GT_BUFFER}
@@ -223,7 +224,6 @@ _gt_right_or_ghost() {
         fi
 
     elif [[ "$BASH_GHOST_TEXT" == "2" ]]; then
-        _gt_get_suggestion "$_GT_BUFFER"
         if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* ]] \
            && (( _GT_POS == ${#_GT_BUFFER} )); then
             local rest="${_GT_SUGGESTION:${#_GT_BUFFER}}"
@@ -239,7 +239,6 @@ _gt_right_or_ghost() {
         fi
 
     elif [[ "$BASH_GHOST_TEXT" == "3" ]]; then
-        _gt_get_suggestion "$_GT_BUFFER"
         if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* ]] \
            && (( _GT_POS == ${#_GT_BUFFER} )); then
             _GT_BUFFER+="${_GT_SUGGESTION:${#_GT_BUFFER}:1}"
@@ -256,7 +255,7 @@ _gt_right_or_ghost() {
 _gt_accept_ghost() {
     [[ "$BASH_GHOST_TEXT" == "0" ]] && return
     _gt_state_read
-    _gt_get_suggestion "$_GT_BUFFER"
+    _gt_find_suggestion "$_GT_BUFFER"
     if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${_GT_BUFFER}"* ]]; then
         _GT_BUFFER="$_GT_SUGGESTION"
         _GT_POS=${#_GT_BUFFER}
