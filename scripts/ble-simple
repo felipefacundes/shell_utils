@@ -372,6 +372,55 @@ _cs_buffer_colored() {
         # ── Espaço: flush token ───────────────────────────────
         if [[ "$c" == ' ' ]]; then
             if [[ -n "$token" ]]; then
+                # Verifica se o token + espaço + próximas palavras formam um caminho
+                # com espaços (ex: ~/Meus Projetos de Jogos)
+                local rest="${buf:$i}"
+                local candidate="${token}${rest}"
+                local expanded_candidate="${candidate/#\~/$HOME}"
+                # Tenta acumular até encontrar um caminho válido
+                if [[ ! "$token" == */* ]] && (( ! is_first )); then
+                    # Argumento: pode ser caminho com espaços — tenta lookahead
+                    local lookahead="${token} "
+                    local j=$(( i + 1 ))
+                    local found_path=0
+                    while (( j < ${#buf} )); do
+                        local nc="${buf:$j:1}"
+                        if [[ "$nc" == ' ' || "$nc" == $'\n' ]]; then
+                            local exp="${lookahead/#\~/$HOME}"
+                            if [[ -e "$exp" || -d "$exp" ]]; then
+                                found_path=1; break
+                            fi
+                            lookahead+="$nc"
+                        else
+                            lookahead+="$nc"
+                        fi
+                        (( j++ ))
+                    done
+                    # Verifica o candidato final também
+                    local exp_final="${lookahead/#\~/$HOME}"
+                    [[ -e "$exp_final" || -d "$exp_final" ]] && found_path=1
+
+                    if (( found_path )); then
+                        token+="$c"; (( i++ )); continue
+                    fi
+                elif [[ "$token" == */* ]] || (( is_first == 0 )); then
+                    local try="${token} "
+                    local j=$(( i + 1 ))
+                    while (( j < ${#buf} )); do
+                        local ch="${buf:$j:1}"
+                        try+="$ch"
+                        local exp_try="${try/#\~/$HOME}"
+                        if [[ -e "$exp_try" ]]; then
+                            token+="$c"; (( i++ )); continue 2
+                        fi
+                        [[ "$ch" == ' ' ]] && {
+                            exp_try="${try% }"
+                            exp_try="${exp_try/#\~/$HOME}"
+                            [[ -d "$exp_try" ]] && { token+="$c"; (( i++ )); continue 2; }
+                        }
+                        (( j++ ))
+                    done
+                fi
                 result+="$(_cs_colorize_token "$token" "$is_first")"
                 token=""; is_first=0
             fi
@@ -589,6 +638,37 @@ _cs_common_prefix() {
     printf '%s' "$prefix"
 }
 
+_cs_do_shift_tab() {
+    if (( _CS_TAB_STATE < 0 )); then
+        _cs_redraw; return
+    fi
+
+    local n=${#_CS_TAB_COMPLETIONS[@]}
+    _CS_TAB_STATE=$(( (_CS_TAB_STATE - 1 + n + 1) % (n + 1) ))
+
+    if (( _CS_TAB_STATE == n )); then
+        _CS_BUFFER="$_CS_TAB_ORIG_BUFFER"
+        _CS_POS=$_CS_TAB_ORIG_POS
+    else
+        local completion="${_CS_TAB_COMPLETIONS[$_CS_TAB_STATE]}"
+        local after="${_CS_TAB_ORIG_BUFFER:$_CS_TAB_ORIG_POS}"
+        _CS_BUFFER="${_CS_TAB_ORIG_BUFFER:0:$_CS_TAB_WORD_START}${completion}${after}"
+        _CS_POS=$(( _CS_TAB_WORD_START + ${#completion} ))
+    fi
+    _cs_redraw
+}
+
+_cs_quote_completion() {
+    local completion="$1"
+    if [[ "$completion" == *' '* ]]; then
+        completion="${completion/#\~/$HOME}"
+        completion="${completion//\"/}"
+        # Trailing slash será preservada dentro das aspas
+        completion="\"${completion}\""
+    fi
+    printf '%s' "$completion"
+}
+
 _cs_do_tab() {
     if (( _CS_TAB_STATE >= 0 )); then
         local n=${#_CS_TAB_COMPLETIONS[@]}
@@ -597,7 +677,12 @@ _cs_do_tab() {
             _CS_BUFFER="$_CS_TAB_ORIG_BUFFER"
             _CS_POS=$_CS_TAB_ORIG_POS
         else
+            # local completion="${_CS_TAB_COMPLETIONS[$_CS_TAB_STATE]}"
+            # local after="${_CS_TAB_ORIG_BUFFER:$_CS_TAB_ORIG_POS}"
+            # _CS_BUFFER="${_CS_TAB_ORIG_BUFFER:0:$_CS_TAB_WORD_START}${completion}${after}"
+            # _CS_POS=$(( _CS_TAB_WORD_START + ${#completion} ))
             local completion="${_CS_TAB_COMPLETIONS[$_CS_TAB_STATE]}"
+            completion="$(_cs_quote_completion "$completion")"
             local after="${_CS_TAB_ORIG_BUFFER:$_CS_TAB_ORIG_POS}"
             _CS_BUFFER="${_CS_TAB_ORIG_BUFFER:0:$_CS_TAB_WORD_START}${completion}${after}"
             _CS_POS=$(( _CS_TAB_WORD_START + ${#completion} ))
@@ -608,13 +693,36 @@ _cs_do_tab() {
     local line="$_CS_BUFFER" point=$_CS_POS
     local after="${line:$point}"
     local word_start=$point
-    while (( word_start > 0 )) && [[ "${line:$((word_start-1)):1}" != " " ]]; do
+    while (( word_start > 0 )); do
+        local prev_char="${line:$((word_start-1)):1}"
+        # Para no espaço somente se não estiver escapado ou dentro de caminho já completado
+        if [[ "$prev_char" == " " ]]; then
+            # Verifica se o espaço faz parte de um caminho (há / antes do grupo de palavras)
+            local before="${line:0:$((word_start-1))}"
+            if [[ "$before" == */* ]]; then
+                # Espaço dentro de caminho — continua recuando
+                (( word_start-- ))
+                continue
+            fi
+            break
+        fi
         (( word_start-- ))
     done
+
     local cur="${line:$word_start:$((point - word_start))}"
     local before_word="${line:0:$word_start}"
     local is_cmd=0
-    [[ -z "${before_word// /}" ]] && is_cmd=1
+    if [[ -z "${before_word// /}" ]]; then
+        # Mesmo sem comando antes, se o token parece caminho não é comando
+        local cur_check="${line:$word_start:$((point - word_start))}"
+        cur_check="${cur_check//\"/}"
+        local cur_expanded="${cur_check/#\~/$HOME}"
+        if [[ "$cur_check" == ~* || "$cur_check" == /* || "$cur_check" == ./* || -d "$cur_expanded" ]]; then
+            is_cmd=0
+        else
+            is_cmd=1
+        fi
+    fi
 
     local -a completions=()
     local cmd="${_CS_BUFFER%% *}"
@@ -674,14 +782,41 @@ _cs_do_tab() {
         printf '\a' >&2; _cs_redraw; return
     fi
 
+    # if (( n == 1 )); then
+    #     local completion="${completions[0]}"
+    #     # Preserva ~ se o token original começava com ~
+    #     if [[ "${cur}" == ~* ]]; then
+    #         completion="${completion/#$HOME/\~}"
+    #     fi
+    #     local suffix=""
+    #     if [[ -d "${completion/#\~/$HOME}" ]]; then
+    #         suffix="/"
+    #     elif [[ "${completion}" != */ ]]; then
+    #         suffix=" "
+    #     fi
+    #     _CS_BUFFER="${line:0:$word_start}${completion}${suffix}${after}"
+    #     _CS_POS=$(( word_start + ${#completion} + ${#suffix} ))
+    #     _cs_tab_reset; _cs_redraw; return
+    # fi
+
     if (( n == 1 )); then
         local completion="${completions[0]}"
-        local suffix=""; [[ "${completion}" != */ ]] && suffix=" "
+        if [[ "${cur}" == ~* || "${line:0:$word_start}" == *~* ]]; then
+            completion="${completion/#$HOME/\~}"
+        fi
+        completion="$(_cs_quote_completion "$completion")"
+        local _clean="${completion//\"/}"
+        local suffix=""
+        if [[ -d "${_clean/#\~/$HOME}" ]]; then
+            [[ "$_clean" != */ ]] && suffix="/"
+        elif [[ "$_clean" != */ ]]; then
+            suffix=" "
+        fi
         _CS_BUFFER="${line:0:$word_start}${completion}${suffix}${after}"
         _CS_POS=$(( word_start + ${#completion} + ${#suffix} ))
         _cs_tab_reset; _cs_redraw; return
     fi
-
+    
     local common
     common=$(_cs_common_prefix "${completions[@]}")
 
@@ -698,10 +833,26 @@ _cs_do_tab() {
                     && completions[$i]+="/"
             done
         fi
+        # if (( ${#completions[@]} == 1 )); then
+        #     local suffix=""; [[ "${completions[0]}" != */ ]] && suffix="/"
+        #     _CS_BUFFER="${line:0:$word_start}${completions[0]}${suffix}${after}"
+        #     _CS_POS=$(( word_start + ${#completions[0]} + ${#suffix} ))
+        #     _cs_tab_reset; _cs_redraw; return
+        # fi
         if (( ${#completions[@]} == 1 )); then
-            local suffix=""; [[ "${completions[0]}" != */ ]] && suffix=" "
-            _CS_BUFFER="${line:0:$word_start}${completions[0]}${suffix}${after}"
-            _CS_POS=$(( word_start + ${#completions[0]} + ${#suffix} ))
+            local completion="${completions[0]}"
+            if [[ "${cur}" == ~* || "${line:0:$word_start}" == *~* ]]; then
+                completion="${completion/#$HOME/\~}"
+            fi
+            completion="$(_cs_quote_completion "$completion")"
+            local suffix=""
+            if [[ -d "${completion/#\~/$HOME}" || -d "${completion//\"/}" ]]; then
+                suffix="/"
+            elif [[ "${completion[0]}" != */ ]]; then
+                suffix=" "
+            fi
+            _CS_BUFFER="${line:0:$word_start}${completion}${suffix}${after}"
+            _CS_POS=$(( word_start + ${#completion} + ${#suffix} ))
             _cs_tab_reset; _cs_redraw; return
         fi
         _CS_TAB_COMPLETIONS=("${completions[@]}")
@@ -725,15 +876,28 @@ _cs_do_tab() {
         if [[ "$ans" != [sySY] ]]; then
             _CS_TAB_STATE=0
             local first="${_CS_TAB_COMPLETIONS[0]}"
+            first="$(_cs_quote_completion "$first")"
             _CS_BUFFER="${line:0:$word_start}${first}${after}"
             _CS_POS=$(( word_start + ${#first} ))
             _cs_redraw; return
         fi
     fi
 
-    _cs_list_completions "$cur" "${completions[@]}"
+    # Antes de chamar _cs_list_completions, cria array sem aspas para exibição
+    local -a _display_completions=()
+    local _dc
+    for _dc in "${completions[@]}"; do
+        _display_completions+=( "${_dc//\"/}" )
+    done
+    # cur para highlight na lista: sem aspas e sem o caminho base já completado
+    local cur_display="${line:$word_start:$((point - word_start))}"
+    cur_display="${cur_display//\"/}"
+    # Extrai só o último componente após a última / para usar como prefixo de highlight
+    local cur_prefix="${cur_display##*/}"
+    _cs_list_completions "$cur_prefix" "${_display_completions[@]}"
     _CS_TAB_STATE=0
     local first="${_CS_TAB_COMPLETIONS[0]}"
+    first="$(_cs_quote_completion "$first")"
     _CS_BUFFER="${line:0:$word_start}${first}${after}"
     _CS_POS=$(( word_start + ${#first} ))
     _cs_redraw
@@ -746,7 +910,7 @@ _cs_colorize() {
     if [[ "$item" == */ ]]; then item_color="01;34"
     elif [[ -x "$item" && -f "$item" ]] 2>/dev/null; then item_color="01;32"
     elif [[ -L "$item" ]] 2>/dev/null; then item_color="01;36"
-    elif [[ -d "$item" ]] 2>/dev/null; then item_color="01;34"
+    elif [[ -d "$item" ]] 2>/dev/null; then item_color="01;38;5;69"
     fi
     local reset="\e[0m"
     if [[ -n "$item_color" ]]; then
@@ -1227,7 +1391,58 @@ _cs_enter() {
         stty icanon echo icrnl 2>/dev/null
         PS1="$_CS_PS1_ORIG"
 
-        eval "$cmd_str"
+        # Se cmd_str é um caminho de diretório existente (autocd com espaços),
+        # executa cd diretamente sem eval para preservar espaços no nome.
+        # Aceita todas as formas: espaço literal, backslash-espaço, aspas duplas/simples.
+        local _cs_trimmed="${cmd_str#"${cmd_str%%[![:space:]]*}"}"
+        _cs_trimmed="${_cs_trimmed%"${_cs_trimmed##*[![:space:]]}"}"  # rtrim
+
+        # Normaliza o caminho removendo aspas externas e backslashes de escape
+        local _cs_path="$_cs_trimmed"
+
+        # Remove aspas duplas externas: "caminho" → caminho
+        if [[ "$_cs_path" == '"'*'"' ]]; then
+            _cs_path="${_cs_path:1:${#_cs_path}-2}"
+        fi
+
+        # Remove aspas simples externas: 'caminho' → caminho
+        if [[ "$_cs_path" == "'"*"'" ]]; then
+            _cs_path="${_cs_path:1:${#_cs_path}-2}"
+        fi
+
+        # Remove backslashes de escape antes de espaços: "\ " → " "
+        _cs_path="${_cs_path//\\ / }"
+
+        # Expande ~ se presente
+        _cs_path="${_cs_path/#\~/$HOME}"
+
+        # Aliases não são expandidos corretamente pelo eval em certos contextos,
+        # especialmente quando o script referenciado pelo alias usa argumentos
+        # com flags ou caracteres especiais. A solução é expandir o alias
+        # manualmente: extrai a definição real, remove o wrapper 'alias nome=...'
+        # e concatena os argumentos originais antes de passar para o eval.
+        #
+        # Fluxo:
+        #   alias meu-script='~/caminho/script.sh'
+        #   meu-script --flag valor
+        #   → eval '~/caminho/script.sh --flag valor'
+        #
+        # Usar bash -ic seria mais simples mas recarrega o .bashrc inteiro
+        # a cada comando alias, tornando a execução muito lenta.
+        local _cs_first_token="${cmd_str%% *}"
+        if alias "$_cs_first_token" &>/dev/null 2>&1; then
+            local _cs_alias_def
+            _cs_alias_def=$(alias "$_cs_first_token" 2>/dev/null)
+            # Extrai o valor do alias: alias nome='valor' → valor
+            _cs_alias_def="${_cs_alias_def#*\'}"
+            _cs_alias_def="${_cs_alias_def%\'}"
+            local _cs_alias_args="${cmd_str#"$_cs_first_token"}"
+            eval "${_cs_alias_def}${_cs_alias_args}"
+        elif [[ -d "$_cs_path" ]]; then
+            cd "$_cs_path" || true
+        else
+            eval "$cmd_str"
+        fi
         _cs_exit_code=$? # Para ser usado no PS1 do bashrc
 
         [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
@@ -1291,7 +1506,8 @@ _cs_enter() {
 
         # Reinstala binds de controle
         bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
-        bind -x '"\t":        _cs_do_tab'     2>/dev/null
+        bind -x '"\t":        _cs_do_tab'    2>/dev/null
+        bind -x '"\e[Z": _cs_do_shift_tab'   2>/dev/null
         bind -x '"\e[3~": _cs_delete'        2>/dev/null
         bind -x '"\e[D":  _cs_left'          2>/dev/null
         bind -x '"\eOD":  _cs_left'          2>/dev/null
@@ -1516,7 +1732,8 @@ _cs_install_binds() {
     else INPUTRC="$_cs_old_inputrc"; fi
 
     bind -x '"\C-x\C-b": _cs_backspace'  2>/dev/null
-    bind -x '"\t":        _cs_do_tab'     2>/dev/null
+    bind -x '"\t":        _cs_do_tab'    2>/dev/null
+    bind -x '"\e[Z": _cs_do_shift_tab'   2>/dev/null
     bind -x '"\e[3~": _cs_delete'        2>/dev/null
     bind -x '"\e[D":  _cs_left'          2>/dev/null
     bind -x '"\eOD":  _cs_left'          2>/dev/null

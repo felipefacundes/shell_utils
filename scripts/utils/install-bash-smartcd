@@ -4,7 +4,7 @@
 BASHRC_FILE="$HOME/.bashrc"
 
 # Line to look for
-TARGET_LINE="source ~/.shell_utils/scripts/utils/zbash-smartcd-with-fzf"
+TARGET_LINE="source ~/.shell_utils/scripts/smartcd-with-fzf"
 
 # Check if the line already exists in the file
 if ! grep -Fxq "$TARGET_LINE" "$BASHRC_FILE"; then

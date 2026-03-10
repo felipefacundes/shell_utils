@@ -312,7 +312,7 @@ fzf_bash
 
 # Bash SmartCD 
 # shellcheck source=/dev/null
-source ~/.shell_utils/scripts/utils/zbash-smartcd-with-fzf
+source ~/.shell_utils/scripts/smartcd-with-fzf
 
 # Load local bash completions from user directory
 # This allows installing shell completions without sudo/root access
