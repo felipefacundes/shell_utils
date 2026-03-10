@@ -30,6 +30,10 @@ _GT_LOADED=1
 
 TMPDIR="${TMPDIR:-/tmp}"
 
+# Detecta Termux — no Termux o overlay quebra o READLINE_LINE
+_GT_IS_TERMUX=0
+[[ -z "${DISPLAY:-}" && -n "${PREFIX:-}" ]] && _GT_IS_TERMUX=1
+
 _gt_b0=$'\e[0m'
 _gt_gh=$'\e[38;5;240m'
 
@@ -166,9 +170,7 @@ _gt_sync() {
     READLINE_LINE="$_GT_BUFFER"
     READLINE_POINT=$_GT_POS
     _gt_state_write
-    # overlay só em PC — no Termux o printf do overlay cancela READLINE_LINE
-    # detecta Termux pela ausência de DISPLAY e presença de PREFIX do termux
-    [[ -z "${DISPLAY:-}" && -n "${PREFIX:-}" ]] || _gt_overlay
+    (( _GT_IS_TERMUX )) || _gt_overlay
 }
 
 # ── Edição ─────────────────────────────────────────────────────
