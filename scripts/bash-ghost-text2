@@ -138,6 +138,7 @@ _gt_overlay() {
 
 # ── Edição ────────────────────────────────────────────────────
 _gt_self_insert() {
+    _gt_bind_arrows
     READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${_GT_CHAR}${READLINE_LINE:$READLINE_POINT}"
     (( READLINE_POINT++ ))
     _GT_BUFFER="$READLINE_LINE"   # mantém espelho para Termux
@@ -147,6 +148,7 @@ _gt_self_insert() {
 }
 
 _gt_backspace() {
+    _gt_bind_arrows
     (( READLINE_POINT > 0 )) && {
         READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
         (( READLINE_POINT-- ))
@@ -158,6 +160,7 @@ _gt_backspace() {
 }
 
 _gt_delete_char() {
+    _gt_bind_arrows
     (( READLINE_POINT < ${#READLINE_LINE} )) && \
         READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
     _GT_BUFFER="$READLINE_LINE"
@@ -423,10 +426,10 @@ _gt_install_binds() {
     bind -x '"\C-h":    _gt_backspace'       2>/dev/null
     bind -x '"\x7f":    _gt_backspace'       2>/dev/null
     bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
-    bind -x '"\e[D":    _gt_move_left'       2>>"${TMPDIR}/.gt_bind_log"
-    bind -x '"\eOD":    _gt_move_left'       2>>"${TMPDIR}/.gt_bind_log"
-    bind -x '"\e[C":    _gt_right_or_ghost'  2>>"${TMPDIR}/.gt_bind_log"
-    bind -x '"\eOC":    _gt_right_or_ghost'  2>>"${TMPDIR}/.gt_bind_log"
+    bind -x '"\e[D":    _gt_move_left'       2>/dev/null
+    bind -x '"\eOD":    _gt_move_left'       2>/dev/null
+    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
     bind -x '"\C-f":    _gt_accept_ghost'    2>/dev/null
     bind -x '"\C-a":    _gt_home'            2>/dev/null
     bind -x '"\e[H":    _gt_home'            2>/dev/null
