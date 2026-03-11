@@ -404,8 +404,8 @@ _gt_install_binds() {
     bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
     bind -x '"\e[D":    _gt_move_left'       2>/dev/null
     bind -x '"\eOD":    _gt_move_left'       2>/dev/null
-    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
-    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\e[C":    _gt_right_or_ghost'  
+    bind -x '"\eOC":    _gt_right_or_ghost'  
     bind -x '"\C-f":    _gt_accept_ghost'    2>/dev/null
     bind -x '"\C-a":    _gt_home'            2>/dev/null
     bind -x '"\e[H":    _gt_home'            2>/dev/null
@@ -430,10 +430,10 @@ _gt_install_binds() {
         bind -r '"C"' 2>/dev/null
         bind -r '"D"' 2>/dev/null
     fi
-    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
-    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
-    bind -x '"\e[D":    _gt_move_left'       2>/dev/null
-    bind -x '"\eOD":    _gt_move_left'       2>/dev/null
+    bind -x '"\e[C":    _gt_right_or_ghost'  
+    bind -x '"\eOC":    _gt_right_or_ghost'  
+    bind -x '"\e[D":    _gt_move_left'       
+    bind -x '"\eOD":    _gt_move_left'       
     bind -x '"\e[A":    _gt_hist_up'         2>/dev/null
     bind -x '"\eOA":    _gt_hist_up'         2>/dev/null
     bind -x '"\e[B":    _gt_hist_down'       2>/dev/null
@@ -465,7 +465,7 @@ ghost-detach() {
          '"\e[B"'   '"\eOB"' 2>/dev/null
     bind '"\e[A": previous-history' '"\eOA": previous-history' 2>/dev/null
     bind '"\e[B": next-history'     '"\eOB": next-history'     2>/dev/null
-    bind '"\e[C": forward-char'     '"\eOC": forward-char'     2>/dev/null
+    bind '"\e[C": forward-char'     '"\eOC": forward-char'     
     bind '"\e[D": backward-char'    '"\eOD": backward-char'    2>/dev/null
     bind '"\C-l": clear-screen'                                2>/dev/null
     [[ -n "$_GT_ORIGINAL_PS1" ]] && PS1="$_GT_ORIGINAL_PS1"
