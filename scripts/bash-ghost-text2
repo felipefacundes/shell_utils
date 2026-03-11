@@ -166,11 +166,13 @@ _gt_delete_char() {
 }
 
 _gt_move_left() {
+    _gt_bind_arrows
     (( READLINE_POINT > 0 )) && (( READLINE_POINT-- ))
     _gt_overlay
 }
 
 _gt_right_or_ghost() {
+    _gt_bind_arrows
     local line point
 
     # No Termux READLINE_LINE/POINT chegam vazios — usa _GT_BUFFER como fallback
@@ -261,6 +263,7 @@ _gt_kill_word() {
 
 # ── Histórico filtrado ────────────────────────────────────────
 _gt_hist_up() {
+    _gt_bind_arrows
     local hlen="${#_GT_HIST[@]}"
     (( hlen == 0 )) && return
     local cur="$READLINE_LINE"
@@ -285,6 +288,7 @@ _gt_hist_up() {
 }
 
 _gt_hist_down() {
+    _gt_bind_arrows
     (( _GT_HIST_IDX == -1 )) && return
     local hlen="${#_GT_HIST[@]}" i
     for (( i=_GT_HIST_IDX+1; i<hlen; i++ )); do
@@ -313,6 +317,23 @@ _gt_prompt_cmd() {
     _GT_HIST_IDX=-1; _GT_HIST_SAVED=""; _GT_HIST_PREFIX=""
     _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
     _GT_BUFFER=""
+}
+
+# ── Reinstala binds de setas (chamado em cada função de navegação) ────────────
+_gt_bind_arrows() {
+    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
+    bind -x '"\e[D":    _gt_move_left'       2>/dev/null
+    bind -x '"\eOD":    _gt_move_left'       2>/dev/null
+    bind -x '"\e[A":    _gt_hist_up'         2>/dev/null
+    bind -x '"\eOA":    _gt_hist_up'         2>/dev/null
+    bind -x '"\e[B":    _gt_hist_down'       2>/dev/null
+    bind -x '"\eOB":    _gt_hist_down'       2>/dev/null
+    bind -x '"\e[H":    _gt_home'            2>/dev/null
+    bind -x '"\eOH":    _gt_home'            2>/dev/null
+    bind -x '"\e[F":    _gt_end'             2>/dev/null
+    bind -x '"\eOF":    _gt_end'             2>/dev/null
+    bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
 }
 
 # ── Binds ─────────────────────────────────────────────────────
