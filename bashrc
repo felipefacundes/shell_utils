@@ -128,11 +128,46 @@ else
         (( _cs_exit_code == 0 )) && return
         printf ' \e[0;31m%d\e[0m' "$_cs_exit_code"
     }
-    PS1='\[\e[1;35m\]\u\[\e[0m\] at \[\e[1;38;2;174;255;0m\]\H\[\e[0m\] in \[\e[0;38;2;190;204;202m\]\w\[\e[0m\]$(_cs_exit_show)\n\$ '
+    PS1='\[\e[1;38;2;255;0;149m\]\u\[\e[0m\] at \[\e[1;38;2;174;255;0m\]\H\[\e[0m\] in \[\e[0;38;2;190;204;202m\]\w\[\e[0m\]$(_cs_exit_show)\n\$ '
 fi
 
 # Remove all existing completions
 complete -r
+
+# shellcheck source=/dev/null
+[[ -f "${PREFIX:-/usr}/share/bash-completion/bash_completion" ]] && source "${PREFIX:-/usr}/share/bash-completion/bash_completion"
+
+if ! declare -f _filedir_xspec &>/dev/null; then
+    [[ -n $TERMUX_VERSION ]] && pkg install bash-completion
+    
+    _filedir_xspec() {
+        local cur prev
+        _minimal_init_completion
+        
+        if [[ -d "$cur" ]]; then
+            mapfile -t COMPREPLY < <(compgen -d -- "$cur")
+        else
+            mapfile -t COMPREPLY < <(compgen -f -- "$cur")
+        fi
+        
+        compopt -o filenames 2>/dev/null
+    }
+    
+    _minimal_init_completion() {
+        cur="${COMP_WORDS[COMP_CWORD]}"
+        prev="${COMP_WORDS[COMP_CWORD-1]}"
+    }
+    
+    if declare -f _init_completion &>/dev/null; then
+        _filedir_xspec() {
+            local cur prev words cword
+            _init_completion || return
+            { [[ -d "$cur" ]] && compgen -d -- "$cur"; } || compgen -f -- "$cur"
+            mapfile -t COMPREPLY < <(compgen -f -- "$cur")
+            compopt -o filenames 2>/dev/null
+        }
+    fi
+fi
 
 # shellcheck source=/dev/null
 if [[ "$BLE_BASH_ENABLED" == 0 ]] && [[ "$OMB_THEME" == "demula" ]]; then
