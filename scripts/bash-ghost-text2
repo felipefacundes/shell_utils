@@ -319,8 +319,13 @@ _gt_prompt_cmd() {
 _gt_install_binds() {
     local c
 
+    # No Termux, A B C D maiúsculos sobrescrevem as sequências de seta \e[A \e[B \e[C \e[D
+    # Por isso excluímos essas letras do loop quando em Termux
+    local letters_upper="E F G H I J K L M N O P Q R S T U V W X Y Z"
+    (( ! _GT_IS_TERMUX )) && letters_upper="A B C D $letters_upper"
+
     for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
-             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
+             $letters_upper \
              0 1 2 3 4 5 6 7 8 9; do
         eval "_gti_${c}() { _GT_CHAR='${c}'; _gt_self_insert; }"
         bind -x "\"${c}\": _gti_${c}" 2>/dev/null
