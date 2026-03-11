@@ -319,10 +319,15 @@ _gt_prompt_cmd() {
 _gt_install_binds() {
     local c
 
+    # No Termux, bind de A B C D maiúsculos sobrescreve \e[A \e[B \e[C \e[D (setas)
     for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
              A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
              0 1 2 3 4 5 6 7 8 9; do
         eval "_gti_${c}() { _GT_CHAR='${c}'; _gt_self_insert; }"
+        # No Termux não instala bind para A B C D — conflito com sequências de seta
+        if (( _GT_IS_TERMUX )) && [[ "$c" == [ABCD] ]]; then
+            continue
+        fi
         bind -x "\"${c}\": _gti_${c}" 2>/dev/null
     done
 
