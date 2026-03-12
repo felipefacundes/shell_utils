@@ -1560,6 +1560,7 @@ _cs_enter() {
         [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
         PS1=""
         _cs_ps1_update
+        _cs_exit_code=0
 
         # ── Reinstala binds de caracteres sem eval ────────────
         # Função genérica de inserção com argumento capturado por closure via nameref
