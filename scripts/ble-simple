@@ -957,21 +957,33 @@ _cs_list_completions() {
 # Cada função de edição chama _cs_redraw (que inclui _gt_overlay)
 # ══════════════════════════════════════════════════════════════
 
+_cs_sync_from_readline() {
+    (( _CS_PASTING )) && return    # ← nunca sincroniza durante paste
+    if [[ -n "$READLINE_LINE" ]]; then
+        local inserted="$READLINE_LINE"
+        _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${inserted}${_CS_BUFFER:$_CS_POS}"
+        (( _CS_POS += ${#inserted} ))
+        _GT_SUG_LOCKED=""
+        READLINE_LINE=""
+        READLINE_POINT=0
+    fi
+}
+
 _cs_insert() {
-    # Durante paste, acumula no buffer temporário — sem redesenhar a cada char
     if (( _CS_PASTING )); then
-        _CS_PASTE_BUF+="$1"
         return
     fi
+    _cs_sync_from_readline   # ← só chama quando NÃO está em paste
     _cs_tab_reset
-    _GT_SUG_LOCKED=""                          # inserção → libera lock
+    _GT_SUG_LOCKED=""
     _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${1}${_CS_BUFFER:$_CS_POS}"
     (( _CS_POS++ ))
-    _gt_get_suggestion_fresh "$_CS_BUFFER"     # busca fresca
+    _gt_get_suggestion_fresh "$_CS_BUFFER"
     _cs_redraw
 }
 
 _cs_backspace() {
+    _cs_sync_from_readline
     if (( _CS_POS == 0 )); then
         _cs_redraw; return
     fi
@@ -983,6 +995,7 @@ _cs_backspace() {
 }
 
 _cs_delete() {
+    _cs_sync_from_readline
     _cs_tab_reset
     if (( _CS_POS < ${#_CS_BUFFER} )); then
         _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_BUFFER:$((_CS_POS+1))}"
@@ -992,6 +1005,7 @@ _cs_delete() {
 }
 
 _cs_left() {
+    _cs_sync_from_readline
     if  (( _CS_ML_LINES > 0 )); then
         MULT_ON=1
     fi
@@ -1001,6 +1015,7 @@ _cs_left() {
 }
 
 _cs_right() {
+    _cs_sync_from_readline
     if  (( _CS_ML_LINES > 0 )); then
         MULT_ON=1
     fi
@@ -1163,12 +1178,14 @@ _cs_accept_ghost() {
 }
 
 _cs_home() {
+    _cs_sync_from_readline
     _cs_tab_reset
     _CS_POS=0
     _cs_redraw
 }
 
 _cs_end() {
+    _cs_sync_from_readline
     _cs_tab_reset
     _CS_POS=${#_CS_BUFFER}
     _cs_redraw
@@ -1378,6 +1395,7 @@ _cs_page_down() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_enter() {
+    _cs_sync_from_readline
     # Durante bracketed paste, \n é parte do conteúdo colado
     if (( _CS_PASTING )); then
         _CS_PASTE_BUF+=$'\n'
@@ -1702,18 +1720,46 @@ _cs_install_binds() {
     _cs_paste_start() {
         _CS_PASTING=1
         _CS_PASTE_BUF=""
+        READLINE_LINE=""
+        READLINE_POINT=0
+        _CS_WAYLAND_DISPLAY="$WAYLAND_DISPLAY"
+        _CS_DISPLAY="$DISPLAY"
+
     }
+
     _cs_paste_end() {
         _CS_PASTING=0
-        _CS_PASTE_BUF="${_CS_PASTE_BUF//$'\r'/}"
-        _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_PASTE_BUF}${_CS_BUFFER:$_CS_POS}"
-        _CS_POS=$(( _CS_POS + ${#_CS_PASTE_BUF} ))
+        READLINE_LINE=""
+        READLINE_POINT=0
+
+        local pasted=""
+        if [[ -n "$TERMUX_VERSION" ]] && command -v termux-clipboard-get &>/dev/null; then
+            pasted=$(termux-clipboard-get 2>/dev/null)
+        elif [[ -n "$_CS_WAYLAND_DISPLAY" ]] && command -v wl-paste &>/dev/null; then
+            pasted=$(WAYLAND_DISPLAY="$_CS_WAYLAND_DISPLAY" \
+                wl-paste --no-newline --type text/plain\;charset=utf-8 2>/dev/null)
+            # Fallback sem type especificado
+            if [[ -z "$pasted" ]]; then
+                pasted=$(WAYLAND_DISPLAY="$_CS_WAYLAND_DISPLAY" \
+                    wl-paste --no-newline 2>/dev/null)
+            fi
+        elif command -v xclip &>/dev/null; then
+            pasted=$(DISPLAY="$_CS_DISPLAY" xclip -selection clipboard -o 2>/dev/null)
+        elif command -v xsel &>/dev/null; then
+            pasted=$(DISPLAY="$_CS_DISPLAY" xsel --clipboard --output 2>/dev/null)
+        else
+            pasted="$_CS_PASTE_BUF"
+        fi
+
+        pasted="${pasted//$'\r'/}"
         _CS_PASTE_BUF=""
-        # A linha do prompt já está na tela — redraw deve sobrescrever a partir dela
+        _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${pasted}${_CS_BUFFER:$_CS_POS}"
+        _CS_POS=$(( _CS_POS + ${#pasted} ))
         _CS_ML_LINES=1
         _gt_get_suggestion_fresh "$_CS_BUFFER"
         _cs_redraw
     }
+
     bind -x '"\e[200~": _cs_paste_start' 2>/dev/null
     bind -x '"\e[201~": _cs_paste_end'   2>/dev/null
 
