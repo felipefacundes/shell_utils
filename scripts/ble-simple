@@ -1580,7 +1580,7 @@ _cs_enter() {
         fi
         _cs_exit_code=$? # Para ser usado no PS1 do bashrc
 
-        [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
+        ( [[ -n "$stty_save" ]] && stty "$stty_save" & ) 2>/dev/null
         PS1=""
         _cs_ps1_update
         _cs_exit_code=0

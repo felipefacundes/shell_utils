@@ -126,7 +126,7 @@ else
     _cs_exit_code=0
     _cs_exit_show() {
         (( _cs_exit_code == 0 )) && return
-        printf ' \e[0;31m%d\e[0m' "$_cs_exit_code"
+        printf ' exited: \e[0;31m%d\e[0m' "$_cs_exit_code"
     }
     PS1='\[\e[1;38;2;255;0;149m\]\u\[\e[0m\] at \[\e[1;38;2;174;255;0m\]\H\[\e[0m\] in \[\e[0;38;2;190;204;202m\]\w\[\e[0m\]$(_cs_exit_show)\n\$ '
 fi
@@ -173,6 +173,7 @@ fi
 if [[ "$BLE_BASH_ENABLED" == 0 ]] && [[ "$OMB_THEME" == "demula" ]]; then
     source ~/.shell_utils/scripts/bash-ghost-text2
 elif [[ "$BLE_BASH_ENABLED" == 0 ]]; then
+    echo
     source ~/.shell_utils/scripts/bash-ghost-text
 fi
 
