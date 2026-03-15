@@ -423,8 +423,9 @@ _gt_install_binds() {
     bind -x '"\\": _gti_bslash'   2>/dev/null
     bind -x '"`":  _gti_backtick' 2>/dev/null
 
+    bind '"\x7f": "\C-x\C-b"'               2>/dev/null
+    bind -x '"\C-x\C-b": _gt_backspace'     2>/dev/null
     bind -x '"\C-h":    _gt_backspace'       2>/dev/null
-    bind -x '"\x7f":    _gt_backspace'       2>/dev/null
     bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
     bind -x '"\e[D":    _gt_move_left'       2>/dev/null
     bind -x '"\eOD":    _gt_move_left'       2>/dev/null
