@@ -766,7 +766,15 @@ _cs_do_tab() {
 
         if (( ${#completions[@]} == 0 )); then
             if (( is_cmd )); then
-                mapfile -t completions < <(compgen -c -- "$cur" 2>/dev/null | sort -u)
+                local -a cmd_matches=() dir_matches=()
+                mapfile -t cmd_matches < <(compgen -c -- "$cur" 2>/dev/null | sort -u)
+                mapfile -t dir_matches < <(compgen -d -- "$cur" 2>/dev/null | sort -u)
+                local _di
+                for _di in "${dir_matches[@]}"; do
+                    [[ "$_di" != */ ]] && _di+="/"
+                    cmd_matches+=( "$_di" )
+                done
+                mapfile -t completions < <(printf '%s\n' "${cmd_matches[@]}" | sort -u)
             else
                 mapfile -t completions < <(compgen -f -- "$cur" 2>/dev/null | sort -u)
                 local i
@@ -825,7 +833,15 @@ _cs_do_tab() {
         _CS_BUFFER="${line:0:$word_start}${common}${after}"
         _CS_POS=$(( word_start + ${#common} ))
         if (( is_cmd )); then
-            mapfile -t completions < <(compgen -c -- "$common" 2>/dev/null | sort -u)
+            local -a cmd_matches2=() dir_matches2=()
+            mapfile -t cmd_matches2 < <(compgen -c -- "$common" 2>/dev/null | sort -u)
+            mapfile -t dir_matches2 < <(compgen -d -- "$common" 2>/dev/null | sort -u)
+            local _di2
+            for _di2 in "${dir_matches2[@]}"; do
+                [[ "$_di2" != */ ]] && _di2+="/"
+                cmd_matches2+=( "$_di2" )
+            done
+            mapfile -t completions < <(printf '%s\n' "${cmd_matches2[@]}" | sort -u)
         else
             mapfile -t completions < <(compgen -f -- "$common" 2>/dev/null | sort -u)
             local i
@@ -862,6 +878,13 @@ _cs_do_tab() {
         _CS_TAB_ORIG_BUFFER="$_CS_BUFFER"
         _CS_TAB_ORIG_POS=$_CS_POS
         _cs_list_completions "$common" "${completions[@]}"
+        # Ativa imediatamente o ciclo: próximo Tab entra no bloco _CS_TAB_STATE >= 0
+        # usando word_start já correto, evitando recalculo errado sobre nomes com espaços
+        _CS_TAB_STATE=0
+        local _first_c="${_CS_TAB_COMPLETIONS[0]}"
+        _first_c="$(_cs_quote_completion "$_first_c")"
+        _CS_BUFFER="${_CS_TAB_ORIG_BUFFER:0:$_CS_TAB_WORD_START}${_first_c}${after}"
+        _CS_POS=$(( _CS_TAB_WORD_START + ${#_first_c} ))
         _cs_redraw; return
     fi
 
