@@ -1501,8 +1501,8 @@ _cs_enter() {
             history -s -- "$cmd_str"
         fi
 
-        #local stty_save
-        #stty_save=$(stty -g 2>/dev/null)
+        local stty_save
+        stty_save=$(stty -g 2>/dev/null)
 
         # ── Remove binds para execução limpa do comando ───────
         # Letras e dígitos — remove via array sem eval
@@ -1528,7 +1528,7 @@ _cs_enter() {
                 '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' \
                 '"\e[5~"' '"\e[6~"' '"\C-f"' '"\C-g"' 2>/dev/null
 
-        stty icanon echo icrnl 2>/dev/null
+        #stty icanon echo icrnl 2>/dev/null
         PS1="$_CS_PS1_ORIG"
 
         # Se cmd_str é um caminho de diretório existente (autocd com espaços),
@@ -1586,13 +1586,13 @@ _cs_enter() {
         fi
         _cs_exit_code=$? # Para ser usado no PS1 do bashrc
 
+        [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
         if (( _cs_exit_code == 0 || _cs_exit_code == 130)); then
-            stty icanon echo icrnl 2>/dev/null
+            :
         elif (( _cs_exit_code > 1 )); then
-            stty -icanon echo icrnl 2>/dev/null
+            stty -icanon 2>/dev/null
         fi
 
-        #[[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
 
         PS1=""
         _cs_ps1_update
