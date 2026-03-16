@@ -1528,7 +1528,7 @@ _cs_enter() {
                 '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' \
                 '"\e[5~"' '"\e[6~"' '"\C-f"' '"\C-g"' 2>/dev/null
 
-        #stty icanon echo icrnl 2>/dev/null
+        stty icanon echo icrnl 2>/dev/null
         PS1="$_CS_PS1_ORIG"
 
         # Se cmd_str é um caminho de diretório existente (autocd com espaços),
@@ -1585,6 +1585,12 @@ _cs_enter() {
             eval "$cmd_str"
         fi
         _cs_exit_code=$? # Para ser usado no PS1 do bashrc
+
+        if (( _cs_exit_code == 0 || _cs_exit_code == 130)); then
+            stty icanon echo icrnl 2>/dev/null
+        elif (( _cs_exit_code > 1 )); then
+            stty -icanon echo icrnl 2>/dev/null
+        fi
 
         #[[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
 
