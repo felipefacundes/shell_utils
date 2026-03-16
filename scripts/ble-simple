@@ -81,6 +81,7 @@ _GT_SUG_LOCKED=""
 _GT_CONF_FILE="${HOME}/.cache/bash-modes.conf"
 mkdir -p "${HOME}/.cache" 2>/dev/null
 
+stty icanon echo icrnl 2>/dev/null
 # Lê o modo salvo; se não existir, usa BASH_GHOST_TEXT ou padrão 1
 _gt_conf_read() {
     local key="$1" default="$2"
@@ -1495,8 +1496,8 @@ _cs_enter() {
             history -s -- "$cmd_str"
         fi
 
-        local stty_save
-        stty_save=$(stty -g 2>/dev/null)
+        #local stty_save
+        #stty_save=$(stty -g 2>/dev/null)
 
         # ── Remove binds para execução limpa do comando ───────
         # Letras e dígitos — remove via array sem eval
@@ -1522,7 +1523,7 @@ _cs_enter() {
                 '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' \
                 '"\e[5~"' '"\e[6~"' '"\C-f"' '"\C-g"' 2>/dev/null
 
-        stty icanon echo icrnl 2>/dev/null
+        #stty icanon echo icrnl 2>/dev/null
         PS1="$_CS_PS1_ORIG"
 
         # Se cmd_str é um caminho de diretório existente (autocd com espaços),
@@ -1580,7 +1581,8 @@ _cs_enter() {
         fi
         _cs_exit_code=$? # Para ser usado no PS1 do bashrc
 
-        ( [[ -n "$stty_save" ]] && stty "$stty_save" & ) 2>/dev/null
+        #[[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
+
         PS1=""
         _cs_ps1_update
         _cs_exit_code=0
@@ -1946,7 +1948,8 @@ _cs_install_binds() {
     bind -x '"\e[1;5F": _cs_kill_5'                 2>/dev/null  # Shift+Delete
     bind -x '"\e[1;2E": _cs_kill_5_right'           2>/dev/null  # Shift+5
 
-    trap '_cs_sigint' INT
+    #trap '_cs_sigint' INT
+    _cs_sigint
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -1977,7 +1980,7 @@ custom-shell-detach() {
          '"\C-u"' '"\C-k"' '"\C-w"' '"\C-l"' '"\C-m"' \
          '"\e[A"' '"\eOA"' '"\e[B"' '"\eOB"' \
          '"\e[5~"' '"\e[6~"' '"\C-f"' '"\C-g"' 2>/dev/null
-    trap - INT
+    #trap - INT
     PS1="$_CS_PS1_ORIG"
     rm -f "$_GT_STATE_FILE" "$_CS_SINTAX_FILE" 2>/dev/null
     _CS_LOADED=0
