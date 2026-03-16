@@ -1703,6 +1703,7 @@ _cs_enter() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_sigint() {
+    PS1=""
     _cs_tab_reset
     _CS_BUFFER=""; _CS_POS=0; _CS_ML_BUFFER=""; _CS_ML_LINES=0
     _CS_PASTING=0; _CS_PASTE_BUF=""
@@ -1712,6 +1713,10 @@ _cs_sigint() {
 }
 
 _cs_prompt_cmd() {
+    # Executa _prompt_command se ela existir no escopo atual (definida no ~/.bashrc).
+    # Isso garante que notificações, fix_bash_history e demais hooks do usuário
+    # sejam disparados normalmente, sem precisar duplicá-los aqui.
+    PS1=""
     if declare -f _prompt_command &>/dev/null; then
         _prompt_command
     fi
@@ -1723,12 +1728,7 @@ _cs_prompt_cmd() {
     _gt_sync_hist
     _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
     _CS_ML_BUFFER=""
-    if (( _CS_SIGINT_FIRED )); then
-        _CS_SIGINT_FIRED=0
-        printf '\n' >&2
-    else
-        _cs_show_prompt
-    fi
+    _cs_show_prompt
     _CS_BUFFER=""; _CS_POS=0
     READLINE_LINE=""; READLINE_POINT=0
 }
