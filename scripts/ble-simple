@@ -67,6 +67,8 @@ _CS_PS1_LEN=0
 
 _CS_PS1_ORIG="${PS1}"
 PS1=""
+echo
+printf '\e[1A\e[2K' >&2
 
 # ══════════════════════════════════════════════════════════════
 # SEÇÃO 2 — ESTADO DO GHOST TEXT
