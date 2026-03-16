@@ -217,11 +217,12 @@ _cs_cmd_valid() {
 _cs_colorize_token() {
     local token="$1"
     local is_first="${2:-0}"
-    local cyan=$'\e[36m'
+    local blue_light=$'\e[38;2;3;173;252m'  # folders
+    local purple=$'\e[38;5;135m'            # functions
+    local yellow=$'\e[33m'                  # aliases
     local green=$'\e[32m'
+    local cyan=$'\e[36m'
     local red=$'\e[31m'
-    local yellow=$'\e[33m'            # aliases
-    local purple=$'\e[38;5;135m'      # funções
     local reset=$'\e[0m'
 
     if [[ "$token" == */* ]]; then
@@ -233,7 +234,7 @@ _cs_colorize_token() {
         [[ -z "$dir_part" ]] && dir_part="/"
 
         if [[ -d "$dir_part" ]] || [[ -d "$expanded" ]]; then
-            printf '%s%s%s' "$cyan" "$original_dir/" "$reset"
+            printf '%s%s%s' "$blue_light" "$original_dir/" "$reset"
         else
             printf '%s%s%s' "$red" "$original_dir/" "$reset"
         fi
