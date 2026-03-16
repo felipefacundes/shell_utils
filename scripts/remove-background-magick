@@ -6,15 +6,16 @@
 : <<'DOCUMENTATION'
 Background Removal Bash Utility
 
-A Bash script that uses ImageMagick to remove specific color backgrounds from PNG images.
+A Bash script that uses ImageMagick to remove specific color backgrounds from images.
 Supports multiple removal methods and adjustable fuzz tolerance.
 
 Key Features:
-1. Batch PNG image processing
-2. Multiple removal methods: simple, fuzz, mask, morph, or precise
-3. Adjustable fuzz tolerance via argument
-4. Clean edge handling
-5. Two new highly efficient methods for complex backgrounds
+1. Batch image processing (PNG, JPG, JPEG, SVG, WEBP, BMP, AVIF)
+2. Output always saved as PNG (preserves transparency)
+3. Multiple removal methods: simple, fuzz, mask, morph, or precise
+4. Adjustable fuzz tolerance via argument
+5. Clean edge handling
+6. Two new highly efficient methods for complex backgrounds
 DOCUMENTATION
 
 # Display help
@@ -22,9 +23,12 @@ show_help() {
     echo "Usage: ${0##*/} <input_dir> <output_dir> <color_hex> [options]"
     echo ""
     echo "Required arguments:"
-    echo "  <input_dir>      Directory with input PNG images"
+    echo "  <input_dir>      Directory with input images"
     echo "  <output_dir>     Directory for processed images"
     echo "  <color_hex>      Color to remove (format: RRGGBB or #RRGGBB)"
+    echo ""
+    echo "Supported input formats: PNG, JPG, JPEG, SVG, WEBP, BMP, AVIF"
+    echo "Output format: always PNG (to preserve transparency)"
     echo ""
     echo "Optional arguments:"
     echo "  -m, --method METHOD   Removal method: simple, fuzz (default), mask, morph, precise"
@@ -109,6 +113,34 @@ else
     color_hex="$color_input"
 fi
 
+# Validate input directory
+if [ ! -d "$input_directory" ]; then
+    echo "Error: Input directory '$input_directory' not found"
+    exit 1
+fi
+
+# Collect all supported image files (case-insensitive)
+shopt -s nullglob nocaseglob
+image_files=(
+    "$input_directory"/*.png
+    "$input_directory"/*.jpg
+    "$input_directory"/*.jpeg
+    "$input_directory"/*.svg
+    "$input_directory"/*.webp
+    "$input_directory"/*.bmp
+    "$input_directory"/*.avif
+)
+shopt -u nullglob nocaseglob
+
+if [ ${#image_files[@]} -eq 0 ]; then
+    echo "Error: No supported image files found in '$input_directory'"
+    echo "Supported formats: PNG, JPG, JPEG, SVG, WEBP, BMP, AVIF"
+    echo ""
+    echo "Contents of '$input_directory':"
+    ls -la "$input_directory"
+    exit 1
+fi
+
 # Creates output directory if it does not exist
 mkdir -p "$output_directory"
 
@@ -126,29 +158,31 @@ echo "Method:           $METHOD"
 if [[ "$METHOD" == "fuzz" || "$METHOD" == "mask" || "$METHOD" == "morph" || "$METHOD" == "precise" ]]; then
     echo "Fuzz tolerance:   $FUZZ_PERCENT"
 fi
+echo "Images found:     ${#image_files[@]}"
 echo "========================================"
 
 # Process images
-for input_image in "$input_directory"/*.png; do
-    # Skip if no PNG files found
+for input_image in "${image_files[@]}"; do
     [ -f "$input_image" ] || continue
-    
+
     filename=$(basename -- "$input_image")
-    
+    # Output always as PNG (strips original extension)
+    outname="${filename%.*}.png"
+
     echo -n "Processing $filename... "
-    
+
     # Create temp directory for methods that need it
     if [[ "$METHOD" == "mask" || "$METHOD" == "morph" || "$METHOD" == "precise" ]]; then
         temp_dir="$output_directory/temp_$$"
         mkdir -p "$temp_dir"
     fi
-    
+
     case $METHOD in
         simple)
             # SIMPLE METHOD: Basic transparent
             if magick "$input_image" \
                 -transparent "$color_hex" \
-                "$output_directory/$filename" 2>/dev/null; then
+                "$output_directory/$outname" 2>/dev/null; then
                 echo "✓"
                 ((processed++))
             else
@@ -156,14 +190,14 @@ for input_image in "$input_directory"/*.png; do
                 ((failed++))
             fi
             ;;
-        
+
         fuzz)
             # FUZZ METHOD: With tolerance
             if magick "$input_image" \
                 -fuzz "$FUZZ_PERCENT" \
                 -transparent "$color_hex" \
                 -channel A -threshold 10% +channel \
-                "$output_directory/$filename" 2>/dev/null; then
+                "$output_directory/$outname" 2>/dev/null; then
                 echo "✓"
                 ((processed++))
             else
@@ -171,7 +205,7 @@ for input_image in "$input_directory"/*.png; do
                 ((failed++))
             fi
             ;;
-        
+
         mask)
             # CORRECTED MASK METHOD: Creates proper alpha mask
             # Step 1: Create alpha mask (white = transparent, black = opaque)
@@ -186,25 +220,25 @@ for input_image in "$input_directory"/*.png; do
                 rm -rf "$temp_dir"
                 continue
             fi
-            
+
             # Step 2: Apply mask to original image
             if magick "$input_image" \
                 \( -clone 0 -alpha off \) \
                 \( -clone 0 "$temp_dir/mask.png" -compose Copy_Opacity -composite \) \
                 -delete 0 \
                 -trim +repage \
-                "$output_directory/$filename" 2>/dev/null; then
+                "$output_directory/$outname" 2>/dev/null; then
                 echo "✓"
                 ((processed++))
             else
                 echo "✗ (mask application failed)"
                 ((failed++))
             fi
-            
+
             # Clean up
             rm -rf "$temp_dir"
             ;;
-        
+
         morph)
             # MORPH METHOD: Uses morphological operations for better edges
             # This method is excellent for handling anti-aliased edges
@@ -224,24 +258,24 @@ for input_image in "$input_directory"/*.png; do
                 rm -rf "$temp_dir"
                 continue
             fi
-            
+
             # Apply the mask
             if magick "$input_image" \
                 \( "$temp_dir/mask.png" -alpha extract \) \
                 -alpha off -compose Copy_Opacity -composite \
                 -trim +repage \
-                "$output_directory/$filename" 2>/dev/null; then
+                "$output_directory/$outname" 2>/dev/null; then
                 echo "✓"
                 ((processed++))
             else
                 echo "✗ (morph apply failed)"
                 ((failed++))
             fi
-            
+
             # Clean up
             rm -rf "$temp_dir"
             ;;
-        
+
         precise)
             # PRECISE METHOD: Multi-step approach for complex backgrounds
             # Best for images with gradients or similar colors
@@ -261,26 +295,26 @@ for input_image in "$input_directory"/*.png; do
                 rm -rf "$temp_dir"
                 continue
             fi
-            
+
             # Create a slightly dilated mask for smoother edges
             magick "$temp_dir/mask.png" \
                 -morphology Dilate Diamond:1 \
                 -blur 0x0.7 \
                 "$temp_dir/mask_blur.png" 2>/dev/null
-            
+
             # Apply the smoothed mask
             if magick "$input_image" \
                 \( "$temp_dir/mask_blur.png" \) \
                 -alpha off -compose Copy_Opacity -composite \
                 -trim +repage \
-                "$output_directory/$filename" 2>/dev/null; then
+                "$output_directory/$outname" 2>/dev/null; then
                 echo "✓"
                 ((processed++))
             else
                 echo "✗ (precise apply failed)"
                 ((failed++))
             fi
-            
+
             # Clean up
             rm -rf "$temp_dir"
             ;;

@@ -1,0 +1,259 @@
+#!/bin/bash
+
+# Script: rename_files.sh
+# Description: Renames files and/or directories in the current directory based on creation time.
+#              Oldest item gets the lowest number (00000001), newest gets the highest.
+# Usage: ./rename_files.sh [-f|--file] [-d|--directory] [-p|--prefix TEXT] [-s|--suffix TEXT]
+#                          [-i|--invert] [-y|--yes] [-h|--help]
+
+# ---------------------------------------------------------------------------
+# Default values
+# ---------------------------------------------------------------------------
+RENAME_FILES=false
+RENAME_DIRS=false
+PREFIX=""
+SUFFIX=""
+REVERSE_ORDER=false
+AUTO_YES=false
+
+# ---------------------------------------------------------------------------
+# Display usage information
+# ---------------------------------------------------------------------------
+usage() {
+    echo "Usage: ${0##*/} [OPTIONS]"
+    echo "Renames files and/or directories in the current directory based on creation time."
+    echo ""
+    echo "Options:"
+    echo "  -f, --file            Rename files only"
+    echo "  -d, --directory       Rename directories only"
+    echo "  -f -d                 Rename both files and directories"
+    echo "  -p, --prefix TEXT     Add a prefix  (result: TEXT_00000001)"
+    echo "  -s, --suffix TEXT     Add a suffix  (result: 00000001_TEXT)"
+    echo "  -i, --invert          Reverse order (newest first instead of oldest first)"
+    echo "  -y, --yes             Auto-confirm all renames (non-interactive mode)"
+    echo "  -h, --help            Display this help message"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/} -f                        # Rename files interactively (oldest first)"
+    echo "  ${0##*/} -f -d -p popcorn -y       # Rename all with prefix, auto-confirm"
+    echo "  ${0##*/} -d -s backup -i           # Rename dirs with suffix, newest first"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Parse command-line arguments
+# ---------------------------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|--file)
+            RENAME_FILES=true
+            shift
+            ;;
+        -d|--directory)
+            RENAME_DIRS=true
+            shift
+            ;;
+        -p|--prefix)
+            if [[ -n $2 && $2 != -* ]]; then
+                PREFIX="$2"
+                shift 2
+            else
+                echo "Error: --prefix requires a value"
+                usage
+            fi
+            ;;
+        -s|--suffix)
+            if [[ -n $2 && $2 != -* ]]; then
+                SUFFIX="$2"
+                shift 2
+            else
+                echo "Error: --suffix requires a value"
+                usage
+            fi
+            ;;
+        -i|--invert)
+            REVERSE_ORDER=true
+            shift
+            ;;
+        -y|--yes)
+            AUTO_YES=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option '$1'"
+            usage
+            ;;
+    esac
+done
+
+# ---------------------------------------------------------------------------
+# Require at least -f or -d
+# ---------------------------------------------------------------------------
+if [ "$RENAME_FILES" = false ] && [ "$RENAME_DIRS" = false ]; then
+    echo "Error: You must specify at least one of -f/--file or -d/--directory."
+    usage
+fi
+
+# ---------------------------------------------------------------------------
+# Build find arguments as an array (avoids eval / shell-expansion bugs with
+# -printf and null-delimited output).
+# ---------------------------------------------------------------------------
+FIND_ARGS=( . -maxdepth 1 )
+
+if [ "$RENAME_FILES" = true ] && [ "$RENAME_DIRS" = true ]; then
+    # Both files and directories — exclude the current directory entry itself
+    FIND_ARGS+=( ! -name . )
+elif [ "$RENAME_FILES" = true ]; then
+    FIND_ARGS+=( -type f )
+elif [ "$RENAME_DIRS" = true ]; then
+    # Directories only — exclude the current directory entry itself
+    FIND_ARGS+=( -type d ! -name . )
+fi
+
+# ---------------------------------------------------------------------------
+# Collect items sorted by modification time (stat ctime is unreliable on most
+# Linux filesystems; %T@ = mtime epoch with sub-second precision works well).
+# Items are null-delimited to handle any special characters in filenames.
+# ---------------------------------------------------------------------------
+if [ "$REVERSE_ORDER" = true ]; then
+    SORT_FLAG="-rnz"   # newest first
+else
+    SORT_FLAG="-nz"    # oldest first (default)
+fi
+
+# Read null-delimited basenames into an array
+mapfile -d '' ITEM_ARRAY < <(
+    find "${FIND_ARGS[@]}" -printf '%T@ %P\0' \
+    | sort $SORT_FLAG \
+    | cut -z -d' ' -f2-
+)
+
+# ---------------------------------------------------------------------------
+# Validate results
+# ---------------------------------------------------------------------------
+# Remove any empty entries that mapfile might add
+CLEAN_ARRAY=()
+for item in "${ITEM_ARRAY[@]}"; do
+    [[ -n "$item" ]] && CLEAN_ARRAY+=( "$item" )
+done
+
+if [ ${#CLEAN_ARRAY[@]} -eq 0 ]; then
+    echo "No items found to rename."
+    exit 0
+fi
+
+total_items=${#CLEAN_ARRAY[@]}
+renamed_count=0
+skipped_count=0
+counter=1
+
+echo "Found $total_items item(s) to rename."
+[ "$AUTO_YES" = false ] && echo "Running in interactive mode (use -y to auto-confirm all)."
+echo ""
+
+# ---------------------------------------------------------------------------
+# Rename loop
+# ---------------------------------------------------------------------------
+for item in "${CLEAN_ARRAY[@]}"; do
+
+    # Build the numeric part (zero-padded to 8 digits)
+    new_number=$(printf "%08d" $counter)
+
+    # Assemble the new name: [PREFIX_]NUMBER[_SUFFIX][.ext]
+    new_name=""
+
+    if [ -n "$PREFIX" ]; then
+        new_name="${PREFIX}_${new_number}"
+    else
+        new_name="${new_number}"
+    fi
+
+    if [ -n "$SUFFIX" ]; then
+        new_name="${new_name}_${SUFFIX}"
+    fi
+
+    # Preserve file extension (only for regular files)
+    if [ -f "$item" ]; then
+        extension="${item##*.}"
+        # Only append extension when the item actually has one
+        if [ "$extension" != "$item" ]; then
+            new_name="${new_name}.${extension}"
+        fi
+    fi
+
+    # ------------------------------------------------------------------
+    # Handle the case where the target name already exists
+    # ------------------------------------------------------------------
+    if [ -e "$new_name" ]; then
+        echo "⚠  Warning: '$new_name' already exists."
+
+        if [ "$AUTO_YES" = true ]; then
+            echo "   Skipping '$item' (auto mode — will not overwrite)."
+            ((skipped_count++))
+        else
+            read -rp "   Overwrite '$new_name' with '$item'? (y/N): " confirm
+            if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
+                if mv -f "$item" "$new_name"; then
+                    echo "   Renamed:  $item  →  $new_name"
+                    ((renamed_count++))
+                else
+                    echo "   Error renaming '$item'."
+                    ((skipped_count++))
+                fi
+            else
+                echo "   Skipping '$item'."
+                ((skipped_count++))
+            fi
+        fi
+
+    # ------------------------------------------------------------------
+    # Normal case: target does not exist
+    # ------------------------------------------------------------------
+    else
+        echo "Proposed rename:  $item  →  $new_name"
+
+        if [ "$AUTO_YES" = true ]; then
+            if mv "$item" "$new_name"; then
+                echo "   Renamed."
+                ((renamed_count++))
+            else
+                echo "   Error renaming '$item'."
+                ((skipped_count++))
+            fi
+        else
+            read -rp "   Rename? (Y/n): " confirm
+            if [[ -z $confirm || $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
+                if mv "$item" "$new_name"; then
+                    echo "   Renamed."
+                    ((renamed_count++))
+                else
+                    echo "   Error renaming '$item'."
+                    ((skipped_count++))
+                fi
+            else
+                echo "   Skipping '$item'."
+                ((skipped_count++))
+            fi
+        fi
+    fi
+
+    echo ""
+    ((counter++))
+done
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+echo "══════════════════════════════════════════════"
+echo "Done!"
+echo "  Total processed : $total_items"
+echo "  Renamed         : $renamed_count"
+echo "  Skipped         : $skipped_count"
+echo ""
+
+if [ "$renamed_count" -eq 0 ] && [ "$skipped_count" -gt 0 ]; then
+    echo "Tip: Use -y / --yes to auto-confirm all renames."
+fi
