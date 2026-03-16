@@ -83,9 +83,6 @@ _GT_SUG_LOCKED=""
 _GT_CONF_FILE="${HOME}/.cache/bash-modes.conf"
 mkdir -p "${HOME}/.cache" 2>/dev/null
 
-# Prepara o terminal
-stty icanon echo icrnl 2>/dev/null
-
 # Lê o modo salvo; se não existir, usa BASH_GHOST_TEXT ou padrão 1
 _gt_conf_read() {
     local key="$1" default="$2"
@@ -1570,7 +1567,10 @@ _cs_enter() {
         #
         # Usar bash -ic seria mais simples mas recarrega o .bashrc inteiro
         # a cada comando alias, tornando a execução muito lenta.
+
+        stty sane # Restaura o terminal para o estado original, necessário para shell scripts com read
         local _cs_first_token="${cmd_str%% *}"
+
         if alias "$_cs_first_token" &>/dev/null 2>&1; then
             local _cs_alias_def
             _cs_alias_def=$(alias "$_cs_first_token" 2>/dev/null)
@@ -1587,11 +1587,6 @@ _cs_enter() {
         _cs_exit_code=$? # Para ser usado no PS1 do bashrc
 
         [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
-        if (( _cs_exit_code == 0 || _cs_exit_code == 130)); then
-            :
-        elif (( _cs_exit_code > 1 )); then
-            stty -icanon 2>/dev/null
-        fi
 
 
         PS1=""
