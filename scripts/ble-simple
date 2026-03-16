@@ -81,7 +81,9 @@ _GT_SUG_LOCKED=""
 _GT_CONF_FILE="${HOME}/.cache/bash-modes.conf"
 mkdir -p "${HOME}/.cache" 2>/dev/null
 
+# Prepara o terminal
 stty icanon echo icrnl 2>/dev/null
+
 # Lê o modo salvo; se não existir, usa BASH_GHOST_TEXT ou padrão 1
 _gt_conf_read() {
     local key="$1" default="$2"
@@ -1710,9 +1712,6 @@ _cs_sigint() {
 }
 
 _cs_prompt_cmd() {
-    # Executa _prompt_command se ela existir no escopo atual (definida no ~/.bashrc).
-    # Isso garante que notificações, fix_bash_history e demais hooks do usuário
-    # sejam disparados normalmente, sem precisar duplicá-los aqui.
     if declare -f _prompt_command &>/dev/null; then
         _prompt_command
     fi
@@ -1724,7 +1723,12 @@ _cs_prompt_cmd() {
     _gt_sync_hist
     _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
     _CS_ML_BUFFER=""
-    _cs_show_prompt
+    if (( _CS_SIGINT_FIRED )); then
+        _CS_SIGINT_FIRED=0
+        printf '\n' >&2
+    else
+        _cs_show_prompt
+    fi
     _CS_BUFFER=""; _CS_POS=0
     READLINE_LINE=""; READLINE_POINT=0
 }
