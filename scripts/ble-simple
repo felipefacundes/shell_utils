@@ -80,8 +80,9 @@ _gt_b0=$'\e[0m'
 _GT_SUGGESTION=""
 _GT_SUG_LOCKED=""
 # Arquivo de configuração persistente
-_GT_CONF_FILE="${HOME}/.cache/bash-modes.conf"
-mkdir -p "${HOME}/.cache" 2>/dev/null
+_GT_CONF_DIR="${HOME}/.shell_utils_configs"
+_GT_CONF_FILE="${_GT_CONF_DIR}/bash-modes.conf"
+[[ ! -d "${_GT_CONF_DIR}" ]] && mkdir -p "${_GT_CONF_DIR}" 2>/dev/null
 
 # Lê o modo salvo; se não existir, usa BASH_GHOST_TEXT ou padrão 1
 _gt_conf_read() {
@@ -96,7 +97,6 @@ _gt_conf_read() {
 
 _gt_conf_write() {
     local key="$1" val="$2"
-    mkdir -p "${HOME}/.cache" 2>/dev/null
     if [[ -f "$_GT_CONF_FILE" ]] && grep -q "^${key}=" "$_GT_CONF_FILE" 2>/dev/null; then
         sed -i "s|^${key}=.*|${key}=${val}|" "$_GT_CONF_FILE"
     else
