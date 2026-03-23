@@ -12,6 +12,27 @@
 7. Portável: verifica dependências ("sqlite3", "dialog") e valida o arquivo bíblico.  
 DOCUMENTATION
 
+original_stty=$(stty -g)
+
+cleanup() {
+    clear
+    stty icanon echo icrnl 2>/dev/null #opost onlcr
+    stty sane 2>/dev/null
+    stty "$original_stty" 2>/dev/null
+
+    # Mostra o cursor (caso tenha sido escondido)
+    printf "\033[?25h"
+    
+    # Limpa a linha atual e move para o início
+    printf "\033[2K\033[G"
+    
+    # Mensagem em nova linha
+    printf "\nScript interrompido pelo usuário.\n"
+    exit 1
+}
+
+trap cleanup INT
+
 NC="\033[0m"
 RED="\033[1;31m"
 FILE="acf.sqlite"

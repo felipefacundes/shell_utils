@@ -30,6 +30,8 @@ alias retrocede_um_diretorio_para_pasta_anterior='~/.shell_utils/scripts/return-
 
 alias rgb2ansi='~/.shell_utils/scripts/hex2ansi'
 
+alias onecolor_to='~/.shell_utils/scripts/multicolor2onecolor'
+
 alias hd_zero='~/.shell_utils/scripts/pendrive-zero'
 alias ssd_zero='hd_zero'
 alias nvme_zero='hd_zero'

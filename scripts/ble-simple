@@ -932,23 +932,57 @@ _cs_do_tab() {
 
 _cs_colorize() {
     local item="$1" prefix="$2"
-    local rest="${item:${#prefix}}"
     local item_color=""
     if [[ "$item" == */ ]]; then item_color="01;34"
     elif [[ -x "$item" && -f "$item" ]] 2>/dev/null; then item_color="01;32"
     elif [[ -L "$item" ]] 2>/dev/null; then item_color="01;36"
     elif [[ -d "$item" ]] 2>/dev/null; then item_color="01;38;5;69"
     fi
-    local reset="\e[0m"
+    local esc=$'\e'
+    local reset="${esc}[0m"
+
+    if [[ -n "$prefix" && "$item" == */* ]]; then
+        local trailing_slash=""
+        local work="$item"
+        [[ "$work" == */ ]] && trailing_slash="/" && work="${work%/}"
+        local base="${work%/*}/"
+        local last="${work##*/}"
+
+        local highlighted_last
+        if [[ "$last" == "$prefix"* ]]; then
+            local rest_last="${last:${#prefix}}"
+            if [[ -n "$item_color" ]]; then
+                highlighted_last="${esc}[${item_color};04m${prefix}${reset}${esc}[${item_color}m${rest_last}${reset}"
+            else
+                highlighted_last="${esc}[01;35;04m${prefix}${reset}${rest_last}"
+            fi
+        else
+            if [[ -n "$item_color" ]]; then
+                highlighted_last="${esc}[${item_color}m${last}${reset}"
+            else
+                highlighted_last="${last}"
+            fi
+        fi
+
+        if [[ -n "$item_color" ]]; then
+            printf '%s%s%s' "${esc}[${item_color}m${base}${reset}" "$highlighted_last" "$trailing_slash"
+        else
+            printf '%s%s%s' "$base" "$highlighted_last" "$trailing_slash"
+        fi
+        return
+    fi
+
+    # Item sem '/' — comportamento original
+    local rest="${item:${#prefix}}"
     if [[ -n "$item_color" ]]; then
         if [[ -n "$prefix" ]]; then
-            printf "\e[${item_color};04m%s${reset}\e[${item_color}m%s${reset}" "$prefix" "$rest"
+            printf '%s%s' "${esc}[${item_color};04m${prefix}${reset}${esc}[${item_color}m" "${rest}${reset}"
         else
-            printf "\e[${item_color}m%s${reset}" "$item"
+            printf '%s' "${esc}[${item_color}m${item}${reset}"
         fi
     else
         if [[ -n "$prefix" ]]; then
-            printf "\e[01;04m%s${reset}%s" "$prefix" "$rest"
+            printf '%s%s' "${esc}[01;04m${prefix}${reset}" "$rest"
         else
             printf '%s' "$item"
         fi

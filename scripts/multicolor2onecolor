@@ -12,29 +12,122 @@ Key Strengths:
 3. Image Conversion Capabilities: Supports conversion of single images or entire directories based on provided arguments.
 4. Flexible Processing: Offers a loop option for batch processing multiple images simultaneously.
 5. User Feedback: Provides clear progress updates and error messages during execution.
+6. Color Format Flexibility: Accepts hexadecimal colors with or without the # prefix.
+7. Multiple Output Formats: Supports various image formats (PNG, JPG, GIF, etc.)
 
 Capabilities:
 - Color-based image transformation
 - Batch processing of images in a directory
-- Hexadecimal color format handling
+- Hexadecimal color format handling (#ffffff or ffffff)
+- Support for both 3-digit and 6-digit hex colors
 - Robust error management
 - Automatic input validation
+- Progress indicators for batch operations
+- Support for nested directory structures (optional)
+- Case-insensitive image extension matching (accepts .JPG, .jpg, .Jpg, etc.)
 
 The script offers a straightforward solution for developers and designers who need quick, scriptable image color modifications, 
 with built-in safeguards to prevent incorrect usage.
 DOCUMENTATION
 
-# Check if the number of arguments is valid
-if [[ $# -lt 3 || $# -gt 4 ]]; then
-    echo "Usage: ${0##*/} [--loop] <input_image_or_folder> <output_color> <output_image_or_folder>"
-    exit 1
-fi
+# Function to display help message
+show_help() {
+    cat << EOF
+Usage: ${0##*/} [OPTIONS] <input> <color> <output>
 
-# Extract the arguments
+DESCRIPTION:
+    Applies a single color to images using ImageMagick. Can process single images
+    or entire directories of images.
+
+OPTIONS:
+    -l, --loop      Process all images in input directory (required for directories)
+    -h, --help      Display this help message and exit
+    -v, --version   Display version information
+    -r, --recursive Process directories recursively (requires --loop)
+    -q, --quiet     Suppress progress messages
+    -f, --force     Overwrite existing output files without prompting
+
+ARGUMENTS:
+    input           Source image file or directory path
+    color           Target color in hexadecimal format (with or without #)
+                    Examples: #FF0000, FF0000, #f00, f00
+    output          Destination file or directory path
+
+EXAMPLES:
+    ${0##*/} image.png "#FF0000" colored_image.png
+    ${0##*/} --loop images/ "#00FF00" colored_images/
+    ${0##*/} -l -r images/ "#00F" colored_images/
+    ${0##*/} -q image.jpg ffffff output.jpg
+
+NOTES:
+    - The --loop flag is required when processing directories
+    - Supports both 3-digit and 6-digit hexadecimal color codes
+    - Preserves original image format unless output extension differs
+    - Requires ImageMagick to be installed on the system
+    - Image extensions are case-insensitive (JPG, jpg, Jpg, etc. are all accepted)
+
+EOF
+    exit 0
+}
+
+# Function to display version
+show_version() {
+    echo "${0##*/} version 2.0"
+    echo "License: GPLv3"
+    echo "Author: Felipe Facundes"
+    exit 0
+}
+
+# Parse command line options
 loop=false
-if [[ $1 == "--loop" ]] || [[ $1 == "-l" ]]; then
-    loop=true
-    shift
+recursive=false
+quiet=false
+force=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -l|--loop)
+            loop=true
+            shift
+            ;;
+        -r|--recursive)
+            recursive=true
+            shift
+            ;;
+        -q|--quiet)
+            quiet=true
+            shift
+            ;;
+        -f|--force)
+            force=true
+            shift
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        -v|--version)
+            show_version
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "Error: Unknown option $1"
+            echo "Use -h or --help for usage information"
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Check if the number of arguments is valid (after parsing options)
+if [[ $# -ne 3 ]]; then
+    echo "Error: Invalid number of arguments"
+    echo "Use -h or --help for usage information"
+    exit 1
 fi
 
 input="$1"
@@ -42,44 +135,172 @@ output_color="$2"
 output="$3"
 
 # Check if ImageMagick is installed
-if ! command convert >/dev/null; then
-    echo "ImageMagick is not installed. Please install it and try again."
+if ! command -v magick >/dev/null 2>&1; then
+    echo "Error: ImageMagick is not installed. Please install it and try again."
     exit 1
 fi
 
-# Filter and format the output color
-filtered_color=$(echo "$output_color" | sed -e 's/[^0-9A-Fa-f]//g' -e 's/^/#/')
+# Normalize color format (accept with or without #)
+# Remove any whitespace
+output_color=$(echo "$output_color" | tr -d '[:space:]')
 
-# Check if the output color is in the correct format
-if [[ ! "$filtered_color" =~ ^#[0-9A-Fa-f]{6}$ ]]; then
-    echo "Invalid format for the output color. Please provide the complete hexadecimal value with #, for example: \"#3AC936\"."
+# Check if color starts with #, if not, add it
+if [[ ! "$output_color" =~ ^# ]]; then
+    output_color="#$output_color"
+fi
+
+# Validate hexadecimal color format (accepts 3 or 6 digits after #)
+if [[ ! "$output_color" =~ ^#[0-9A-Fa-f]{3}$ ]] && [[ ! "$output_color" =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+    echo "Error: Invalid format for the output color."
+    echo "Please provide a valid hexadecimal color code."
+    echo "Examples: #FF0000, FF0000, #F00, f00"
     exit 1
 fi
+
+# Convert 3-digit hex to 6-digit hex for consistency
+if [[ "$output_color" =~ ^#[0-9A-Fa-f]{3}$ ]]; then
+    # Convert #RGB to #RRGGBB
+    r=${output_color:1:1}
+    g=${output_color:2:1}
+    b=${output_color:3:1}
+    output_color="#$r$r$g$g$b$b"
+fi
+
+# Function to check if output file exists and handle it
+check_output_file() {
+    local output_file="$1"
+    
+    if [[ -f "$output_file" ]]; then
+        if [[ "$force" == false ]]; then
+            read -p "Output file '$output_file' already exists. Overwrite? (y/n): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                return 1
+            fi
+        fi
+    fi
+    return 0
+}
 
 # Function to convert a single image
 convert_image() {
     local input_image="$1"
     local output_image="$2"
-
-    magick "$input_image" -fill "$filtered_color" -colorize 100% "$output_image"
-    echo "Image converted: $input_image -> $output_image"
+    
+    # Check if input file exists
+    if [[ ! -f "$input_image" ]]; then
+        [[ "$quiet" == false ]] && echo "Warning: Input file '$input_image' not found, skipping..."
+        return 1
+    fi
+    
+    # Check output file
+    if ! check_output_file "$output_image"; then
+        [[ "$quiet" == false ]] && echo "Skipping: $input_image"
+        return 1
+    fi
+    
+    # Create output directory if it doesn't exist
+    local output_dir=$(dirname "$output_image")
+    if [[ ! -d "$output_dir" ]]; then
+        mkdir -p "$output_dir"
+    fi
+    
+    # Convert the image
+    if magick "$input_image" -fill "$output_color" -colorize 100% "$output_image" 2>/dev/null; then
+        [[ "$quiet" == false ]] && echo "✓ Converted: $input_image -> $output_image"
+        return 0
+    else
+        echo "Error: Failed to convert $input_image"
+        return 1
+    fi
 }
 
-# Check if input is a directory
-if [[ -d $input ]]; then
-    if [[ $loop == true ]]; then
-        # Convert all images in the directory
-        for file in "$input"/*; do
-            if [[ -f $file ]]; then
-                base_name=$(basename "$file")
-                convert_image "$file" "$output/$base_name"
-            fi
-        done
-    else
-        echo "Error: The input is a directory. Please use the --loop argument to convert all images in the directory."
+# Function to process directory with case-insensitive extension matching
+process_directory() {
+    local input_dir="$1"
+    local output_dir="$2"
+    local count=0
+    local errors=0
+    
+    # Array of image extensions to process (case-insensitive matching with -iname)
+    local extensions=("jpg" "jpeg" "png" "avif" "gif" "bmp" "tiff" "tif" "webp")
+    
+    # Build find command with -iname for case-insensitive matching
+    local find_args=()
+    find_args+=("$input_dir" "-type" "f")
+    
+    # Add name patterns for each extension with -iname (case-insensitive)
+    local first=true
+    for ext in "${extensions[@]}"; do
+        if [[ "$first" == true ]]; then
+            find_args+=("-iname" "*.$ext")
+            first=false
+        else
+            find_args+=("-o" "-iname" "*.$ext")
+        fi
+    done
+    
+    # Add maxdepth if not recursive
+    if [[ "$recursive" == false ]]; then
+        find_args+=("-maxdepth" "1")
+    fi
+    
+    # Execute find and process results
+    while IFS= read -r -d '' file; do
+        # Get relative path
+        local rel_path="${file#$input_dir/}"
+        # Remove leading slash if present
+        rel_path="${rel_path#/}"
+        local output_file="$output_dir/$rel_path"
+        
+        # Ensure output directory exists
+        mkdir -p "$(dirname "$output_file")"
+        
+        if convert_image "$file" "$output_file"; then
+            ((count++))
+        else
+            ((errors++))
+        fi
+    done < <(find "${find_args[@]}" -print0)
+    
+    [[ "$quiet" == false ]] && echo "Batch processing completed: $count successful, $errors failed"
+}
+
+# Main execution logic
+if [[ -d "$input" ]]; then
+    # Input is a directory
+    if [[ "$loop" == false ]]; then
+        echo "Error: The input is a directory. Please use the --loop argument to process all images in the directory."
+        echo "Use -h or --help for usage information."
         exit 1
     fi
-else
-    # Convert a single image
+    
+    # Check if output directory exists or can be created
+    if [[ ! -d "$output" ]]; then
+        if [[ "$force" == false ]]; then
+            read -p "Output directory '$output' does not exist. Create it? (y/n): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo "Operation cancelled."
+                exit 0
+            fi
+        fi
+        mkdir -p "$output"
+    fi
+    
+    [[ "$quiet" == false ]] && echo "Processing directory: $input"
+    [[ "$quiet" == false ]] && echo "Target color: $output_color"
+    [[ "$quiet" == false ]] && echo "Output directory: $output"
+    
+    process_directory "$input" "$output"
+    
+elif [[ -f "$input" ]]; then
+    # Input is a single file
     convert_image "$input" "$output"
+    
+else
+    echo "Error: Input '$input' does not exist or is not a valid file/directory"
+    exit 1
 fi
+
+exit 0
