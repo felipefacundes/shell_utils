@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# =============================================================================
+#  fog-create — Procedural fog/smoke generator with transparent background
+#  Usage:
+#    fog-create <WxH> [hex_color]
+#    fog-create 1920x1080
+#    fog-create 1920x1080 ffffff
+#    fog-create 1920x1080 "#ffffff"
+# =============================================================================
+
+set -euo pipefail
+
+# =============================================================================
+#  Isolated Python environment (venv) — installed once in ~/.python/
+# =============================================================================
+py_venv="${HOME}/.python/fog-create-venv"
+activate="${py_venv}/bin/activate"
+py_bin="${py_venv}/bin/python"
+
+if [[ ! -d "${py_venv}" ]]; then
+  echo "Setting up isolated Python environment (first run)..."
+
+  # Ensures parent directory exists
+  mkdir -p "${HOME}/.python"
+
+  # Creates venv with available Python interpreter
+  if command -v python3 &>/dev/null; then
+    python3 -m venv "${py_venv}"
+  elif command -v python &>/dev/null; then
+    python -m venv "${py_venv}"
+  else
+    echo "Error: no Python interpreter found (python3 or python)." >&2
+    exit 1
+  fi
+
+  # Activates and installs dependencies
+  # shellcheck source=/dev/null
+  source "${activate}"
+  export VIRTUAL_ENV="${py_venv}"
+
+  echo "Installing dependencies (numpy, pillow, scipy)..."
+  pip install --quiet --upgrade pip
+  pip install --quiet numpy pillow scipy
+
+  echo "Environment configured at: ${py_venv}"
+  echo ""
+else
+  # Venv already exists — just activate
+  # shellcheck source=/dev/null
+  source "${activate}"
+  export VIRTUAL_ENV="${py_venv}"
+fi
+
+# ---------- help -----------------------------------------------------------
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  cat <<'HELP'
+fog-create — generates procedural fog (PNG with transparent background)
+
+Usage:
+  fog-create <WxH> [hex_color]
+
+Examples:
+  fog-create 1920x1080
+  fog-create 800x600 ccddff
+  fog-create 512x512 "#ff8800"
+
+Arguments:
+  WxH       Image dimensions (e.g., 1920x1080)
+  hex_color Fog color in hex, with or without "#" (default: ffffff)
+
+Output:
+  fog_<W>x<H>_<color>_<timestamp>.png in current directory
+HELP
+  exit 0
+fi
+
+# ---------- arguments ------------------------------------------------------
+if [[ $# -lt 1 ]]; then
+  echo "Usage: fog-create <WxH> [hex_color]" >&2
+  echo "     fog-create --help for more details" >&2
+  exit 1
+fi
+
+DIMENSIONS="${1}"
+COLOR_RAW="${2:-ffffff}"
+
+# Validates dimension
+if ! [[ "$DIMENSIONS" =~ ^[0-9]+[xX][0-9]+$ ]]; then
+  echo "Error: invalid dimension '$DIMENSIONS'. Use WxH format, e.g., 1920x1080" >&2
+  exit 1
+fi
+
+WIDTH="${DIMENSIONS%%[xX]*}"
+HEIGHT="${DIMENSIONS##*[xX]}"
+
+# Normalizes color (removes # and converts to lowercase)
+COLOR_HEX="${COLOR_RAW//\#/}"
+COLOR_HEX="${COLOR_HEX,,}"
+
+# Validates hex
+if ! [[ "$COLOR_HEX" =~ ^[0-9a-f]{3}([0-9a-f]{3})?$ ]]; then
+  echo "Error: invalid hex color '$COLOR_RAW'. Use 3 or 6 hex digits, e.g., ffffff or ccddff" >&2
+  exit 1
+fi
+
+# Expands short hex (#abc → aabbcc)
+if [[ ${#COLOR_HEX} -eq 3 ]]; then
+  r="${COLOR_HEX:0:1}"; g="${COLOR_HEX:1:1}"; b="${COLOR_HEX:2:1}"
+  COLOR_HEX="${r}${r}${g}${g}${b}${b}"
+fi
+
+# Output file
+TIMESTAMP=$(date +%Y%m%d_%H%M%S_%N | cut -c1-22)
+OUTFILE="fog_${WIDTH}x${HEIGHT}_${COLOR_HEX}_${TIMESTAMP}.png"
+
+echo "Generating procedural fog..."
+echo "    Dimension : ${WIDTH}x${HEIGHT}"
+echo "    Color     : #${COLOR_HEX}"
+echo "    Output    : ${OUTFILE}"
+
+# ---------- generation in Python (uses venv interpreter) -------------------
+"${py_bin}" - "$WIDTH" "$HEIGHT" "$COLOR_HEX" "$OUTFILE" <<'PYEOF'
+import sys, time
+import numpy as np
+from PIL import Image
+from scipy.ndimage import gaussian_filter
+
+W      = int(sys.argv[1])
+H      = int(sys.argv[2])
+color  = sys.argv[3]
+outf   = sys.argv[4]
+
+R = int(color[0:2], 16)
+G = int(color[2:4], 16)
+B = int(color[4:6], 16)
+
+rng = np.random.default_rng(int(time.time_ns()) & 0xFFFFFFFFFFFFFFFF)
+
+# =============================================================================
+#  Memory-efficient fBm:
+#  Noise generated at final size and smoothed with progressive Gaussian blur.
+#  Large sigma = large structures (low frequency)
+#  Small sigma = fine details (high frequency)
+# =============================================================================
+def make_fbm(W, H, octaves=8, base_sigma_frac=0.12, gain=0.50, lacunarity=2.0):
+    total   = np.zeros((H, W), dtype=np.float32)
+    amp     = 1.0
+    sigma   = max(4.0, min(W, H) * base_sigma_frac)
+
+    for _ in range(octaves):
+        layer = rng.standard_normal((H, W)).astype(np.float32)
+        if sigma >= 1.0:
+            layer = gaussian_filter(layer, sigma=sigma)
+        total  += amp * layer
+        amp    *= gain
+        sigma  /= lacunarity
+
+    lo, hi = total.min(), total.max()
+    total = (total - lo) / (hi - lo + 1e-9)
+    return total
+
+# Three layers with random sigmas
+s1 = float(rng.uniform(0.10, 0.22))
+s2 = float(rng.uniform(0.04, 0.10))
+s3 = float(rng.uniform(0.01, 0.04))
+
+fbm1 = make_fbm(W, H, octaves=int(rng.integers(6, 9)),  base_sigma_frac=s1)
+fbm2 = make_fbm(W, H, octaves=int(rng.integers(5, 8)),  base_sigma_frac=s2)
+fbm3 = make_fbm(W, H, octaves=int(rng.integers(4, 7)),  base_sigma_frac=s3)
+
+w1 = float(rng.uniform(0.50, 0.70))
+w2 = float(rng.uniform(0.15, 0.30))
+w3 = 1.0 - w1 - w2
+fog = w1 * fbm1 + w2 * fbm2 + w3 * fbm3
+del fbm1, fbm2, fbm3
+
+fog -= fog.min();  fog /= (fog.max() + 1e-9)
+
+# =============================================================================
+#  Sigmoid curve → alpha
+# =============================================================================
+mid   = float(rng.uniform(0.32, 0.58))
+steep = float(rng.uniform(6.0, 13.0))
+
+# sigmoid without overflow: clip exponent
+exponent = np.clip(-steep * (fog - mid), -88, 88).astype(np.float32)
+alpha = (1.0 / (1.0 + np.exp(exponent))).astype(np.float32)
+del fog, exponent
+
+# Light smoothing
+alpha = gaussian_filter(alpha, sigma=max(1.0, min(W, H) * 0.003))
+
+# Gamma
+gamma = float(rng.uniform(0.65, 1.05))
+np.power(alpha, gamma, out=alpha)
+
+# Contrast redistribution
+p_lo = float(np.percentile(alpha, 4))
+p_hi = float(np.percentile(alpha, 96))
+if p_hi > p_lo:
+    alpha = (alpha - p_lo) / (p_hi - p_lo)
+    np.clip(alpha, 0.0, 1.0, out=alpha)
+
+# =============================================================================
+#  Cosine vignette on edges
+# =============================================================================
+fade_w = float(rng.uniform(0.05, 0.16))
+
+def edge_curve(n, width):
+    v = np.linspace(0.0, 1.0, n, dtype=np.float32)
+    t = np.where(v < width,       v / width,
+        np.where(v > 1.0 - width, (1.0 - v) / width, 1.0))
+    return ((1.0 - np.cos(t * np.pi)) * 0.5).astype(np.float32)
+
+vx = edge_curve(W, fade_w)              # (W,)
+vy = edge_curve(H, fade_w)[:, None]     # (H,1)
+vignette = vx[None, :] * vy             # broadcast (H,W)
+vignette = gaussian_filter(vignette, sigma=max(2.0, min(W, H) * 0.008))
+
+alpha *= vignette
+del vignette
+np.clip(alpha, 0.0, 1.0, out=alpha)
+
+# =============================================================================
+#  Assembles RGBA and saves
+# =============================================================================
+alpha_u8 = (alpha * 255).astype(np.uint8)
+del alpha
+
+rgba = np.stack([
+    np.full((H, W), R, dtype=np.uint8),
+    np.full((H, W), G, dtype=np.uint8),
+    np.full((H, W), B, dtype=np.uint8),
+    alpha_u8
+], axis=-1)
+del alpha_u8
+
+Image.fromarray(rgba, "RGBA").save(outf, "PNG")
+print(f"ok:{outf}")
+PYEOF
+
+# ---------- checks output --------------------------------------------------
+if [[ -f "$OUTFILE" ]]; then
+  SIZE=$(du -sh "$OUTFILE" | cut -f1)
+  echo ""
+  echo "Fog generated successfully!"
+  echo "   File     : $OUTFILE"
+  echo "   Size     : $SIZE"
+else
+  echo "Failed to generate image." >&2
+  exit 1
+fi

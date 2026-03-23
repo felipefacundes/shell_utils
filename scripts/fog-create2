@@ -1,0 +1,397 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# fog-create - Generates procedural fog with transparent background
+# This script creates an isolated Python virtual environment and runs the fog generator
+
+set -e  # Exit on error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Settings
+APP_NAME="fog-create2"
+PYTHON_VERSION="python3"
+PY_VENV="${HOME}/.python/${APP_NAME}-venv"
+ACTIVATE="${PY_VENV}/bin/activate"
+
+# Function to show help
+show_help() {
+    echo "Usage: ${0##*/} DIMENSION [HEX_COLOR] [OPTIONS]"
+    echo ""
+    echo "Examples:"
+    echo "  ${0##*/} 1920x1080"
+    echo "  ${0##*/} 1920x1080 ffffff"
+    echo "  ${0##*/} 1920x1080 \"#ffffff\""
+    echo "  ${0##*/} 1920x1080 ffffff --output-dir ./my_fogs"
+    echo ""
+    echo "Options:"
+    echo "  --output-dir DIR    Directory to save images (default: fog_output)"
+    echo "  --seed NUM          Use specific seed to reproduce results"
+    echo "  --list-seeds        List seeds of the last 10 generated images"
+    echo "  --help              Show this help"
+    echo ""
+    echo "Colors:"
+    echo "  Hexadecimal format with or without #"
+    echo "  Examples: ffffff, #ffffff, cceeff, #cceeff"
+    exit 0
+}
+
+# Function to check and create virtual environment
+setup_venv() {
+    echo -e "${BLUE}🔧 Setting up Python virtual environment...${NC}"
+    
+    # Check if Python is installed
+    if ! command -v ${PYTHON_VERSION} &> /dev/null; then
+        echo -e "${RED}❌ Error: Python 3 is not installed.${NC}"
+        echo "Install with: sudo apt-get install python3 python3-venv (Debian/Ubuntu)"
+        echo "or: brew install python3 (MacOS)"
+        exit 1
+    fi
+    
+    # Create virtual environment if it doesn't exist
+    if [[ ! -d "${PY_VENV}" ]]; then
+        echo -e "${YELLOW}📦 Creating virtual environment at: ${PY_VENV}${NC}"
+        ${PYTHON_VERSION} -m venv "${PY_VENV}"
+        
+        if [[ $? -ne 0 ]]; then
+            echo -e "${RED}❌ Error creating virtual environment.${NC}"
+            exit 1
+        fi
+        
+        echo -e "${GREEN}✓ Virtual environment created${NC}"
+        
+        # Activate environment and install dependencies
+        # shellcheck source=/dev/null
+        source "${ACTIVATE}"
+        
+        echo -e "${YELLOW}📥 Installing dependencies...${NC}"
+        
+        # Upgrade pip
+        pip install --upgrade pip > /dev/null 2>&1
+        
+        # Install required dependencies
+        pip install numpy pillow scipy > /dev/null 2>&1
+        
+        if [[ $? -eq 0 ]]; then
+            echo -e "${GREEN}✓ Dependencies installed successfully${NC}"
+        else
+            echo -e "${RED}❌ Error installing dependencies. Trying individual installation...${NC}"
+            pip install numpy
+            pip install pillow
+            pip install scipy
+        fi
+        
+        # Verify installation
+        echo -e "${BLUE}🔍 Verifying installation...${NC}"
+        python -c "import numpy, PIL, scipy; print('✓ All libraries are installed')" 2>/dev/null || {
+            echo -e "${RED}❌ Dependency installation failed${NC}"
+            exit 1
+        }
+    else
+        echo -e "${GREEN}✓ Virtual environment already exists: ${PY_VENV}${NC}"
+    fi
+}
+
+# Function to list recent seeds
+list_seeds() {
+    local output_dir="${1:-fog_output}"
+    
+    if [[ -d "${output_dir}" ]]; then
+        echo -e "${BLUE}📋 Seeds of the last 10 generated images:${NC}"
+        echo "----------------------------------------"
+        
+        # Find PNG files and extract seeds
+        find "${output_dir}" -name "fog_*.png" -type f -printf "%T@ %p\n" 2>/dev/null | \
+            sort -rn | head -10 | while read -r timestamp file; do
+            # Extract seed from filename (format: fog_WxH_timestamp_seed.png)
+            filename=$(basename "$file")
+            if [[ $filename =~ fog_[0-9]+x[0-9]+_[0-9]+_([0-9]+)\.png ]]; then
+                seed="${BASH_REMATCH[1]}"
+                echo -e "${GREEN}$(basename "$file")${NC} → ${YELLOW}Seed: $seed${NC}"
+            fi
+        done
+        
+        if [[ $? -ne 0 ]]; then
+            echo -e "${YELLOW}No images found in ${output_dir}${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Directory ${output_dir} not found. No images generated yet.${NC}"
+    fi
+    exit 0
+}
+
+# Process arguments
+OUTPUT_DIR="fog_output"
+SEED=""
+LIST_SEEDS=false
+
+# Check if listing seeds
+for arg in "$@"; do
+    if [[ "$arg" == "--list-seeds" ]]; then
+        LIST_SEEDS=true
+        break
+    fi
+done
+
+# Parse arguments
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --output-dir)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        --seed)
+            SEED="$2"
+            shift 2
+            ;;
+        --list-seeds)
+            LIST_SEEDS=true
+            shift
+            ;;
+        --help)
+            show_help
+            ;;
+        -*)
+            echo -e "${RED}❌ Unknown option: $1${NC}"
+            show_help
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# If listing seeds, do that and exit
+if [[ "$LIST_SEEDS" == true ]]; then
+    list_seeds "$OUTPUT_DIR"
+    exit 0
+fi
+
+# Check positional arguments
+if [[ ${#POSITIONAL_ARGS[@]} -lt 1 ]]; then
+    echo -e "${RED}❌ Error: Dimension not provided.${NC}"
+    show_help
+fi
+
+DIMENSION="${POSITIONAL_ARGS[0]}"
+COLOR="${POSITIONAL_ARGS[1]:-ffffff}"
+
+# Validate dimension
+if [[ ! "$DIMENSION" =~ ^[0-9]+x[0-9]+$ ]]; then
+    echo -e "${RED}❌ Error: Invalid dimension format. Use WIDTHxHEIGHT${NC}"
+    exit 1
+fi
+
+# Validate color
+COLOR_CLEAN="${COLOR/#\#/}"
+if [[ ! "$COLOR_CLEAN" =~ ^[0-9a-fA-F]{6}$ ]]; then
+    echo -e "${RED}❌ Error: Invalid hexadecimal color. Use format like ffffff or #ffffff${NC}"
+    exit 1
+fi
+
+# Setup virtual environment
+setup_venv
+
+# Activate virtual environment
+# shellcheck source=/dev/null
+source "${ACTIVATE}"
+
+# Create output directory
+mkdir -p "${OUTPUT_DIR}"
+
+echo -e "${BLUE}🌫️  Generating procedural fog...${NC}"
+echo -e "${YELLOW}📐 Dimension: ${DIMENSION}${NC}"
+echo -e "${YELLOW}🎨 Color: #${COLOR_CLEAN}${NC}"
+[[ -n "$SEED" ]] && echo -e "${YELLOW}🔢 Seed: ${SEED}${NC}"
+echo -e "${BLUE}📁 Output: ${OUTPUT_DIR}${NC}"
+
+# Embedded Python script
+python3 - <<EOF
+import sys
+import os
+import numpy as np
+from PIL import Image, ImageFilter, ImageDraw
+import random
+from datetime import datetime
+import math
+import json
+
+# Settings
+WIDTH, HEIGHT = map(int, "${DIMENSION}".split('x'))
+COLOR_HEX = "${COLOR_CLEAN}"
+OUTPUT_DIR = "${OUTPUT_DIR}"
+SEED = ${SEED:-None}
+TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+
+# Helper functions
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+def create_fbm_noise(size, scale=50):
+    """Creates fractal Brownian motion noise"""
+    from scipy.ndimage import gaussian_filter
+    
+    # Create base noise
+    noise = np.random.rand(size[0], size[1])
+    
+    # Apply Gaussian blur
+    noise = gaussian_filter(noise, sigma=scale/10)
+    
+    # Add detail layers
+    for i in range(3):
+        detail = np.random.rand(size[0], size[1])
+        detail = gaussian_filter(detail, sigma=scale/(10 * (i+2)))
+        noise += detail * (0.3 / (i+1))
+    
+    # Normalize
+    noise = (noise - noise.min()) / (noise.max() - noise.min())
+    noise = np.power(noise, 0.7)
+    
+    return noise
+
+def create_fog_layer(height, width, density, turbulence=0.3):
+    """Creates fog layer"""
+    # Create base noise
+    noise = create_fbm_noise((height, width), scale=random.uniform(30, 80))
+    
+    # Vertical gradient
+    gradient = np.ones((height, width))
+    for i in range(height):
+        gradient[i, :] = 1.0 - (i / height) ** 1.5
+    
+    # Subtle horizontal gradient
+    for j in range(width):
+        gradient[:, j] *= 1.0 - abs(j - width/2) / width * 0.3
+    
+    # Combine
+    fog = noise * gradient * density
+    
+    # Turbulence
+    if turbulence > 0:
+        turb = create_fbm_noise((height, width), scale=random.uniform(15, 40))
+        fog = fog * (1 - turbulence) + turb * turbulence
+    
+    fog = np.power(fog, random.uniform(0.8, 1.2))
+    
+    return np.clip(fog, 0, 1)
+
+def create_flow_field(height, width):
+    """Creates flow field"""
+    from scipy.ndimage import gaussian_filter
+    
+    flow_x = np.random.rand(height, width) * 2 * np.pi
+    flow_y = np.random.rand(height, width) * 2 * np.pi
+    
+    flow_x = gaussian_filter(flow_x, sigma=20)
+    flow_y = gaussian_filter(flow_y, sigma=20)
+    
+    return flow_x, flow_y
+
+# Set seed
+if SEED:
+    random.seed(SEED)
+    np.random.seed(SEED)
+    print(f"🔢 Using seed: {SEED}")
+else:
+    SEED_VALUE = random.randint(0, 2**32)
+    random.seed(SEED_VALUE)
+    np.random.seed(SEED_VALUE)
+    print(f"🔢 Generated seed: {SEED_VALUE}")
+
+# Generate fog
+print("🎨 Creating fog layers...")
+
+# Create multiple layers
+layers = []
+
+# Dense layer
+layer1 = create_fog_layer(HEIGHT, WIDTH, density=random.uniform(0.5, 0.8), turbulence=random.uniform(0.1, 0.3))
+layers.append(layer1)
+
+# Medium layer
+layer2 = create_fog_layer(HEIGHT, WIDTH, density=random.uniform(0.3, 0.6), turbulence=random.uniform(0.4, 0.6))
+layers.append(layer2)
+
+# Detail layer
+layer3 = create_fog_layer(HEIGHT, WIDTH, density=random.uniform(0.2, 0.4), turbulence=random.uniform(0.6, 0.8))
+layers.append(layer3)
+
+# Combine layers
+final_opacity = np.mean(layers, axis=0)
+
+# Add flow field
+flow_x, flow_y = create_flow_field(HEIGHT, WIDTH)
+flow_effect = np.sin(flow_x * 2) * np.cos(flow_y * 2)
+flow_effect = (flow_effect + 1) / 2
+final_opacity = final_opacity * (0.7 + flow_effect * 0.3)
+
+# Apply final curve
+final_opacity = np.power(final_opacity, random.uniform(0.8, 1.3))
+
+# Create RGBA image
+rgb_color = hex_to_rgb(COLOR_HEX)
+img_array = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
+
+for i in range(3):
+    img_array[:, :, i] = rgb_color[i]
+
+opacity_values = (final_opacity * 255).astype(np.uint8)
+img_array[:, :, 3] = opacity_values
+
+# Create and save image
+img = Image.fromarray(img_array, 'RGBA')
+
+# Apply optional smoothing
+if random.random() > 0.5:
+    img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.5)))
+
+# Generate filename
+random_num = random.randint(0, 9999)
+filename = f"fog_{WIDTH}x{HEIGHT}_{TIMESTAMP}_{random_num if not SEED else SEED}.png"
+filepath = os.path.join(OUTPUT_DIR, filename)
+
+# Save
+img.save(filepath, 'PNG')
+
+print(f"\n✅ Fog generated successfully!")
+print(f"📁 File: {filepath}")
+print(f"📊 Size: {WIDTH}x{HEIGHT}")
+print(f"🎨 Color: #{COLOR_HEX}")
+print(f"💾 File size: {os.path.getsize(filepath):,} bytes")
+
+# Save seed information
+info_file = os.path.join(OUTPUT_DIR, f"{filename}.info")
+with open(info_file, 'w') as f:
+    json.dump({
+        "file": filename,
+        "dimension": f"{WIDTH}x{HEIGHT}",
+        "color": f"#{COLOR_HEX}",
+        "seed": SEED if SEED else SEED_VALUE,
+        "timestamp": TIMESTAMP,
+        "size_bytes": os.path.getsize(filepath)
+    }, f, indent=2)
+
+print(f"📝 Information saved to: {info_file}")
+EOF
+
+# Check result
+if [[ $? -eq 0 ]]; then
+    echo -e "\n${GREEN}✨ Process completed successfully!${NC}"
+else
+    echo -e "\n${RED}❌ Error during fog generation.${NC}"
+    exit 1
+fi
+
+# Deactivate virtual environment (optional)
+deactivate 2>/dev/null || true
+
+exit 0
