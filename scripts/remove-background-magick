@@ -11,37 +11,57 @@ Supports multiple removal methods and adjustable fuzz tolerance.
 
 Key Features:
 1. Batch image processing (PNG, JPG, JPEG, SVG, WEBP, BMP, AVIF)
-2. Output always saved as PNG (preserves transparency)
-3. Multiple removal methods: simple, fuzz, mask, morph, or precise
-4. Adjustable fuzz tolerance via argument
-5. Clean edge handling
-6. Two new highly efficient methods for complex backgrounds
+2. Output always saved as PNG (preserves transparency) in batch mode
+3. Single file mode: output name is optional; defaults to <name>-removed-background.png
+4. Single file mode: if output name is given without extension, a transparency-capable
+   extension is required (png, webp, avif, svg)
+5. Multiple removal methods: simple, fuzz, mask, morph, or precise
+6. Adjustable fuzz tolerance via argument
+7. Clean edge handling
+8. Two new highly efficient methods for complex backgrounds
 DOCUMENTATION
+
+# Global boolean: true = single-file mode, false = batch/directory mode
+SINGLE_FILE_MODE=false
+
+# Transparency-capable extensions (for single file output validation)
+TRANSPARENCY_EXTS=("png" "webp" "avif" "svg")
 
 # Display help
 show_help() {
-    echo "Usage: ${0##*/} <input_dir> <output_dir> <color_hex> [options]"
+    echo "Usage (batch):       ${0##*/} <input_dir> <output_dir> <color_hex> [options]"
+    echo "Usage (single file): ${0##*/} <input_file> [output_file] <color_hex> [options]"
     echo ""
     echo "Required arguments:"
-    echo "  <input_dir>      Directory with input images"
-    echo "  <output_dir>     Directory for processed images"
+    echo "  <input_dir>      Directory with input images  (batch mode)"
+    echo "  <input_file>     Single image file            (single-file mode)"
+    echo "  <output_dir>     Directory for processed images (batch mode)"
+    echo "  [output_file]    Output file path (optional in single-file mode)."
+    echo "                   If omitted: <input_name>-removed-background.png"
+    echo "                   If provided without extension: must end with png, webp, avif or svg"
     echo "  <color_hex>      Color to remove (format: RRGGBB or #RRGGBB)"
     echo ""
     echo "Supported input formats: PNG, JPG, JPEG, SVG, WEBP, BMP, AVIF"
-    echo "Output format: always PNG (to preserve transparency)"
+    echo "Batch output format: always PNG (to preserve transparency)"
     echo ""
     echo "Optional arguments:"
     echo "  -m, --method METHOD   Removal method: simple, fuzz (default), mask, morph, precise"
     echo "  -f, --fuzz PERCENT    Fuzz tolerance percentage (default: 15%)"
     echo "  -h, --help            Show this help message"
     echo ""
-    echo "Examples:"
+    echo "Examples (batch):"
     echo "  ${0##*/} entrada saida d0d0d0                    # Default method, 15% fuzz"
     echo "  ${0##*/} entrada saida #FF0000 -m simple         # Simple transparent method"
     echo "  ${0##*/} entrada saida 00FF00 -m fuzz -f 20      # Fuzz method with 20% tolerance"
     echo "  ${0##*/} entrada saida 0000FF -m mask            # Corrected mask method"
     echo "  ${0##*/} entrada saida d0d0d0 -m morph           # Morphological method (best for edges)"
     echo "  ${0##*/} entrada saida d0d0d0 -m precise         # Precise method (high quality)"
+    echo ""
+    echo "Examples (single file):"
+    echo "  ${0##*/} photo.jpg d0d0d0                        # Output: photo-removed-background.png"
+    echo "  ${0##*/} photo.jpg result.png d0d0d0             # Output: result.png"
+    echo "  ${0##*/} photo.jpg result.webp d0d0d0            # Output: result.webp"
+    echo "  ${0##*/} photo.jpg result.avif d0d0d0 -m morph   # Output: result.avif, morph method"
     echo ""
     echo "Method descriptions:"
     echo "  simple:   magick input -transparent COLOR output (fast, basic)"
@@ -52,22 +72,156 @@ show_help() {
 }
 
 # Check minimum arguments
-if [ "$#" -lt 3 ]; then
+if [ "$#" -lt 2 ]; then
     show_help
     exit 1
 fi
 
-# Parse arguments
-input_directory="$1"
-output_directory="$2"
-color_input="$3"
-shift 3
+# ─────────────────────────────────────────────
+# Detect mode: single-file or batch/directory
+# ─────────────────────────────────────────────
+if [[ -f "$1" ]]; then
+    SINGLE_FILE_MODE=true
+elif [[ -d "$1" ]]; then
+    SINGLE_FILE_MODE=false
+else
+    # "$1" does not exist yet; could be a typo or future path — decide by extension heuristic
+    # If it looks like a file path (has an extension matching supported formats), treat as file
+    ext_check="${1##*.}"
+    if [[ "$ext_check" =~ ^(png|jpg|jpeg|svg|webp|bmp|avif|PNG|JPG|JPEG|SVG|WEBP|BMP|AVIF)$ ]]; then
+        echo "Error: Input file '$1' not found."
+        exit 1
+    else
+        echo "Error: Input path '$1' is neither an existing file nor a directory."
+        exit 1
+    fi
+fi
+
+# ─────────────────────────────────────────────
+# Helper: check if a file is a supported image
+# ─────────────────────────────────────────────
+is_supported_image() {
+    local file="$1"
+    local mime
+    # Primary check: MIME type via file(1)
+    mime=$(file --brief --mime-type "$file" 2>/dev/null)
+    case "$mime" in
+        image/png|image/jpeg|image/svg+xml|image/webp|image/bmp|image/avif|image/gif)
+            return 0 ;;
+    esac
+    # Fallback: extension check (covers edge cases where file(1) is unavailable)
+    local ext="${file##*.}"
+    ext="${ext,,}"  # lowercase
+    case "$ext" in
+        png|jpg|jpeg|svg|webp|bmp|avif)
+            return 0 ;;
+    esac
+    return 1
+}
+
+# ─────────────────────────────────────────────
+# Helper: check if extension supports transparency
+# ─────────────────────────────────────────────
+is_transparency_ext() {
+    local ext="${1,,}"  # lowercase
+    for e in "${TRANSPARENCY_EXTS[@]}"; do
+        [[ "$ext" == "$e" ]] && return 0
+    done
+    return 1
+}
+
+# ─────────────────────────────────────────────
+# Parse positional arguments per mode
+# ─────────────────────────────────────────────
 
 # Default values
 METHOD="fuzz"
 FUZZ_PERCENT="15%"
 
-# Parse optional arguments
+if $SINGLE_FILE_MODE; then
+    # ── Single-file mode ──────────────────────
+    input_file="$1"
+    shift
+
+    # Validate that it is actually a supported image
+    if ! is_supported_image "$input_file"; then
+        echo "Error: '$input_file' does not appear to be a supported image file."
+        echo "Supported formats: PNG, JPG, JPEG, SVG, WEBP, BMP, AVIF"
+        exit 1
+    fi
+
+    # Next positional: could be output_file or color_hex
+    # A color hex is 3–7 chars matching [#0-9A-Fa-f] with no path separators
+    # An output path usually contains '/' or '.' or is longer / has different chars
+    output_file=""
+    color_input=""
+
+    if [[ -n "$1" ]] && ! [[ "$1" =~ ^-{1,2} ]]; then
+        # Heuristic: if it looks like a hex color (optional # + 3 or 6 hex digits), treat as color
+        if [[ "$1" =~ ^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$ ]]; then
+            color_input="$1"
+            shift
+        else
+            # Treat as output file path
+            output_file="$1"
+            shift
+            # Now the next positional must be the color
+            if [[ -z "$1" ]] || [[ "$1" =~ ^-{1,2} ]]; then
+                echo "Error: Color hex is required."
+                show_help
+                exit 1
+            fi
+            color_input="$1"
+            shift
+        fi
+    else
+        echo "Error: Color hex is required."
+        show_help
+        exit 1
+    fi
+
+    # Determine output file path
+    if [[ -z "$output_file" ]]; then
+        # Default: same directory as input, with suffix
+        input_basename=$(basename -- "$input_file")
+        input_noext="${input_basename%.*}"
+        input_dir_part=$(dirname -- "$input_file")
+        output_file="${input_dir_part}/${input_noext}-removed-background.png"
+    else
+        # Output was provided — validate extension
+        out_ext="${output_file##*.}"
+        if [[ "$output_file" == "$out_ext" ]] || [[ -z "$out_ext" ]]; then
+            # No extension at all
+            echo "Error: Output file '$output_file' has no extension."
+            echo "Please provide one of the following transparency-capable extensions: png, webp, avif, svg"
+            exit 1
+        fi
+        if ! is_transparency_ext "$out_ext"; then
+            echo "Error: Output extension '.$out_ext' does not support transparency."
+            echo "Please use one of: png, webp, avif, svg"
+            exit 1
+        fi
+    fi
+
+    # Ensure output directory exists
+    out_dir=$(dirname -- "$output_file")
+    mkdir -p "$out_dir"
+
+else
+    # ── Batch / directory mode ─────────────────
+    if [ "$#" -lt 3 ]; then
+        show_help
+        exit 1
+    fi
+    input_directory="$1"
+    output_directory="$2"
+    color_input="$3"
+    shift 3
+fi
+
+# ─────────────────────────────────────────────
+# Parse optional arguments (shared by both modes)
+# ─────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case $1 in
         -m|--method)
@@ -75,7 +229,6 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -f|--fuzz)
-            # Remove % if provided and add it back
             FUZZ_PERCENT="${2//%/}%"
             shift 2
             ;;
@@ -91,13 +244,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ─────────────────────────────────────────────
+# Shared validation
+# ─────────────────────────────────────────────
 cleanup_temp() {
-    if [ -d "$output_directory/temp_$$" ]; then
-        rm -rf "$output_directory/temp_$$" 2>/dev/null
+    if $SINGLE_FILE_MODE; then
+        [[ -d "${out_dir}/temp_$$" ]] && rm -rf "${out_dir}/temp_$$" 2>/dev/null
+    else
+        [[ -d "$output_directory/temp_$$" ]] && rm -rf "$output_directory/temp_$$" 2>/dev/null
     fi
 }
 
-# Set trap for SIGINT (Ctrl+C)
 trap 'echo -e "\n\nInterrupted! Cleaning up..."; cleanup_temp; exit 1' SIGINT
 
 # Validate method
@@ -112,6 +269,147 @@ if [[ $color_input != \#* ]]; then
 else
     color_hex="$color_input"
 fi
+
+# ─────────────────────────────────────────────
+# Core processing function
+# Applies the chosen method to a single image.
+#   $1 = input image path
+#   $2 = output image path
+#   $3 = temp directory (will be created/removed internally)
+# ─────────────────────────────────────────────
+process_image() {
+    local input_image="$1"
+    local output_path="$2"
+    local temp_dir="$3"
+
+    case $METHOD in
+        simple)
+            magick "$input_image" \
+                -transparent "$color_hex" \
+                "$output_path" 2>/dev/null
+            ;;
+
+        fuzz)
+            magick "$input_image" \
+                -fuzz "$FUZZ_PERCENT" \
+                -transparent "$color_hex" \
+                -channel A -threshold 10% +channel \
+                "$output_path" 2>/dev/null
+            ;;
+
+        mask)
+            # Step 1: Create alpha mask
+            if ! magick "$input_image" \
+                -fuzz "$FUZZ_PERCENT" \
+                -fill "rgba(255,255,255,0)" -opaque "$color_hex" \
+                -alpha extract \
+                -negate \
+                "$temp_dir/mask.png" 2>/dev/null; then
+                return 1
+            fi
+            # Step 2: Apply mask
+            magick "$input_image" \
+                \( -clone 0 -alpha off \) \
+                \( -clone 0 "$temp_dir/mask.png" -compose Copy_Opacity -composite \) \
+                -delete 0 \
+                -trim +repage \
+                "$output_path" 2>/dev/null
+            ;;
+
+        morph)
+            if ! magick "$input_image" \
+                -fuzz "$FUZZ_PERCENT" \
+                \( +clone -fill "$color_hex" -colorize 100 \) \
+                -compose Difference -composite \
+                -evaluate Pow 2 -negate \
+                -alpha off -threshold 0 \
+                -morphology Erode Diamond:1 \
+                -morphology Dilate Diamond:1 \
+                -blur 0x1 \
+                -alpha extract \
+                "$temp_dir/mask.png" 2>/dev/null; then
+                return 1
+            fi
+            magick "$input_image" \
+                \( "$temp_dir/mask.png" -alpha extract \) \
+                -alpha off -compose Copy_Opacity -composite \
+                -trim +repage \
+                "$output_path" 2>/dev/null
+            ;;
+
+        precise)
+            if ! magick "$input_image" \
+                \( +clone -fill "$color_hex" -colorize 100 \) \
+                -compose Difference -composite \
+                -separate -evaluate-sequence Max \
+                -auto-level \
+                -fuzz "$FUZZ_PERCENT" -transparent white \
+                -blur 0x2 \
+                -threshold 50% \
+                -morphology Erode Diamond:1 \
+                -alpha extract \
+                "$temp_dir/mask.png" 2>/dev/null; then
+                return 1
+            fi
+            magick "$temp_dir/mask.png" \
+                -morphology Dilate Diamond:1 \
+                -blur 0x0.7 \
+                "$temp_dir/mask_blur.png" 2>/dev/null
+            magick "$input_image" \
+                \( "$temp_dir/mask_blur.png" \) \
+                -alpha off -compose Copy_Opacity -composite \
+                -trim +repage \
+                "$output_path" 2>/dev/null
+            ;;
+    esac
+}
+
+# ─────────────────────────────────────────────
+# SINGLE-FILE MODE execution
+# ─────────────────────────────────────────────
+if $SINGLE_FILE_MODE; then
+    echo "========================================"
+    echo "Image Background Removal Tool"
+    echo "========================================"
+    echo "Mode:             single file"
+    echo "Input file:       $input_file"
+    echo "Output file:      $output_file"
+    echo "Color to remove:  $color_hex"
+    echo "Method:           $METHOD"
+    [[ "$METHOD" != "simple" ]] && echo "Fuzz tolerance:   $FUZZ_PERCENT"
+    echo "========================================"
+
+    filename=$(basename -- "$input_file")
+    echo -n "Processing $filename... "
+
+    temp_dir=""
+    if [[ "$METHOD" == "mask" || "$METHOD" == "morph" || "$METHOD" == "precise" ]]; then
+        temp_dir="${out_dir}/temp_$$"
+        mkdir -p "$temp_dir"
+    fi
+
+    if process_image "$input_file" "$output_file" "$temp_dir"; then
+        echo "✓"
+        echo "========================================"
+        echo "Processing complete!"
+        echo "Output saved to: $output_file"
+        echo "========================================"
+    else
+        echo "✗"
+        echo "========================================"
+        echo "Processing failed."
+        echo "========================================"
+        [[ -n "$temp_dir" ]] && rm -rf "$temp_dir"
+        exit 1
+    fi
+
+    [[ -n "$temp_dir" ]] && rm -rf "$temp_dir"
+    exit 0
+fi
+
+# ─────────────────────────────────────────────
+# BATCH / DIRECTORY MODE execution
+# ─────────────────────────────────────────────
 
 # Validate input directory
 if [ ! -d "$input_directory" ]; then
@@ -144,13 +442,14 @@ fi
 # Creates output directory if it does not exist
 mkdir -p "$output_directory"
 
-# Counter for processed images
+# Counters
 processed=0
 failed=0
 
 echo "========================================"
 echo "Image Background Removal Tool"
 echo "========================================"
+echo "Mode:             batch"
 echo "Input directory:  $input_directory"
 echo "Output directory: $output_directory"
 echo "Color to remove:  $color_hex"
@@ -166,159 +465,26 @@ for input_image in "${image_files[@]}"; do
     [ -f "$input_image" ] || continue
 
     filename=$(basename -- "$input_image")
-    # Output always as PNG (strips original extension)
+    # Output always as PNG in batch mode
     outname="${filename%.*}.png"
 
     echo -n "Processing $filename... "
 
-    # Create temp directory for methods that need it
+    temp_dir=""
     if [[ "$METHOD" == "mask" || "$METHOD" == "morph" || "$METHOD" == "precise" ]]; then
         temp_dir="$output_directory/temp_$$"
         mkdir -p "$temp_dir"
     fi
 
-    case $METHOD in
-        simple)
-            # SIMPLE METHOD: Basic transparent
-            if magick "$input_image" \
-                -transparent "$color_hex" \
-                "$output_directory/$outname" 2>/dev/null; then
-                echo "✓"
-                ((processed++))
-            else
-                echo "✗"
-                ((failed++))
-            fi
-            ;;
+    if process_image "$input_image" "$output_directory/$outname" "$temp_dir"; then
+        echo "✓"
+        ((processed++))
+    else
+        echo "✗"
+        ((failed++))
+    fi
 
-        fuzz)
-            # FUZZ METHOD: With tolerance
-            if magick "$input_image" \
-                -fuzz "$FUZZ_PERCENT" \
-                -transparent "$color_hex" \
-                -channel A -threshold 10% +channel \
-                "$output_directory/$outname" 2>/dev/null; then
-                echo "✓"
-                ((processed++))
-            else
-                echo "✗"
-                ((failed++))
-            fi
-            ;;
-
-        mask)
-            # CORRECTED MASK METHOD: Creates proper alpha mask
-            # Step 1: Create alpha mask (white = transparent, black = opaque)
-            if ! magick "$input_image" \
-                -fuzz "$FUZZ_PERCENT" \
-                -fill "rgba(255,255,255,0)" -opaque "$color_hex" \
-                -alpha extract \
-                -negate \
-                "$temp_dir/mask.png" 2>/dev/null; then
-                echo "✗ (mask creation failed)"
-                ((failed++))
-                rm -rf "$temp_dir"
-                continue
-            fi
-
-            # Step 2: Apply mask to original image
-            if magick "$input_image" \
-                \( -clone 0 -alpha off \) \
-                \( -clone 0 "$temp_dir/mask.png" -compose Copy_Opacity -composite \) \
-                -delete 0 \
-                -trim +repage \
-                "$output_directory/$outname" 2>/dev/null; then
-                echo "✓"
-                ((processed++))
-            else
-                echo "✗ (mask application failed)"
-                ((failed++))
-            fi
-
-            # Clean up
-            rm -rf "$temp_dir"
-            ;;
-
-        morph)
-            # MORPH METHOD: Uses morphological operations for better edges
-            # This method is excellent for handling anti-aliased edges
-            if ! magick "$input_image" \
-                -fuzz "$FUZZ_PERCENT" \
-                \( +clone -fill "$color_hex" -colorize 100 \) \
-                -compose Difference -composite \
-                -evaluate Pow 2 -negate \
-                -alpha off -threshold 0 \
-                -morphology Erode Diamond:1 \
-                -morphology Dilate Diamond:1 \
-                -blur 0x1 \
-                -alpha extract \
-                "$temp_dir/mask.png" 2>/dev/null; then
-                echo "✗ (morph mask failed)"
-                ((failed++))
-                rm -rf "$temp_dir"
-                continue
-            fi
-
-            # Apply the mask
-            if magick "$input_image" \
-                \( "$temp_dir/mask.png" -alpha extract \) \
-                -alpha off -compose Copy_Opacity -composite \
-                -trim +repage \
-                "$output_directory/$outname" 2>/dev/null; then
-                echo "✓"
-                ((processed++))
-            else
-                echo "✗ (morph apply failed)"
-                ((failed++))
-            fi
-
-            # Clean up
-            rm -rf "$temp_dir"
-            ;;
-
-        precise)
-            # PRECISE METHOD: Multi-step approach for complex backgrounds
-            # Best for images with gradients or similar colors
-            if ! magick "$input_image" \
-                \( +clone -fill "$color_hex" -colorize 100 \) \
-                -compose Difference -composite \
-                -separate -evaluate-sequence Max \
-                -auto-level \
-                -fuzz "$FUZZ_PERCENT" -transparent white \
-                -blur 0x2 \
-                -threshold 50% \
-                -morphology Erode Diamond:1 \
-                -alpha extract \
-                "$temp_dir/mask.png" 2>/dev/null; then
-                echo "✗ (precise mask failed)"
-                ((failed++))
-                rm -rf "$temp_dir"
-                continue
-            fi
-
-            # Create a slightly dilated mask for smoother edges
-            magick "$temp_dir/mask.png" \
-                -morphology Dilate Diamond:1 \
-                -blur 0x0.7 \
-                "$temp_dir/mask_blur.png" 2>/dev/null
-
-            # Apply the smoothed mask
-            if magick "$input_image" \
-                \( "$temp_dir/mask_blur.png" \) \
-                -alpha off -compose Copy_Opacity -composite \
-                -trim +repage \
-                "$output_directory/$outname" 2>/dev/null; then
-                echo "✓"
-                ((processed++))
-            else
-                echo "✗ (precise apply failed)"
-                ((failed++))
-            fi
-
-            # Clean up
-            rm -rf "$temp_dir"
-            ;;
-    esac
+    [[ -n "$temp_dir" ]] && rm -rf "$temp_dir"
 done
 
 # Summary
