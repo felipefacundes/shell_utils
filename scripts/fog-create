@@ -4,11 +4,20 @@
 
 # =============================================================================
 #  fog-create — Procedural fog/smoke generator with transparent background
+#
 #  Usage:
-#    fog-create <WxH> [hex_color]
+#    fog-create <WxH> [hex_color] [options]
+#
+#  Basic examples:
 #    fog-create 1920x1080
 #    fog-create 1920x1080 ffffff
-#    fog-create 1920x1080 "#ffffff"
+#    fog-create 1920x1080 "#ccddff"
+#
+#  Advanced examples:
+#    fog-create 1920x1080 ffffff --blur 2.5
+#    fog-create 1920x1080 aaddff --octaves 10 --cloud-like
+#    fog-create 1920x1080 ffffff --sparse --contrast 1.8 --feather 0.3
+#    fog-create 1920x1080 ffffff --preset wispy
 # =============================================================================
 
 set -euo pipefail
@@ -22,11 +31,8 @@ py_bin="${py_venv}/bin/python"
 
 if [[ ! -d "${py_venv}" ]]; then
   echo "Setting up isolated Python environment (first run)..."
-
-  # Ensures parent directory exists
   mkdir -p "${HOME}/.python"
 
-  # Creates venv with available Python interpreter
   if command -v python3 &>/dev/null; then
     python3 -m venv "${py_venv}"
   elif command -v python &>/dev/null; then
@@ -36,20 +42,15 @@ if [[ ! -d "${py_venv}" ]]; then
     exit 1
   fi
 
-  # Activates and installs dependencies
-  # shellcheck source=/dev/null
   source "${activate}"
   export VIRTUAL_ENV="${py_venv}"
 
   echo "Installing dependencies (numpy, pillow, scipy)..."
   pip install --quiet --upgrade pip
   pip install --quiet numpy pillow scipy
-
   echo "Environment configured at: ${py_venv}"
   echo ""
 else
-  # Venv already exists — just activate
-  # shellcheck source=/dev/null
   source "${activate}"
   export VIRTUAL_ENV="${py_venv}"
 fi
@@ -57,37 +58,134 @@ fi
 # ---------- help -----------------------------------------------------------
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'HELP'
-fog-create — generates procedural fog (PNG with transparent background)
+fog-create — generates procedural fog/smoke/clouds (PNG with transparent background)
 
 Usage:
-  fog-create <WxH> [hex_color]
-
-Examples:
-  fog-create 1920x1080
-  fog-create 800x600 ccddff
-  fog-create 512x512 "#ff8800"
+  fog-create <WxH> [hex_color] [options]
 
 Arguments:
-  WxH       Image dimensions (e.g., 1920x1080)
-  hex_color Fog color in hex, with or without "#" (default: ffffff)
+  WxH         Image dimensions (e.g., 1920x1080)
+  hex_color   Fog color in hex, with or without "#" (default: ffffff)
 
-Output:
-  fog_<W>x<H>_<color>_<timestamp>.png in current directory
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STRUCTURE OPTIONS  (shape and formation of the fog)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  --octaves N         Number of fBm octaves (1–16, default: random 6–9)
+                      Low  (2–4) → very smooth, few large blobs
+                      High (10+) → very detailed, complex texture
+
+  --scale N           Base scale / zoom of the noise (0.01–1.0, default: random)
+                      Low  (0.01–0.05) → huge, sparse formations (cloud-like)
+                      High (0.15–0.40) → fine-grained, dense fog
+
+  --gain N            Amplitude decay per octave (0.1–0.9, default: 0.5)
+                      Low  (0.2–0.3) → dominated by large structures
+                      High (0.7–0.9) → lots of fine detail, turbulent
+
+  --lacunarity N      Frequency multiplier per octave (1.2–4.0, default: 2.0)
+                      Low  (1.2–1.5) → slow frequency progression, soft
+                      High (3.0–4.0) → fast progression, wispy and sharp
+
+  --layers N          Number of independent fBm layers blended (1–5, default: 3)
+                      1 → uniform single-character fog
+                      3–5 → complex, multi-scale formations
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BLUR OPTIONS  (softness of edges and overall smoothness)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  --blur N            Final Gaussian blur strength (0.0–20.0, default: auto)
+                      0.0 → crisp, sharp noise edges
+                      2.0–5.0 → soft, natural fog
+                      10.0+ → extremely diffuse, barely visible shapes
+
+  --blur-per-layer N  Per-layer blur during generation (0.0–10.0, default: auto)
+                      Controls how smooth each fBm layer is before blending
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DENSITY & TRANSPARENCY OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  --density N         Overall opacity/presence of the fog (0.0–1.0, default: random)
+                      0.1–0.3 → very sparse, thin wisps
+                      0.5–0.7 → balanced semi-transparent fog
+                      0.8–1.0 → dense, opaque fog
+
+  --midpoint N        Sigmoid threshold — where fog transitions (0.0–1.0, default: random 0.32–0.58)
+                      Low  (0.2–0.3) → more fog area, denser coverage
+                      High (0.6–0.8) → less fog, only peaks are visible
+
+  --steepness N       Sigmoid steepness — sharpness of fog edges (1.0–25.0, default: random 6–13)
+                      Low  (1.0–4.0)  → very gradual, soft transitions
+                      High (15.0–25.0) → sharp, defined cloud edges
+
+  --gamma N           Gamma correction on alpha channel (0.3–2.5, default: random 0.65–1.05)
+                      < 1.0 → lifts shadows, more fog everywhere
+                      > 1.0 → pushes shadows down, more sparse/airy
+
+  --contrast N        Contrast stretch aggressiveness (0.5–3.0, default: 1.0)
+                      < 1.0 → compressed range, uniform gray fog
+                      > 1.0 → expanded range, more dramatic light/dark areas
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EDGE & VIGNETTE OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  --feather N         Edge fade width, as fraction of image size (0.0–0.5, default: random 0.05–0.16)
+                      0.0 → no feathering, fog goes to the very edge
+                      0.3–0.5 → heavy vignette, fog centered in frame
+
+  --no-feather        Disable edge vignette entirely (fog fills to edges)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+QUICK PRESETS  (combine multiple parameters at once)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  --preset NAME       Apply a named preset (can be combined with other flags)
+
+  Available presets:
+    fog         → Classic ground fog: soft, dense, low-structure
+    wispy       → Thin atmospheric wisps: sparse, high-detail
+    cloud       → Puffy cloud-like formations: large blobs, sharp edges
+    smoke       → Dense smoke: turbulent, high-contrast, dark centers
+    mist        → Light morning mist: very diffuse, uniform
+    storm       → Heavy storm clouds: dramatic, high-contrast
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MISC OPTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  --seed N            Random seed for reproducibility (any integer)
+  --output FILE       Custom output filename (default: fog_WxH_color_timestamp.png)
+  --verbose           Print all active parameter values before generating
+  -h, --help          Show this help message
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Classic dense white fog
+  fog-create 1920x1080 ffffff --preset fog
+
+  # Sparse blue atmospheric wisps
+  fog-create 1920x1080 aaccff --preset wispy --density 0.25
+
+  # Large puffy cloud formations
+  fog-create 1920x1080 ffffff --preset cloud --scale 0.02 --steepness 18
+
+  # Reproducible result
+  fog-create 1920x1080 ffffff --seed 42 --preset mist
+
+  # Full manual control
+  fog-create 800x600 ffeecc --octaves 8 --scale 0.05 --gain 0.55 \
+    --lacunarity 2.2 --blur 1.5 --density 0.6 --steepness 10 --feather 0.12
 HELP
   exit 0
 fi
 
-# ---------- arguments ------------------------------------------------------
+# ---------- required arguments ---------------------------------------------
 if [[ $# -lt 1 ]]; then
-  echo "Usage: fog-create <WxH> [hex_color]" >&2
-  echo "     fog-create --help for more details" >&2
+  echo "Usage: fog-create <WxH> [hex_color] [options]" >&2
+  echo "       fog-create --help for full documentation" >&2
   exit 1
 fi
 
-DIMENSIONS="${1}"
-COLOR_RAW="${2:-ffffff}"
+DIMENSIONS="${1}"; shift
 
-# Validates dimension
 if ! [[ "$DIMENSIONS" =~ ^[0-9]+[xX][0-9]+$ ]]; then
   echo "Error: invalid dimension '$DIMENSIONS'. Use WxH format, e.g., 1920x1080" >&2
   exit 1
@@ -96,64 +194,323 @@ fi
 WIDTH="${DIMENSIONS%%[xX]*}"
 HEIGHT="${DIMENSIONS##*[xX]}"
 
-# Normalizes color (removes # and converts to lowercase)
+# Optional color (second positional if it looks like a hex)
+COLOR_RAW="ffffff"
+if [[ $# -gt 0 && "${1:-}" =~ ^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$ ]]; then
+  COLOR_RAW="${1}"; shift
+fi
+
 COLOR_HEX="${COLOR_RAW//\#/}"
 COLOR_HEX="${COLOR_HEX,,}"
 
-# Validates hex
 if ! [[ "$COLOR_HEX" =~ ^[0-9a-f]{3}([0-9a-f]{3})?$ ]]; then
-  echo "Error: invalid hex color '$COLOR_RAW'. Use 3 or 6 hex digits, e.g., ffffff or ccddff" >&2
-  exit 1
+  echo "Error: invalid hex color '$COLOR_RAW'." >&2; exit 1
 fi
-
-# Expands short hex (#abc → aabbcc)
 if [[ ${#COLOR_HEX} -eq 3 ]]; then
   r="${COLOR_HEX:0:1}"; g="${COLOR_HEX:1:1}"; b="${COLOR_HEX:2:1}"
   COLOR_HEX="${r}${r}${g}${g}${b}${b}"
 fi
 
-# Output file
-TIMESTAMP=$(date +%Y%m%d_%H%M%S_%N | cut -c1-22)
-OUTFILE="fog_${WIDTH}x${HEIGHT}_${COLOR_HEX}_${TIMESTAMP}.png"
+# ---------- optional parameters (defaults = "auto" = Python decides) -------
+OPT_OCTAVES="auto"
+OPT_SCALE="auto"
+OPT_GAIN="auto"
+OPT_LACUNARITY="auto"
+OPT_LAYERS="auto"
+OPT_BLUR="auto"
+OPT_BLUR_PER_LAYER="auto"
+OPT_DENSITY="auto"
+OPT_MIDPOINT="auto"
+OPT_STEEPNESS="auto"
+OPT_GAMMA="auto"
+OPT_CONTRAST="auto"
+OPT_FEATHER="auto"
+OPT_NO_FEATHER="false"
+OPT_PRESET="none"
+OPT_SEED="auto"
+OPT_OUTPUT="auto"
+OPT_VERBOSE="false"
 
+# ---------- preset definitions (bash side, overrides applied before flags) -
+apply_preset() {
+  case "$1" in
+    fog)
+      OPT_OCTAVES="${OPT_OCTAVES:-auto}"; [[ "$OPT_OCTAVES" == "auto" ]] && OPT_OCTAVES=6
+      [[ "$OPT_SCALE"      == "auto" ]] && OPT_SCALE=0.14
+      [[ "$OPT_GAIN"       == "auto" ]] && OPT_GAIN=0.55
+      [[ "$OPT_LACUNARITY" == "auto" ]] && OPT_LACUNARITY=2.0
+      [[ "$OPT_BLUR"       == "auto" ]] && OPT_BLUR=3.0
+      [[ "$OPT_DENSITY"    == "auto" ]] && OPT_DENSITY=0.65
+      [[ "$OPT_MIDPOINT"   == "auto" ]] && OPT_MIDPOINT=0.40
+      [[ "$OPT_STEEPNESS"  == "auto" ]] && OPT_STEEPNESS=7.0
+      [[ "$OPT_GAMMA"      == "auto" ]] && OPT_GAMMA=0.75
+      [[ "$OPT_CONTRAST"   == "auto" ]] && OPT_CONTRAST=1.0
+      [[ "$OPT_FEATHER"    == "auto" ]] && OPT_FEATHER=0.10
+      ;;
+    wispy)
+      [[ "$OPT_OCTAVES"    == "auto" ]] && OPT_OCTAVES=9
+      [[ "$OPT_SCALE"      == "auto" ]] && OPT_SCALE=0.06
+      [[ "$OPT_GAIN"       == "auto" ]] && OPT_GAIN=0.65
+      [[ "$OPT_LACUNARITY" == "auto" ]] && OPT_LACUNARITY=2.5
+      [[ "$OPT_BLUR"       == "auto" ]] && OPT_BLUR=0.8
+      [[ "$OPT_DENSITY"    == "auto" ]] && OPT_DENSITY=0.30
+      [[ "$OPT_MIDPOINT"   == "auto" ]] && OPT_MIDPOINT=0.55
+      [[ "$OPT_STEEPNESS"  == "auto" ]] && OPT_STEEPNESS=9.0
+      [[ "$OPT_GAMMA"      == "auto" ]] && OPT_GAMMA=1.05
+      [[ "$OPT_CONTRAST"   == "auto" ]] && OPT_CONTRAST=1.6
+      [[ "$OPT_FEATHER"    == "auto" ]] && OPT_FEATHER=0.18
+      ;;
+    cloud)
+      [[ "$OPT_OCTAVES"    == "auto" ]] && OPT_OCTAVES=5
+      [[ "$OPT_SCALE"      == "auto" ]] && OPT_SCALE=0.03
+      [[ "$OPT_GAIN"       == "auto" ]] && OPT_GAIN=0.45
+      [[ "$OPT_LACUNARITY" == "auto" ]] && OPT_LACUNARITY=1.8
+      [[ "$OPT_LAYERS"     == "auto" ]] && OPT_LAYERS=2
+      [[ "$OPT_BLUR"       == "auto" ]] && OPT_BLUR=1.2
+      [[ "$OPT_DENSITY"    == "auto" ]] && OPT_DENSITY=0.70
+      [[ "$OPT_MIDPOINT"   == "auto" ]] && OPT_MIDPOINT=0.45
+      [[ "$OPT_STEEPNESS"  == "auto" ]] && OPT_STEEPNESS=16.0
+      [[ "$OPT_GAMMA"      == "auto" ]] && OPT_GAMMA=0.80
+      [[ "$OPT_CONTRAST"   == "auto" ]] && OPT_CONTRAST=1.4
+      [[ "$OPT_FEATHER"    == "auto" ]] && OPT_FEATHER=0.08
+      ;;
+    smoke)
+      [[ "$OPT_OCTAVES"    == "auto" ]] && OPT_OCTAVES=10
+      [[ "$OPT_SCALE"      == "auto" ]] && OPT_SCALE=0.09
+      [[ "$OPT_GAIN"       == "auto" ]] && OPT_GAIN=0.72
+      [[ "$OPT_LACUNARITY" == "auto" ]] && OPT_LACUNARITY=2.8
+      [[ "$OPT_LAYERS"     == "auto" ]] && OPT_LAYERS=4
+      [[ "$OPT_BLUR"       == "auto" ]] && OPT_BLUR=0.5
+      [[ "$OPT_DENSITY"    == "auto" ]] && OPT_DENSITY=0.55
+      [[ "$OPT_MIDPOINT"   == "auto" ]] && OPT_MIDPOINT=0.48
+      [[ "$OPT_STEEPNESS"  == "auto" ]] && OPT_STEEPNESS=11.0
+      [[ "$OPT_GAMMA"      == "auto" ]] && OPT_GAMMA=0.90
+      [[ "$OPT_CONTRAST"   == "auto" ]] && OPT_CONTRAST=2.0
+      [[ "$OPT_FEATHER"    == "auto" ]] && OPT_FEATHER=0.12
+      ;;
+    mist)
+      [[ "$OPT_OCTAVES"    == "auto" ]] && OPT_OCTAVES=5
+      [[ "$OPT_SCALE"      == "auto" ]] && OPT_SCALE=0.20
+      [[ "$OPT_GAIN"       == "auto" ]] && OPT_GAIN=0.40
+      [[ "$OPT_LACUNARITY" == "auto" ]] && OPT_LACUNARITY=1.6
+      [[ "$OPT_LAYERS"     == "auto" ]] && OPT_LAYERS=2
+      [[ "$OPT_BLUR"       == "auto" ]] && OPT_BLUR=6.0
+      [[ "$OPT_DENSITY"    == "auto" ]] && OPT_DENSITY=0.45
+      [[ "$OPT_MIDPOINT"   == "auto" ]] && OPT_MIDPOINT=0.35
+      [[ "$OPT_STEEPNESS"  == "auto" ]] && OPT_STEEPNESS=4.0
+      [[ "$OPT_GAMMA"      == "auto" ]] && OPT_GAMMA=0.65
+      [[ "$OPT_CONTRAST"   == "auto" ]] && OPT_CONTRAST=0.8
+      [[ "$OPT_FEATHER"    == "auto" ]] && OPT_FEATHER=0.06
+      ;;
+    storm)
+      [[ "$OPT_OCTAVES"    == "auto" ]] && OPT_OCTAVES=11
+      [[ "$OPT_SCALE"      == "auto" ]] && OPT_SCALE=0.04
+      [[ "$OPT_GAIN"       == "auto" ]] && OPT_GAIN=0.68
+      [[ "$OPT_LACUNARITY" == "auto" ]] && OPT_LACUNARITY=3.0
+      [[ "$OPT_LAYERS"     == "auto" ]] && OPT_LAYERS=5
+      [[ "$OPT_BLUR"       == "auto" ]] && OPT_BLUR=0.4
+      [[ "$OPT_DENSITY"    == "auto" ]] && OPT_DENSITY=0.80
+      [[ "$OPT_MIDPOINT"   == "auto" ]] && OPT_MIDPOINT=0.42
+      [[ "$OPT_STEEPNESS"  == "auto" ]] && OPT_STEEPNESS=20.0
+      [[ "$OPT_GAMMA"      == "auto" ]] && OPT_GAMMA=0.95
+      [[ "$OPT_CONTRAST"   == "auto" ]] && OPT_CONTRAST=2.5
+      [[ "$OPT_FEATHER"    == "auto" ]] && OPT_FEATHER=0.05
+      ;;
+    *)
+      echo "Error: unknown preset '$1'. Available: fog, wispy, cloud, smoke, mist, storm" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# ---------- parse flags (after positional args) ----------------------------
+# First pass: extract --preset so it can be applied before other flags
+_REMAINING=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --preset)       OPT_PRESET="${2:?'--preset requires a value'}"; shift 2 ;;
+    *)              _REMAINING+=("$1"); shift ;;
+  esac
+done
+
+# Apply preset first (flags below will override preset values)
+[[ "$OPT_PRESET" != "none" ]] && apply_preset "$OPT_PRESET"
+
+# Second pass: parse all remaining flags (override preset)
+set -- "${_REMAINING[@]+"${_REMAINING[@]}"}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --octaves)       OPT_OCTAVES="${2:?'--octaves requires a value'}";       shift 2 ;;
+    --scale)         OPT_SCALE="${2:?'--scale requires a value'}";           shift 2 ;;
+    --gain)          OPT_GAIN="${2:?'--gain requires a value'}";             shift 2 ;;
+    --lacunarity)    OPT_LACUNARITY="${2:?'--lacunarity requires a value'}"; shift 2 ;;
+    --layers)        OPT_LAYERS="${2:?'--layers requires a value'}";         shift 2 ;;
+    --blur)          OPT_BLUR="${2:?'--blur requires a value'}";             shift 2 ;;
+    --blur-per-layer) OPT_BLUR_PER_LAYER="${2:?'--blur-per-layer requires a value'}"; shift 2 ;;
+    --density)       OPT_DENSITY="${2:?'--density requires a value'}";       shift 2 ;;
+    --midpoint)      OPT_MIDPOINT="${2:?'--midpoint requires a value'}";     shift 2 ;;
+    --steepness)     OPT_STEEPNESS="${2:?'--steepness requires a value'}";   shift 2 ;;
+    --gamma)         OPT_GAMMA="${2:?'--gamma requires a value'}";           shift 2 ;;
+    --contrast)      OPT_CONTRAST="${2:?'--contrast requires a value'}";     shift 2 ;;
+    --feather)       OPT_FEATHER="${2:?'--feather requires a value'}";       shift 2 ;;
+    --no-feather)    OPT_NO_FEATHER="true"; shift ;;
+    --seed)          OPT_SEED="${2:?'--seed requires a value'}";             shift 2 ;;
+    --output)        OPT_OUTPUT="${2:?'--output requires a value'}";         shift 2 ;;
+    --verbose)       OPT_VERBOSE="true"; shift ;;
+    *) echo "Error: unknown option '$1'. Use --help for usage." >&2; exit 1 ;;
+  esac
+done
+
+# ---------- output filename ------------------------------------------------
+if [[ "$OPT_OUTPUT" == "auto" ]]; then
+  TIMESTAMP=$(date +%Y%m%d_%H%M%S_%N | cut -c1-22)
+  PRESET_TAG=""
+  [[ "$OPT_PRESET" != "none" ]] && PRESET_TAG="_${OPT_PRESET}"
+  OUTFILE="fog_${WIDTH}x${HEIGHT}_${COLOR_HEX}${PRESET_TAG}_${TIMESTAMP}.png"
+else
+  OUTFILE="$OPT_OUTPUT"
+fi
+
+# ---------- print summary --------------------------------------------------
 echo "Generating procedural fog..."
-echo "    Dimension : ${WIDTH}x${HEIGHT}"
-echo "    Color     : #${COLOR_HEX}"
-echo "    Output    : ${OUTFILE}"
+echo "    Dimension      : ${WIDTH}x${HEIGHT}"
+echo "    Color          : #${COLOR_HEX}"
+[[ "$OPT_PRESET"   != "none" ]] && echo "    Preset         : ${OPT_PRESET}"
+echo "    Output         : ${OUTFILE}"
+
+if [[ "$OPT_VERBOSE" == "true" ]]; then
+  echo ""
+  echo "  [Active Parameters]"
+  echo "    --octaves       ${OPT_OCTAVES}"
+  echo "    --scale         ${OPT_SCALE}"
+  echo "    --gain          ${OPT_GAIN}"
+  echo "    --lacunarity    ${OPT_LACUNARITY}"
+  echo "    --layers        ${OPT_LAYERS}"
+  echo "    --blur          ${OPT_BLUR}"
+  echo "    --blur-per-layer ${OPT_BLUR_PER_LAYER}"
+  echo "    --density       ${OPT_DENSITY}"
+  echo "    --midpoint      ${OPT_MIDPOINT}"
+  echo "    --steepness     ${OPT_STEEPNESS}"
+  echo "    --gamma         ${OPT_GAMMA}"
+  echo "    --contrast      ${OPT_CONTRAST}"
+  echo "    --feather       ${OPT_FEATHER}"
+  echo "    --no-feather    ${OPT_NO_FEATHER}"
+  echo "    --seed          ${OPT_SEED}"
+  echo ""
+fi
 
 # ---------- generation in Python (uses venv interpreter) -------------------
-"${py_bin}" - "$WIDTH" "$HEIGHT" "$COLOR_HEX" "$OUTFILE" <<'PYEOF'
+"${py_bin}" - \
+  "$WIDTH" "$HEIGHT" "$COLOR_HEX" "$OUTFILE" \
+  "$OPT_OCTAVES" "$OPT_SCALE" "$OPT_GAIN" "$OPT_LACUNARITY" "$OPT_LAYERS" \
+  "$OPT_BLUR" "$OPT_BLUR_PER_LAYER" \
+  "$OPT_DENSITY" "$OPT_MIDPOINT" "$OPT_STEEPNESS" "$OPT_GAMMA" "$OPT_CONTRAST" \
+  "$OPT_FEATHER" "$OPT_NO_FEATHER" "$OPT_SEED" \
+  <<'PYEOF'
 import sys, time
 import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter
 
-W      = int(sys.argv[1])
-H      = int(sys.argv[2])
-color  = sys.argv[3]
-outf   = sys.argv[4]
+# =============================================================================
+#  Parse arguments from bash
+# =============================================================================
+W            = int(sys.argv[1])
+H            = int(sys.argv[2])
+color        = sys.argv[3]
+outf         = sys.argv[4]
+a_octaves    = sys.argv[5]   # int or "auto"
+a_scale      = sys.argv[6]   # float or "auto"
+a_gain       = sys.argv[7]   # float or "auto"
+a_lacunarity = sys.argv[8]   # float or "auto"
+a_layers     = sys.argv[9]   # int or "auto"
+a_blur       = sys.argv[10]  # float or "auto"
+a_blur_pl    = sys.argv[11]  # float or "auto"  (per-layer blur)
+a_density    = sys.argv[12]  # float or "auto"
+a_midpoint   = sys.argv[13]  # float or "auto"
+a_steepness  = sys.argv[14]  # float or "auto"
+a_gamma      = sys.argv[15]  # float or "auto"
+a_contrast   = sys.argv[16]  # float or "auto"
+a_feather    = sys.argv[17]  # float or "auto"
+a_no_feather = sys.argv[18]  # "true" or "false"
+a_seed       = sys.argv[19]  # int or "auto"
+
+# =============================================================================
+#  RNG setup
+# =============================================================================
+if a_seed == "auto":
+    seed = int(time.time_ns()) & 0xFFFFFFFFFFFFFFFF
+else:
+    seed = int(a_seed)
+rng = np.random.default_rng(seed)
+
+def auto_float(val, lo, hi):
+    """Return float(val) if val != 'auto', else random in [lo, hi]."""
+    if val == "auto":
+        return float(rng.uniform(lo, hi))
+    return float(val)
+
+def auto_int(val, lo, hi):
+    """Return int(val) if val != 'auto', else random in [lo, hi)."""
+    if val == "auto":
+        return int(rng.integers(lo, hi + 1))
+    return int(val)
+
+# =============================================================================
+#  Resolve all parameters
+# =============================================================================
+octaves    = auto_int  (a_octaves,    6,    9)
+scale      = auto_float(a_scale,      0.10, 0.22)
+gain       = auto_float(a_gain,       0.45, 0.55)
+lacunarity = auto_float(a_lacunarity, 1.8,  2.2)
+layers     = auto_int  (a_layers,     3,    3)
+blur_final = auto_float(a_blur,       0.5,  2.0)   # minimal default; presets set explicitly
+blur_pl    = a_blur_pl   # resolved per-layer below if needed
+density    = auto_float(a_density,    0.5,  0.75)
+midpoint   = auto_float(a_midpoint,   0.32, 0.58)
+steepness  = auto_float(a_steepness,  6.0,  13.0)
+gamma      = auto_float(a_gamma,      0.65, 1.05)
+contrast   = auto_float(a_contrast,   1.0,  1.0)
+no_feather = (a_no_feather == "true")
+feather    = 0.0 if no_feather else auto_float(a_feather, 0.05, 0.16)
+
+# Clamp all values to their documented ranges
+octaves    = max(1,   min(16,  octaves))
+scale      = max(0.01, min(1.0, scale))
+gain       = max(0.1,  min(0.9, gain))
+lacunarity = max(1.2,  min(4.0, lacunarity))
+layers     = max(1,   min(5,   layers))
+blur_final = max(0.0,  min(20.0, blur_final))
+density    = max(0.0,  min(1.0,  density))
+midpoint   = max(0.0,  min(1.0,  midpoint))
+steepness  = max(1.0,  min(25.0, steepness))
+gamma      = max(0.3,  min(2.5,  gamma))
+contrast   = max(0.5,  min(3.0,  contrast))
+feather    = max(0.0,  min(0.5,  feather))
 
 R = int(color[0:2], 16)
 G = int(color[2:4], 16)
 B = int(color[4:6], 16)
 
-rng = np.random.default_rng(int(time.time_ns()) & 0xFFFFFFFFFFFFFFFF)
-
 # =============================================================================
-#  Memory-efficient fBm:
-#  Noise generated at final size and smoothed with progressive Gaussian blur.
-#  Large sigma = large structures (low frequency)
-#  Small sigma = fine details (high frequency)
+#  fBm builder — memory-efficient, single-resolution with Gaussian smoothing
+#
+#  scale     → controls base_sigma (large structures)
+#  gain      → amplitude decay between octaves
+#  lacunarity → frequency multiplication per octave
 # =============================================================================
-def make_fbm(W, H, octaves=8, base_sigma_frac=0.12, gain=0.50, lacunarity=2.0):
-    total   = np.zeros((H, W), dtype=np.float32)
-    amp     = 1.0
-    sigma   = max(4.0, min(W, H) * base_sigma_frac)
+def make_fbm(W, H, octaves, scale, gain, lacunarity, per_layer_blur):
+    total = np.zeros((H, W), dtype=np.float32)
+    amp   = 1.0
+    sigma = max(2.0, min(W, H) * scale)
 
     for _ in range(octaves):
         layer = rng.standard_normal((H, W)).astype(np.float32)
-        if sigma >= 1.0:
+        if sigma >= 0.5:
             layer = gaussian_filter(layer, sigma=sigma)
+        # Optional extra smoothing per layer
+        if per_layer_blur > 0.0:
+            layer = gaussian_filter(layer, sigma=per_layer_blur)
         total  += amp * layer
         amp    *= gain
         sigma  /= lacunarity
@@ -162,70 +519,101 @@ def make_fbm(W, H, octaves=8, base_sigma_frac=0.12, gain=0.50, lacunarity=2.0):
     total = (total - lo) / (hi - lo + 1e-9)
     return total
 
-# Three layers with random sigmas
-s1 = float(rng.uniform(0.10, 0.22))
-s2 = float(rng.uniform(0.04, 0.10))
-s3 = float(rng.uniform(0.01, 0.04))
+# =============================================================================
+#  Multi-layer blend
+#  Each layer uses a slightly randomized scale/octave so they differ visually
+# =============================================================================
+def random_delta(base, lo_frac, hi_frac):
+    """Return base * random factor in [lo_frac, hi_frac]."""
+    return base * float(rng.uniform(lo_frac, hi_frac))
 
-fbm1 = make_fbm(W, H, octaves=int(rng.integers(6, 9)),  base_sigma_frac=s1)
-fbm2 = make_fbm(W, H, octaves=int(rng.integers(5, 8)),  base_sigma_frac=s2)
-fbm3 = make_fbm(W, H, octaves=int(rng.integers(4, 7)),  base_sigma_frac=s3)
+# Per-layer blur: auto = scale-dependent default
+if blur_pl == "auto":
+    per_layer_blur = 0.0   # handled inside scale/sigma already
+else:
+    per_layer_blur = max(0.0, min(10.0, float(blur_pl)))
 
-w1 = float(rng.uniform(0.50, 0.70))
-w2 = float(rng.uniform(0.15, 0.30))
-w3 = 1.0 - w1 - w2
-fog = w1 * fbm1 + w2 * fbm2 + w3 * fbm3
-del fbm1, fbm2, fbm3
+# Weight schedule: first layer dominates, subsequent ones add detail
+raw_weights = [float(rng.uniform(0.50, 0.70))]
+for _ in range(layers - 1):
+    raw_weights.append(float(rng.uniform(0.10, 0.30)))
+total_w = sum(raw_weights)
+weights = [w / total_w for w in raw_weights]
 
-fog -= fog.min();  fog /= (fog.max() + 1e-9)
+fog = np.zeros((H, W), dtype=np.float32)
+for i in range(layers):
+    layer_scale    = random_delta(scale,    0.80, 1.20)
+    layer_octaves  = max(1, octaves + int(rng.integers(-1, 2)))
+    layer_gain     = random_delta(gain,     0.90, 1.10)
+    layer_lacun    = random_delta(lacunarity, 0.90, 1.10)
+    fbm_layer = make_fbm(W, H, layer_octaves, layer_scale, layer_gain, layer_lacun, per_layer_blur)
+    fog += weights[i] * fbm_layer
+    del fbm_layer
+
+fog -= fog.min()
+fog /= (fog.max() + 1e-9)
 
 # =============================================================================
-#  Sigmoid curve → alpha
+#  Sigmoid → alpha  (controls edge sharpness and density distribution)
 # =============================================================================
-mid   = float(rng.uniform(0.32, 0.58))
-steep = float(rng.uniform(6.0, 13.0))
-
-# sigmoid without overflow: clip exponent
-exponent = np.clip(-steep * (fog - mid), -88, 88).astype(np.float32)
+exponent = np.clip(-steepness * (fog - midpoint), -88, 88).astype(np.float32)
 alpha = (1.0 / (1.0 + np.exp(exponent))).astype(np.float32)
 del fog, exponent
 
-# Light smoothing
-alpha = gaussian_filter(alpha, sigma=max(1.0, min(W, H) * 0.003))
+# =============================================================================
+#  Final blur (applied after sigmoid — softens edge halos)
+# =============================================================================
+if blur_final > 0.0:
+    actual_blur = max(0.5, min(W, H) * blur_final * 0.005)
+    # If user passed an absolute value >= 1, treat it as pixel-space sigma
+    # values < 1 are treated as fraction of image min-dim
+    if blur_final >= 1.0:
+        actual_blur = blur_final
+    alpha = gaussian_filter(alpha, sigma=actual_blur)
 
-# Gamma
-gamma = float(rng.uniform(0.65, 1.05))
-np.power(alpha, gamma, out=alpha)
+# =============================================================================
+#  Gamma correction
+# =============================================================================
+np.power(np.clip(alpha, 0.0, 1.0), gamma, out=alpha)
 
-# Contrast redistribution
-p_lo = float(np.percentile(alpha, 4))
-p_hi = float(np.percentile(alpha, 96))
+# =============================================================================
+#  Contrast stretch — adjustable aggressiveness
+# =============================================================================
+p_lo_pct = max(0.0, 8.0 - contrast * 4.0)   # contrast=1 → p4, contrast=2 → p0
+p_hi_pct = min(100.0, 92.0 + contrast * 4.0)
+p_lo = float(np.percentile(alpha, p_lo_pct))
+p_hi = float(np.percentile(alpha, p_hi_pct))
 if p_hi > p_lo:
     alpha = (alpha - p_lo) / (p_hi - p_lo)
     np.clip(alpha, 0.0, 1.0, out=alpha)
 
 # =============================================================================
-#  Cosine vignette on edges
+#  Density scale — uniform opacity control
 # =============================================================================
-fade_w = float(rng.uniform(0.05, 0.16))
+alpha *= density
 
-def edge_curve(n, width):
-    v = np.linspace(0.0, 1.0, n, dtype=np.float32)
-    t = np.where(v < width,       v / width,
-        np.where(v > 1.0 - width, (1.0 - v) / width, 1.0))
-    return ((1.0 - np.cos(t * np.pi)) * 0.5).astype(np.float32)
+# =============================================================================
+#  Cosine vignette / edge feathering
+# =============================================================================
+if not no_feather and feather > 0.0:
+    def edge_curve(n, width):
+        v = np.linspace(0.0, 1.0, n, dtype=np.float32)
+        t = np.where(v < width,       v / width,
+            np.where(v > 1.0 - width, (1.0 - v) / width, 1.0))
+        return ((1.0 - np.cos(t * np.pi)) * 0.5).astype(np.float32)
 
-vx = edge_curve(W, fade_w)              # (W,)
-vy = edge_curve(H, fade_w)[:, None]     # (H,1)
-vignette = vx[None, :] * vy             # broadcast (H,W)
-vignette = gaussian_filter(vignette, sigma=max(2.0, min(W, H) * 0.008))
+    vx = edge_curve(W, feather)
+    vy = edge_curve(H, feather)[:, None]
+    vignette = vx[None, :] * vy
+    blur_vig = max(2.0, min(W, H) * 0.008)
+    vignette = gaussian_filter(vignette, sigma=blur_vig)
+    alpha *= vignette
+    del vignette
 
-alpha *= vignette
-del vignette
 np.clip(alpha, 0.0, 1.0, out=alpha)
 
 # =============================================================================
-#  Assembles RGBA and saves
+#  Assemble RGBA and save
 # =============================================================================
 alpha_u8 = (alpha * 255).astype(np.uint8)
 del alpha
@@ -242,13 +630,14 @@ Image.fromarray(rgba, "RGBA").save(outf, "PNG")
 print(f"ok:{outf}")
 PYEOF
 
-# ---------- checks output --------------------------------------------------
+# ---------- check output ---------------------------------------------------
 if [[ -f "$OUTFILE" ]]; then
   SIZE=$(du -sh "$OUTFILE" | cut -f1)
   echo ""
   echo "Fog generated successfully!"
   echo "   File     : $OUTFILE"
   echo "   Size     : $SIZE"
+  [[ "$OPT_SEED" != "auto" ]] && echo "   Seed     : $OPT_SEED  (use --seed $OPT_SEED to reproduce)"
 else
   echo "Failed to generate image." >&2
   exit 1

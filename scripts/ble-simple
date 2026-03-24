@@ -785,6 +785,38 @@ _cs_do_tab() {
                     [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
                         && completions[$i]+="/"
                 done
+
+                # ── Fallback: glob por sufixo/substring ──────────────
+                # Ativado quando compgen não encontra nada E o cur parece
+                # um padrão parcial (começa com . ou contém * ? [ ou é só extensão)
+                if (( ${#completions[@]} == 0 )) && [[ -n "$cur" ]]; then
+                    local -a glob_matches=()
+                    local glob_pat
+                    if [[ "$cur" == *'*'* || "$cur" == *'?'* || "$cur" == *'['* ]]; then
+                        glob_pat="$cur"       # wildcard explícito: passa direto
+                    elif [[ "$cur" == .* ]]; then
+                        glob_pat="*${cur}"    # .tar → *.tar  (sufixo)
+                    else
+                        glob_pat="*${cur}*"   # 47   → *47*   (substring)
+                    fi
+                    local _shopt_save
+                    _shopt_save=$(shopt -p nullglob dotglob 2>/dev/null)
+                    shopt -s nullglob dotglob
+                    local dir_prefix="" base_pat="$glob_pat"
+                    if [[ "$cur" == */* ]]; then
+                        dir_prefix="${cur%/*}/"
+                        base_pat="${glob_pat##*/}"
+                    fi
+                    local f
+                    for f in ${dir_prefix}${base_pat}; do
+                        [[ -d "$f" && "$f" != */ ]] && f+="/"
+                        glob_matches+=( "$f" )
+                    done
+                    eval "$_shopt_save"
+                    if (( ${#glob_matches[@]} > 0 )); then
+                        mapfile -t completions < <(printf '%s\n' "${glob_matches[@]}" | sort -u)
+                    fi
+                fi
             fi
         fi
     fi
@@ -880,9 +912,23 @@ _cs_do_tab() {
         _CS_TAB_WORD_START=$word_start
         _CS_TAB_ORIG_BUFFER="$_CS_BUFFER"
         _CS_TAB_ORIG_POS=$_CS_POS
-        _cs_list_completions "$common" "${completions[@]}"
-        # Ativa imediatamente o ciclo: próximo Tab entra no bloco _CS_TAB_STATE >= 0
-        # usando word_start já correto, evitando recalculo errado sobre nomes com espaços
+
+        # Monta display sem prefixo de diretório duplicado
+        local -a _disp2=()
+        local _dc2
+        local _typed2="${line:$word_start:$((point - word_start))}"
+        _typed2="${_typed2//\"/}"
+        local _typed_dir2=""
+        [[ "$_typed2" == */* ]] && _typed_dir2="${_typed2%/*}/"
+        for _dc2 in "${completions[@]}"; do
+            _dc2="${_dc2//\"/}"
+            [[ -n "$_typed_dir2" && "$_dc2" == "$_typed_dir2"* ]] \
+                && _dc2="${_dc2#"$_typed_dir2"}"
+            _disp2+=( "$_dc2" )
+        done
+        local _cur_prefix2="${_typed2##*/}"
+        _cs_list_completions "$_cur_prefix2" "${_disp2[@]}"
+
         _CS_TAB_STATE=0
         local _first_c="${_CS_TAB_COMPLETIONS[0]}"
         _first_c="$(_cs_quote_completion "$_first_c")"
@@ -945,8 +991,23 @@ _cs_colorize() {
         local trailing_slash=""
         local work="$item"
         [[ "$work" == */ ]] && trailing_slash="/" && work="${work%/}"
-        local base="${work%/*}/"
+        local base="${work%/*}"
         local last="${work##*/}"
+
+        # Se não há subdiretório real (ex: "Godot4/" sem path interno),
+        # base == work — cai no comportamento simples para evitar duplicação
+        if [[ "$base" == "$work" || -z "$last" ]]; then
+            local rest="${item:${#prefix}}"
+            if [[ -n "$item_color" ]]; then
+                printf '%s%s' \
+                    "${esc}[${item_color};04m${item:0:${#prefix}}${reset}${esc}[${item_color}m" \
+                    "${rest}${reset}"
+            else
+                printf '%s%s' "${esc}[01;35;04m${item:0:${#prefix}}${reset}" "$rest"
+            fi
+            return
+        fi
+        base+="/"
 
         local highlighted_last
         if [[ "$last" == "$prefix"* ]]; then
@@ -982,7 +1043,7 @@ _cs_colorize() {
         fi
     else
         if [[ -n "$prefix" ]]; then
-            printf '%s%s' "${esc}[01;04m${prefix}${reset}" "$rest"
+            printf '%s%s' "${esc}[01;35;04m${prefix}${reset}" "$rest"
         else
             printf '%s' "$item"
         fi

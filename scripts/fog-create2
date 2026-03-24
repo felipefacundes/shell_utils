@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
-
 # fog-create - Generates procedural fog with transparent background
 # This script creates an isolated Python virtual environment and runs the fog generator
-
 set -e  # Exit on error
 
 # Colors for output
@@ -31,10 +29,25 @@ show_help() {
     echo "  ${0##*/} 1920x1080 ffffff --output-dir ./my_fogs"
     echo ""
     echo "Options:"
-    echo "  --output-dir DIR    Directory to save images (default: fog_output)"
-    echo "  --seed NUM          Use specific seed to reproduce results"
-    echo "  --list-seeds        List seeds of the last 10 generated images"
-    echo "  --help              Show this help"
+    echo "  --output-dir DIR        Directory to save images (default: fog_output)"
+    echo "  --seed NUM              Use specific seed to reproduce results"
+    echo "  --list-seeds            List seeds of the last 10 generated images"
+    echo ""
+    echo "Fog Customization Options:"
+    echo "  --density FLOAT         Fog density (0.1-1.0, default: 0.3-0.8 random)"
+    echo "  --opacity FLOAT         Global opacity/transparency (0.0-1.0, default: 0.7-1.0 random)"
+    echo "  --blur FLOAT            Blur radius (0-5, default: random 0.5-1.5)"
+    echo "  --turbulence FLOAT      Turbulence/chaos level (0-1, default: 0.1-0.8 random)"
+    echo "  --spacing FLOAT         Noise spacing/scale (20-150, default: 30-80 random)"
+    echo "  --layers INT            Number of fog layers (1-5, default: 3)"
+    echo "  --cloud-like FLOAT      Cloud-like appearance (0-1, higher = more cloud-like, default: 0.3-0.7)"
+    echo "  --vertical-falloff FLOAT Vertical falloff exponent (0.5-3.0, default: 1.5)"
+    echo "  --horizontal-bias FLOAT Horizontal bias (0-1, default: 0.3)"
+    echo "  --contrast FLOAT        Contrast adjustment (0.5-2.0, default: 0.8-1.3 random)"
+    echo "  --flow-strength FLOAT   Flow field strength (0-1, default: 0.3)"
+    echo "  --no-flow               Disable flow field effect"
+    echo ""
+    echo "  --help                  Show this help"
     echo ""
     echo "Colors:"
     echo "  Hexadecimal format with or without #"
@@ -45,7 +58,7 @@ show_help() {
 # Function to check and create virtual environment
 setup_venv() {
     echo -e "${BLUE}🔧 Setting up Python virtual environment...${NC}"
-    
+
     # Check if Python is installed
     if ! command -v ${PYTHON_VERSION} &> /dev/null; then
         echo -e "${RED}❌ Error: Python 3 is not installed.${NC}"
@@ -53,31 +66,27 @@ setup_venv() {
         echo "or: brew install python3 (MacOS)"
         exit 1
     fi
-    
+
     # Create virtual environment if it doesn't exist
     if [[ ! -d "${PY_VENV}" ]]; then
         echo -e "${YELLOW}📦 Creating virtual environment at: ${PY_VENV}${NC}"
         ${PYTHON_VERSION} -m venv "${PY_VENV}"
-        
         if [[ $? -ne 0 ]]; then
             echo -e "${RED}❌ Error creating virtual environment.${NC}"
             exit 1
         fi
-        
         echo -e "${GREEN}✓ Virtual environment created${NC}"
-        
+
         # Activate environment and install dependencies
         # shellcheck source=/dev/null
         source "${ACTIVATE}"
-        
         echo -e "${YELLOW}📥 Installing dependencies...${NC}"
-        
+
         # Upgrade pip
         pip install --upgrade pip > /dev/null 2>&1
-        
+
         # Install required dependencies
         pip install numpy pillow scipy > /dev/null 2>&1
-        
         if [[ $? -eq 0 ]]; then
             echo -e "${GREEN}✓ Dependencies installed successfully${NC}"
         else
@@ -86,7 +95,7 @@ setup_venv() {
             pip install pillow
             pip install scipy
         fi
-        
+
         # Verify installation
         echo -e "${BLUE}🔍 Verifying installation...${NC}"
         python -c "import numpy, PIL, scipy; print('✓ All libraries are installed')" 2>/dev/null || {
@@ -101,14 +110,12 @@ setup_venv() {
 # Function to list recent seeds
 list_seeds() {
     local output_dir="${1:-fog_output}"
-    
     if [[ -d "${output_dir}" ]]; then
         echo -e "${BLUE}📋 Seeds of the last 10 generated images:${NC}"
         echo "----------------------------------------"
-        
         # Find PNG files and extract seeds
         find "${output_dir}" -name "fog_*.png" -type f -printf "%T@ %p\n" 2>/dev/null | \
-            sort -rn | head -10 | while read -r timestamp file; do
+        sort -rn | head -10 | while read -r timestamp file; do
             # Extract seed from filename (format: fog_WxH_timestamp_seed.png)
             filename=$(basename "$file")
             if [[ $filename =~ fog_[0-9]+x[0-9]+_[0-9]+_([0-9]+)\.png ]]; then
@@ -116,7 +123,6 @@ list_seeds() {
                 echo -e "${GREEN}$(basename "$file")${NC} → ${YELLOW}Seed: $seed${NC}"
             fi
         done
-        
         if [[ $? -ne 0 ]]; then
             echo -e "${YELLOW}No images found in ${output_dir}${NC}"
         fi
@@ -126,10 +132,24 @@ list_seeds() {
     exit 0
 }
 
-# Process arguments
+# Process arguments with defaults
 OUTPUT_DIR="fog_output"
 SEED=""
 LIST_SEEDS=false
+
+# Fog parameters with defaults (will be set to None for random)
+DENSITY=""
+OPACITY=""
+BLUR=""
+TURBULENCE=""
+SPACING=""
+LAYERS=""
+CLOUD_LIKE=""
+VERTICAL_FALLOFF=""
+HORIZONTAL_BIAS=""
+CONTRAST=""
+FLOW_STRENGTH=""
+NO_FLOW=false
 
 # Check if listing seeds
 for arg in "$@"; do
@@ -150,6 +170,54 @@ while [[ $# -gt 0 ]]; do
         --seed)
             SEED="$2"
             shift 2
+            ;;
+        --density)
+            DENSITY="$2"
+            shift 2
+            ;;
+        --opacity)
+            OPACITY="$2"
+            shift 2
+            ;;
+        --blur)
+            BLUR="$2"
+            shift 2
+            ;;
+        --turbulence)
+            TURBULENCE="$2"
+            shift 2
+            ;;
+        --spacing)
+            SPACING="$2"
+            shift 2
+            ;;
+        --layers)
+            LAYERS="$2"
+            shift 2
+            ;;
+        --cloud-like)
+            CLOUD_LIKE="$2"
+            shift 2
+            ;;
+        --vertical-falloff)
+            VERTICAL_FALLOFF="$2"
+            shift 2
+            ;;
+        --horizontal-bias)
+            HORIZONTAL_BIAS="$2"
+            shift 2
+            ;;
+        --contrast)
+            CONTRAST="$2"
+            shift 2
+            ;;
+        --flow-strength)
+            FLOW_STRENGTH="$2"
+            shift 2
+            ;;
+        --no-flow)
+            NO_FLOW=true
+            shift
             ;;
         --list-seeds)
             LIST_SEEDS=true
@@ -210,7 +278,19 @@ mkdir -p "${OUTPUT_DIR}"
 echo -e "${BLUE}🌫️  Generating procedural fog...${NC}"
 echo -e "${YELLOW}📐 Dimension: ${DIMENSION}${NC}"
 echo -e "${YELLOW}🎨 Color: #${COLOR_CLEAN}${NC}"
-[[ -n "$SEED" ]] && echo -e "${YELLOW}🔢 Seed: ${SEED}${NC}"
+[[ -n "$SEED" ]]             && echo -e "${YELLOW}🔢 Seed: ${SEED}${NC}"
+[[ -n "$DENSITY" ]]          && echo -e "${YELLOW}💨 Density: ${DENSITY}${NC}"
+[[ -n "$OPACITY" ]]          && echo -e "${YELLOW}🔆 Opacity: ${OPACITY}${NC}"
+[[ -n "$BLUR" ]]             && echo -e "${YELLOW}🌀 Blur: ${BLUR}${NC}"
+[[ -n "$TURBULENCE" ]]       && echo -e "${YELLOW}🌊 Turbulence: ${TURBULENCE}${NC}"
+[[ -n "$SPACING" ]]          && echo -e "${YELLOW}📏 Spacing: ${SPACING}${NC}"
+[[ -n "$LAYERS" ]]           && echo -e "${YELLOW}📚 Layers: ${LAYERS}${NC}"
+[[ -n "$CLOUD_LIKE" ]]       && echo -e "${YELLOW}☁️  Cloud-like: ${CLOUD_LIKE}${NC}"
+[[ -n "$VERTICAL_FALLOFF" ]] && echo -e "${YELLOW}⬇️  Vertical falloff: ${VERTICAL_FALLOFF}${NC}"
+[[ -n "$HORIZONTAL_BIAS" ]]  && echo -e "${YELLOW}↔️  Horizontal bias: ${HORIZONTAL_BIAS}${NC}"
+[[ -n "$CONTRAST" ]]         && echo -e "${YELLOW}🎨 Contrast: ${CONTRAST}${NC}"
+[[ -n "$FLOW_STRENGTH" ]]    && echo -e "${YELLOW}💧 Flow strength: ${FLOW_STRENGTH}${NC}"
+[[ "$NO_FLOW" == true ]]     && echo -e "${YELLOW}🚫 Flow field: disabled${NC}"
 echo -e "${BLUE}📁 Output: ${OUTPUT_DIR}${NC}"
 
 # Embedded Python script
@@ -231,72 +311,199 @@ OUTPUT_DIR = "${OUTPUT_DIR}"
 SEED = ${SEED:-None}
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
 
+# Parse fog parameters (use provided values or random defaults)
+DENSITY          = ${DENSITY:-None}
+OPACITY          = ${OPACITY:-None}
+BLUR             = ${BLUR:-None}
+TURBULENCE       = ${TURBULENCE:-None}
+SPACING          = ${SPACING:-None}
+LAYERS           = ${LAYERS:-None}
+CLOUD_LIKE       = ${CLOUD_LIKE:-None}
+VERTICAL_FALLOFF = ${VERTICAL_FALLOFF:-None}
+HORIZONTAL_BIAS  = ${HORIZONTAL_BIAS:-None}
+CONTRAST         = ${CONTRAST:-None}
+FLOW_STRENGTH    = ${FLOW_STRENGTH:-None}
+NO_FLOW          = $([ "${NO_FLOW}" = "true" ] && echo "True" || echo "False")
+
 # Helper functions
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-def create_fbm_noise(size, scale=50):
-    """Creates fractal Brownian motion noise"""
+def domain_warp(noise_array, warp_strength=0.3, scale=50):
+    """
+    Applies domain warping to a noise array, creating a more organic,
+    twisted fog shape by displacing the sampling coordinates using
+    a secondary noise field.
+    """
+    from scipy.ndimage import gaussian_filter, map_coordinates
+    h, w = noise_array.shape
+
+    # Create two independent displacement fields
+    warp_x = np.random.rand(h, w)
+    warp_y = np.random.rand(h, w)
+    warp_x = gaussian_filter(warp_x, sigma=scale / 8) * 2 - 1
+    warp_y = gaussian_filter(warp_y, sigma=scale / 8) * 2 - 1
+
+    # Scale the displacement
+    max_disp = min(h, w) * warp_strength * 0.15
+    warp_x *= max_disp
+    warp_y *= max_disp
+
+    # Build displaced coordinate grids
+    rows, cols = np.mgrid[0:h, 0:w]
+    warped_rows = np.clip(rows + warp_y, 0, h - 1)
+    warped_cols = np.clip(cols + warp_x, 0, w - 1)
+
+    # Remap the noise through the warp
+    warped = map_coordinates(noise_array, [warped_rows, warped_cols], order=1, mode='reflect')
+    return warped
+
+def create_fbm_noise(size, scale=50, octaves=3, persistence=0.5, lacunarity=2.0, warp=0.0):
+    """
+    Creates fractal Brownian motion noise with optional domain warping.
+    warp (0-1): controls how strongly the domain is warped for more organic shapes.
+    """
     from scipy.ndimage import gaussian_filter
-    
+
+    # Adjust parameters for cloud-like appearance
+    if CLOUD_LIKE is not None and CLOUD_LIKE > 0.5:
+        octaves = 4
+        persistence = 0.6
+        lacunarity = 2.2
+
     # Create base noise
     noise = np.random.rand(size[0], size[1])
-    
-    # Apply Gaussian blur
-    noise = gaussian_filter(noise, sigma=scale/10)
-    
-    # Add detail layers
-    for i in range(3):
+    noise = gaussian_filter(noise, sigma=scale / 10)
+
+    # Add detail layers with octaves
+    for i in range(octaves):
         detail = np.random.rand(size[0], size[1])
-        detail = gaussian_filter(detail, sigma=scale/(10 * (i+2)))
-        noise += detail * (0.3 / (i+1))
-    
+        sigma = scale / (10 * (i + 1) * (1 if CLOUD_LIKE is None else (1 - CLOUD_LIKE * 0.5)))
+        detail = gaussian_filter(detail, sigma=max(sigma, 0.5))
+        amplitude = persistence ** i
+        noise += detail * amplitude
+
     # Normalize
-    noise = (noise - noise.min()) / (noise.max() - noise.min())
-    noise = np.power(noise, 0.7)
-    
+    noise = (noise - noise.min()) / (noise.max() - noise.min() + 1e-8)
+
+    # Apply domain warp for shape variety
+    if warp > 0.05:
+        noise = domain_warp(noise, warp_strength=warp, scale=scale)
+        noise = (noise - noise.min()) / (noise.max() - noise.min() + 1e-8)
+
+    # Cloud-like power curve
+    if CLOUD_LIKE is not None:
+        noise = np.power(noise, 1.0 / (1.0 + CLOUD_LIKE * 1.5))
+
     return noise
 
-def create_fog_layer(height, width, density, turbulence=0.3):
-    """Creates fog layer"""
-    # Create base noise
-    noise = create_fbm_noise((height, width), scale=random.uniform(30, 80))
-    
-    # Vertical gradient
+def create_shape_mask(height, width, shape_variety):
+    """
+    Generates a base shape mask to give each fog image a structurally
+    different silhouette. shape_variety (0-1) is drawn randomly per run.
+    """
+    mask = np.ones((height, width), dtype=np.float32)
+
+    if shape_variety < 0.2:
+        # Wide horizontal band concentrated at the bottom third
+        for i in range(height):
+            t = i / height
+            mask[i, :] = np.clip(1.0 - (t * 2.5 - 0.5), 0, 1) ** 1.8
+
+    elif shape_variety < 0.4:
+        # Diagonal drift: fog heavier on one side
+        angle = random.uniform(20, 70)
+        rad = math.radians(angle)
+        for i in range(height):
+            for j in range(width):
+                d = (i * math.sin(rad) + j * math.cos(rad)) / (height + width)
+                mask[i, j] = np.clip(1.0 - d * 1.5, 0.1, 1.0)
+
+    elif shape_variety < 0.6:
+        # Central mass: denser in the middle horizontally
+        cx = width / 2
+        for j in range(width):
+            dist = abs(j - cx) / cx
+            mask[:, j] = np.clip(1.0 - dist ** 1.5, 0.2, 1.0)
+
+    elif shape_variety < 0.8:
+        # Patchy / broken fog: multiple soft blobs
+        from scipy.ndimage import gaussian_filter
+        blobs = np.zeros((height, width))
+        num_blobs = random.randint(3, 7)
+        for _ in range(num_blobs):
+            bx = random.randint(0, width - 1)
+            by = random.randint(0, height - 1)
+            blobs[by, bx] = 1.0
+        mask = gaussian_filter(blobs, sigma=min(height, width) * 0.15)
+        mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-8)
+        mask = np.clip(mask * 2.5, 0, 1)
+
+    else:
+        # Top-heavy: inverse vertical falloff (fog higher up)
+        for i in range(height):
+            t = i / height
+            mask[i, :] = np.clip(t * 1.8, 0, 1) ** 0.7
+
+    return mask
+
+def create_fog_layer(height, width, density, turbulence=0.3, layer_index=0, warp_amount=0.0):
+    """Creates a fog layer with domain warping and customizable parameters."""
+    # Use global spacing if set
+    scale_val = SPACING if SPACING is not None else random.uniform(30, 80)
+
+    # Adjust scale for cloud-like appearance
+    if CLOUD_LIKE is not None:
+        scale_val = scale_val * (1 - CLOUD_LIKE * 0.3)
+
+    # Create base noise with domain warp
+    noise = create_fbm_noise((height, width), scale=scale_val, warp=warp_amount)
+
+    # Vertical gradient with custom falloff
+    falloff = VERTICAL_FALLOFF if VERTICAL_FALLOFF is not None else 1.5
     gradient = np.ones((height, width))
     for i in range(height):
-        gradient[i, :] = 1.0 - (i / height) ** 1.5
-    
-    # Subtle horizontal gradient
-    for j in range(width):
-        gradient[:, j] *= 1.0 - abs(j - width/2) / width * 0.3
-    
+        gradient[i, :] = 1.0 - (i / height) ** falloff
+
+    # Horizontal bias
+    h_bias = HORIZONTAL_BIAS if HORIZONTAL_BIAS is not None else 0.3
+    if h_bias > 0:
+        for j in range(width):
+            gradient[:, j] *= 1.0 - abs(j - width / 2) / width * h_bias
+
     # Combine
     fog = noise * gradient * density
-    
-    # Turbulence
+
+    # Turbulence (chaos)
     if turbulence > 0:
-        turb = create_fbm_noise((height, width), scale=random.uniform(15, 40))
+        turb_scale = scale_val * 0.5
+        turb = create_fbm_noise((height, width), scale=turb_scale, octaves=2, warp=warp_amount * 0.5)
         fog = fog * (1 - turbulence) + turb * turbulence
-    
-    fog = np.power(fog, random.uniform(0.8, 1.2))
-    
+
+    # Apply contrast adjustment
+    contrast_val = CONTRAST if CONTRAST is not None else random.uniform(0.8, 1.3)
+    fog = np.power(np.clip(fog, 0, 1), contrast_val)
+
     return np.clip(fog, 0, 1)
 
-def create_flow_field(height, width):
-    """Creates flow field"""
+def create_flow_field(height, width, strength=0.3):
+    """Creates flow field for organic movement."""
     from scipy.ndimage import gaussian_filter
-    
+    if NO_FLOW:
+        return np.ones((height, width)) * 0.5
+
     flow_x = np.random.rand(height, width) * 2 * np.pi
     flow_y = np.random.rand(height, width) * 2 * np.pi
-    
     flow_x = gaussian_filter(flow_x, sigma=20)
     flow_y = gaussian_filter(flow_y, sigma=20)
-    
-    return flow_x, flow_y
 
-# Set seed
+    flow_effect = np.sin(flow_x * 2) * np.cos(flow_y * 2)
+    flow_effect = (flow_effect + 1) / 2
+    flow_effect = flow_effect * strength + (1 - strength) * 0.5
+    return flow_effect
+
+# ── Set seed ──────────────────────────────────────────────────────────────────
 if SEED:
     random.seed(SEED)
     np.random.seed(SEED)
@@ -307,59 +514,112 @@ else:
     np.random.seed(SEED_VALUE)
     print(f"🔢 Generated seed: {SEED_VALUE}")
 
-# Generate fog
+# ── Shape variety (randomised per run for structural diversity) ────────────────
+shape_variety = random.random()
+print(f"🔷 Shape variety index: {shape_variety:.2f}")
+
+# ── Domain warp amount (randomised, can be overridden via turbulence proxy) ───
+# Higher turbulence → more warp; gives extra visual differentiation between runs
+base_turbulence = TURBULENCE if TURBULENCE is not None else random.uniform(0.1, 0.8)
+warp_amount = base_turbulence * 0.8   # scale turbulence into warp strength
+
+# ── Generate fog ──────────────────────────────────────────────────────────────
 print("🎨 Creating fog layers...")
 
-# Create multiple layers
+num_layers = LAYERS if LAYERS is not None else random.randint(2, 4)
+num_layers = max(1, min(5, num_layers))
+print(f"📚 Using {num_layers} fog layer(s)")
+
 layers = []
+layer_densities = []
 
-# Dense layer
-layer1 = create_fog_layer(HEIGHT, WIDTH, density=random.uniform(0.5, 0.8), turbulence=random.uniform(0.1, 0.3))
-layers.append(layer1)
+for i in range(num_layers):
+    if DENSITY is not None:
+        layer_density = DENSITY
+    else:
+        if num_layers == 1:
+            layer_density = random.uniform(0.4, 0.8)
+        else:
+            layer_density = random.uniform(0.2 + i * 0.2, 0.6 + i * 0.2)
+            layer_density = min(0.9, layer_density)
 
-# Medium layer
-layer2 = create_fog_layer(HEIGHT, WIDTH, density=random.uniform(0.3, 0.6), turbulence=random.uniform(0.4, 0.6))
-layers.append(layer2)
+    if TURBULENCE is not None:
+        layer_turbulence = TURBULENCE
+    else:
+        if i == 0:
+            layer_turbulence = random.uniform(0.1, 0.3)
+        elif i == num_layers - 1:
+            layer_turbulence = random.uniform(0.5, 0.8)
+        else:
+            layer_turbulence = random.uniform(0.3, 0.6)
 
-# Detail layer
-layer3 = create_fog_layer(HEIGHT, WIDTH, density=random.uniform(0.2, 0.4), turbulence=random.uniform(0.6, 0.8))
-layers.append(layer3)
+    # Each layer gets a slightly varied warp for extra organic feel
+    layer_warp = warp_amount * random.uniform(0.6, 1.4)
 
-# Combine layers
-final_opacity = np.mean(layers, axis=0)
+    layer = create_fog_layer(HEIGHT, WIDTH,
+                             density=layer_density,
+                             turbulence=layer_turbulence,
+                             layer_index=i,
+                             warp_amount=layer_warp)
+    layers.append(layer)
+    layer_densities.append(layer_density)
+    print(f"  Layer {i+1}: density={layer_density:.2f}, turbulence={layer_turbulence:.2f}, warp={layer_warp:.2f}")
 
-# Add flow field
-flow_x, flow_y = create_flow_field(HEIGHT, WIDTH)
-flow_effect = np.sin(flow_x * 2) * np.cos(flow_y * 2)
-flow_effect = (flow_effect + 1) / 2
-final_opacity = final_opacity * (0.7 + flow_effect * 0.3)
+# ── Combine layers ────────────────────────────────────────────────────────────
+weights = [1.0 / (i + 1) for i in range(num_layers)]
+weights = [w / sum(weights) for w in weights]
 
-# Apply final curve
-final_opacity = np.power(final_opacity, random.uniform(0.8, 1.3))
+final_opacity = np.zeros((HEIGHT, WIDTH))
+for i, layer in enumerate(layers):
+    final_opacity += layer * weights[i]
 
-# Create RGBA image
+# ── Apply shape mask ──────────────────────────────────────────────────────────
+shape_mask = create_shape_mask(HEIGHT, WIDTH, shape_variety)
+final_opacity *= shape_mask
+
+# ── Flow field ────────────────────────────────────────────────────────────────
+if not NO_FLOW:
+    flow_strength = FLOW_STRENGTH if FLOW_STRENGTH is not None else 0.3
+    flow_effect = create_flow_field(HEIGHT, WIDTH, strength=flow_strength)
+    final_opacity = final_opacity * (0.7 + flow_effect * 0.3)
+    print(f"💧 Flow field applied (strength={flow_strength:.2f})")
+
+# ── Final contrast curve ──────────────────────────────────────────────────────
+contrast_val = CONTRAST if CONTRAST is not None else random.uniform(0.8, 1.3)
+final_opacity = np.power(np.clip(final_opacity, 0, 1), contrast_val)
+print(f"🎨 Contrast adjustment: {contrast_val:.2f}")
+
+# ── Global opacity / transparency ─────────────────────────────────────────────
+if OPACITY is not None:
+    global_opacity = float(np.clip(OPACITY, 0.0, 1.0))
+else:
+    global_opacity = random.uniform(0.7, 1.0)
+final_opacity *= global_opacity
+print(f"🔆 Global opacity: {global_opacity:.2f}")
+
+# ── Build RGBA image ──────────────────────────────────────────────────────────
 rgb_color = hex_to_rgb(COLOR_HEX)
 img_array = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
-
 for i in range(3):
     img_array[:, :, i] = rgb_color[i]
 
 opacity_values = (final_opacity * 255).astype(np.uint8)
 img_array[:, :, 3] = opacity_values
 
-# Create and save image
 img = Image.fromarray(img_array, 'RGBA')
 
-# Apply optional smoothing
-if random.random() > 0.5:
-    img = img.filter(ImageFilter.GaussianBlur(radius=random.uniform(0.5, 1.5)))
+# ── Blur ──────────────────────────────────────────────────────────────────────
+if BLUR is not None:
+    img = img.filter(ImageFilter.GaussianBlur(radius=BLUR))
+    print(f"🌀 Blur applied: radius={BLUR}")
+elif random.random() > 0.5:
+    blur_radius = random.uniform(0.5, 1.5)
+    img = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+    print(f"🌀 Random blur applied: radius={blur_radius:.2f}")
 
-# Generate filename
-random_num = random.randint(0, 9999)
-filename = f"fog_{WIDTH}x{HEIGHT}_{TIMESTAMP}_{random_num if not SEED else SEED}.png"
+# ── Save ──────────────────────────────────────────────────────────────────────
+filename = f"fog_{WIDTH}x{HEIGHT}_{TIMESTAMP}_{SEED if SEED else SEED_VALUE}.png"
 filepath = os.path.join(OUTPUT_DIR, filename)
-
-# Save
 img.save(filepath, 'PNG')
 
 print(f"\n✅ Fog generated successfully!")
@@ -368,18 +628,38 @@ print(f"📊 Size: {WIDTH}x{HEIGHT}")
 print(f"🎨 Color: #{COLOR_HEX}")
 print(f"💾 File size: {os.path.getsize(filepath):,} bytes")
 
-# Save seed information
+# ── Save info ─────────────────────────────────────────────────────────────────
 info_file = os.path.join(OUTPUT_DIR, f"{filename}.info")
-with open(info_file, 'w') as f:
-    json.dump({
-        "file": filename,
-        "dimension": f"{WIDTH}x{HEIGHT}",
-        "color": f"#{COLOR_HEX}",
-        "seed": SEED if SEED else SEED_VALUE,
-        "timestamp": TIMESTAMP,
-        "size_bytes": os.path.getsize(filepath)
-    }, f, indent=2)
+info_data = {
+    "file": filename,
+    "dimension": f"{WIDTH}x{HEIGHT}",
+    "color": f"#{COLOR_HEX}",
+    "seed": SEED if SEED else SEED_VALUE,
+    "timestamp": TIMESTAMP,
+    "size_bytes": os.path.getsize(filepath),
+    "parameters": {
+        "layers": num_layers,
+        "layer_densities": layer_densities,
+        "contrast": contrast_val,
+        "global_opacity": global_opacity,
+        "shape_variety": shape_variety,
+        "warp_amount": warp_amount,
+        "vertical_falloff": VERTICAL_FALLOFF,
+        "horizontal_bias": HORIZONTAL_BIAS,
+        "no_flow": NO_FLOW
+    }
+}
 
+if DENSITY is not None:          info_data["parameters"]["density"]       = DENSITY
+if OPACITY is not None:          info_data["parameters"]["opacity"]       = OPACITY
+if BLUR is not None:             info_data["parameters"]["blur"]          = BLUR
+if TURBULENCE is not None:       info_data["parameters"]["turbulence"]    = TURBULENCE
+if SPACING is not None:          info_data["parameters"]["spacing"]       = SPACING
+if CLOUD_LIKE is not None:       info_data["parameters"]["cloud_like"]    = CLOUD_LIKE
+if FLOW_STRENGTH is not None:    info_data["parameters"]["flow_strength"] = FLOW_STRENGTH
+
+with open(info_file, 'w') as f:
+    json.dump(info_data, f, indent=2)
 print(f"📝 Information saved to: {info_file}")
 EOF
 
@@ -393,5 +673,4 @@ fi
 
 # Deactivate virtual environment (optional)
 deactivate 2>/dev/null || true
-
 exit 0
