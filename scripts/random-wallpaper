@@ -19,6 +19,7 @@ SCRIPT_BASENAME="${SCRIPT_NAME%%.*}"
 CACHE_DIR="${HOME}/.cache/${SCRIPT_BASENAME}"
 INDEX_FILE="${CACHE_DIR}/current_index"
 WALLPAPER_LIST_FILE="${CACHE_DIR}/wallpaper_list.txt"
+SWAYBG_PID_FILE="${CACHE_DIR}/swaybg.pid"
 
 # Wallpaper directory
 WALLPAPER_DIR="${XDG_PICTURES_DIR:-${HOME}/Pictures}/Wallpapers"
@@ -26,6 +27,9 @@ WALLPAPER_DIR="${XDG_PICTURES_DIR:-${HOME}/Pictures}/Wallpapers"
 DEFAULT_DELAY="5m"
 CURRENT_INDEX=0
 WALL_APP=()  # Will be defined by setup_wallpaper_app
+
+# Wallpaper list (global, shared between functions)
+declare -a wallpapers=()
 
 # Create necessary directories
 mkdir -p "${CACHE_DIR}"
@@ -118,23 +122,21 @@ increment_index() {
 }
 
 # Function to get wallpaper list
+# Invalidates cache based on directory mtime instead of a fixed time window
 get_wallpaper_list() {
-    # Try to load list from cache first
-    if [[ -f "${WALLPAPER_LIST_FILE}" ]]; then
-        local cache_age=$(($(date +%s) - $(stat -c %Y "${WALLPAPER_LIST_FILE}" 2>/dev/null || echo 0)))
-        # If cache is less than 1 hour old, use it
-        if [[ ${cache_age} -lt 3600 ]]; then
-            cat "${WALLPAPER_LIST_FILE}"
-            return 0
-        fi
+    local dir_mtime; dir_mtime=$(stat -c %Y "${WALLPAPER_DIR}" 2>/dev/null || echo 0)
+    local cache_mtime; cache_mtime=$(stat -c %Y "${WALLPAPER_LIST_FILE}" 2>/dev/null || echo 0)
+
+    if [[ -f "${WALLPAPER_LIST_FILE}" && ${cache_mtime} -ge ${dir_mtime} ]]; then
+        cat "${WALLPAPER_LIST_FILE}"
+        return 0
     fi
     
     # Generate new list
-    local wallpapers=()
+    local new_wallpapers=()
     
-    # Using find to list files
     while IFS= read -r -d '' img; do
-        wallpapers+=("$(basename "$img")")
+        new_wallpapers+=("$(basename "$img")")
     done < <(find . -maxdepth 1 -type f \( \
         -iname "*.jpg" -o \
         -iname "*.jpeg" -o \
@@ -143,13 +145,21 @@ get_wallpaper_list() {
         -iname "*.bmp" -o \
         -iname "*.webp" \) -print0 2>/dev/null | sort -z)
     
-    if [[ ${#wallpapers[@]} -eq 0 ]]; then
+    if [[ ${#new_wallpapers[@]} -eq 0 ]]; then
         return 1
     fi
     
     # Save to cache
-    printf '%s\n' "${wallpapers[@]}" > "${WALLPAPER_LIST_FILE}"
-    printf '%s\n' "${wallpapers[@]}"
+    printf '%s\n' "${new_wallpapers[@]}" > "${WALLPAPER_LIST_FILE}"
+    printf '%s\n' "${new_wallpapers[@]}"
+}
+
+# Load wallpaper list into the global array
+load_wallpaper_list() {
+    wallpapers=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && wallpapers+=("$line")
+    done < <(get_wallpaper_list)
 }
 
 # Detect and set appropriate wallpaper application
@@ -187,10 +197,25 @@ setup_wallpaper_app() {
     echo "Using: ${WALL_APP[*]}"
 }
 
+# Kill previous swaybg instance to avoid process accumulation
+kill_swaybg() {
+    if [[ -f "${SWAYBG_PID_FILE}" ]]; then
+        local old_pid; old_pid=$(cat "${SWAYBG_PID_FILE}")
+        kill "${old_pid}" 2>/dev/null
+        rm -f "${SWAYBG_PID_FILE}"
+    fi
+}
+
 # Function to set wallpaper
 set_wallpaper() {
     local image_path="$1"
     local desktop_lower="${XDG_CURRENT_DESKTOP,,}"
+
+    # For X11, refresh the screen before setting
+    if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
+        xrefresh -white 2>/dev/null
+        sleep 1
+    fi
 
     if command -v gsettings >/dev/null 2>&1 && [[ "$desktop_lower" == *"gnome"* ]]; then
         # For Gnome
@@ -213,8 +238,14 @@ set_wallpaper() {
         # For Cinnamon
         gsettings set org.cinnamon.desktop.background picture-uri "file://$(realpath "$image_path")"
     elif [[ -f "${image_path}" ]]; then
-        # For WM's
-        "${WALL_APP[@]}" "${image_path}"
+        # For WMs — handle swaybg specially to avoid process accumulation
+        if [[ "${WALL_APP[0]}" == "swaybg" ]]; then
+            kill_swaybg
+            "${WALL_APP[@]}" "${image_path}" &
+            echo $! > "${SWAYBG_PID_FILE}"
+        else
+            "${WALL_APP[@]}" "${image_path}"
+        fi
     else
         echo "File not found: ${image_path}"
         return 1
@@ -234,12 +265,8 @@ sequential_set() {
     if set_wallpaper "${full_path}"; then
         increment_index ${#wallpapers[@]}
     else
-        echo "Error setting wallpaper"
-        # Reload list
-        wallpapers=()
-        while IFS= read -r line; do
-            [[ -n "$line" ]] && wallpapers+=("$line")
-        done < <(get_wallpaper_list)
+        echo "Error setting wallpaper — reloading list"
+        load_wallpaper_list
         CURRENT_INDEX=0
         save_index
     fi
@@ -248,6 +275,7 @@ sequential_set() {
 # Sequential mode (default)
 sequential_wallpaper() {
     local delay="${1:-${DEFAULT_DELAY}}"
+    local loop_mode="${2:-true}"
     
     ensure_wallpaper_dir
     
@@ -256,12 +284,7 @@ sequential_wallpaper() {
     fi
     
     load_index
-    
-    # Get wallpaper list
-    local wallpapers=()
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && wallpapers+=("$line")
-    done < <(get_wallpaper_list)
+    load_wallpaper_list
     
     if [[ ${#wallpapers[@]} -eq 0 ]]; then
         echo "Error: No wallpapers found in ${WALLPAPER_DIR}"
@@ -271,7 +294,7 @@ sequential_wallpaper() {
     echo "Total wallpapers: ${#wallpapers[@]}"
     echo "Current index: ${CURRENT_INDEX}"
     
-    if [[ -z "$sequential_loop" ]]; then
+    if [[ "${loop_mode}" == "true" ]]; then
         echo "Delay: ${delay}"
         while true; do
             sequential_set
@@ -343,12 +366,6 @@ only_set_wallpaper() {
         
         echo "Setting wallpaper: ${basename_image}"
         
-        # For X11, refresh the screen
-        if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
-            xrefresh -white 2>/dev/null
-            sleep 1
-        fi
-        
         if set_wallpaper "${full_path}"; then
             echo "Wallpaper set successfully!"
         else
@@ -357,13 +374,13 @@ only_set_wallpaper() {
         fi
     else
         echo "Error: No images found in ${WALLPAPER_DIR}"
-        echo "Formats searched: JPG, JPEG, PNG"
+        echo "Formats searched: JPG, JPEG, PNG, GIF, BMP, WEBP"
         exit 1
     fi
 }
 
 # Configure termination signal
-trap 'cd "${ORIGINAL_DIR}"; kill $(jobs -p) 2>/dev/null; exit 0' SIGTERM SIGINT
+trap 'cd "${ORIGINAL_DIR}"; kill_swaybg; kill $(jobs -p) 2>/dev/null; exit 0' SIGTERM SIGINT
 
 # Argument processing
 main() {
@@ -423,11 +440,10 @@ main() {
     # Execute selected mode
     case "${mode}" in
         sequential)
-            sequential_wallpaper "${delay}"
+            sequential_wallpaper "${delay}" "true"
             ;;
         sequential_only)
-            sequential_loop=1
-            sequential_wallpaper "${delay}"
+            sequential_wallpaper "${delay}" "false"
             ;;
         random)
             random_wallpaper "${delay}"
