@@ -56,10 +56,10 @@ set_wallpaper() {
         if [[ "${XDG_CURRENT_DESKTOP}" = [Gg][Nn][Oo][Mm][Ee] ]]; then
             gsettings set org.gnome.desktop.background picture-uri file://"${PWD}"/unsplash_wallpaper.jpg
         else
-            if [ ! "$(pidof swww-daemon)" ]; then 
-                swww init & swww img unsplash_wallpaper.jpg
+            if [ ! "$(pidof awww-daemon)" ]; then 
+                awww init & awww img unsplash_wallpaper.jpg
             else
-                swww img unsplash_wallpaper.jpg
+                awww img unsplash_wallpaper.jpg
             fi
         fi
         

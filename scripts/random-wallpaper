@@ -25,7 +25,7 @@ WALLPAPER_DIR="${XDG_PICTURES_DIR:-${HOME}/Pictures}/Wallpapers"
 
 DEFAULT_DELAY="5m"
 CURRENT_INDEX=0
-WALL_APP=""  # Will be defined by setup_wallpaper_app
+WALL_APP=()  # Will be defined by setup_wallpaper_app
 
 # Create necessary directories
 mkdir -p "${CACHE_DIR}"
@@ -153,30 +153,30 @@ get_wallpaper_list() {
 }
 
 # Detect and set appropriate wallpaper application
-setup_wallpaper_app() {
+setup_wallpaper_app() {    
     if [[ "${XDG_SESSION_TYPE,,}" == "x11" ]]; then
         if command -v feh >/dev/null 2>&1; then
-            WALL_APP='feh --bg-fill'
+            WALL_APP=(feh --bg-fill)
         elif command -v nitrogen >/dev/null 2>&1; then
-            WALL_APP='nitrogen --set-auto'
+            WALL_APP=(nitrogen --set-auto)
         else
             echo "Error: No wallpaper manager found for X11"
             echo "Install: feh or nitrogen"
             exit 1
         fi
     elif [[ "${XDG_SESSION_TYPE,,}" == "wayland" ]]; then
-        if command -v swww >/dev/null 2>&1; then
-            WALL_APP='swww img'
+        if command -v awww >/dev/null 2>&1; then
+            WALL_APP=(awww img)
             # Start daemon in background if not running
-            if ! pidof swww-daemon >/dev/null 2>&1; then
-                swww-daemon >/dev/null 2>&1 &
+            if ! pidof awww-daemon >/dev/null 2>&1; then
+                awww-daemon >/dev/null 2>&1 &
                 sleep 2
             fi
-        elif command -v swayimg >/dev/null 2>&1; then
-            WALL_APP='swayimg'
+        elif command -v swaybg >/dev/null 2>&1; then
+            WALL_APP=(swaybg -i)
         else
             echo "Error: No wallpaper manager found for Wayland"
-            echo "Install: swww or swayimg"
+            echo "Install: awww or swaybg"
             exit 1
         fi
     else
@@ -184,14 +184,37 @@ setup_wallpaper_app() {
         exit 1
     fi
     
-    echo "Using: ${WALL_APP}"
+    echo "Using: ${WALL_APP[*]}"
 }
 
 # Function to set wallpaper
 set_wallpaper() {
     local image_path="$1"
-    if [[ -f "${image_path}" ]]; then
-        eval "${WALL_APP}" "\"${image_path}\""
+    local desktop_lower="${XDG_CURRENT_DESKTOP,,}"
+
+    if command -v gsettings >/dev/null 2>&1 && [[ "$desktop_lower" == *"gnome"* ]]; then
+        # For Gnome
+        gsettings set org.gnome.desktop.background picture-uri "file://$(realpath "$image_path")"
+        gsettings set org.gnome.desktop.background picture-uri-dark "file://$(realpath "$image_path")"
+    elif command -v qdbus >/dev/null 2>&1 && [[ "$desktop_lower" == *"kde"* ]]; then
+        # For KDE
+        qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "
+        var allDesktops = desktops();
+        for (i=0;i<allDesktops.length;i++) {
+            d = allDesktops[i];
+            d.wallpaperPlugin = 'org.kde.image';
+            d.currentConfigGroup = Array('Wallpaper', 'org.kde.image', 'General');
+            d.writeConfig('Image', 'file://$(realpath "$image_path")');
+        }"
+    elif command -v xfconf-query >/dev/null 2>&1 && [[ "$desktop_lower" == *"xfce"* ]]; then
+        # For XFCE
+        xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/image-path -s "$image_path"
+    elif command -v gsettings >/dev/null 2>&1 && [[ "$desktop_lower" == *"cinnamon"* ]]; then
+        # For Cinnamon
+        gsettings set org.cinnamon.desktop.background picture-uri "file://$(realpath "$image_path")"
+    elif [[ -f "${image_path}" ]]; then
+        # For WM's
+        "${WALL_APP[@]}" "${image_path}"
     else
         echo "File not found: ${image_path}"
         return 1
