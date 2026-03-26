@@ -2062,7 +2062,9 @@ _cs_install_binds() {
     bind -x '"\e[1;5F": _cs_kill_5'                 2>/dev/null  # Shift+Delete
     bind -x '"\e[1;2E": _cs_kill_5_right'           2>/dev/null  # Shift+5
 
-    #trap '_cs_sigint' INT
+    # Se não usar o trap, simplesmente históricos de apenas um comando poderão não ser exibidos corretamente.
+    # Pois o _cs_sigint nunca é chamado! O Ctrl+C limpa a tela mas _CS_HIST_PREFIX fica com o valor do comando anterior.
+    trap '_cs_sigint' INT # Mantenha descomentado
     _cs_sigint
 }
 
