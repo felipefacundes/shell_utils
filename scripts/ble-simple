@@ -821,6 +821,17 @@ _cs_do_tab() {
         fi
     fi
 
+    # Filtra elementos vazios do array
+    # Sem esse filtro, o glob fallback insere elementos vazios em completions,
+    # fazendo ${#completions[@]} retornar 1 com array vazio e corrompendo o buffer.
+    # Resultado: TAB em comando inexistente apagava a linha inteira.
+    local -a _filtered=()
+    local _ci
+    for _ci in "${completions[@]}"; do
+        [[ -n "$_ci" ]] && _filtered+=("$_ci")
+    done
+    completions=("${_filtered[@]}")
+
     local n=${#completions[@]}
     if (( n == 0 )); then
         printf '\a' >&2; _cs_redraw; return
