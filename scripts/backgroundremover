@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Initial Credits: nadermx
+# Credits: Felipe Facundes
+
+set -e
+
+py_venv="${HOME}/.python/backgroundremover"
+activate="${py_venv}/bin/activate"
+SUPPORTED_EXTENSIONS=("png" "jpg" "jpeg" "webp")
+
+show_help() {
+    echo "Usage: $(basename "$0") [OPTIONS]"
+    echo ""
+    echo "Wrapper around backgroundremover with virtual environment management."
+    echo ""
+    echo "Custom options:"
+    echo "  --clean                    Remove the virtual environment and exit"
+    echo "  --loop <directory>         Remove background from all supported images in a directory"
+    echo "    -m <model>               Optional model to use (default: u2net)"
+    echo "                             Available: u2net, u2net_human_seg, u2netp"
+    echo "    -o <directory>           Optional output directory (created if it doesn't exist)"
+    echo "                             Default: same directory as input images"
+    echo "                             Supported formats: ${SUPPORTED_EXTENSIONS[*]}"
+    echo "                             Output files are saved as <name>-rb.png"
+    echo ""
+    echo "Examples:"
+    echo "  $(basename "$0") --loop /path/to/images"
+    echo "  $(basename "$0") --loop /path/to/images -m u2net_human_seg"
+    echo "  $(basename "$0") --loop /path/to/images -o /path/to/output"
+    echo "  $(basename "$0") --loop /path/to/images -m u2net_human_seg -o /path/to/output"
+    echo "  $(basename "$0") --clean"
+    echo "  $(basename "$0") -i input.png -o output.png"
+    echo ""
+    echo "----------------------------------------------------------------"
+    echo "Native backgroundremover help:"
+    echo "----------------------------------------------------------------"
+    echo ""
+    backgroundremover --help
+}
+
+# Remove virtual environment and exit
+if [[ "$1" == "--clean" ]]; then
+    if [[ -d "${py_venv}" ]]; then
+        echo "Cleaning virtual environment..."
+        rm -rf "${py_venv}"
+        echo "Virtual environment removed."
+    fi
+    exit 0
+fi
+
+# Create virtual environment if it doesn't exist
+if [[ ! -d "${py_venv}" ]]; then
+    echo "Creating virtual environment at ${py_venv}..."
+    python -m venv "${py_venv}"
+    # shellcheck source=/dev/null
+    source "${activate}"
+    export VIRTUAL_ENV="${py_venv}"
+    echo "Virtual environment activated: ${VIRTUAL_ENV}"
+
+    echo "Upgrading pip..."
+    pip install --upgrade pip
+
+    echo "Installing PyTorch 2.9.0 with CUDA 12.6..."
+    pip install torch==2.9.0 torchvision==0.24.0 torchaudio==2.9.0 \
+        --index-url https://download.pytorch.org/whl/cu126
+
+    echo "Verifying PyTorch installation..."
+    python -c "
+import torch
+print(f'PyTorch version: {torch.__version__}')
+print(f'CUDA available: {torch.cuda.is_available()}')
+print(f'CUDA version: {torch.version.cuda if torch.cuda.is_available() else \"N/A\"}')
+"
+
+    echo "Installing backgroundremover..."
+    pip install backgroundremover
+    echo "Installation complete!"
+else
+    # shellcheck source=/dev/null
+    source "${activate}"
+    export VIRTUAL_ENV="${py_venv}"
+    echo "Virtual environment activated: ${VIRTUAL_ENV}"
+fi
+
+# Show help if no arguments or --help
+if [[ $# -eq 0 || "$1" == "--help" || "$1" == "-h" ]]; then
+    show_help
+    deactivate
+    exit 0
+fi
+
+# --loop: process all images in a directory
+if [[ "$1" == "--loop" ]]; then
+    input_dir="$2"
+    MODEL="u2net"
+    output_dir=""
+
+    # Parse optional arguments
+    shift 2
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -m)
+                MODEL="$2"
+                shift 2
+                ;;
+            -o)
+                output_dir="$2"
+                shift 2
+                ;;
+            *)
+                echo "Error: Unknown argument '$1' for --loop."
+                echo "Usage: $(basename "$0") --loop <directory> [-m <model>] [-o <output_directory>]"
+                deactivate
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "${input_dir}" ]]; then
+        echo "Error: --loop requires a directory path."
+        echo "Usage: $(basename "$0") --loop <directory> [-m <model>] [-o <output_directory>]"
+        deactivate
+        exit 1
+    fi
+
+    if [[ ! -d "${input_dir}" ]]; then
+        echo "Error: '${input_dir}' is not a directory."
+        deactivate
+        exit 1
+    fi
+
+    # Resolve output directory
+    if [[ -n "${output_dir}" ]]; then
+        if [[ ! -d "${output_dir}" ]]; then
+            echo "Creating output directory: ${output_dir}"
+            mkdir -p "${output_dir}"
+        fi
+    fi
+
+    # Collect supported images
+    images=()
+    for ext in "${SUPPORTED_EXTENSIONS[@]}"; do
+        while IFS= read -r -d '' file; do
+            images+=("$file")
+        done < <(find "${input_dir}" -maxdepth 1 -iname "*.${ext}" -print0)
+    done
+
+    if [[ ${#images[@]} -eq 0 ]]; then
+        echo "No supported images found in '${input_dir}'."
+        echo "Supported formats: ${SUPPORTED_EXTENSIONS[*]}"
+        deactivate
+        exit 1
+    fi
+
+    echo "Found ${#images[@]} image(s) to process in '${input_dir}'."
+    echo "Using model: ${MODEL}"
+    echo "Output directory: ${output_dir:-${input_dir} (same as input)}"
+
+    SUCCESS=0
+    FAILED=0
+    for image in "${images[@]}"; do
+        filename=$(basename "${image}")
+        name="${filename%.*}"
+        dest="${output_dir:-${input_dir}}"
+        output="${dest}/${name}-rb.png"
+
+        echo "Processing: ${filename} -> ${output}"
+        set +e
+        backgroundremover -i "${image}" -m "${MODEL}" -o "${output}"
+        if [[ $? -eq 0 ]]; then
+            (( SUCCESS++ ))
+        else
+            echo "Failed: ${filename}"
+            (( FAILED++ ))
+        fi
+        set -e
+    done
+
+    echo ""
+    echo "Done. Success: ${SUCCESS} | Failed: ${FAILED}"
+    deactivate
+    exit 0
+fi
+
+# Default: pass arguments directly to backgroundremover
+set +e
+backgroundremover "$@"
+EXIT_CODE=$?
+set -e
+
+deactivate
+exit $EXIT_CODE

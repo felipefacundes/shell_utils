@@ -14,6 +14,16 @@ DOCUMENTATION
 py_venv="${HOME}/.python/lgtv-venv"
 activate="${py_venv}/bin/activate"
 
+# Remove virtual environment and exit
+if [[ "$1" == "--clean" ]]; then
+    if [[ -d "${py_venv}" ]]; then
+        echo "Cleaning virtual environment..."
+        rm -rf "${py_venv}"
+        echo "Virtual environment removed."
+    fi
+    exit 0
+fi
+
 if [[ ! -d "${py_venv}" ]]; then
     python -m venv "${py_venv}"
     #shellcheck source=/dev/null
