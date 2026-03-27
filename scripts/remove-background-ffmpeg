@@ -1,0 +1,668 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+# Name: ffmpeg-chromakey-processor
+
+: <<'DOCUMENTATION'
+FFmpeg Chroma Key Removal Script
+
+A Bash script that uses FFmpeg to automatically remove backgrounds from images
+and videos using chroma key technology. Supports PNG/JPG images and video files.
+
+Key Features:
+1.  Batch image and video processing (directory or single file)
+2.  Custom FPS for video frame extraction
+3.  Flexible input: directory for images, file or directory for videos
+4.  Precise chroma key background removal with adjustable similarity and blend
+5.  Automatic output directory management
+6.  Dependency check (FFmpeg) on startup
+7.  Hex color validation before processing
+8.  Dry-run mode: shows what would be done without executing
+9.  Recursive directory processing (-r / --recursive)
+10. Skip existing files (--skip-existing) or force overwrite (--overwrite)
+11. Progress bar / percentage in batch mode
+12. Error log saved to file
+13. Parallel processing (--jobs N)
+14. Batch preview: process first file and ask for confirmation
+15. Adjustable chroma key similarity and blend (--similarity, --blend)
+16. Video reassembly: optionally recombine extracted frames back into video (--reassemble)
+17. Auto-trim transparent borders after removal (--trim)
+
+Usage Examples:
+  Images:         ${0##*/} ./images ./output 00FF00
+  Single video:   ${0##*/} video.mp4 ./output 00FF00 --fps 30
+  Video dir:      ${0##*/} ./videos ./output 00FF00 --fps 15
+  Dry-run:        ${0##*/} ./images ./output 00FF00 --dry-run
+  Parallel:       ${0##*/} ./images ./output 00FF00 -j 4
+  Reassemble:     ${0##*/} video.mp4 ./output 00FF00 --reassemble
+DOCUMENTATION
+
+# ─────────────────────────────────────────────
+# Dependency check
+# ─────────────────────────────────────────────
+if ! command -v ffmpeg &>/dev/null; then
+    echo "Error: FFmpeg not found."
+    echo "Install it via your package manager:"
+    echo "  sudo apt install ffmpeg    # Debian/Ubuntu"
+    echo "  sudo dnf install ffmpeg    # Fedora"
+    echo "  brew install ffmpeg        # macOS"
+    exit 1
+fi
+
+# ─────────────────────────────────────────────
+# Help
+# ─────────────────────────────────────────────
+show_help() {
+    cat <<EOF
+Usage:
+  ${0##*/} <input> <output_dir> <color_hex> [options]
+
+Parameters:
+  <input>        Image/video file, or directory containing images/videos
+  <output_dir>   Directory where processed files will be saved
+  <color_hex>    6-digit hex color for chroma key (e.g., 00FF00 for green)
+
+Options:
+  --fps N              Frames per second for video extraction (default: 15)
+  --similarity N       Chroma key similarity threshold, 0.0–1.0 (default: 0.10)
+  --blend N            Chroma key blend/softness, 0.0–1.0 (default: 0.20)
+  --trim               Auto-trim transparent borders from output images
+  --reassemble         After extracting video frames, reassemble them into a
+                       transparent video (WebM/VP9 + alpha channel)
+  --reassemble-fps N   FPS for reassembled video (default: same as --fps)
+  -r, --recursive      Process subdirectories recursively
+  --skip-existing      Skip output files that already exist
+  --overwrite          Overwrite existing files (default)
+  --dry-run            Show what would be done without executing
+  --preview            Process first file only, then ask for confirmation
+  -j, --jobs N         Parallel jobs for batch processing (default: 1)
+  --log FILE           Save error log to FILE
+  -h, --help           Show this help
+
+Examples:
+  ${0##*/} ./images ./out 00FF00
+  ${0##*/} video.mp4 ./out 00FF00 --fps 30 --reassemble
+  ${0##*/} ./videos ./out 0000FF --fps 15 -j 4
+  ${0##*/} ./images ./out 00FF00 --similarity 0.15 --blend 0.25
+  ${0##*/} ./mixed  ./out 00FF00 --skip-existing --dry-run
+  ${0##*/} ./images ./out 00FF00 --preview -r
+
+Supported formats:
+  Images: .png .jpg .jpeg
+  Videos: .mp4 .mov .avi .mkv .webm .flv .wmv
+EOF
+}
+
+# ─────────────────────────────────────────────
+# Validate arguments count
+# ─────────────────────────────────────────────
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    show_help; exit 0
+fi
+
+if [[ $# -lt 3 ]]; then
+    echo "Error: Too few arguments."
+    echo ""
+    show_help
+    exit 1
+fi
+
+# ─────────────────────────────────────────────
+# Positional arguments
+# ─────────────────────────────────────────────
+input_path="$1"
+output_directory="$2"
+background_color="$3"
+shift 3
+
+# ─────────────────────────────────────────────
+# Default option values
+# ─────────────────────────────────────────────
+FPS=15
+SIMILARITY="0.10"
+BLEND="0.20"
+DO_TRIM=false
+REASSEMBLE=false
+REASSEMBLE_FPS=""
+RECURSIVE=false
+SKIP_EXISTING=false
+DRY_RUN=false
+PREVIEW=false
+JOBS=1
+LOG_FILE=""
+
+# ─────────────────────────────────────────────
+# Parse optional arguments
+# ─────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --fps)           FPS="$2";            shift 2 ;;
+        --similarity)    SIMILARITY="$2";     shift 2 ;;
+        --blend)         BLEND="$2";          shift 2 ;;
+        --trim)          DO_TRIM=true;        shift ;;
+        --reassemble)    REASSEMBLE=true;     shift ;;
+        --reassemble-fps) REASSEMBLE_FPS="$2"; shift 2 ;;
+        -r|--recursive)  RECURSIVE=true;      shift ;;
+        --skip-existing) SKIP_EXISTING=true;  shift ;;
+        --overwrite)     SKIP_EXISTING=false; shift ;;
+        --dry-run)       DRY_RUN=true;        shift ;;
+        --preview)       PREVIEW=true;        shift ;;
+        -j|--jobs)       JOBS="$2";           shift 2 ;;
+        --log)           LOG_FILE="$2";       shift 2 ;;
+        -h|--help)       show_help; exit 0 ;;
+        *) echo "Unknown option: $1"; show_help; exit 1 ;;
+    esac
+done
+
+# ─────────────────────────────────────────────
+# Validations
+# ─────────────────────────────────────────────
+if [[ ! "$background_color" =~ ^[0-9A-Fa-f]{6}$ ]]; then
+    echo "Error: Invalid color hex '$background_color'. Use 6 hex digits (e.g., 00FF00)."
+    exit 1
+fi
+
+if ! [[ "$FPS" =~ ^[0-9]+$ ]] || [[ "$FPS" -le 0 ]]; then
+    echo "Error: --fps must be a positive integer."
+    exit 1
+fi
+
+if ! [[ "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: --jobs must be a positive integer."
+    exit 1
+fi
+
+# Default reassemble FPS to extraction FPS
+[[ -z "$REASSEMBLE_FPS" ]] && REASSEMBLE_FPS="$FPS"
+
+# ─────────────────────────────────────────────
+# Progress bar
+# ─────────────────────────────────────────────
+draw_progress() {
+    local current="$1" total="$2" width="${3:-40}"
+    local pct=$(( current * 100 / total ))
+    local filled=$(( current * width / total ))
+    local bar=""
+    for ((i=0; i<filled; i++));  do bar+="█"; done
+    for ((i=filled; i<width; i++)); do bar+="░"; done
+    printf "\r  [%s] %3d%% (%d/%d)" "$bar" "$pct" "$current" "$total"
+}
+
+# ─────────────────────────────────────────────
+# Detect media type of a path
+# ─────────────────────────────────────────────
+detect_media_type() {
+    local p="$1"
+
+    if [[ ! -e "$p" ]]; then
+        echo "not_found"; return
+    fi
+
+    if [[ -f "$p" ]]; then
+        local ext="${p##*.}"
+        case "${ext,,}" in
+            png|jpg|jpeg)                      echo "image_file" ;;
+            mp4|mov|avi|mkv|webm|flv|wmv)      echo "video_file" ;;
+            *)                                 echo "unknown_file" ;;
+        esac
+        return
+    fi
+
+    if [[ -d "$p" ]]; then
+        local depth="-maxdepth 1"
+        $RECURSIVE && depth=""
+        local ic vc
+        ic=$(find "$p" $depth -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) | wc -l)
+        vc=$(find "$p" $depth -type f \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" \
+             -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.flv" -o -iname "*.wmv" \) | wc -l)
+
+        if   [[ $ic -gt 0 && $vc -eq 0 ]]; then echo "image_dir"
+        elif [[ $vc -gt 0 && $ic -eq 0 ]]; then echo "video_dir"
+        elif [[ $ic -gt 0 && $vc -gt 0 ]]; then echo "mixed_dir"
+        else                                     echo "empty_dir"
+        fi
+    fi
+}
+
+# ─────────────────────────────────────────────
+# Collect files into a named array
+# Usage: collect_files <dir> <type:image|video> <result_array_nameref>
+# ─────────────────────────────────────────────
+collect_files() {
+    local base_dir="$1"
+    local type="$2"
+    local -n _arr=$3
+    local depth="-maxdepth 1"
+    $RECURSIVE && depth=""
+
+    if [[ "$type" == "image" ]]; then
+        while IFS= read -r -d '' f; do
+            _arr+=("$f")
+        done < <(find "$base_dir" $depth -type f \
+            \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) \
+            -print0 | sort -z)
+    else
+        while IFS= read -r -d '' f; do
+            _arr+=("$f")
+        done < <(find "$base_dir" $depth -type f \
+            \( -iname "*.mp4" -o -iname "*.mov" -o -iname "*.avi" \
+               -o -iname "*.mkv" -o -iname "*.webm" -o -iname "*.flv" \
+               -o -iname "*.wmv" \) \
+            -print0 | sort -z)
+    fi
+}
+
+# ─────────────────────────────────────────────
+# Core: process a single image
+#   $1 input file   $2 output file
+# ─────────────────────────────────────────────
+process_image() {
+    local input_file="$1"
+    local output_file="$2"
+
+    local trim_filter=""
+    $DO_TRIM && trim_filter=",trim=start_frame=0,crop=trunc(iw/2)*2:trunc(ih/2)*2"
+
+    local vf="chromakey=0x${background_color}:${SIMILARITY}:${BLEND}${trim_filter}"
+
+    mkdir -p "$(dirname "$output_file")"
+    ffmpeg -i "$input_file" -vf "$vf" -y "$output_file" 2>/dev/null
+}
+
+# ─────────────────────────────────────────────
+# Core: process a single video (extract frames)
+#   $1 input file   $2 output base dir
+# Returns number of extracted frames on stdout (last line)
+# ─────────────────────────────────────────────
+process_video() {
+    local input_file="$1"
+    local base_out="$2"
+    local filename
+    filename=$(basename -- "$input_file")
+    local noext="${filename%.*}"
+
+    local frame_dir="$base_out/${noext}_frames"
+    mkdir -p "$frame_dir"
+
+    local trim_filter=""
+    $DO_TRIM && trim_filter=",crop=trunc(iw/2)*2:trunc(ih/2)*2"
+
+    local vf="fps=${FPS},chromakey=0x${background_color}:${SIMILARITY}:${BLEND}${trim_filter}"
+
+    if ! ffmpeg -i "$input_file" -vf "$vf" -y "$frame_dir/frame_%08d.png" 2>/dev/null; then
+        echo "0"
+        return 1
+    fi
+
+    local frame_count
+    frame_count=$(find "$frame_dir" -name "*.png" | wc -l)
+
+    # Reassemble into transparent WebM if requested
+    if $REASSEMBLE && [[ $frame_count -gt 0 ]]; then
+        local out_video="$base_out/${noext}_transparent.webm"
+        ffmpeg -framerate "$REASSEMBLE_FPS" \
+               -i "$frame_dir/frame_%08d.png" \
+               -c:v libvpx-vp9 -pix_fmt yuva420p \
+               -auto-alt-ref 0 \
+               -b:v 0 -crf 20 \
+               -y "$out_video" 2>/dev/null \
+            && echo "    ✓ Reassembled → $(basename "$out_video")" \
+            || echo "    ⚠ Reassembly failed (ffmpeg missing VP9/alpha support?)"
+    fi
+
+    echo "$frame_count"
+}
+
+# ─────────────────────────────────────────────
+# Batch runner: images
+# ─────────────────────────────────────────────
+run_images() {
+    local files=("$@")
+    local total=${#files[@]}
+    local ok=0 fail=0 skip=0 idx=0
+
+    for f in "${files[@]}"; do
+        idx=$(( idx + 1 ))
+        local filename
+        filename=$(basename -- "$f")
+        local noext="${filename%.*}"
+
+        # Preserve subdirectory structure in recursive mode
+        local rel=""
+        [[ "$f" == "$input_path/"* ]] && rel="${f#"$input_path/"}" && rel=$(dirname "$rel")
+        [[ "$rel" == "." ]] && rel=""
+        local subdir="$output_directory${rel:+/$rel}"
+        local out_file="$subdir/${noext}_nobg.png"
+
+        if $SKIP_EXISTING && [[ -f "$out_file" ]]; then
+            skip=$(( skip + 1 ))
+            draw_progress "$idx" "$total"; continue
+        fi
+
+        if $DRY_RUN; then
+            echo "  DRY-RUN: $f → $out_file"
+            ok=$(( ok + 1 ))
+            draw_progress "$idx" "$total"; continue
+        fi
+
+        if process_image "$f" "$out_file"; then
+            ok=$(( ok + 1 ))
+        else
+            fail=$(( fail + 1 ))
+            [[ -n "$LOG_FILE" ]] && echo "FAILED (image): $f → $out_file" >> "$LOG_FILE"
+        fi
+        draw_progress "$idx" "$total"
+    done
+    echo
+
+    _img_ok=$ok _img_fail=$fail _img_skip=$skip
+}
+
+# ─────────────────────────────────────────────
+# Batch runner: videos
+# ─────────────────────────────────────────────
+run_videos() {
+    local files=("$@")
+    local total=${#files[@]}
+    local ok=0 fail=0 skip=0 frames=0 idx=0
+
+    for f in "${files[@]}"; do
+        idx=$(( idx + 1 ))
+        local filename
+        filename=$(basename -- "$f")
+        local noext="${filename%.*}"
+        local frame_dir="$output_directory/${noext}_frames"
+
+        if $SKIP_EXISTING && [[ -d "$frame_dir" ]] && \
+           [[ $(find "$frame_dir" -name "*.png" | wc -l) -gt 0 ]]; then
+            skip=$(( skip + 1 ))
+            draw_progress "$idx" "$total"; continue
+        fi
+
+        if $DRY_RUN; then
+            echo "  DRY-RUN: $f → $frame_dir/frame_XXXXXXXX.png"
+            ok=$(( ok + 1 ))
+            draw_progress "$idx" "$total"; continue
+        fi
+
+        local fc
+        fc=$(process_video "$f" "$output_directory")
+        if [[ "$fc" -gt 0 ]] 2>/dev/null; then
+            ok=$(( ok + 1 ))
+            frames=$(( frames + fc ))
+        else
+            fail=$(( fail + 1 ))
+            [[ -n "$LOG_FILE" ]] && echo "FAILED (video): $f" >> "$LOG_FILE"
+        fi
+        draw_progress "$idx" "$total"
+    done
+    echo
+
+    _vid_ok=$ok _vid_fail=$fail _vid_skip=$skip _vid_frames=$frames
+}
+
+# ─────────────────────────────────────────────
+# Parallel image processing via xargs
+# ─────────────────────────────────────────────
+run_images_parallel() {
+    local files=("$@")
+    local total=${#files[@]}
+    local tmplog
+    tmplog=$(mktemp)
+    local idx=0
+
+    export background_color SIMILARITY BLEND DO_TRIM output_directory input_path LOG_FILE SKIP_EXISTING DRY_RUN
+
+    export -f process_image
+
+    printf '%s\0' "${files[@]}" | xargs -0 -P "$JOBS" -I{} bash -c '
+        f="{}"
+        filename=$(basename -- "$f")
+        noext="${filename%.*}"
+        rel="${f#"$input_path/"}"
+        rel=$(dirname "$rel")
+        [[ "$rel" == "." ]] && rel=""
+        subdir="$output_directory${rel:+/$rel}"
+        out_file="$subdir/${noext}_nobg.png"
+
+        if [[ "$SKIP_EXISTING" == "true" ]] && [[ -f "$out_file" ]]; then
+            echo "SKIP:$filename"; exit 0
+        fi
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "DRY:$f -> $out_file"; exit 0
+        fi
+        if process_image "$f" "$out_file"; then
+            echo "OK:$filename"
+        else
+            echo "FAIL:$f:$out_file"
+            [[ -n "$LOG_FILE" ]] && echo "FAILED (image): $f -> $out_file" >> "$LOG_FILE"
+        fi
+    ' >> "$tmplog" 2>&1
+
+    local ok=0 fail=0 skip=0
+    while IFS= read -r line; do
+        idx=$(( idx + 1 ))
+        case "$line" in
+            OK:*)   ok=$(( ok + 1 )) ;;
+            SKIP:*) skip=$(( skip + 1 )) ;;
+            DRY:*)  ok=$(( ok + 1 )); echo "  DRY-RUN: ${line#DRY:}" ;;
+            FAIL:*) fail=$(( fail + 1 )); echo "  ✗ ${line#FAIL:}" ;;
+        esac
+        draw_progress "$idx" "$total"
+    done < "$tmplog"
+    echo
+    rm -f "$tmplog"
+
+    _img_ok=$ok _img_fail=$fail _img_skip=$skip
+}
+
+# ─────────────────────────────────────────────
+# Preview helper: process first file, then confirm
+# ─────────────────────────────────────────────
+maybe_preview() {
+    local type="$1"   # "image" or "video"
+    local file="$2"
+    $PREVIEW || return 0
+    $DRY_RUN && return 0
+
+    echo "PREVIEW: Processing first file: $(basename "$file")"
+    local noext
+    noext=$(basename "${file%.*}")
+
+    if [[ "$type" == "image" ]]; then
+        local out="$output_directory/${noext}_nobg.png"
+        process_image "$file" "$out" \
+            && echo "✓ Preview saved to: $out" \
+            || { echo "✗ Preview failed."; exit 1; }
+    else
+        local fc
+        fc=$(process_video "$file" "$output_directory")
+        echo "✓ Preview: extracted $fc frames to $output_directory/${noext}_frames/"
+    fi
+
+    echo ""
+    read -r -p "Continue with the remaining files? [y/N] " confirm
+    [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+    echo ""
+}
+
+# ─────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────
+media_type=$(detect_media_type "$input_path")
+
+case $media_type in
+    not_found)    echo "Error: '$input_path' does not exist."; exit 1 ;;
+    unknown_file) echo "Error: Unsupported file format for '$input_path'."; exit 1 ;;
+    empty_dir)    echo "Error: No supported files found in '$input_path'."; exit 1 ;;
+esac
+
+mkdir -p "$output_directory"
+[[ -n "$LOG_FILE" ]] && : > "$LOG_FILE"
+
+# ─────────────────────────────────────────────
+# Header
+# ─────────────────────────────────────────────
+echo "=============================================="
+echo "FFmpeg Chroma Key Processor"
+echo "=============================================="
+echo "Input:          $input_path"
+echo "Output:         $output_directory"
+echo "Chroma key:     #$background_color"
+echo "Similarity:     $SIMILARITY   Blend: $BLEND"
+echo "FPS (video):    $FPS"
+$REASSEMBLE    && echo "Reassemble:     yes (WebM/VP9, ${REASSEMBLE_FPS} fps)"
+$DO_TRIM       && echo "Trim borders:   yes"
+$RECURSIVE     && echo "Recursive:      yes"
+$SKIP_EXISTING && echo "Skip existing:  yes"
+$DRY_RUN       && echo "Dry-run:        yes (no files will be written)"
+$PREVIEW       && echo "Preview mode:   yes"
+echo "Parallel jobs:  $JOBS"
+[[ -n "$LOG_FILE" ]] && echo "Error log:      $LOG_FILE"
+echo "=============================================="
+echo ""
+
+# Shared result vars (set by runners)
+_img_ok=0 _img_fail=0 _img_skip=0
+_vid_ok=0 _vid_fail=0 _vid_skip=0 _vid_frames=0
+
+# ─────────────────────────────────────────────
+# Dispatch
+# ─────────────────────────────────────────────
+case $media_type in
+
+    image_file)
+        out="$output_directory/$(basename "${input_path%.*}")_nobg.png"
+        if $DRY_RUN; then
+            echo "DRY-RUN: $input_path → $out"
+        elif $SKIP_EXISTING && [[ -f "$out" ]]; then
+            echo "Skipping (exists): $out"
+            _img_skip=1
+        else
+            echo "Processing image: $(basename "$input_path")"
+            process_image "$input_path" "$out" \
+                && { echo "✓ Saved to: $out"; _img_ok=1; } \
+                || { echo "✗ Failed."; _img_fail=1; }
+        fi
+        ;;
+
+    video_file)
+        maybe_preview "video" "$input_path"
+        echo "Processing video: $(basename "$input_path")"
+        fc=$(process_video "$input_path" "$output_directory")
+        if [[ "$fc" -gt 0 ]] 2>/dev/null; then
+            echo "✓ Extracted $fc frames"
+            _vid_ok=1; _vid_frames=$fc
+        else
+            echo "✗ Failed."
+            _vid_fail=1
+        fi
+        ;;
+
+    image_dir)
+        image_files=()
+        collect_files "$input_path" "image" image_files
+        total=${#image_files[@]}
+        echo "Images found: $total"
+        echo ""
+        maybe_preview "image" "${image_files[0]}"
+        $PREVIEW && image_files=("${image_files[@]:1}")  # remove first (already previewed)
+
+        if [[ $JOBS -gt 1 ]]; then
+            run_images_parallel "${image_files[@]}"
+        else
+            run_images "${image_files[@]}"
+        fi
+        ;;
+
+    video_dir)
+        video_files=()
+        collect_files "$input_path" "video" video_files
+        total=${#video_files[@]}
+        echo "Videos found: $total"
+        echo ""
+        maybe_preview "video" "${video_files[0]}"
+        $PREVIEW && video_files=("${video_files[@]:1}")
+
+        run_videos "${video_files[@]}"
+        ;;
+
+    mixed_dir)
+        image_files=(); video_files=()
+        collect_files "$input_path" "image" image_files
+        collect_files "$input_path" "video" video_files
+        echo "Images found: ${#image_files[@]}   Videos found: ${#video_files[@]}"
+        echo ""
+
+        if [[ ${#image_files[@]} -gt 0 ]]; then
+            echo "── Images ──────────────────────────────────"
+            maybe_preview "image" "${image_files[0]}"
+            $PREVIEW && image_files=("${image_files[@]:1}")
+            if [[ $JOBS -gt 1 ]]; then
+                run_images_parallel "${image_files[@]}"
+            else
+                run_images "${image_files[@]}"
+            fi
+        fi
+
+        if [[ ${#video_files[@]} -gt 0 ]]; then
+            echo "── Videos ──────────────────────────────────"
+            run_videos "${video_files[@]}"
+        fi
+        ;;
+esac
+
+# ─────────────────────────────────────────────
+# Output directory tree
+# ─────────────────────────────────────────────
+print_tree() {
+    echo ""
+    echo "Output structure:"
+    while IFS= read -r -d '' dir; do
+        local rel="${dir#"$output_directory"/}"
+        [[ -z "$rel" || "$rel" == "." ]] && continue
+        local count
+        count=$(find "$dir" -maxdepth 1 -name "*.png" 2>/dev/null | wc -l)
+        if [[ $count -gt 0 ]]; then
+            printf "  📁 %s/ (%d PNG files)\n" "$rel" "$count"
+        else
+            local nf
+            nf=$(find "$dir" -maxdepth 1 -type f 2>/dev/null | wc -l)
+            [[ $nf -eq 0 ]] \
+                && printf "  📁 %s/ (empty)\n" "$rel" \
+                || printf "  📁 %s/\n" "$rel"
+        fi
+    done < <(find "$output_directory" -maxdepth 2 -type d -print0 | sort -z)
+}
+
+# ─────────────────────────────────────────────
+# Summary
+# ─────────────────────────────────────────────
+total_img=$(( _img_ok + _img_fail + _img_skip ))
+total_vid=$(( _vid_ok + _vid_fail + _vid_skip ))
+
+echo ""
+echo "=============================================="
+echo "Processing complete!"
+$DRY_RUN && echo "(Dry-run — no files were written)"
+echo ""
+if [[ $total_img -gt 0 ]]; then
+    echo "Images:"
+    echo "  Processed:  $_img_ok"
+    [[ $_img_skip -gt 0 ]] && echo "  Skipped:    $_img_skip"
+    [[ $_img_fail -gt 0 ]] && echo "  Failed:     $_img_fail"
+fi
+if [[ $total_vid -gt 0 ]]; then
+    echo "Videos:"
+    echo "  Processed:  $_vid_ok"
+    [[ $_vid_skip -gt 0 ]] && echo "  Skipped:    $_vid_skip"
+    [[ $_vid_fail -gt 0 ]] && echo "  Failed:     $_vid_fail"
+    [[ $_vid_frames -gt 0 ]] && echo "  Frames:     $_vid_frames  (FPS: $FPS)"
+fi
+[[ -n "$LOG_FILE" && $(( _img_fail + _vid_fail )) -gt 0 ]] && \
+    echo "Error log:    $LOG_FILE"
+echo "Output:       $output_directory"
+
+[[ -d "$output_directory" ]] && print_tree
+
+echo "=============================================="
