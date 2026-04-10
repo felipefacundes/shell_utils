@@ -35,4 +35,5 @@ sudo su -c '
     pacman-key --populate archlinux
     pacman-key --refresh-keys
     pkill -9 haveged
+    echo -e "\n\nIf the issue remains unresolved, run as root: sudo pacman-nuclear-repair"
 '

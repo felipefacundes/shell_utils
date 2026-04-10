@@ -1,0 +1,788 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+# Version: 3.0 - Nuclear Edition
+: <<'DOCUMENTATION'
+PACMAN NUCLEAR REPAIR SCRIPT - Arch Linux Critical Recovery Tool
+================================================================
+Designed for systems that haven't been updated for months or years,
+where pacman considers everything corrupted and cannot install anything.
+
+Covers the following critical scenarios:
+  1. Corrupted or missing keyring/GPG keys
+  2. Outdated/broken mirrorlist causing download failures
+  3. Partial upgrades leaving the system in an inconsistent state
+  4. Corrupted package cache
+  5. Broken pacman database
+  6. Missing or outdated archlinux-keyring
+  7. SigLevel issues (signature verification failures)
+  8. Entropy shortage during key generation
+  9. DNS resolution failures
+  10. Filesystem corruption on pacman directories
+  11. Clock/time skew causing GPG failures
+  12. Missing critical runtime libraries after long hiatus
+  13. Broken dependencies chains
+  14. Conflicting packages after major system changes
+
+USAGE:
+  sudo bash pacman-nuclear-repair [OPTIONS]
+
+OPTIONS:
+  --level 1     Basic repair (keyring + mirrors)         [DEFAULT]
+  --level 2     Advanced repair (+ db rebuild + cache)
+  --level 3     Nuclear repair (everything + manual pkg  rescue)
+  --level 4     Scorched earth (last resort, rebuilds all)
+  --skip-time   Skip NTP time sync
+  --no-reflector Skip mirror optimization (use manual fix)
+  --dry-run     Show what would be done without doing it
+  --help        Show this help
+
+DOCUMENTATION
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "This script must be run as root"
+    exit 1
+fi
+
+# ============================================================
+# GLOBALS & CONFIG
+# ============================================================
+SCRIPT_VERSION="3.0-nuclear"
+LOG_FILE="/var/log/pacman-nuclear-repair.log"
+BACKUP_DIR="/var/cache/pacman-repair-backup-$(date +%Y%m%d_%H%M%S)"
+REPAIR_LEVEL=1
+SKIP_TIME=false
+NO_REFLECTOR=false
+DRY_RUN=false
+ERRORS=0
+WARNINGS=0
+
+# Colors
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
+CYAN='\033[1;36m'
+MAGENTA='\033[1;35m'
+WHITE='\033[1;37m'
+RESET='\033[0m'
+BOLD='\033[1m'
+
+# ============================================================
+# ARGUMENT PARSING
+# ============================================================
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --level) REPAIR_LEVEL="$2"; shift 2 ;;
+            --skip-time) SKIP_TIME=true; shift ;;
+            --no-reflector) NO_REFLECTOR=true; shift ;;
+            --dry-run) DRY_RUN=true; shift ;;
+            --help|-h)
+                sed -n '/^: <<'\''DOCUMENTATION'\''/,/^DOCUMENTATION/p' "$0" | \
+                    grep -v "DOCUMENTATION" | sed 's/^/  /'
+                exit 0
+                ;;
+            *) echo "Unknown option: $1"; exit 1 ;;
+        esac
+    done
+}
+
+# ============================================================
+# LOGGING & OUTPUT
+# ============================================================
+log() {
+    local level="$1"; shift
+    local msg="$*"
+    local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$ts] [$level] $msg" >> "$LOG_FILE"
+}
+
+info()    { echo -e "${CYAN}[INFO]${RESET}  $*"; log INFO "$*"; }
+ok()      { echo -e "${GREEN}[OK]${RESET}    $*"; log OK "$*"; }
+warn()    { echo -e "${YELLOW}[WARN]${RESET}  $*"; log WARN "$*"; ((WARNINGS++)); }
+err()     { echo -e "${RED}[ERROR]${RESET} $*" >&2; log ERROR "$*"; ((ERRORS++)); }
+step()    { echo -e "\n${BOLD}${MAGENTA}━━━ $* ${RESET}"; log STEP "$*"; }
+banner()  {
+    echo -e "${BOLD}${BLUE}"
+    echo "  ╔══════════════════════════════════════════════════════╗"
+    echo "  ║       PACMAN NUCLEAR REPAIR — Arch Linux             ║"
+    echo "  ║       Version: $SCRIPT_VERSION                            ║"
+    echo "  ║       Repair Level: $REPAIR_LEVEL                              ║"
+    echo "  ╚══════════════════════════════════════════════════════╝"
+    echo -e "${RESET}"
+}
+
+run() {
+    local cmd="$*"
+    log CMD "$cmd"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "  ${YELLOW}[DRY-RUN]${RESET} $cmd"
+        return 0
+    fi
+    if eval "$cmd" >> "$LOG_FILE" 2>&1; then
+        return 0
+    else
+        local rc=$?
+        err "Command failed (rc=$rc): $cmd"
+        return $rc
+    fi
+}
+
+run_visible() {
+    local cmd="$*"
+    log CMD "$cmd"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo -e "  ${YELLOW}[DRY-RUN]${RESET} $cmd"
+        return 0
+    fi
+    if eval "$cmd" 2>&1 | tee -a "$LOG_FILE"; then
+        return 0
+    else
+        local rc=${PIPESTATUS[0]}
+        err "Command failed (rc=$rc): $cmd"
+        return $rc
+    fi
+}
+
+# ============================================================
+# PREFLIGHT CHECKS
+# ============================================================
+preflight() {
+    step "Preflight checks"
+
+    # Must be root
+    if [[ $EUID -ne 0 ]]; then
+        err "This script must be run as root (use sudo)."
+        exit 1
+    fi
+
+    # Must be Arch-based
+    if [[ ! -f /etc/arch-release ]] && ! pacman --version &>/dev/null; then
+        err "This script is designed for Arch Linux / Arch-based distros."
+        exit 1
+    fi
+
+    # Validate repair level
+    if ! [[ "$REPAIR_LEVEL" =~ ^[1-4]$ ]]; then
+        err "Invalid repair level: $REPAIR_LEVEL (must be 1-4)"
+        exit 1
+    fi
+
+    # Setup log file
+    mkdir -p "$(dirname "$LOG_FILE")"
+    touch "$LOG_FILE"
+
+    ok "Running as root on Arch Linux — level $REPAIR_LEVEL repair"
+    info "Log file: $LOG_FILE"
+    info "Backup dir: $BACKUP_DIR"
+    echo
+}
+
+# ============================================================
+# HELPER: CHECK & INSTALL TOOL
+# ============================================================
+ensure_tool() {
+    local tool="$1"
+    local pkg="${2:-$1}"
+    if ! command -v "$tool" &>/dev/null; then
+        warn "$tool not found — attempting emergency install via pacman -Sy --noconfirm"
+        run_visible "pacman -Sy --noconfirm \"$pkg\"" || {
+            warn "Could not install $tool via normal pacman. Will attempt workarounds."
+            return 1
+        }
+    fi
+    return 0
+}
+
+# ============================================================
+# STEP 1: FIX SYSTEM CLOCK (GPG is very sensitive to time skew)
+# ============================================================
+fix_clock() {
+    step "Fixing system clock (GPG requires accurate time)"
+
+    if [[ "$SKIP_TIME" == true ]]; then
+        warn "Skipping time sync (--skip-time flag set)"
+        return
+    fi
+
+    # Enable and start systemd-timesyncd or ntpd
+    if systemctl is-enabled systemd-timesyncd &>/dev/null || \
+       systemctl is-available systemd-timesyncd &>/dev/null; then
+        run "timedatectl set-ntp true"
+        run "systemctl restart systemd-timesyncd"
+        sleep 3
+        timedatectl status | grep -E "NTP|synchronized" | while read -r line; do
+            info "  $line"
+        done
+    fi
+
+    # Fallback: ntpdate or rdate
+    if command -v ntpdate &>/dev/null; then
+        run "ntpdate -u pool.ntp.org" || warn "ntpdate failed — continuing"
+    elif command -v rdate &>/dev/null; then
+        run "rdate -n pool.ntp.org" || warn "rdate failed — continuing"
+    fi
+
+    ok "Clock sync attempted"
+}
+
+# ============================================================
+# STEP 2: FIX DNS (needed to reach mirrors & keyservers)
+# ============================================================
+fix_dns() {
+    step "Verifying DNS resolution"
+
+    # Test DNS
+    if ! getent hosts archlinux.org &>/dev/null; then
+        warn "DNS resolution failing — attempting fixes"
+
+        # Try Google DNS as a fallback
+        if [[ -w /etc/resolv.conf ]]; then
+            info "Injecting fallback DNS (8.8.8.8, 1.1.1.1) into /etc/resolv.conf"
+            run "cp /etc/resolv.conf /etc/resolv.conf.bak.$(date +%s)"
+            cat > /etc/resolv.conf <<'EOF'
+# Temporary fallback DNS added by pacman-nuclear-repair
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+nameserver 8.8.4.4
+EOF
+            # Protect from NetworkManager overwriting
+            run "chattr +i /etc/resolv.conf" || warn "Could not lock resolv.conf (chattr failed)"
+            info "Remember to run: chattr -i /etc/resolv.conf after repair"
+        fi
+
+        # Test again
+        if ! getent hosts archlinux.org &>/dev/null; then
+            err "DNS still failing. Check your network connection."
+            warn "Continuing anyway — some steps may fail"
+        else
+            ok "DNS now working via fallback servers"
+        fi
+    else
+        ok "DNS resolution is working"
+    fi
+}
+
+# ============================================================
+# STEP 3: REMOVE LOCKS
+# ============================================================
+remove_locks() {
+    step "Removing pacman locks"
+
+    run "rm -f /var/lib/pacman/db.lck"
+    ok "Lock file removed"
+}
+
+# ============================================================
+# STEP 4: BACKUP CRITICAL DIRS
+# ============================================================
+backup_critical() {
+    step "Backing up critical pacman directories"
+
+    run "mkdir -p '$BACKUP_DIR'"
+
+    [[ -d /etc/pacman.d/gnupg ]] && \
+        run "cp -a /etc/pacman.d/gnupg '$BACKUP_DIR/gnupg.bak'" && \
+        ok "GPG dir backed up"
+
+    [[ -f /etc/pacman.d/mirrorlist ]] && \
+        run "cp /etc/pacman.d/mirrorlist '$BACKUP_DIR/mirrorlist.bak'" && \
+        ok "Mirrorlist backed up"
+
+    [[ -f /etc/pacman.conf ]] && \
+        run "cp /etc/pacman.conf '$BACKUP_DIR/pacman.conf.bak'" && \
+        ok "pacman.conf backed up"
+
+    ok "Backups stored in: $BACKUP_DIR"
+}
+
+# ============================================================
+# STEP 5: FIX MIRRORLIST
+# ============================================================
+fix_mirrorlist() {
+    step "Fixing mirrorlist"
+
+    local mirrorlist="/etc/pacman.d/mirrorlist"
+
+    # Temporarily use a known-good hardcoded global mirror list
+    # in case reflector or rankmirrors can't run yet
+    cat > "$mirrorlist" <<'MIRRORS'
+# Temporary mirrorlist injected by pacman-nuclear-repair
+# Fast global mirrors — replace with your preferred mirrors after repair
+Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch
+Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch
+Server = https://mirrors.edge.kernel.org/archlinux/$repo/os/$arch
+Server = https://arch.mirror.constant.com/$repo/os/$arch
+Server = https://mirrors.ocf.berkeley.edu/archlinux/$repo/os/$arch
+Server = https://archlinux.c3sl.ufpr.br/$repo/os/$arch
+Server = https://mirror.ufscar.br/archlinux/$repo/os/$arch
+Server = https://archlinux.pop-sc.rnp.br/$repo/os/$arch
+Server = https://www.caco.ic.unicamp.br/archlinux/$repo/os/$arch
+Server = https://br.mirrors.cicku.me/archlinux/$repo/os/$arch
+MIRRORS
+    ok "Emergency mirrorlist written (global + BR mirrors)"
+
+    # Try to use reflector for optimization if available
+    if [[ "$NO_REFLECTOR" != true ]]; then
+        if ensure_tool reflector reflector; then
+            info "Running reflector to find the fastest mirrors..."
+            run "reflector --country Brazil,US,Germany --age 12 --protocol https \
+                 --sort rate --save '$mirrorlist' --latest 20" \
+            && ok "Mirrorlist optimized by reflector" \
+            || warn "reflector failed — keeping emergency mirrorlist"
+        else
+            warn "reflector not available — using emergency mirrorlist"
+            warn "Run later: reflector --country Brazil --sort rate --save /etc/pacman.d/mirrorlist"
+        fi
+    fi
+}
+
+# ============================================================
+# STEP 6: ENTROPY BOOST
+# ============================================================
+boost_entropy() {
+    step "Boosting system entropy (needed for key generation)"
+
+    local entropy_pid=""
+
+    # Try rngd (rng-tools)
+    if command -v rngd &>/dev/null; then
+        info "Starting rngd for entropy..."
+        rngd -r /dev/urandom &>/dev/null &
+        entropy_pid=$!
+        ok "rngd started (pid=$entropy_pid)"
+
+    # Try haveged
+    elif command -v haveged &>/dev/null; then
+        info "Starting haveged for entropy..."
+        haveged -w 1024 &>/dev/null &
+        entropy_pid=$!
+        ok "haveged started (pid=$entropy_pid)"
+
+    # Try jitterentropy
+    elif systemctl list-units --all | grep -q jitterentropy; then
+        run "systemctl start jitterentropy" || true
+
+    # Fallback: use kernel's own entropy pool trick
+    else
+        warn "No entropy daemon found — using kernel entropy pool trick"
+        # Fill entropy pool using urandom
+        if [[ -w /proc/sys/kernel/random/write_wakeup_threshold ]]; then
+            run "echo 3000 > /proc/sys/kernel/random/write_wakeup_threshold"
+        fi
+        dd if=/dev/urandom of=/dev/null bs=1M count=10 &>/dev/null &
+        info "Entropy pool being seeded via /dev/urandom"
+    fi
+
+    # Wait for entropy to build
+    local avail
+    avail=$(cat /proc/sys/kernel/random/entropy_avail 2>/dev/null || echo 0)
+    info "Current entropy: $avail bits"
+    sleep 2
+
+    echo "$entropy_pid"  # Return PID so caller can kill it later
+}
+
+stop_entropy_daemon() {
+    local pid="$1"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+        ok "Entropy daemon stopped"
+    fi
+    # Also kill any leftover haveged/rngd
+    pkill -x haveged 2>/dev/null || true
+    pkill -x rngd    2>/dev/null || true
+}
+
+# ============================================================
+# STEP 7: NUCLEAR KEYRING REBUILD
+# ============================================================
+rebuild_keyring() {
+    step "Rebuilding pacman keyring (nuclear mode)"
+
+    local entropy_pid
+    entropy_pid=$(boost_entropy)
+
+    # 1. Nuke the old keyring entirely
+    info "Removing corrupted GPG keyring..."
+    run "rm -rf /etc/pacman.d/gnupg"
+
+    # 2. Reinitialize
+    info "Initializing new keyring..."
+    run_visible "pacman-key --init" || {
+        err "pacman-key --init failed!"
+        stop_entropy_daemon "$entropy_pid"
+        return 1
+    }
+
+    # 3. Populate Arch Linux keys
+    info "Populating Arch Linux keys..."
+    run_visible "pacman-key --populate archlinux" || {
+        err "pacman-key --populate archlinux failed!"
+        stop_entropy_daemon "$entropy_pid"
+        return 1
+    }
+
+    # 4. Also populate artix/manjaro/endeavour if present
+    for distro_keyring in artix manjaro endeavouros garuda; do
+        if pacman -Qi "${distro_keyring}-keyring" &>/dev/null 2>&1; then
+            info "Populating $distro_keyring keys..."
+            run "pacman-key --populate $distro_keyring" || warn "Failed for $distro_keyring"
+        fi
+    done
+
+    stop_entropy_daemon "$entropy_pid"
+
+    ok "Keyring rebuilt successfully"
+}
+
+# ============================================================
+# STEP 8: INSTALL/REFRESH KEYRING PACKAGES
+# ============================================================
+install_keyring_packages() {
+    step "Installing/refreshing archlinux-keyring package"
+
+    # Temporarily bypass signature checking to bootstrap the keyring
+    info "Temporarily disabling SigLevel for bootstrap..."
+
+    # Get the package directly from a mirror if normal install fails
+    local bootstrap_ok=false
+
+    # Attempt 1: Normal install with SigLevel override
+    if pacman -Sy --noconfirm \
+        --config <(grep -v SigLevel /etc/pacman.conf && echo -e "[options]\nSigLevel = Never") \
+        archlinux-keyring gnupg 2>&1 | tee -a "$LOG_FILE"; then
+        bootstrap_ok=true
+        ok "archlinux-keyring installed via SigLevel=Never override"
+
+    # Attempt 2: Download and install with --nocheck
+    elif pacman -Sw --noconfirm archlinux-keyring gnupg 2>&1 | tee -a "$LOG_FILE"; then
+        if pacman -U --noconfirm --nocheck \
+            /var/cache/pacman/pkg/archlinux-keyring-*.pkg.tar.* \
+            /var/cache/pacman/pkg/gnupg-*.pkg.tar.* 2>&1 | tee -a "$LOG_FILE"; then
+            bootstrap_ok=true
+            ok "archlinux-keyring installed via --nocheck"
+        fi
+
+    # Attempt 3: Use wget/curl to manually download
+    else
+        warn "Normal pacman install failed — attempting manual download"
+        local mirror="https://mirror.rackspace.com/archlinux"
+
+        # Get the package filename from the db
+        local pkg_info
+        if pkg_info=$(curl -fsSL "$mirror/core/os/x86_64/" 2>/dev/null | \
+            grep -oP 'archlinux-keyring-[^"]+\.pkg\.tar\.[xz|zst]+' | head -1); then
+            run "curl -fsSL '$mirror/core/os/x86_64/$pkg_info' -o /tmp/archlinux-keyring.pkg.tar.zst"
+            run "pacman -U --noconfirm --nocheck /tmp/archlinux-keyring.pkg.tar.zst" && \
+                bootstrap_ok=true && ok "archlinux-keyring installed via manual download"
+        fi
+    fi
+
+    if [[ "$bootstrap_ok" != true ]]; then
+        warn "Could not install archlinux-keyring via any method — rebuilding keyring from scratch"
+    fi
+}
+
+# ============================================================
+# STEP 9: REFRESH KEYS FROM KEYSERVER
+# ============================================================
+refresh_keys() {
+    step "Refreshing GPG keys from keyserver"
+
+    # Try multiple keyservers
+    local keyservers=(
+        "hkps://keyserver.ubuntu.com"
+        "hkps://keys.openpgp.org"
+        "hkps://pgp.mit.edu"
+        "hkp://keyserver.ubuntu.com:80"
+    )
+
+    local success=false
+    for ks in "${keyservers[@]}"; do
+        info "Trying keyserver: $ks"
+        if pacman-key --refresh-keys --keyserver "$ks" >> "$LOG_FILE" 2>&1; then
+            ok "Keys refreshed from $ks"
+            success=true
+            break
+        else
+            warn "Failed with $ks — trying next"
+        fi
+    done
+
+    if [[ "$success" != true ]]; then
+        warn "Could not refresh keys from any keyserver"
+        warn "This can happen with slow internet or blocked keyservers"
+        warn "Proceeding with locally populated keys only"
+    fi
+}
+
+# ============================================================
+# STEP 10: CLEAN PACKAGE CACHE
+# ============================================================
+clean_cache() {
+    step "Cleaning package cache"
+
+    # Remove sync databases
+    info "Removing stale sync databases..."
+    run "rm -f /var/lib/pacman/sync/*"
+
+    # Remove corrupted/partial downloads from cache
+    info "Removing partial downloads from cache..."
+    find /var/cache/pacman/pkg/ -name "*.part" -delete 2>/dev/null || true
+
+    # Level 2+: also clean the whole cache (keep last 2 versions)
+    if [[ "$REPAIR_LEVEL" -ge 2 ]]; then
+        info "Running paccache to trim old cached packages..."
+        if command -v paccache &>/dev/null; then
+            run "paccache -rk 2" || warn "paccache failed"
+        else
+            warn "paccache not found (install pacman-contrib for this feature)"
+        fi
+    fi
+
+    # Level 3+: nuclear cache wipe
+    if [[ "$REPAIR_LEVEL" -ge 3 ]]; then
+        warn "Level 3: Clearing entire package cache"
+        run "pacman -Scc --noconfirm" || warn "pacman -Scc failed — manual clear"
+        run "rm -rf /var/cache/pacman/pkg/*"
+    fi
+
+    ok "Cache cleaned"
+}
+
+# ============================================================
+# STEP 11: SYNC & UPDATE
+# ============================================================
+sync_databases() {
+    step "Forcing database resync"
+
+    run_visible "pacman -Syy" || {
+        err "pacman -Syy failed — database sync issue"
+        warn "Check your mirrorlist and internet connection"
+        return 1
+    }
+    ok "Package databases synced"
+}
+
+# ============================================================
+# STEP 12: FIX PACMAN.CONF SIGLEVEL (optional safety net)
+# ============================================================
+fix_siglevel() {
+    step "Verifying SigLevel in pacman.conf"
+
+    local conf="/etc/pacman.conf"
+
+    # Check if SigLevel is set to something problematic
+    if grep -qE "^SigLevel\s*=\s*Never" "$conf"; then
+        warn "SigLevel is set to Never — this is insecure. Resetting to Required DatabaseOptional"
+        run "sed -i 's/^SigLevel\s*=\s*Never/SigLevel = Required DatabaseOptional/' '$conf'"
+    fi
+
+    # Ensure SigLevel exists
+    if ! grep -qE "^SigLevel" "$conf"; then
+        warn "No SigLevel found in pacman.conf — adding default"
+        run "sed -i '/^\[options\]/a SigLevel = Required DatabaseOptional' '$conf'"
+    fi
+
+    ok "SigLevel verified"
+}
+
+# ============================================================
+# STEP 13: REPAIR PARTIAL UPGRADES (Level 2+)
+# ============================================================
+repair_partial_upgrade() {
+    step "Attempting to repair partial upgrade state"
+
+    # Force reinstall of base packages to fix broken deps
+    local base_pkgs=(
+        "glibc" "gcc-libs" "bash" "coreutils" "pacman" "systemd"
+        "openssl" "zlib" "xz" "zstd" "libarchive"
+    )
+
+    info "Reinstalling critical base packages..."
+    for pkg in "${base_pkgs[@]}"; do
+        if pacman -Qi "$pkg" &>/dev/null; then
+            run "pacman -S --noconfirm --needed \"$pkg\"" || \
+                warn "Could not reinstall $pkg"
+        fi
+    done
+
+    ok "Critical base packages reinstalled"
+}
+
+# ============================================================
+# STEP 14: FULL SYSTEM UPGRADE (Level 2+)
+# ============================================================
+full_upgrade() {
+    step "Attempting full system upgrade"
+
+    info "Running pacman -Syyu (full upgrade with forced db refresh)..."
+    if run_visible "pacman -Syyu --noconfirm"; then
+        ok "Full system upgrade completed!"
+    else
+        warn "Full upgrade failed — attempting with ignore conflicts"
+        if run_visible "pacman -Syyu --noconfirm --overwrite '*'"; then
+            ok "Full upgrade completed with --overwrite"
+        else
+            err "Full upgrade failed even with --overwrite"
+            warn "Try running manually: pacman -Syyu"
+            warn "Or check: journalctl -xe | grep pacman"
+        fi
+    fi
+}
+
+# ============================================================
+# STEP 15: SCORCHED EARTH — REBUILD ENTIRE DB (Level 4)
+# ============================================================
+scorched_earth() {
+    step "SCORCHED EARTH MODE — Rebuilding pacman database from scratch"
+    warn "This is the last resort. It may take a long time."
+
+    # Rebuild the local package database from installed package files
+    if command -v pacman-fix-packages &>/dev/null; then
+        run_visible "pacman-fix-packages" || warn "pacman-fix-packages failed"
+    fi
+
+    # Rebuild package database from scratch using pkgfile or manual scan
+    info "Scanning installed packages to rebuild database..."
+    local pkgdb="/var/lib/pacman/local"
+
+    # Remove broken entries (zero-size or missing files)
+    find "$pkgdb" -maxdepth 1 -type d | while read -r dir; do
+        if [[ -d "$dir" ]] && [[ "$dir" != "$pkgdb" ]]; then
+            if [[ ! -f "$dir/desc" ]] || [[ ! -s "$dir/desc" ]]; then
+                warn "Removing broken DB entry: $dir"
+                run "rm -rf '$dir'"
+            fi
+        fi
+    done
+
+    # Reinstall all explicitly installed packages (massive but thorough)
+    info "Getting list of explicitly installed packages..."
+    local explicit_pkgs
+    explicit_pkgs=$(pacman -Qe 2>/dev/null | awk '{print $1}' | tr '\n' ' ')
+
+    if [[ -n "$explicit_pkgs" ]]; then
+        warn "Reinstalling ALL explicitly installed packages (this will take a while)..."
+        # Split into chunks of 50 to avoid argument list too long
+        echo "$explicit_pkgs" | xargs -n 50 | while read -r chunk; do
+            run "pacman -S --noconfirm --needed --overwrite '*' $chunk" || \
+                warn "Some packages in chunk failed to reinstall"
+        done
+        ok "All explicit packages reinstalled"
+    else
+        warn "Could not enumerate installed packages — database too corrupt"
+        err "MANUAL INTERVENTION REQUIRED"
+        echo -e "${RED}"
+        echo "  The package database is too corrupted to automatically repair."
+        echo "  Consider:"
+        echo "    1. Booting from Arch ISO and chrooting"
+        echo "    2. Running: arch-chroot /mnt /bin/bash"
+        echo "    3. Then running this script inside the chroot"
+        echo -e "${RESET}"
+    fi
+}
+
+# ============================================================
+# STEP 16: PACDIFF (handle .pacnew files)
+# ============================================================
+handle_pacnew() {
+    step "Checking for .pacnew files (config conflicts)"
+
+    local pacnew_count
+    pacnew_count=$(find /etc -name "*.pacnew" 2>/dev/null | wc -l)
+
+    if [[ "$pacnew_count" -gt 0 ]]; then
+        warn "$pacnew_count .pacnew file(s) found — manual review recommended"
+        info "Files:"
+        find /etc -name "*.pacnew" 2>/dev/null | while read -r f; do
+            echo "  - $f"
+        done
+        info "Run 'pacdiff' or 'DIFFPROG=meld pacdiff' to review them"
+    else
+        ok "No .pacnew files found"
+    fi
+}
+
+# ============================================================
+# FINAL REPORT
+# ============================================================
+final_report() {
+    echo
+    echo -e "${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${BOLD}  REPAIR COMPLETE — Summary${RESET}"
+    echo -e "${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo
+    echo -e "  Repair Level  : ${CYAN}$REPAIR_LEVEL${RESET}"
+    echo -e "  Warnings      : ${YELLOW}$WARNINGS${RESET}"
+    echo -e "  Errors        : ${RED}$ERRORS${RESET}"
+    echo -e "  Log file      : ${CYAN}$LOG_FILE${RESET}"
+    echo -e "  Backup dir    : ${CYAN}$BACKUP_DIR${RESET}"
+    echo
+    if [[ "$ERRORS" -eq 0 ]]; then
+        echo -e "  ${GREEN}✓ No critical errors encountered.${RESET}"
+    else
+        echo -e "  ${RED}✗ $ERRORS error(s) encountered — check log for details.${RESET}"
+    fi
+    echo
+    echo -e "${BOLD}  NEXT STEPS:${RESET}"
+    echo -e "    1. Try: ${CYAN}sudo pacman -Syyu${RESET}"
+    echo -e "    2. If GPG errors remain: ${CYAN}sudo pacman-key --refresh-keys${RESET}"
+    echo -e "    3. If mirrors are slow: ${CYAN}sudo reflector --country Brazil --sort rate --save /etc/pacman.d/mirrorlist${RESET}"
+    echo -e "    4. Review .pacnew files: ${CYAN}sudo pacdiff${RESET}"
+    echo -e "    5. If DNS was locked: ${CYAN}sudo chattr -i /etc/resolv.conf${RESET}"
+    echo -e "    6. Full log: ${CYAN}cat $LOG_FILE${RESET}"
+    echo
+    echo -e "${BOLD}${WHITE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+}
+
+# ============================================================
+# MAIN
+# ============================================================
+main() {
+    parse_args "$@"
+    banner
+    preflight
+
+    echo -e "${BOLD}Starting Level $REPAIR_LEVEL repair at $(date)${RESET}\n"
+
+    # ── LEVEL 1: Basic repair (safe for any system) ──────────
+    fix_clock
+    fix_dns
+    remove_locks
+    backup_critical
+    fix_mirrorlist
+    rebuild_keyring
+    install_keyring_packages
+    refresh_keys
+    clean_cache
+    sync_databases
+    fix_siglevel
+
+    # ── LEVEL 2: Advanced ────────────────────────────────────
+    if [[ "$REPAIR_LEVEL" -ge 2 ]]; then
+        repair_partial_upgrade
+        full_upgrade
+    fi
+
+    # ── LEVEL 3: Nuclear ─────────────────────────────────────
+    if [[ "$REPAIR_LEVEL" -ge 3 ]]; then
+        # Re-init keyring one more time after full upgrade
+        rebuild_keyring
+        refresh_keys
+        full_upgrade
+    fi
+
+    # ── LEVEL 4: Scorched Earth ───────────────────────────────
+    if [[ "$REPAIR_LEVEL" -ge 4 ]]; then
+        scorched_earth
+    fi
+
+    handle_pacnew
+    final_report
+}
+
+main "$@"
