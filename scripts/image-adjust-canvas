@@ -1,0 +1,485 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# =============================================================================
+# image-adjust-canvas — Add or remove transparent pixels around image content
+#
+# Usage:
+#   Single image : image-adjust-canvas [DIRECTION(S)] INPUT OUTPUT
+#   Directory    : image-adjust-canvas [DIRECTION(S)] INPUT_DIR
+#
+# Directions (can be combined):
+#   -up    | -u  <+N|-N>   Add (+) or crop (-) N pixels on the top
+#   -down  | -d  <+N|-N>   Add (+) or crop (-) N pixels on the bottom
+#   -left  | -l  <+N|-N>   Add (+) or crop (-) N pixels on the left
+#   -right | -r  <+N|-N>   Add (+) or crop (-) N pixels on the right
+#
+# Supported formats (transparency-capable): png, webp, avif, tiff, gif, apng
+#
+# Examples:
+#   image-adjust-canvas -up +100 character.png out.png
+#   image-adjust-canvas -up +100 -down -50 character.png out.png
+#   image-adjust-canvas -left +80 -right +80 /path/to/sprites/
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_NAME="${0##*/}"
+VERSION="1.0.0"
+
+# ---------------------------------------------------------------------------
+# Supported transparency-capable extensions
+# ---------------------------------------------------------------------------
+SUPPORTED_EXTS=("png" "webp" "avif" "tiff" "tif" "gif" "apng")
+
+# ---------------------------------------------------------------------------
+# Colour helpers (disabled when not a terminal)
+# ---------------------------------------------------------------------------
+if [ -t 1 ]; then
+    C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_GREEN=$'\033[32m'
+    C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'; C_CYAN=$'\033[36m'
+    C_DIM=$'\033[2m'
+else
+    C_RESET=""; C_BOLD=""; C_GREEN=""; C_YELLOW=""; C_RED=""; C_CYAN=""; C_DIM=""
+fi
+
+# ---------------------------------------------------------------------------
+# Progress bar
+# ---------------------------------------------------------------------------
+draw_progress() {
+    local current="$1" total="$2" width="${3:-40}"
+    local pct=$(( current * 100 / total ))
+    local filled=$(( current * width / total ))
+    local bar=""
+    for ((i=0; i<filled; i++));  do bar+="█"; done
+    for ((i=filled; i<width; i++)); do bar+="░"; done
+    printf "\r  [%s] %3d%% (%d/%d)" "$bar" "$pct" "$current" "$total"
+}
+
+# ---------------------------------------------------------------------------
+# Logging helpers
+# ---------------------------------------------------------------------------
+info()    { printf "${C_CYAN}${C_BOLD}[INFO]${C_RESET}  %s\n" "$*"; }
+ok()      { printf "${C_GREEN}${C_BOLD}[ OK ]${C_RESET}  %s\n" "$*"; }
+warn()    { printf "${C_YELLOW}${C_BOLD}[WARN]${C_RESET}  %s\n" "$*"; }
+err()     { printf "${C_RED}${C_BOLD}[ERR ]${C_RESET}  %s\n" "$*" >&2; }
+dim()     { printf "${C_DIM}%s${C_RESET}\n" "$*"; }
+
+# ---------------------------------------------------------------------------
+# Usage / help
+# ---------------------------------------------------------------------------
+usage() {
+    cat <<EOF
+${C_BOLD}${SCRIPT_NAME}${C_RESET} v${VERSION} — Adjust transparent canvas around image content
+
+${C_BOLD}USAGE${C_RESET}
+  Single image:  ${SCRIPT_NAME} [DIRECTION(S)] INPUT OUTPUT
+  Directory:     ${SCRIPT_NAME} [DIRECTION(S)] INPUT_DIR
+
+${C_BOLD}DIRECTIONS${C_RESET}  (can be combined freely)
+  -up    | -u  <+N|-N>   Add (+) or crop (-) N pixels on the TOP
+  -down  | -d  <+N|-N>   Add (+) or crop (-) N pixels on the BOTTOM
+  -left  | -l  <+N|-N>   Add (+) or crop (-) N pixels on the LEFT
+  -right | -r  <+N|-N>   Add (+) or crop (-) N pixels on the RIGHT
+
+  N must be a positive integer; the sign (+/-) determines the operation.
+
+${C_BOLD}SUPPORTED FORMATS${C_RESET}
+  PNG, WebP, AVIF, TIFF, GIF, APNG (transparency-capable formats only)
+
+${C_BOLD}DIRECTORY MODE${C_RESET}
+  When a directory is given as the last argument, all supported images inside
+  it are processed. Results are saved to:
+    INPUT_DIR/adjusted/
+
+  Output files keep the exact same name and extension as the originals.
+
+${C_BOLD}EXAMPLES${C_RESET}
+  # Add 100 px of transparent space above a character
+  ${SCRIPT_NAME} -up +100 character.png result.png
+
+  # Remove 50 px from the bottom and add 80 px on the right
+  ${SCRIPT_NAME} -down -50 -right +80 sprite.png sprite_fixed.png
+
+  # Process an entire directory
+  ${SCRIPT_NAME} -up +100 -left +40 /path/to/sprites/
+
+  # Combine all four sides
+  ${SCRIPT_NAME} -u +60 -d +60 -l +60 -r +60 icon.png icon_padded.png
+
+EOF
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Dependency check
+# ---------------------------------------------------------------------------
+check_deps() {
+    if ! command -v magick &>/dev/null; then
+        err "ImageMagick (magick) is not installed or not in PATH."
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Extension check
+# ---------------------------------------------------------------------------
+is_supported() {
+    local file="$1"
+    local ext="${file##*.}"
+    ext="${ext,,}"   # lowercase
+    for e in "${SUPPORTED_EXTS[@]}"; do
+        [[ "$e" == "$ext" ]] && return 0
+    done
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Core: apply canvas adjustments to a single file
+#
+# Arguments:
+#   $1 input file
+#   $2 output file
+#   $3 top    delta  (integer, may be negative)
+#   $4 bottom delta
+#   $5 left   delta
+#   $6 right  delta
+# ---------------------------------------------------------------------------
+process_image() {
+    local input="$1"
+    local output="$2"
+    local delta_top="$3"
+    local delta_bottom="$4"
+    local delta_left="$5"
+    local delta_right="$6"
+
+    # Read original dimensions
+    local orig_w orig_h
+    orig_w=$(magick identify -format "%w" "${input}[0]" 2>/dev/null) || { err "Cannot read: $input"; return 1; }
+    orig_h=$(magick identify -format "%h" "${input}[0]" 2>/dev/null)
+
+    # ---- Compute new canvas size -----------------------------------------
+    local new_w new_h
+    new_w=$(( orig_w + delta_left + delta_right ))
+    new_h=$(( orig_h + delta_top  + delta_bottom ))
+
+    # Guard: dimensions must remain positive
+    if (( new_w <= 0 || new_h <= 0 )); then
+        err "Resulting canvas would be ${new_w}x${new_h} for '$(basename "$input")' — skipping."
+        return 1
+    fi
+
+    # ---- Build the magick command chain ----------------------------------
+    # Strategy:
+    #   ADDING pixels (+delta)  → create a larger transparent canvas and
+    #                              composite the original onto it at the
+    #                              correct offset. The content is untouched.
+    #   REMOVING pixels (-delta) → crop the image from the appropriate edge.
+    #                               Content proportion/size stays the same.
+    #
+    # We process crops FIRST (shrink the image), then additions (expand it).
+    # This order avoids off-by-one issues when both operations are requested
+    # for the same image.
+
+    local work_file
+    work_file=$(mktemp /tmp/adj_canvas_XXXXXX."${input##*.}")
+    cp "$input" "$work_file"
+
+    local current_w=$orig_w
+    local current_h=$orig_h
+
+    # ---- Step 1: apply all CROP operations (negative deltas) -------------
+    local crop_left=0 crop_top=0 crop_w=$current_w crop_h=$current_h
+    local do_crop=false
+
+    if (( delta_left < 0 )); then
+        crop_left=$(( -delta_left ))
+        crop_w=$(( crop_w - crop_left ))
+        do_crop=true
+    fi
+    if (( delta_right < 0 )); then
+        crop_w=$(( crop_w + delta_right ))   # delta_right is negative
+        do_crop=true
+    fi
+    if (( delta_top < 0 )); then
+        crop_top=$(( -delta_top ))
+        crop_h=$(( crop_h - crop_top ))
+        do_crop=true
+    fi
+    if (( delta_bottom < 0 )); then
+        crop_h=$(( crop_h + delta_bottom ))  # delta_bottom is negative
+        do_crop=true
+    fi
+
+    if $do_crop; then
+        local tmp_crop
+        tmp_crop=$(mktemp /tmp/adj_crop_XXXXXX."${input##*.}")
+        magick "$work_file" \
+            -crop "${crop_w}x${crop_h}+${crop_left}+${crop_top}" \
+            +repage \
+            "$tmp_crop"
+        mv "$tmp_crop" "$work_file"
+        current_w=$crop_w
+        current_h=$crop_h
+    fi
+
+    # ---- Step 2: apply all ADD operations (positive deltas) --------------
+    local pad_top=0 pad_left=0
+    local do_pad=false
+
+    if (( delta_top    > 0 )); then pad_top=$(( delta_top ));   do_pad=true; fi
+    if (( delta_left   > 0 )); then pad_left=$(( delta_left )); do_pad=true; fi
+    if (( delta_right  > 0 )); then do_pad=true; fi
+    if (( delta_bottom > 0 )); then do_pad=true; fi
+
+    if $do_pad; then
+        local final_w=$(( current_w + (delta_left  > 0 ? delta_left  : 0) + (delta_right  > 0 ? delta_right  : 0) ))
+        local final_h=$(( current_h + (delta_top   > 0 ? delta_top   : 0) + (delta_bottom > 0 ? delta_bottom : 0) ))
+
+        local tmp_pad
+        tmp_pad=$(mktemp /tmp/adj_pad_XXXXXX."${input##*.}")
+
+        # Create a fully transparent canvas of the new size, then composite
+        # the (possibly already cropped) image at the correct offset.
+        magick \
+            -size "${final_w}x${final_h}" xc:none \
+            "$work_file" \
+            -geometry "+${pad_left}+${pad_top}" \
+            -composite \
+            "$tmp_pad"
+
+        mv "$tmp_pad" "$work_file"
+    fi
+
+    # ---- Move result to output -------------------------------------------
+    mv "$work_file" "$output"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Parse direction + pixel arguments
+# Returns associative-array-style via globals:
+#   G_TOP  G_BOTTOM  G_LEFT  G_RIGHT
+# ---------------------------------------------------------------------------
+G_TOP=0; G_BOTTOM=0; G_LEFT=0; G_RIGHT=0
+
+parse_direction_args() {
+    # Consume recognised direction flags from the positional arguments.
+    # Remaining args are left in the array for the caller to use as
+    # INPUT [OUTPUT].
+
+    local -a remaining=()
+    while (( $# > 0 )); do
+        case "$1" in
+            -up|-u)
+                shift
+                [[ $# -eq 0 ]] && { err "Missing pixel value after -up/-u"; exit 1; }
+                G_TOP=$(parse_pixels "$1"); shift ;;
+            -down|-d)
+                shift
+                [[ $# -eq 0 ]] && { err "Missing pixel value after -down/-d"; exit 1; }
+                G_BOTTOM=$(parse_pixels "$1"); shift ;;
+            -left|-l)
+                shift
+                [[ $# -eq 0 ]] && { err "Missing pixel value after -left/-l"; exit 1; }
+                G_LEFT=$(parse_pixels "$1"); shift ;;
+            -right|-r)
+                shift
+                [[ $# -eq 0 ]] && { err "Missing pixel value after -right/-r"; exit 1; }
+                G_RIGHT=$(parse_pixels "$1"); shift ;;
+            -h|--help) usage ;;
+            *) remaining+=("$1"); shift ;;
+        esac
+    done
+
+    # Re-export remaining args so the caller can pick them up
+    REMAINING_ARGS=("${remaining[@]+"${remaining[@]}"}")
+}
+
+# Parse "+100" or "-100" → integer (signed)
+parse_pixels() {
+    local raw="$1"
+    # Strip leading + (bash arithmetic handles -)
+    raw="${raw#+}"
+    if ! [[ "$raw" =~ ^-?[0-9]+$ ]]; then
+        err "Invalid pixel value: '$1'. Expected +N or -N (e.g. +100, -50)."
+        exit 1
+    fi
+    echo "$raw"
+}
+
+# ---------------------------------------------------------------------------
+# MAIN
+# ---------------------------------------------------------------------------
+main() {
+    check_deps
+
+    [[ $# -eq 0 ]] && usage
+
+    # Parse direction flags; leftovers go into REMAINING_ARGS
+    declare -a REMAINING_ARGS=()
+    parse_direction_args "$@"
+
+    # Ensure at least one direction was specified
+    if (( G_TOP == 0 && G_BOTTOM == 0 && G_LEFT == 0 && G_RIGHT == 0 )); then
+        err "No direction specified. Use -up/-down/-left/-right with +N or -N."
+        echo ""
+        usage
+    fi
+
+    local num_remaining=${#REMAINING_ARGS[@]}
+    if (( num_remaining == 0 )); then
+        err "No input file or directory provided."
+        exit 1
+    fi
+
+    # -----------------------------------------------------------------------
+    # Determine mode: single file or directory
+    # -----------------------------------------------------------------------
+    local last_arg="${REMAINING_ARGS[$(( num_remaining - 1 ))]}"
+
+    if [[ -d "$last_arg" ]]; then
+        # ---- DIRECTORY MODE -----------------------------------------------
+        local input_dir="${last_arg%/}"
+        process_directory "$input_dir"
+
+    elif (( num_remaining == 2 )); then
+        # ---- SINGLE FILE MODE --------------------------------------------
+        local input_file="${REMAINING_ARGS[0]}"
+        local output_file="${REMAINING_ARGS[1]}"
+
+        if [[ ! -f "$input_file" ]]; then
+            err "Input file not found: $input_file"
+            exit 1
+        fi
+        if ! is_supported "$input_file"; then
+            err "Unsupported format: $input_file"
+            err "Supported extensions: ${SUPPORTED_EXTS[*]}"
+            exit 1
+        fi
+
+        info "Processing: $(basename "$input_file")"
+        info "  Canvas deltas → top:${G_TOP}  bottom:${G_BOTTOM}  left:${G_LEFT}  right:${G_RIGHT}"
+
+        if process_image "$input_file" "$output_file" \
+                         "$G_TOP" "$G_BOTTOM" "$G_LEFT" "$G_RIGHT"; then
+            ok "Saved: $output_file"
+        else
+            err "Failed to process: $input_file"
+            exit 1
+        fi
+
+    else
+        err "For a single image provide: INPUT OUTPUT"
+        err "For a directory provide: INPUT_DIR"
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Directory processing
+# ---------------------------------------------------------------------------
+process_directory() {
+    local input_dir="$1"
+    local output_dir="${input_dir}/adjusted"
+
+    echo ""
+    info "Scanning directory: ${input_dir}"
+    info "Canvas deltas → top:${G_TOP}  bottom:${G_BOTTOM}  left:${G_LEFT}  right:${G_RIGHT}"
+    echo ""
+
+    # Collect supported images into a temp file (avoids subshell/array scoping issues)
+    local img_list
+    img_list=$(mktemp /tmp/adj_imglist_XXXXXX.txt)
+
+    local f
+    while IFS= read -r -d '' f; do
+        if is_supported "$f"; then
+            printf '%s\n' "$f" >> "$img_list"
+        fi
+    done < <(find "$input_dir" -maxdepth 1 -type f -print0 | sort -z)
+
+    local total
+    total=$(wc -l < "$img_list")
+    total="${total// /}"   # trim whitespace
+
+    if [[ "$total" -eq 0 ]]; then
+        rm -f "$img_list"
+        warn "No supported images found in: $input_dir"
+        warn "Supported extensions: ${SUPPORTED_EXTS[*]}"
+        exit 0
+    fi
+
+    info "Found ${total} supported image(s)."
+    mkdir -p "$output_dir"
+    info "Output directory: ${output_dir}"
+    echo ""
+
+    local count_ok=0
+    local count_fail=0
+    local failed_files=""
+    local ok_files=""
+    local current=0
+
+    while IFS= read -r img; do
+        current=$(( current + 1 ))
+        local bname
+        bname=$(basename "$img")
+        local out="${output_dir}/${bname}"
+
+        draw_progress "$current" "$total"
+
+        if process_image "$img" "$out" \
+                         "$G_TOP" "$G_BOTTOM" "$G_LEFT" "$G_RIGHT"; then
+            count_ok=$(( count_ok + 1 ))
+            ok_files="${ok_files}${bname}"$'\n'
+        else
+            count_fail=$(( count_fail + 1 ))
+            failed_files="${failed_files}${bname}"$'\n'
+        fi
+    done < "$img_list"
+
+    rm -f "$img_list"
+
+    # Finish progress bar line
+    echo ""
+    echo ""
+
+    # ---- Final report ------------------------------------------------------
+    printf "${C_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+    printf "${C_BOLD}  PROCESSING REPORT${C_RESET}\n"
+    printf "${C_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+    printf "  %-20s %s\n" "Input directory:"  "$input_dir"
+    printf "  %-20s %s\n" "Output directory:" "$output_dir"
+    printf "  %-20s top:%-6s bottom:%-6s left:%-6s right:%s\n" \
+           "Canvas deltas:" "$G_TOP" "$G_BOTTOM" "$G_LEFT" "$G_RIGHT"
+    printf "${C_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+    printf "  %-20s %d\n" "Images found:"     "$total"
+    printf "${C_GREEN}  %-20s %d${C_RESET}\n" "Successfully processed:" "$count_ok"
+    if [[ "$count_fail" -gt 0 ]]; then
+        printf "${C_RED}  %-20s %d${C_RESET}\n" "Failed:" "$count_fail"
+    fi
+    printf "${C_BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${C_RESET}\n"
+
+    if [[ -n "$ok_files" ]]; then
+        printf "\n${C_GREEN}${C_BOLD}  Processed files:${C_RESET}\n"
+        while IFS= read -r fname; do
+            [[ -z "$fname" ]] && continue
+            printf "    ${C_DIM}✔ %s${C_RESET}\n" "$fname"
+        done <<< "$ok_files"
+    fi
+
+    if [[ -n "$failed_files" ]]; then
+        printf "\n${C_RED}${C_BOLD}  Failed files:${C_RESET}\n"
+        while IFS= read -r fname; do
+            [[ -z "$fname" ]] && continue
+            printf "    ${C_RED}✘ %s${C_RESET}\n" "$fname"
+        done <<< "$failed_files"
+    fi
+
+    echo ""
+}
+
+
+main "$@"
