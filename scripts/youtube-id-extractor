@@ -24,7 +24,7 @@ extract_youtube_id() {
         echo "ERROR: URL does not appear to be from YouTube" >&2
         return 1
     fi
-    
+
     # Rule 1: URLs with watch?v= (including playlists)
     # Example: https://www.youtube.com/watch?v=CcJ-ybZdFss&list=...
     if [[ "$url" =~ watch\?v=([a-zA-Z0-9_-]{11})([&?]|$) ]]; then
@@ -120,6 +120,48 @@ extract_youtube_id() {
         return 0
     fi
     
+    # Rule 13: &v= or ?...&v= parameter (when v= is not the first parameter)
+    # Example: https://www.youtube.com/watch?list=...&v=ABC123DEF45
+    # Example: https://www.youtube.com/watch?app=desktop&v=vzEnjh7Ai58
+    if [[ "$url" =~ [?\&]v=([a-zA-Z0-9_-]{11})([&?#/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+
+    # Rule 14: URL with merged parameters (& removed), e.g. ?app=desktopv=ID
+    # Example: https://www.youtube.com/watch?app=desktopv=vzEnjh7Ai58
+    if [[ "$url" =~ [a-zA-Z0-9]v=([a-zA-Z0-9_-]{11})([&?#/]|$) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+
+    # Rule 15: URL with merged parameters where list= or si= lost the &
+    # Example: https://www.youtube.com/watch?v=ABC123DEF45list=PLxxx
+    # Example: https://www.youtube.com/watch?v=ABC123DEF45si=xyz
+    if [[ "$url" =~ [?\&]v=([a-zA-Z0-9_-]{11})(list=|si=|index=|pp=|t=) ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+
+    # Rule 16: youtu.be short URL with merged parameters (& removed)
+    # Example: https://youtu.be/WjrfQ_5tWjQsi=aBu2-WbKxmcBFPtq
+    if [[ "$url" =~ youtu\.be/([a-zA-Z0-9_-]{11})[a-z] ]]; then
+        video_id="${BASH_REMATCH[1]}"
+        echo "$video_id"
+        return 0
+    fi
+
+    # Rule 17: Any known parameter glued directly to the ID (generic fallback)
+    # Catches: IDlist=, IDsi=, IDapp=, IDfeature=, IDindex=, etc.
+    if [[ "$url" =~ (v=|be/|embed/|shorts/|live/)([a-zA-Z0-9_-]{11})[a-zA-Z] ]]; then
+        video_id="${BASH_REMATCH[2]}"
+        echo "$video_id"
+        return 0
+    fi
+
     # If no rule works, try a more generic search
     # Last resort: look for any 11-character ID pattern
     if [[ "$url" =~ ([a-zA-Z0-9_-]{11}) ]]; then
