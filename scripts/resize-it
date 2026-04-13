@@ -5,19 +5,21 @@
 : <<'DOCUMENTATION'
 Script: resize-it
 Description: Resize images maintaining aspect ratio or with exact dimensions
-Usage: resize-it <image_or_directory> <size_specifier>
+Usage: resize-it <image_or_directory> <size_specifier> [output_file]
 DOCUMENTATION
 
 # Function to display help
 show_help() {
     cat << EOF
-Usage: ${0##*/} <image_or_directory> <size_specifier>
+Usage: ${0##*/} <image_or_directory> <size_specifier> [output_file]
 
 Resize images maintaining aspect ratio or with exact dimensions.
 
 ARGUMENTS:
   <image_or_directory>    Target image file or directory containing images
   <size_specifier>        Size specification (see below)
+  [output_file]           Optional output filename (only for single image input)
+                          If omitted, saves as <original_name>-resized.<ext>
 
 SIZE SPECIFIERS:
   [width]                 Resize proportionally to specified width
@@ -43,24 +45,26 @@ PERCENTAGE SPECIFIERS:
   "[percentage]%-!"       Decrease by percentage exactly (e.g., "25%-!")
 
 EXAMPLES:
-  ${0##*/} image.jpg 640              # Resize to width 640px proportionally
-  ${0##*/} directory 640              # Resize all images in directory
-  ${0##*/} image.jpg 640x480          # Resize proportionally to fit
-  ${0##*/} image.jpg "640x480!"       # Resize exactly to 640x480
-  ${0##*/} image.jpg 2x               # Double size proportionally
-  ${0##*/} image.jpg 0.5x             # Half size proportionally
-  ${0##*/} image.jpg 0.9x             # Reduce to 90% proportionally
-  ${0##*/} image.jpg 1.5x             # Increase to 150% proportionally
-  ${0##*/} image.jpg "1/2"            # Resize to 50% proportionally
-  ${0##*/} image.jpg "1/2!"           # Resize to 50% exactly
+  ${0##*/} image.jpg 640                        # Resize to width 640px, saves as image-resized.jpg
+  ${0##*/} image.jpg 640 output.jpg             # Resize to width 640px, saves as output.jpg
+  ${0##*/} directory 640                        # Resize all images in directory (saves to resized/)
+  ${0##*/} image.jpg 640x480                    # Resize proportionally to fit
+  ${0##*/} image.jpg "640x480!"                 # Resize exactly to 640x480
+  ${0##*/} image.jpg 2x                         # Double size proportionally
+  ${0##*/} image.jpg 0.5x                       # Half size proportionally
+  ${0##*/} image.jpg 0.9x                       # Reduce to 90% proportionally
+  ${0##*/} image.jpg 1.5x                       # Increase to 150% proportionally
+  ${0##*/} image.jpg "1/2"                      # Resize to 50% proportionally
+  ${0##*/} image.jpg "1/2!"                     # Resize to 50% exactly
 
 SUPPORTED IMAGE FORMATS:
   jpg, jpeg, png, gif, bmp, tiff, webp
 
 NOTES:
   - Use quotes around specifiers containing special characters (!, %, /, +, -)
-  - Resized images are saved in a 'resized' subfolder with the same filename
-  - Original images are preserved in their original location
+  - For single image: output saved alongside original with -resized suffix (or custom name)
+  - For directory: resized images saved in a 'resized' subfolder
+  - Original images are always preserved
 EOF
 }
 
@@ -71,17 +75,19 @@ if ! command -v magick &> /dev/null; then
 fi
 
 # Check if correct number of arguments is provided
-if [ $# -ne 2 ]; then
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     echo "Error: Invalid number of arguments." >&2
     show_help
     exit 1
 fi
 
-TARGET="$1"
+TARGET="${1%/}"
 SIZE_SPEC="$2"
+OUTPUT_FILE="${3:-}"   # optional third argument
 
 echo "Debug: Target = $TARGET"
 echo "Debug: Size specifier = $SIZE_SPEC"
+[ -n "$OUTPUT_FILE" ] && echo "Debug: Output file = $OUTPUT_FILE"
 
 # Progress bar
 draw_progress() {
@@ -178,21 +184,31 @@ run_magick() {
     return $exit_code
 }
 
+# Build the output path for a single-image call
+# $1 = input file path, $2 = optional custom output path
+make_single_output_path() {
+    local input_file="$1"
+    local custom_output="$2"
+
+    if [ -n "$custom_output" ]; then
+        echo "$custom_output"
+    else
+        local dir filename base ext
+        dir=$(dirname "$input_file")
+        filename=$(basename "$input_file")
+        ext="${filename##*.}"
+        base="${filename%.*}"
+        echo "${dir}/${base}-resized.${ext}"
+    fi
+}
+
 # Function to resize a single image
 resize_image() {
     local input_file="$1"
     local resize_param="$2"
-    local input_dir output_dir output_file
+    local output_file="$3"   # already resolved by the caller
 
     echo "Debug resize_image: input_file=$input_file, resize_param=$resize_param"
-
-    input_dir=$(dirname "$input_file")
-    output_dir="${input_dir}/resized"
-    mkdir -p "$output_dir"
-
-    local filename
-    filename=$(basename "$input_file")
-    output_file="${output_dir}/${filename}"
 
     echo "Processing: $input_file with specifier: $resize_param"
 
@@ -352,13 +368,15 @@ resize_image() {
 # ---------------------------------------------------------------------------
 
 if [ -f "$TARGET" ]; then
+    # Reject the third argument when targeting a directory (guard for typos)
     if file "$TARGET" | grep -qi "image"; then
+        output_path=$(make_single_output_path "$TARGET" "$OUTPUT_FILE")
         echo "Processing single image: $TARGET"
-        resize_image "$TARGET" "$SIZE_SPEC"
+        resize_image "$TARGET" "$SIZE_SPEC" "$output_path"
         if [ $? -eq 0 ]; then
             draw_progress 1 1
             printf "\n"
-            echo "✓ Resized image saved to: $(dirname "$TARGET")/resized/"
+            echo "✓ Resized image saved to: $output_path"
         fi
     else
         echo "Error: $TARGET is not a valid image file." >&2
@@ -366,6 +384,11 @@ if [ -f "$TARGET" ]; then
     fi
 
 elif [ -d "$TARGET" ]; then
+    # Third argument is not meaningful for directories — warn and ignore
+    if [ -n "$OUTPUT_FILE" ]; then
+        echo "Warning: Output filename argument is ignored when targeting a directory." >&2
+    fi
+
     echo "Processing directory: $TARGET"
 
     mapfile -d '' IMAGE_ARRAY < <(find "$TARGET" -maxdepth 1 -type f \( \
@@ -397,7 +420,9 @@ elif [ -d "$TARGET" ]; then
 
     for image in "${IMAGE_ARRAY[@]}"; do
         (( CURRENT++ ))
-        if resize_image "$image" "$SIZE_SPEC"; then
+        # For directory mode, build the output path inside resized/
+        dir_output="${RESIZED_DIR}/$(basename "$image")"
+        if resize_image "$image" "$SIZE_SPEC" "$dir_output"; then
             (( SUCCESS_COUNT++ ))
         else
             (( FAIL_COUNT++ ))
