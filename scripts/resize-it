@@ -83,10 +83,18 @@ SIZE_SPEC="$2"
 echo "Debug: Target = $TARGET"
 echo "Debug: Size specifier = $SIZE_SPEC"
 
+# Progress bar
+draw_progress() {
+    local current="$1" total="$2" width="${3:-40}"
+    local pct=$(( current * 100 / total ))
+    local filled=$(( current * width / total ))
+    local bar=""
+    for ((i=0; i<filled; i++));  do bar+="█"; done
+    for ((i=filled; i<width; i++)); do bar+="░"; done
+    printf "\r  [%s] %3d%% (%d/%d)" "$bar" "$pct" "$current" "$total"
+}
+
 # Function to evaluate fraction and convert to percentage
-# BUG FIX: function now prints only the final result to stdout,
-# keeping all debug/error messages on stderr to avoid contaminating
-# the captured return value.
 evaluate_fraction() {
     local fraction="$1"
     local operation="$2"  # "multiply", "divide", or "normal"
@@ -108,11 +116,9 @@ evaluate_fraction() {
 
         case "$operation" in
             "multiply")
-                # Add fraction to 1 (e.g., 1/3x → 1 + 1/3 = 133.33%)
                 percentage=$(echo "scale=6; (1 + ($numerator / $denominator)) * 100" | bc)
                 ;;
             "divide")
-                # Subtract fraction from 1 (e.g., 1/3/ → 1 - 1/3 = 66.66%)
                 local value
                 value=$(echo "scale=6; 1 - ($numerator / $denominator)" | bc)
                 if (( $(echo "$value < 0" | bc -l) )); then
@@ -122,13 +128,11 @@ evaluate_fraction() {
                 percentage=$(echo "scale=6; $value * 100" | bc)
                 ;;
             "normal")
-                # Direct fraction (e.g., 1/2 → 50%)
                 percentage=$(echo "scale=6; ($numerator / $denominator) * 100" | bc)
                 ;;
         esac
 
     elif [[ "$fraction" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-        # It's a decimal number
         local num="$fraction"
 
         case "$operation" in
@@ -151,29 +155,23 @@ evaluate_fraction() {
         return 1
     fi
 
-    # Remove trailing zeros and unnecessary decimal point
     percentage=$(echo "$percentage" | sed 's/\.?0*$//; s/\.$//')
 
-    # BUG FIX: only the final result goes to stdout
     echo "${percentage}%${is_exact}"
     return 0
 }
 
 # Function to run magick and report result
-# BUG FIX: captures magick exit code explicitly before any other command
-# can overwrite $?, avoiding the "echo overwrites $?" bug.
 run_magick() {
     local input_file="$1"
     local resize_arg="$2"
     local output_file="$3"
 
     magick "$input_file" -resize "$resize_arg" "$output_file"
-    local exit_code=$?   # capture immediately
+    local exit_code=$?
 
-    if [ $exit_code -eq 0 ]; then
-        echo "✓ Resized: $input_file -> $output_file"
-        echo ""
-    else
+    if [ $exit_code -ne 0 ]; then
+        echo "" >&2
         echo "✗ Error resizing: $input_file" >&2
     fi
 
@@ -188,7 +186,6 @@ resize_image() {
 
     echo "Debug resize_image: input_file=$input_file, resize_param=$resize_param"
 
-    # Get input file directory and create resized subdirectory
     input_dir=$(dirname "$input_file")
     output_dir="${input_dir}/resized"
     mkdir -p "$output_dir"
@@ -199,26 +196,18 @@ resize_image() {
 
     echo "Processing: $input_file with specifier: $resize_param"
 
-    # -----------------------------------------------------------------------
-    # Pattern matching — order matters (more specific patterns come first)
-    # -----------------------------------------------------------------------
-
-    # Case 1: Simple width (e.g., 640)
     if [[ "$resize_param" =~ ^[0-9]+$ ]]; then
         echo "Matched pattern: Simple width"
         run_magick "$input_file" "${resize_param}x" "$output_file"
 
-    # Case 2: Exact dimensions with ! (e.g., "640x480!")
     elif [[ "$resize_param" =~ ^[0-9]+x[0-9]+!$ ]]; then
         echo "Matched pattern: Exact dimensions with !"
         run_magick "$input_file" "$resize_param" "$output_file"
 
-    # Case 3: Proportional dimensions (e.g., 640x480)
     elif [[ "$resize_param" =~ ^[0-9]+x[0-9]+$ ]]; then
         echo "Matched pattern: Proportional dimensions"
         run_magick "$input_file" "$resize_param" "$output_file"
 
-    # Case 4: Decimal/integer multiplication with x (e.g., 0.5x, 1.5x, 2x, 0.9x)
     elif [[ "$resize_param" =~ ^[0-9]*\.?[0-9]+x$ ]]; then
         echo "Matched pattern: Decimal multiplication with x"
         local factor="${resize_param%x}"
@@ -227,7 +216,6 @@ resize_image() {
         echo "Resizing to ${percentage}% proportionally"
         run_magick "$input_file" "${percentage}%" "$output_file"
 
-    # Case 5: Decimal/integer multiplication exact with x! (e.g., "0.5x!", "2x!")
     elif [[ "$resize_param" =~ ^[0-9]*\.?[0-9]+x!$ ]]; then
         echo "Matched pattern: Decimal multiplication exact with x!"
         local factor="${resize_param%x!}"
@@ -236,17 +224,14 @@ resize_image() {
         echo "Resizing to ${percentage}% exactly"
         run_magick "$input_file" "${percentage}%!" "$output_file"
 
-    # Case 6: Fraction multiplication (e.g., "1/3x")
     elif [[ "$resize_param" =~ ^[0-9]+/[0-9]+x$ ]]; then
         echo "Matched pattern: Fraction multiplication"
         local fraction="${resize_param%x}"
         local percentage
-        # BUG FIX: evaluate_fraction now prints only to stdout
         percentage=$(evaluate_fraction "$fraction" "multiply" "") || return 1
         echo "Resizing with fraction multiplication: $percentage"
         run_magick "$input_file" "$percentage" "$output_file"
 
-    # Case 7: Fraction multiplication exact (e.g., "1/3x!")
     elif [[ "$resize_param" =~ ^[0-9]+/[0-9]+x!$ ]]; then
         echo "Matched pattern: Fraction multiplication exact"
         local fraction="${resize_param%x!}"
@@ -255,8 +240,6 @@ resize_image() {
         echo "Resizing with exact fraction multiplication: $percentage"
         run_magick "$input_file" "$percentage" "$output_file"
 
-    # Case 8: Decimal division with / (e.g., "2/", "1.5/")
-    # NOTE: must come BEFORE the simple-fraction cases to avoid ambiguity
     elif [[ "$resize_param" =~ ^[0-9]*\.?[0-9]+/$ ]]; then
         echo "Matched pattern: Decimal division with /"
         local factor="${resize_param%/}"
@@ -269,7 +252,6 @@ resize_image() {
         echo "Resizing to ${percentage}% proportionally (division)"
         run_magick "$input_file" "${percentage}%" "$output_file"
 
-    # Case 9: Decimal division exact with /! (e.g., "2/!", "1.5/!")
     elif [[ "$resize_param" =~ ^[0-9]*\.?[0-9]+/!$ ]]; then
         echo "Matched pattern: Decimal division exact with /!"
         local factor="${resize_param%/!}"
@@ -282,10 +264,6 @@ resize_image() {
         echo "Resizing to ${percentage}% exactly (division)"
         run_magick "$input_file" "${percentage}%!" "$output_file"
 
-    # Case 10: Simple fraction (e.g., "1/2", "1/3", "2/3")
-    # BUG FIX: this pattern ^[0-9]+/[0-9]+$ does NOT match "2/" (Case 8),
-    # so the ordering is safe. But previously evaluate_fraction mixed stdout/stderr,
-    # contaminating the captured value — fixed above.
     elif [[ "$resize_param" =~ ^[0-9]+/[0-9]+$ ]]; then
         echo "Matched pattern: Simple fraction"
         local percentage
@@ -293,7 +271,6 @@ resize_image() {
         echo "Resizing with fraction: $percentage"
         run_magick "$input_file" "$percentage" "$output_file"
 
-    # Case 11: Simple fraction exact (e.g., "1/2!", "1/3!")
     elif [[ "$resize_param" =~ ^[0-9]+/[0-9]+!$ ]]; then
         echo "Matched pattern: Simple fraction exact"
         local fraction="${resize_param%!}"
@@ -302,7 +279,6 @@ resize_image() {
         echo "Resizing with exact fraction: $percentage"
         run_magick "$input_file" "$percentage" "$output_file"
 
-    # Case 12: Fraction subtraction with / (e.g., "1/3/")
     elif [[ "$resize_param" =~ ^[0-9]+/[0-9]+/$ ]]; then
         echo "Matched pattern: Fraction subtraction with /"
         local fraction="${resize_param%/}"
@@ -311,7 +287,6 @@ resize_image() {
         echo "Resizing with fraction subtraction: $percentage"
         run_magick "$input_file" "$percentage" "$output_file"
 
-    # Case 13: Fraction subtraction exact with /! (e.g., "1/3/!")
     elif [[ "$resize_param" =~ ^[0-9]+/[0-9]+/!$ ]]; then
         echo "Matched pattern: Fraction subtraction exact with /!"
         local fraction="${resize_param%/!}"
@@ -320,20 +295,17 @@ resize_image() {
         echo "Resizing with exact fraction subtraction: $percentage"
         run_magick "$input_file" "$percentage" "$output_file"
 
-    # Case 14: Percentage exact (e.g., "50%!")
     elif [[ "$resize_param" =~ ^[0-9]+(\.[0-9]+)?%!$ ]]; then
         echo "Matched pattern: Percentage with !"
         local percentage="${resize_param%!}"
         echo "Resizing to $percentage exactly"
         run_magick "$input_file" "$percentage" "$output_file"
 
-    # Case 15: Simple percentage (e.g., "50%")
     elif [[ "$resize_param" =~ ^[0-9]+(\.[0-9]+)?%$ ]]; then
         echo "Matched pattern: Simple percentage"
         echo "Resizing to $resize_param proportionally"
         run_magick "$input_file" "$resize_param" "$output_file"
 
-    # Case 16: Increase by percentage exact (e.g., "50%+!")
     elif [[ "$resize_param" =~ ^[0-9]+%\+!$ ]]; then
         echo "Matched pattern: Increase by percentage with !"
         local base_percent="${resize_param%+!}"
@@ -342,7 +314,6 @@ resize_image() {
         echo "Increasing by ${base_percent}% exactly (to ${new_percent}%)"
         run_magick "$input_file" "${new_percent}%!" "$output_file"
 
-    # Case 17: Increase by percentage (e.g., "50%+")
     elif [[ "$resize_param" =~ ^[0-9]+%\+$ ]]; then
         echo "Matched pattern: Increase by percentage"
         local base_percent="${resize_param%+}"
@@ -351,7 +322,6 @@ resize_image() {
         echo "Increasing by ${base_percent}% proportionally (to ${new_percent}%)"
         run_magick "$input_file" "${new_percent}%" "$output_file"
 
-    # Case 18: Decrease by percentage exact (e.g., "25%-!")
     elif [[ "$resize_param" =~ ^[0-9]+%\-!$ ]]; then
         echo "Matched pattern: Decrease by percentage with !"
         local base_percent="${resize_param%-!}"
@@ -360,7 +330,6 @@ resize_image() {
         echo "Decreasing by ${base_percent}% exactly (to ${new_percent}%)"
         run_magick "$input_file" "${new_percent}%!" "$output_file"
 
-    # Case 19: Decrease by percentage (e.g., "25%-")
     elif [[ "$resize_param" =~ ^[0-9]+%\-$ ]]; then
         echo "Matched pattern: Decrease by percentage"
         local base_percent="${resize_param%-}"
@@ -375,10 +344,6 @@ resize_image() {
         return 1
     fi
 
-    # BUG FIX: return the exit code from the matched branch directly.
-    # Previously, a bare "if [ $? -eq 0 ]" here could read a stale $?
-    # from an echo or fi instead of from magick. Now run_magick() itself
-    # handles reporting and returns the correct code, so we just propagate it.
     return $?
 }
 
@@ -387,12 +352,13 @@ resize_image() {
 # ---------------------------------------------------------------------------
 
 if [ -f "$TARGET" ]; then
-    # Single file mode
     if file "$TARGET" | grep -qi "image"; then
         echo "Processing single image: $TARGET"
         resize_image "$TARGET" "$SIZE_SPEC"
         if [ $? -eq 0 ]; then
-            echo "Resized image saved to: $(dirname "$TARGET")/resized/"
+            draw_progress 1 1
+            printf "\n"
+            echo "✓ Resized image saved to: $(dirname "$TARGET")/resized/"
         fi
     else
         echo "Error: $TARGET is not a valid image file." >&2
@@ -400,14 +366,8 @@ if [ -f "$TARGET" ]; then
     fi
 
 elif [ -d "$TARGET" ]; then
-    # Directory mode
     echo "Processing directory: $TARGET"
 
-    # BUG FIX: use a null-delimited list via mapfile + find -print0
-    # so that filenames with spaces, newlines, or special characters
-    # are handled safely. The old approach stored files in a plain
-    # variable and iterated with an unquoted "for image in $IMAGE_FILES",
-    # which word-splits on spaces — breaking any path that contains them.
     mapfile -d '' IMAGE_ARRAY < <(find "$TARGET" -maxdepth 1 -type f \( \
         -iname "*.jpg"  -o \
         -iname "*.jpeg" -o \
@@ -424,7 +384,8 @@ elif [ -d "$TARGET" ]; then
         exit 1
     fi
 
-    echo "Found ${#IMAGE_ARRAY[@]} image(s) to resize."
+    TOTAL=${#IMAGE_ARRAY[@]}
+    echo "Found ${TOTAL} image(s) to resize."
     echo ""
 
     RESIZED_DIR="${TARGET}/resized"
@@ -432,16 +393,19 @@ elif [ -d "$TARGET" ]; then
 
     SUCCESS_COUNT=0
     FAIL_COUNT=0
+    CURRENT=0
 
-    # BUG FIX: iterate over the array (each element is a full, safe path)
     for image in "${IMAGE_ARRAY[@]}"; do
+        (( CURRENT++ ))
         if resize_image "$image" "$SIZE_SPEC"; then
             (( SUCCESS_COUNT++ ))
         else
             (( FAIL_COUNT++ ))
         fi
+        draw_progress "$CURRENT" "$TOTAL"
     done
 
+    printf "\n"
     echo "================================="
     echo "Summary:"
     echo "  Successfully resized: $SUCCESS_COUNT"
