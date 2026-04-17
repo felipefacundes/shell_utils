@@ -3,52 +3,90 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-This Bash script is designed to process audio files in a directory, identifying and listing them or playing them 
-using a specified application. Its key strengths include:  
-
-1. Flexibility: Allows users to specify an application for audio playback or simply list the audio files.  
-2. Compatibility: Supports a wide range of audio formats by checking file extensions and MIME types.  
-3. Efficiency: Automatically detects and processes audio files in the current directory, providing a clear output.  
-Capabilities: The script can identify audio files, play them with a chosen app, or list them for further use.
+This Bash script processes audio files in the current directory.
 DOCUMENTATION
 
-# Capture Ctrl+C and end children processes
-trap 'echo "Terminating..."; pkill -9 -P $$; exit 1' SIGINT SIGTERM SIGHUP SIGQUIT SIGABRT SIGALRM #SIGKILL #SIGCHLD
+# Colors
+C_RESET='\033[0m'
+C_BOLD='\033[1m'
+C_YELLOW='\033[1;33m'
+C_GREEN='\033[1;32m'
+C_CYAN='\033[1;36m'
+C_BLUE='\033[1;34m'
+C_MAGENTA='\033[1;35m'
 
+trap 'echo -e "\n${C_YELLOW}Terminating...${C_RESET}"; exit 1' INT TERM
+
+# Help
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    echo "Example: app=mpv ${0##*/}"
+    echo -e "${C_BOLD}Usage:${C_RESET} ${0##*/} [search_term]"
+    echo -e "${C_BOLD}Example:${C_RESET} app=mpv ${0##*/} foot"
+    echo -e "\n${C_CYAN}If search term is provided, only audio files containing the term (case-insensitive) will be processed.${C_RESET}"
     exit 0 
 fi
 
-app="${app:-""}"
+app="${app:-}"
+search_term="${1:-}"
 audios=()
+declare -A ext_counts
 
-# https://www.sageaudio.com/articles/top-10-audio-file-formats
-# Loop to loop through the files in the folder
+if [[ -n "$search_term" ]]; then
+    echo -e "${C_CYAN}Searching for audio files containing: ${C_BOLD}${search_term}${C_RESET}\n"
+fi
+
+# Audio extensions
+audio_extensions="3gp|aa|aac|aax|act|aiff|alac|amr|ape|au|awb|cda|dct|dss|dvf|flac|gsm|iklax|ivs|m4a|m4b|m4p|mmf|mp3|mpc|msv|nmf|nsf|ogg|oga|mogg|opus|ra|rm|raw|rf64|sln|tta|voc|vox|wav|webm|wma|wv|8svx"
+
+# Process files
 for audio in *; do
-    name="${audio%.*}"
-    # Check if the file is a regular file and if it is an audio file
-    if [ -f "$audio" ] && ( ls "${name}".[AaDdMmOoPpSsWw][4AaCcGgLlMmPpSsTt][3AaCcDdEeGgVvMmRrSs] >/dev/null 2>&1 || \
-    file -b --mime-type "$audio" | grep -q "^audio/" ); then
-        if [[ "$app" ]]; then
-            echo
-            echo -e "\"\033[1;33m${audio}\033[0m\""
-            echo
+    # Skip if not a regular file
+    [[ ! -f "$audio" ]] && continue
+    
+    # Convert both to lowercase for case-insensitive comparison
+    audio_lower=$(echo "$audio" | tr '[:upper:]' '[:lower:]')
+    
+    # Apply search term filter if provided
+    if [[ -n "$search_term" ]]; then
+        search_term_lower=$(echo "$search_term" | tr '[:upper:]' '[:lower:]')
+        # Check if search term is anywhere in the filename
+        if [[ "$audio_lower" != *"$search_term_lower"* ]]; then
+            continue
+        fi
+    fi
+    
+    # Get extension and check if it's an audio file
+    ext="${audio##*.}"
+    ext_lower=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+    
+    # Check if file is an audio file by extension or MIME type
+    if [[ "$ext_lower" =~ ^($audio_extensions)$ ]] || \
+       ( file -b --mime-type "$audio" 2>/dev/null | grep -q "^audio/" ); then
+        
+        ((ext_counts[$ext_lower]++))
+        
+        if [[ -n "$app" ]]; then
+            echo -e "\n    ▶  \"${C_YELLOW}${audio}${C_RESET}\"\n"
             read -r -a cmd <<< "$app"
             "${cmd[@]}" "$audio"
             echo
         else
-            audios+=(\'"$audio"\')
+            audios+=("'$audio'")
         fi
     fi
 done
 
-if [ ${#audios[@]} -gt 0 ]; then
-    num_itens=${#audios[@]}
-
-    echo -e "Audios: $num_itens\n"
-
+# Display results if not playing with app
+if [[ -z "$app" ]]; then
+    echo -e "${C_BOLD}${C_GREEN}Audios: ${#audios[@]}${C_RESET}\n"
+    
     for item in "${audios[@]}"; do
-        echo "$item"
+        echo -e "${C_CYAN}${item}${C_RESET}"
     done
+    
+    if [[ ${#ext_counts[@]} -gt 0 ]]; then
+        echo -e "\n${C_BOLD}${C_MAGENTA}Audio formats found:${C_RESET}"
+        for ext in "${!ext_counts[@]}"; do
+            echo -e "  ${C_BLUE}.${ext}${C_RESET}: ${C_GREEN}${ext_counts[$ext]}${C_RESET} file(s)"
+        done | sort
+    fi
 fi
