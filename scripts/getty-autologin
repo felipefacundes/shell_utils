@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
-
 : <<'DOCUMENTATION'
-This script configures autologin for a specified tty on a Linux system, prompting the user for a tty number and username while validating the input. 
-It creates the necessary directory and configuration file to enable autologin, providing bilingual messages for user interaction.
+This script configures autologin for a specified tty on a Linux system, prompting the user for a tty number
+and username while validating the input. It creates the necessary directory and configuration file to enable
+autologin, providing bilingual messages for user interaction.
+
+It also supports a --manager (-m) flag to list and remove existing autologin configurations,
+and --help (-h) for full usage documentation.
 DOCUMENTATION
 
+# ─── Language Detection ───────────────────────────────────────────────────────
+
 declare -A MESSAGES
+
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
         ["prompt_tty"]="Informe um número de tty de 1 a 6 (padrão é 1): "
@@ -16,6 +22,39 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         ["success"]="Configuração concluída com sucesso."
         ["invalid_user"]="Erro: O nome de usuário não pode conter números ou caracteres especiais."
         ["invalid_tty"]="Número de tty inválido. Por favor, insira um número entre 1 e 6."
+
+        ["help_name"]="NOME"
+        ["help_name_val"]="getty-autologin — Configura autologin de tty via systemd"
+        ["help_synopsis"]="SINOPSE"
+        ["help_synopsis_val"]="getty-autologin [OPÇÃO]"
+        ["help_desc"]="DESCRIÇÃO"
+        ["help_desc_val"]="Configura o autologin automático para um terminal virtual (tty1–tty6) usando o mecanismo de override do systemd para o serviço getty. Quando executado sem argumentos, o script solicita interativamente o número do tty e o nome do usuário, valida as entradas e cria o arquivo de configuração necessário em /etc/systemd/system/getty@ttyN.service.d/autologin.conf."
+        ["help_options"]="OPÇÕES"
+        ["help_opt_h"]="Exibe esta mensagem de ajuda e encerra."
+        ["help_opt_m"]="Abre o gerenciador interativo de sessões de autologin. Permite listar todas as configurações de autologin ativas e remover (reverter) qualquer uma individualmente."
+        ["help_files"]="ARQUIVOS"
+        ["help_files_val"]="/etc/systemd/system/getty@ttyN.service.d/autologin.conf\n\tArquivo de configuração gerado para cada tty configurado."
+        ["help_examples"]="EXEMPLOS"
+        ["help_ex1"]="Configurar autologin (modo interativo):"
+        ["help_ex2"]="Abrir o gerenciador de sessões:"
+        ["help_ex3"]="Exibir esta ajuda:"
+        ["help_notes"]="NOTAS"
+        ["help_notes_val"]="• São necessários privilégios de superusuário (sudo) para criar ou remover arquivos em /etc/systemd/system/.\n• O script valida que o nome de usuário não contém dígitos, pontuação ou caracteres de controle.\n• Após a remoção de uma configuração, o diretório de override é removido automaticamente se estiver vazio."
+        ["help_license"]="LICENÇA"
+        ["help_license_val"]="GPLv3 — Felipe Facundes"
+
+        ["mgr_title"]="Gerenciador de Autologin"
+        ["mgr_none"]="Nenhuma configuração de autologin encontrada."
+        ["mgr_list"]="Sessões com autologin configurado:"
+        ["mgr_select"]="Selecione o número da sessão a remover (ou 0 para sair): "
+        ["mgr_invalid"]="Seleção inválida."
+        ["mgr_confirm"]="Tem certeza que deseja remover o autologin de"
+        ["mgr_confirm2"]="? [s/N]: "
+        ["mgr_removed"]="Configuração de autologin removida com sucesso:"
+        ["mgr_remove_error"]="Erro ao remover a configuração."
+        ["mgr_aborted"]="Operação cancelada."
+        ["mgr_exit"]="Saindo do gerenciador."
+        ["mgr_user_label"]="usuário"
     )
 else
     MESSAGES=(
@@ -25,38 +64,284 @@ else
         ["success"]="Configuration completed successfully."
         ["invalid_user"]="Error: Username cannot contain numbers or special characters."
         ["invalid_tty"]="Invalid tty number. Please enter a number between 1 and 6."
+
+        ["help_name"]="NAME"
+        ["help_name_val"]="getty-autologin — Configure tty autologin via systemd"
+        ["help_synopsis"]="SYNOPSIS"
+        ["help_synopsis_val"]="getty-autologin [OPTION]"
+        ["help_desc"]="DESCRIPTION"
+        ["help_desc_val"]="Configures automatic autologin for a virtual terminal (tty1–tty6) using the systemd override mechanism for the getty service. When run without arguments, the script interactively prompts for the tty number and username, validates the input, and creates the required configuration file at /etc/systemd/system/getty@ttyN.service.d/autologin.conf."
+        ["help_options"]="OPTIONS"
+        ["help_opt_h"]="Display this help message and exit."
+        ["help_opt_m"]="Open the interactive autologin session manager. Allows listing all active autologin configurations and individually removing (reverting) any of them."
+        ["help_files"]="FILES"
+        ["help_files_val"]="/etc/systemd/system/getty@ttyN.service.d/autologin.conf\n\tGenerated configuration file for each configured tty."
+        ["help_examples"]="EXAMPLES"
+        ["help_ex1"]="Configure autologin (interactive mode):"
+        ["help_ex2"]="Open the session manager:"
+        ["help_ex3"]="Display this help:"
+        ["help_notes"]="NOTES"
+        ["help_notes_val"]="• Superuser privileges (sudo) are required to create or remove files under /etc/systemd/system/.\n• The script validates that the username contains no digits, punctuation, or control characters.\n• After removing a configuration, the override directory is automatically deleted if empty."
+        ["help_license"]="LICENSE"
+        ["help_license_val"]="GPLv3 — Felipe Facundes"
+
+        ["mgr_title"]="Autologin Manager"
+        ["mgr_none"]="No autologin configuration found."
+        ["mgr_list"]="Sessions with autologin configured:"
+        ["mgr_select"]="Select the session number to remove (or 0 to exit): "
+        ["mgr_invalid"]="Invalid selection."
+        ["mgr_confirm"]="Are you sure you want to remove autologin for"
+        ["mgr_confirm2"]="? [y/N]: "
+        ["mgr_removed"]="Autologin configuration successfully removed:"
+        ["mgr_remove_error"]="Error removing the configuration."
+        ["mgr_aborted"]="Operation cancelled."
+        ["mgr_exit"]="Exiting manager."
+        ["mgr_user_label"]="user"
     )
 fi
 
+# ─── Colour Palette ───────────────────────────────────────────────────────────
+
+if [[ -t 1 ]]; then
+    BOLD=$'\e[1m'
+    DIM=$'\e[2m'
+    RESET=$'\e[0m'
+    CYAN=$'\e[38;5;87m'
+    GREEN=$'\e[38;5;82m'
+    YELLOW=$'\e[38;5;220m'
+    RED=$'\e[38;5;203m'
+    BLUE=$'\e[38;5;75m'
+    MAGENTA=$'\e[38;5;177m'
+    WHITE=$'\e[97m'
+    GRAY=$'\e[38;5;245m'
+else
+    BOLD='' DIM='' RESET='' CYAN='' GREEN='' YELLOW='' RED='' BLUE='' MAGENTA='' WHITE='' GRAY=''
+fi
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+println() { printf '%s\n' "$1"; }
+
+rule() {
+    local char="${1:-─}" width="${2:-60}"
+    printf '%s' "${GRAY}"
+    printf '%*s' "$width" '' | tr ' ' "$char"
+    printf '%s\n' "${RESET}"
+}
+
+section_header() {
+    printf '\n%s%s%s%s\n' "${BOLD}${CYAN}" "$1" "${RESET}" ''
+    rule '-' 60
+}
+
+# ─── Help ─────────────────────────────────────────────────────────────────────
+
+show_help() {
+    local script_name
+    script_name="$(basename "$0")"
+
+    printf '\n'
+    rule '=' 66
+    printf '%s%s%s  %s%s%s\n' \
+        "${BOLD}${CYAN}" "  ${MESSAGES[help_name_val]%%—*}" "${RESET}" \
+        "${GRAY}" "— ${MESSAGES[help_name_val]##*—}" "${RESET}"
+    rule '=' 66
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_name]}" "${RESET}"
+    printf '      %s\n' "${MESSAGES[help_name_val]}"
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_synopsis]}" "${RESET}"
+    printf '      %s%s%s\n' "${BOLD}${WHITE}" "$script_name" "${RESET}"
+    printf '      %s%s%s %s[-h | --help]%s\n' "${BOLD}${WHITE}" "$script_name" "${RESET}" "${CYAN}" "${RESET}"
+    printf '      %s%s%s %s[-m | --manager]%s\n' "${BOLD}${WHITE}" "$script_name" "${RESET}" "${CYAN}" "${RESET}"
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_desc]}" "${RESET}"
+    printf '      %s\n' "${MESSAGES[help_desc_val]}"
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_options]}" "${RESET}"
+    printf '      %s-h%s, %s--help%s\n' "${CYAN}" "${RESET}" "${CYAN}" "${RESET}"
+    printf '              %s\n' "${MESSAGES[help_opt_h]}"
+    printf '\n'
+    printf '      %s-m%s, %s--manager%s\n' "${CYAN}" "${RESET}" "${CYAN}" "${RESET}"
+    printf '              %s\n' "${MESSAGES[help_opt_m]}"
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_examples]}" "${RESET}"
+    printf '      %s# %s%s\n' "${GRAY}" "${MESSAGES[help_ex1]}" "${RESET}"
+    printf '      %s%s%s\n\n' "${GREEN}" "  $script_name" "${RESET}"
+    printf '      %s# %s%s\n' "${GRAY}" "${MESSAGES[help_ex2]}" "${RESET}"
+    printf '      %s%s --manager%s\n\n' "${GREEN}" "  $script_name" "${RESET}"
+    printf '      %s# %s%s\n' "${GRAY}" "${MESSAGES[help_ex3]}" "${RESET}"
+    printf '      %s%s --help%s\n' "${GREEN}" "  $script_name" "${RESET}"
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_files]}" "${RESET}"
+    printf -v files_expanded '%b' "${MESSAGES[help_files_val]}"
+    while IFS= read -r line; do
+        printf '      %s\n' "$line"
+    done <<< "$files_expanded"
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_notes]}" "${RESET}"
+    printf -v notes_expanded '%b' "${MESSAGES[help_notes_val]}"
+    while IFS= read -r line; do
+        printf '      %s\n' "$line"
+    done <<< "$notes_expanded"
+
+    printf '\n%s%s%s\n' "${BOLD}${YELLOW}" "  ${MESSAGES[help_license]}" "${RESET}"
+    printf '      %s%s%s\n' "${DIM}" "${MESSAGES[help_license_val]}" "${RESET}"
+
+    printf '\n'
+    rule '=' 66
+    printf '\n'
+}
+
+# ─── Manager ──────────────────────────────────────────────────────────────────
+
+show_manager() {
+    printf '\n'
+    rule '=' 66
+    printf '  %s%s%s\n' "${BOLD}${MAGENTA}" "${MESSAGES[mgr_title]}" "${RESET}"
+    rule '=' 66
+    printf '\n'
+
+    # Discover existing autologin configs
+    local -a ttys=()
+    local -a users=()
+    local dir user_val
+
+    for n in 1 2 3 4 5 6; do
+        dir="/etc/systemd/system/getty@tty${n}.service.d"
+        if [[ -f "${dir}/autologin.conf" ]]; then
+            # Extract the autologin username from ExecStart line
+            user_val=$(grep -oP '(?<=--autologin\s)\S+' "${dir}/autologin.conf" 2>/dev/null || echo "?")
+            ttys+=("tty${n}")
+            users+=("$user_val")
+        fi
+    done
+
+    if [[ ${#ttys[@]} -eq 0 ]]; then
+        printf '  %s%s%s\n\n' "${YELLOW}" "${MESSAGES[mgr_none]}" "${RESET}"
+        rule '=' 66
+        printf '\n'
+        return 0
+    fi
+
+    printf '  %s%s%s\n\n' "${BOLD}${WHITE}" "${MESSAGES[mgr_list]}" "${RESET}"
+
+    local i
+    for i in "${!ttys[@]}"; do
+        printf '  %s[%d]%s  %s%-6s%s  %s%s: %s%s\n' \
+            "${BOLD}${CYAN}" "$((i+1))" "${RESET}" \
+            "${BOLD}${GREEN}" "${ttys[$i]}" "${RESET}" \
+            "${GRAY}" "${MESSAGES[mgr_user_label]}" "${RESET}" \
+            "${WHITE}${users[$i]}${RESET}"
+    done
+
+    printf '\n'
+    rule '-' 66
+    printf '\n'
+
+    local selection
+    while true; do
+        printf '  %s' "${MESSAGES[mgr_select]}"
+        read -r selection
+
+        if [[ "$selection" == "0" || "$selection" == [qQeE] ]]; then
+            printf '\n  %s%s%s\n\n' "${GRAY}" "${MESSAGES[mgr_exit]}" "${RESET}"
+            return 0
+        fi
+
+        if [[ "$selection" =~ ^[0-9]+$ ]] && \
+           (( selection >= 1 && selection <= ${#ttys[@]} )); then
+            break
+        else
+            printf '  %s%s%s\n' "${RED}" "${MESSAGES[mgr_invalid]}" "${RESET}"
+        fi
+    done
+
+    local idx=$(( selection - 1 ))
+    local chosen_tty="${ttys[$idx]}"
+    local chosen_user="${users[$idx]}"
+
+    printf '\n  %s%s %s%s%s (%s: %s%s%s)%s\n' \
+        "${YELLOW}" "${MESSAGES[mgr_confirm]}" \
+        "${BOLD}${GREEN}" "$chosen_tty" "${RESET}${YELLOW}" \
+        "${MESSAGES[mgr_user_label]}" \
+        "${BOLD}${WHITE}" "$chosen_user" "${RESET}${YELLOW}" \
+        "${RESET}"
+    printf '  %s' "${MESSAGES[mgr_confirm2]}"
+    read -r answer
+
+    # Accept 's', 'S', 'y', 'Y' as confirmation
+    if [[ "$answer" =~ ^[sSyY]$ ]]; then
+        local target_dir="/etc/systemd/system/getty@${chosen_tty}.service.d"
+        if sudo rm -f "${target_dir}/autologin.conf" && \
+           sudo rmdir --ignore-fail-on-non-empty "${target_dir}" 2>/dev/null; then
+            printf '\n  %s%s %s%s%s\n\n' \
+                "${GREEN}" "${MESSAGES[mgr_removed]}" \
+                "${BOLD}" "$chosen_tty" "${RESET}"
+        else
+            printf '\n  %s%s%s\n\n' "${RED}" "${MESSAGES[mgr_remove_error]}" "${RESET}"
+        fi
+    else
+        printf '\n  %s%s%s\n\n' "${GRAY}" "${MESSAGES[mgr_aborted]}" "${RESET}"
+    fi
+
+    rule '=' 66
+    printf '\n'
+}
+
+# ─── Argument Parsing ─────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    -h|--help)
+        show_help
+        exit 0
+        ;;
+    -m|--manager)
+        show_manager
+        exit 0
+        ;;
+    "")
+        : # fall through to interactive mode
+        ;;
+    *)
+        printf '%s%s: unknown option: %s%s\n' "${RED}" "$(basename "$0")" "$1" "${RESET}" >&2
+        printf 'Try: %s --help\n' "$(basename "$0")" >&2
+        exit 1
+        ;;
+esac
+
+# ─── Interactive Mode (original behaviour) ────────────────────────────────────
+
 # Prompt for tty number with validation loop
 while true; do
-    read -rp "${MESSAGES[prompt_tty]}" number
-    number=${number:-1}  # Default to 1 if no input
-
-    # Validate tty number
+    printf '%s' "${MESSAGES[prompt_tty]}"
+    read -r number
+    number=${number:-1}
     if [[ "$number" =~ ^[1-6]$ ]]; then
-        break  # Exit loop if valid
+        break
     else
-        echo "${MESSAGES[invalid_tty]}"
+        println "${MESSAGES[invalid_tty]}"
     fi
 done
 
 # Prompt for username with validation loop
 while true; do
-    read -rp "${MESSAGES[prompt_user]}" user
-    user=${user:-$USER}  # Default to $USER if no input
-
-    # Validate username
+    printf '%s' "${MESSAGES[prompt_user]}"
+    read -r user
+    user=${user:-$USER}
     if [[ ! "$user" =~ [0-9] ]] && [[ ! "$user" =~ [[:punct:]] ]] && [[ ! "$user" =~ [[:cntrl:]] ]]; then
-        break  # Exit loop if valid
+        break
     else
-        echo "${MESSAGES[invalid_user]}"
+        println "${MESSAGES[invalid_user]}"
     fi
 done
 
 # Create the directory if it doesn't exist
 if ! test -d "/etc/systemd/system/getty@tty${number}.service.d/"; then
-    sudo su -c "mkdir -p /etc/systemd/system/getty@tty${number}.service.d/" || { echo "${MESSAGES[mkdir_error]}"; exit 1; }
+    sudo su -c "mkdir -p /etc/systemd/system/getty@tty${number}.service.d/" || {
+        println "${MESSAGES[mkdir_error]}"
+        exit 1
+    }
 fi
 
 # Create the autologin configuration file
@@ -66,4 +351,4 @@ ExecStart=
 ExecStart=-/sbin/agetty -o '-p -f -- \\u' --noclear --autologin $user %I \$TERM
 EOF
 
-echo "${MESSAGES[success]}"
+println "${MESSAGES[success]}"
