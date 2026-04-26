@@ -1,0 +1,2029 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes (original), enhanced version
+
+: <<'DOCUMENTATION'
+1. Terminal Bible reader with dialog UI and SQLite database.
+2. Supports multiple Bible translations (auto-detected .sqlite files).
+3. Downloads Bibles from https://github.com/felipefacundes/biblias via git clone.
+4. Navigate 66 books, chapters and verses with last-read history.
+5. Global search (whole Bible) or per-book search.
+6. Highlight search terms with customizable colors ("-d", "-w", "-b").
+7. Search modes: "F" toggles between case-sensitive and case-insensitive.
+8. Quick navigation: "w/s", "j/k" or arrows, "/" search, "n/N" between matches.
+9. Translation comparator: view the same verse across all available Bibles.
+10. i18n support: Portuguese and English (auto-detected from $LANG).
+-- ENHANCEMENTS --
+11. Direct verse navigation: type "Book Chapter:Verse" (e.g., John 3:16).
+12. Favorite individual verses (in addition to whole chapters).
+13. Export translation comparison to text or PDF.
+14. Filter translations in comparison view.
+15. Continuous reading mode: auto-advance chapters.
+16. Verse numbers highlighted in a distinct color from text.
+17. Regex search support (in addition to LIKE).
+18. Translation statistics (book count, verse count, etc.).
+DOCUMENTATION
+
+original_stty=$(stty -g)
+
+# ─── Language Detection ───────────────────────────────────────────────────────
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+MESSAGES=(
+    [dialog_not_installed]="O 'dialog' não está instalado. Por favor, instale-o."
+    [sqlite_not_installed]="O SQLite3 não está instalado. Por favor, instale-o."
+    [git_not_installed]="O 'git' não está instalado. Por favor, instale-o para baixar as Bíblias."
+    [no_bible_found]="Nenhum arquivo .sqlite de Bíblia encontrado."
+    [no_bible_found_detail]="Nenhum arquivo .sqlite encontrado em"
+    [downloading_bibles]="Baixando Bíblias do repositório..."
+    [download_failed]="Falha ao baixar as Bíblias. Verifique sua conexão."
+    [select_bible]="Selecione uma tradução da Bíblia:"
+    [bible_title]="Bíblia"
+    [add_bibles_hint]="Você pode adicionar mais Bíblias (.sqlite) em:"
+    [choose_option]="Escolha uma opção:"
+    [search_by_number]="Buscar livro por número"
+    [search_by_initial]="Buscar livro por inicial"
+    [search_term_bible]="Buscar termo na Bíblia"
+    [search_term_book]="Buscar termo em um livro específico"
+    [last_chapter]="Último capítulo acessado"
+    [last_chapter_na]="Último capítulo acessado (não disponível)"
+    [manage_history]="Gerenciar histórico de capítulos"
+    [word_of_day]="Palavra do dia"
+    [word_of_day_stats]="Estatísticas da Palavra do Dia"
+    [compare_translations]="Comparar traduções"
+    [quit]="Sair"
+    [no_history]="Nenhum capítulo no histórico ainda."
+    [history_title]="Histórico"
+    [manage_history_title]="Gerenciar Histórico"
+    [select_chapter_del]="Selecione um capítulo (D para deletar):"
+    [confirm_delete]="Pressione 'Sim' para deletar ou 'Não' para abrir o capítulo"
+    [item_removed]="Item removido do histórico."
+    [chapter_word]="Capítulo"
+    [no_chapters_found]="Não foram encontrados capítulos para"
+    [choose_chapter]="Escolha um capítulo (Esc para voltar):"
+    [no_verses_found]="Não foram encontrados versículos para"
+    [search_results]="Resultado da busca"
+    [no_results]="Nenhum resultado encontrado para o termo"
+    [choose_verse]="Escolha um versículo:"
+    [choose_verse_open]="Escolha um versículo para abrir:"
+    [in_book]="no livro selecionado."
+    [enter_initial]="Digite a inicial do livro:"
+    [enter_term]="Digite o termo que deseja buscar:"
+    [enter_term_book]="Digite o termo que deseja buscar:"
+    [no_book_found]="Nenhum livro encontrado com a inicial"
+    [choose_book]="Escolha um livro:"
+    [choose_book_search]="Escolha um livro para buscar o termo:"
+    [choose_book_compare]="Escolha o livro:"
+    [choose_chapter_compare]="Escolha o capítulo:"
+    [choose_verse_compare]="Escolha o versículo:"
+    [comparison_title]="Comparação de Traduções"
+    [no_verse_this_translation]="(Versículo não encontrado nesta tradução)"
+    [stats_none]="Nenhum capítulo foi mostrado ainda."
+    [stats_title]="Estatísticas da Palavra do Dia"
+    [stats_shown]="Capítulos mostrados:"
+    [stats_remaining]="Restantes:"
+    [stats_by_book]="Distribuição por livro:"
+    [error]="Erro"
+    [notice]="Aviso"
+    [inform_initial]="Informe as iniciais de algum livro!"
+    [chapter_already_history]="já está no histórico!"
+    [chapter_saved_history]="salvo no histórico!"
+    [copied_clipboard]="Capítulo copiado para área de transferência!"
+    [app_name]="Bíblia"
+    [select_verses]="Selecionar Versículos"
+    [enter_verses]="Digite os versículos desejados (ex: 1 3 5-7 10):"
+    [nav_controls]="[↑↓/jk Nav] [←→/hl Cap] [/ Buscar] [N Próx] [G Direto] [V Fav] [R Regex] [C Contínuo] [S Salvar] [X Exportar] [Z Copiar] [Q Sair]"
+    [nav_controls_termux]="[↑↓/jk Nav] [/ Buscar] [N Próx]\n[G Direto] [V Fav] [R Regex] [C Contínuo]\n[S Salvar] [X Exportar] [Z Copiar] [Q Sair]"
+    [pattern_label]="Padrão:"
+    [matches_label]="matches"
+    [line_label]="Linha"
+    [match_label]="Match"
+    [script_interrupted]="Script interrompido pelo usuário."
+    [no_clipboard_termux]="termux-clipboard-set não está disponível."
+    [no_clipboard_wayland]="wl-copy não está instalado. Não é possível copiar no Wayland."
+    [no_clipboard_x11]="xclip não está instalado. Não é possível copiar no X11."
+    [no_clipboard_generic]="Nenhum método de cópia disponível para este ambiente."
+    [select_bible_default]="Bíblia padrão atual:"
+    [set_as_default]="Definir como padrão"
+    [current_default]="(padrão atual)"
+    # New messages
+    [goto_verse]="Ir para versículo"
+    [goto_prompt]="Digite referência (ex: João 3:16 ou Gn 1:1):"
+    [goto_not_found]="Referência não encontrada. Tente: Nome Capítulo:Versículo"
+    [favorites]="Favoritos"
+    [manage_favorites]="Gerenciar Versículos Favoritos"
+    [no_favorites]="Nenhum versículo favorito ainda. Pressione V em um versículo para favoritar."
+    [verse_favorited]="Versículo adicionado aos favoritos!"
+    [verse_already_fav]="Versículo já está nos favoritos!"
+    [select_verse_fav]="Selecione um versículo para favoritar:"
+    [verse_removed_fav]="Versículo removido dos favoritos."
+    [export_comparison]="Exportar Comparação"
+    [export_as_txt]="Exportar como TXT"
+    [export_as_pdf]="Exportar como PDF"
+    [export_done]="Exportação salva em:"
+    [export_failed]="Falha na exportação."
+    [filter_translations]="Filtrar Traduções"
+    [select_translations]="Selecione as traduções para comparar:"
+    [continuous_mode]="Modo Leitura Contínua"
+    [continuous_on]="Leitura Contínua: ATIVADA (próx cap em 30s)"
+    [continuous_off]="Leitura Contínua: DESATIVADA"
+    [regex_mode]="Busca por Regex"
+    [regex_prompt]="Digite expressão regular:"
+    [regex_invalid]="Expressão regular inválida."
+    [verse_num_color]="Cor do número do versículo:"
+    [translation_stats]="Estatísticas da Tradução"
+    [stats_books]="Livros:"
+    [stats_chapters]="Capítulos:"
+    [stats_verses]="Versículos:"
+    [stats_words]="Palavras (aprox.):"
+    [stats_longest_book]="Livro com mais versículos:"
+    [stats_shortest_book]="Livro com menos versículos:"
+    [view_favorites]="Ver favoritos"
+    [goto_direct]="Ir para versículo direto"
+    [trans_stats]="Estatísticas da tradução"
+    [continuous_reading]="Leitura contínua"
+    [export_entire_chapter]="Capítulo completo"
+    [export_specific_verses]="Versículos específicos"
+    [pdf_tools_warn]="Aviso: ferramentas PDF ausentes"
+    [pdf_tools_warn_detail]="Instale iconv, enscript e ps2pdf para exportar PDF."
+    [pdf_tools_unavailable]="Ferramentas PDF indisponíveis. Salvo como TXT:"
+
+)
+else
+MESSAGES=(
+    [dialog_not_installed]="'dialog' is not installed. Please install it."
+    [sqlite_not_installed]="SQLite3 is not installed. Please install it."
+    [git_not_installed]="'git' is not installed. Please install it to download Bibles."
+    [no_bible_found]="No Bible .sqlite file found."
+    [no_bible_found_detail]="No .sqlite file found in"
+    [downloading_bibles]="Downloading Bibles from repository..."
+    [download_failed]="Failed to download Bibles. Check your connection."
+    [select_bible]="Select a Bible translation:"
+    [bible_title]="Bible"
+    [add_bibles_hint]="You can add more Bibles (.sqlite) in:"
+    [choose_option]="Choose an option:"
+    [search_by_number]="Search book by number"
+    [search_by_initial]="Search book by initial"
+    [search_term_bible]="Search term in the Bible"
+    [search_term_book]="Search term in a specific book"
+    [last_chapter]="Last accessed chapter"
+    [last_chapter_na]="Last accessed chapter (not available)"
+    [manage_history]="Manage chapter history"
+    [word_of_day]="Word of the day"
+    [word_of_day_stats]="Word of the Day statistics"
+    [compare_translations]="Compare translations"
+    [quit]="Quit"
+    [no_history]="No chapters in history yet."
+    [history_title]="History"
+    [manage_history_title]="Manage History"
+    [select_chapter_del]="Select a chapter (D to delete):"
+    [confirm_delete]="Press 'Yes' to delete or 'No' to open the chapter"
+    [item_removed]="Item removed from history."
+    [chapter_word]="Chapter"
+    [no_chapters_found]="No chapters found for"
+    [choose_chapter]="Choose a chapter (Esc to go back):"
+    [no_verses_found]="No verses found for"
+    [search_results]="Search results"
+    [no_results]="No results found for term"
+    [choose_verse]="Choose a verse:"
+    [choose_verse_open]="Choose a verse to open:"
+    [in_book]="in the selected book."
+    [enter_initial]="Enter the book initial:"
+    [enter_term]="Enter the term to search:"
+    [enter_term_book]="Enter the term to search:"
+    [no_book_found]="No book found with initial"
+    [choose_book]="Choose a book:"
+    [choose_book_search]="Choose a book to search the term:"
+    [choose_book_compare]="Choose the book:"
+    [choose_chapter_compare]="Choose the chapter:"
+    [choose_verse_compare]="Choose the verse:"
+    [comparison_title]="Translation Comparison"
+    [no_verse_this_translation]="(Verse not found in this translation)"
+    [stats_none]="No chapters have been shown yet."
+    [stats_title]="Word of the Day Statistics"
+    [stats_shown]="Chapters shown:"
+    [stats_remaining]="Remaining:"
+    [stats_by_book]="Distribution by book:"
+    [error]="Error"
+    [notice]="Notice"
+    [inform_initial]="Please enter a book initial!"
+    [chapter_already_history]="is already in history!"
+    [chapter_saved_history]="saved to history!"
+    [copied_clipboard]="Chapter copied to clipboard!"
+    [app_name]="Bible"
+    [select_verses]="Select Verses"
+    [enter_verses]="Enter desired verses (e.g.: 1 3 5-7 10):"
+    [nav_controls]="[↑↓/jk Nav] [←→/hl Chap] [/ Search] [N Next] [G Goto] [V Favs] [R Regex] [C Continuous] [S Save] [Z Copy] [Q Quit]"
+    [nav_controls_termux]="[↑↓/jk Nav] [/ Search] [N Next]\n[G Goto] [V Favs] [R Regex] [C Continuous]\n[S Save] [Z Copy] [Q Quit]"
+    [pattern_label]="Pattern:"
+    [matches_label]="matches"
+    [line_label]="Line"
+    [match_label]="Match"
+    [script_interrupted]="Script interrupted by user."
+    [no_clipboard_termux]="termux-clipboard-set is not available."
+    [no_clipboard_wayland]="wl-copy is not installed. Cannot copy on Wayland."
+    [no_clipboard_x11]="xclip is not installed. Cannot copy on X11."
+    [no_clipboard_generic]="No clipboard copy method available for this environment."
+    [select_bible_default]="Current default Bible:"
+    [set_as_default]="Set as default"
+    [current_default]="(current default)"
+    # New messages
+    [goto_verse]="Go to verse"
+    [goto_prompt]="Enter reference (e.g.: John 3:16 or Gen 1:1):"
+    [goto_not_found]="Reference not found. Try: BookName Chapter:Verse"
+    [favorites]="Favorites"
+    [manage_favorites]="Manage Favorite Verses"
+    [no_favorites]="No favorite verses yet. Press V on a verse to favorite it."
+    [verse_favorited]="Verse added to favorites!"
+    [verse_already_fav]="Verse is already in favorites!"
+    [select_verse_fav]="Select a verse to favorite:"
+    [verse_removed_fav]="Verse removed from favorites."
+    [export_comparison]="Export Comparison"
+    [export_as_txt]="Export as TXT"
+    [export_as_pdf]="Export as PDF"
+    [export_done]="Export saved to:"
+    [export_failed]="Export failed."
+    [filter_translations]="Filter Translations"
+    [select_translations]="Select translations to compare:"
+    [continuous_mode]="Continuous Reading Mode"
+    [continuous_on]="Continuous Reading: ON (next chap in 30s)"
+    [continuous_off]="Continuous Reading: OFF"
+    [regex_mode]="Regex Search"
+    [regex_prompt]="Enter regular expression:"
+    [regex_invalid]="Invalid regular expression."
+    [verse_num_color]="Verse number color:"
+    [translation_stats]="Translation Statistics"
+    [stats_books]="Books:"
+    [stats_chapters]="Chapters:"
+    [stats_verses]="Verses:"
+    [stats_words]="Words (approx.):"
+    [stats_longest_book]="Book with most verses:"
+    [stats_shortest_book]="Book with fewest verses:"
+    [view_favorites]="View favorites"
+    [goto_direct]="Go to verse directly"
+    [trans_stats]="Translation statistics"
+    [continuous_reading]="Continuous reading"
+    [export_entire_chapter]="Entire chapter"
+    [export_specific_verses]="Specific verses"
+    [pdf_tools_warn]="Warning: PDF tools missing"
+    [pdf_tools_warn_detail]="Please install iconv, enscript and ps2pdf to export PDF."
+    [pdf_tools_unavailable]="PDF tools unavailable. Saved as TXT:"
+
+)
+fi
+
+msg() { echo "${MESSAGES[$1]}"; }
+
+# ─── Constants & Paths ────────────────────────────────────────────────────────
+NC="\033[0m"
+RED="\033[1;31m"
+SCRIPT="${0##*/}"
+CACHEDIR="${HOME}/.cache"
+CACHE_BIBLES="${CACHEDIR}/${SCRIPT%.*}"
+BIBLES_DIR="${CACHE_BIBLES}/bibles/sql"
+HISTORY_FILE="${CACHE_BIBLES}/BIBLES_HISTORY_FILE.db"
+LAST_CHAPTER_FILE="${CACHE_BIBLES}/BIBLES_LAST_CHAPTER_FILE.db"
+RANDOM_CHAPTER_FILE="${CACHE_BIBLES}/BIBLES_RANDOM_CHAPTER_FILE.db"
+DEFAULT_BIBLE_FILE="${CACHE_BIBLES}/BIBLES_DEFAULT.conf"
+FAVORITES_FILE="${CACHE_BIBLES}/BIBLES_FAVORITES.db"
+
+[[ ! -d "${BIBLES_DIR}" ]] && mkdir -p "${BIBLES_DIR}"
+[[ ! -f "${FAVORITES_FILE}" ]] && touch "${FAVORITES_FILE}"
+
+# ─── Dependency Checks ────────────────────────────────────────────────────────
+if ! command -v dialog &>/dev/null; then
+    echo "${MESSAGES[dialog_not_installed]}"
+    exit 1
+fi
+
+if ! command -v sqlite3 &>/dev/null; then
+    echo "${MESSAGES[sqlite_not_installed]}"
+    exit 1
+fi
+
+if ! command -v git &>/dev/null; then
+    echo "${MESSAGES[git_not_installed]}"
+    exit 1
+fi
+
+# ── PDF export tools (optional, warn if absent) ───────────────────────
+_pdf_tools_missing=()
+for _cmd in iconv enscript ps2pdf; do
+    command -v "$_cmd" &>/dev/null || _pdf_tools_missing+=("$_cmd")
+done
+if [[ ${#_pdf_tools_missing[@]} -gt 0 ]]; then
+    echo "${MESSAGES[pdf_tools_warn]}: ${_pdf_tools_missing[*]}"
+    echo "${MESSAGES[pdf_tools_warn_detail]}"
+    sleep 2
+fi
+unset _cmd _pdf_tools_missing
+
+# ─── Bible name helper ────────────────────────────────────────────────────────
+bible_display_name() {
+    local filepath="$1"
+    local base
+    base=$(basename "$filepath")
+    base="${base%.*}"
+    echo "${base^^}"
+}
+
+# ─── Bible Download ───────────────────────────────────────────────────────────
+download_bibles() {
+    local tmp_dir
+    tmp_dir=$(mktemp -d "${CACHEDIR}/bibles_clone_XXXXXX")
+    clear
+    echo "${MESSAGES[downloading_bibles]}"
+    if git clone --depth=1 "https://github.com/felipefacundes/biblias" "$tmp_dir" 2>/dev/null; then
+        find "$tmp_dir" -iname "*.sqlite" | while read -r f; do
+            cp "$f" "${BIBLES_DIR}/"
+        done
+        rm -rf "$tmp_dir"
+        return 0
+    else
+        rm -rf "$tmp_dir"
+        echo "${MESSAGES[download_failed]}"
+        return 1
+    fi
+}
+
+# ─── Bible Selection ──────────────────────────────────────────────────────────
+select_bible() {
+    local -a sqlite_files
+    local -a menu_opts
+    while IFS= read -r f; do
+        sqlite_files+=("$f")
+    done < <(find "${BIBLES_DIR}" -maxdepth 1 -iname "*.sqlite" 2>/dev/null | sort)
+
+    if [[ ${#sqlite_files[@]} -eq 0 ]]; then
+        download_bibles || {
+            dialog --title "${MESSAGES[error]}" \
+                   --msgbox "${MESSAGES[no_bible_found]}\n${MESSAGES[no_bible_found_detail]} ${BIBLES_DIR}" \
+                   10 60 >/dev/tty 2>&1
+            return 1
+        }
+        while IFS= read -r f; do
+            sqlite_files+=("$f")
+        done < <(find "${BIBLES_DIR}" -maxdepth 1 -iname "*.sqlite" 2>/dev/null | sort)
+    fi
+
+    if [[ ${#sqlite_files[@]} -eq 0 ]]; then
+        dialog --title "${MESSAGES[error]}" \
+               --msgbox "${MESSAGES[no_bible_found]}\n${MESSAGES[no_bible_found_detail]} ${BIBLES_DIR}" \
+               10 60 >/dev/tty 2>&1
+        return 1
+    fi
+
+    local current_default=""
+    [[ -f "$DEFAULT_BIBLE_FILE" ]] && current_default=$(cat "$DEFAULT_BIBLE_FILE")
+
+    if [[ -n "$current_default" && -f "$current_default" ]]; then
+        DB_FILE="$current_default"
+        BIBLE_NAME=$(bible_display_name "$DB_FILE")
+        return 0
+    fi
+
+    for f in "${sqlite_files[@]}"; do
+        local dname
+        dname=$(bible_display_name "$f")
+        local marker=""
+        [[ "$f" == "$current_default" ]] && marker=" ${MESSAGES[current_default]}"
+        menu_opts+=("$f" "${dname}${marker}")
+    done
+    menu_opts+=("__download__" "↓ Download / Refresh Bibles (git)")
+
+    local hint
+    hint="${MESSAGES[add_bibles_hint]} ${BIBLES_DIR}"
+
+    local choice
+    choice=$(dialog --title "${MESSAGES[app_name]}" \
+                    --menu "${MESSAGES[select_bible]}\n\n${hint}" \
+                    25 70 18 "${menu_opts[@]}" \
+                    2>&1 >/dev/tty)
+
+    [[ $? -ne 0 ]] && return 1
+
+    if [[ "$choice" == "__download__" ]]; then
+        download_bibles
+        select_bible
+        return $?
+    fi
+
+    DB_FILE="$choice"
+    BIBLE_NAME=$(bible_display_name "$DB_FILE")
+
+    dialog --title "${MESSAGES[app_name]}" \
+           --yesno "${MESSAGES[set_as_default]}: ${BIBLE_NAME}?" \
+           7 50 >/dev/tty 2>&1
+    [[ $? -eq 0 ]] && echo "$DB_FILE" > "$DEFAULT_BIBLE_FILE"
+
+    return 0
+}
+
+# ─── Cleanup / Trap ───────────────────────────────────────────────────────────
+cleanup() {
+    clear
+    stty icanon echo icrnl 2>/dev/null
+    stty sane 2>/dev/null
+    stty "$original_stty" 2>/dev/null
+    printf "\033[?25h"
+    printf "\033[2K\033[G"
+    printf "\n${MESSAGES[script_interrupted]}\n"
+    exit 1
+}
+trap cleanup INT
+
+# ─── Books ────────────────────────────────────────────────────────────────────
+declare -a LIVROS=(
+    "1" "Genesis" "2" "Exodus" "3" "Leviticus" "4" "Numbers" "5" "Deuteronomy"
+    "6" "Joshua" "7" "Judges" "8" "Ruth" "9" "1 Samuel" "10" "2 Samuel"
+    "11" "1 Kings" "12" "2 Kings" "13" "1 Chronicles" "14" "2 Chronicles" "15" "Ezra"
+    "16" "Nehemiah" "17" "Esther" "18" "Job" "19" "Psalms" "20" "Proverbs"
+    "21" "Ecclesiastes" "22" "Song of Songs" "23" "Isaiah" "24" "Jeremiah" "25" "Lamentations"
+    "26" "Ezekiel" "27" "Daniel" "28" "Hosea" "29" "Joel" "30" "Amos"
+    "31" "Obadiah" "32" "Jonah" "33" "Micah" "34" "Nahum" "35" "Habakkuk"
+    "36" "Zephaniah" "37" "Haggai" "38" "Zechariah" "39" "Malachi"
+    "40" "Matthew" "41" "Mark" "42" "Luke" "43" "John" "44" "Acts"
+    "45" "Romans" "46" "1 Corinthians" "47" "2 Corinthians" "48" "Galatians" "49" "Ephesians"
+    "50" "Philippians" "51" "Colossians" "52" "1 Thessalonians" "53" "2 Thessalonians"
+    "54" "1 Timothy" "55" "2 Timothy" "56" "Titus" "57" "Philemon" "58" "Hebrews"
+    "59" "James" "60" "1 Peter" "61" "2 Peter" "62" "1 John" "63" "2 John"
+    "64" "3 John" "65" "Jude" "66" "Revelation"
+    "q" "Quit"
+)
+
+# Portuguese abbreviation aliases for goto navigation
+declare -A BOOK_ALIASES=(
+    ["gn"]="1" ["genesis"]="1" ["gênesis"]="1"
+    ["ex"]="2" ["exodus"]="2" ["exodo"]="2" ["êxodo"]="2"
+    ["lv"]="3" ["leviticus"]="3" ["levítico"]="3"
+    ["nm"]="4" ["numbers"]="4" ["numeros"]="4" ["números"]="4"
+    ["dt"]="5" ["deuteronomy"]="5" ["deuteronomio"]="5" ["deuteronômio"]="5"
+    ["js"]="6" ["joshua"]="6" ["josue"]="6" ["josué"]="6"
+    ["jz"]="7" ["judges"]="7" ["juizes"]="7" ["juízes"]="7"
+    ["rt"]="8" ["ruth"]="8" ["rute"]="8"
+    ["1sm"]="9" ["1samuel"]="9" ["1 samuel"]="9"
+    ["2sm"]="10" ["2samuel"]="10" ["2 samuel"]="10"
+    ["1rs"]="11" ["1kings"]="11" ["1reis"]="11" ["1 kings"]="11" ["1 reis"]="11"
+    ["2rs"]="12" ["2kings"]="12" ["2reis"]="12" ["2 kings"]="12" ["2 reis"]="12"
+    ["1cr"]="13" ["1chronicles"]="13" ["1cronicas"]="13" ["1 chronicles"]="13"
+    ["2cr"]="14" ["2chronicles"]="14" ["2cronicas"]="14" ["2 chronicles"]="14"
+    ["ed"]="15" ["ezra"]="15" ["esdras"]="15"
+    ["ne"]="16" ["nehemiah"]="16" ["neemias"]="16"
+    ["et"]="17" ["esther"]="17" ["ester"]="17"
+    ["jo"]="18" ["job"]="18" ["jó"]="18"
+    ["sl"]="19" ["psalms"]="19" ["salmos"]="19" ["ps"]="19"
+    ["pv"]="20" ["proverbs"]="20" ["proverbios"]="20" ["provérbios"]="20"
+    ["ec"]="21" ["ecclesiastes"]="21" ["eclesiastes"]="21"
+    ["ct"]="22" ["song"]="22" ["songs"]="22" ["canticos"]="22" ["cânticos"]="22"
+    ["is"]="23" ["isaiah"]="23" ["isaias"]="23" ["isaías"]="23"
+    ["jr"]="24" ["jeremiah"]="24" ["jeremias"]="24"
+    ["lm"]="25" ["lamentations"]="25" ["lamentacoes"]="25"
+    ["ez"]="26" ["ezekiel"]="26" ["ezequiel"]="26"
+    ["dn"]="27" ["daniel"]="27"
+    ["os"]="28" ["hosea"]="28" ["oseias"]="28"
+    ["jl"]="29" ["joel"]="29"
+    ["am"]="30" ["amos"]="30"
+    ["ob"]="31" ["obadiah"]="31" ["abdias"]="31"
+    ["jn"]="32" ["jonah"]="32" ["jonas"]="32"
+    ["mq"]="33" ["micah"]="33" ["miqueias"]="33"
+    ["na"]="34" ["nahum"]="34" ["naum"]="34"
+    ["hc"]="35" ["habakkuk"]="35" ["habacuque"]="35"
+    ["sf"]="36" ["zephaniah"]="36" ["sofonias"]="36"
+    ["ag"]="37" ["haggai"]="37" ["ageu"]="37"
+    ["zc"]="38" ["zechariah"]="38" ["zacarias"]="38"
+    ["ml"]="39" ["malachi"]="39" ["malaquias"]="39"
+    ["mt"]="40" ["matthew"]="40" ["mateus"]="40"
+    ["mc"]="41" ["mark"]="41" ["marcos"]="41"
+    ["lc"]="42" ["luke"]="42" ["lucas"]="42"
+    ["jo"]="43" ["john"]="43" ["joao"]="43" ["joão"]="43"
+    ["at"]="44" ["acts"]="44" ["atos"]="44"
+    ["rm"]="45" ["romans"]="45" ["romanos"]="45"
+    ["1co"]="46" ["1corinthians"]="46" ["1corintios"]="46" ["1 corinthians"]="46"
+    ["2co"]="47" ["2corinthians"]="47" ["2corintios"]="47" ["2 corinthians"]="47"
+    ["gl"]="48" ["galatians"]="48" ["galatas"]="48" ["gálatas"]="48"
+    ["ef"]="49" ["ephesians"]="49" ["efesios"]="49" ["efésios"]="49"
+    ["fp"]="50" ["philippians"]="50" ["filipenses"]="50"
+    ["cl"]="51" ["colossians"]="51" ["colossenses"]="51"
+    ["1ts"]="52" ["1thessalonians"]="52" ["1tessalonicenses"]="52"
+    ["2ts"]="53" ["2thessalonians"]="53" ["2tessalonicenses"]="53"
+    ["1tm"]="54" ["1timothy"]="54" ["1timoteo"]="54" ["1timóteo"]="54"
+    ["2tm"]="55" ["2timothy"]="55" ["2timoteo"]="55" ["2timóteo"]="55"
+    ["tt"]="56" ["titus"]="56" ["tito"]="56"
+    ["fm"]="57" ["philemon"]="57" ["filemom"]="57"
+    ["hb"]="58" ["hebrews"]="58" ["hebreus"]="58"
+    ["tg"]="59" ["james"]="59" ["tiago"]="59"
+    ["1pe"]="60" ["1peter"]="60" ["1pedro"]="60"
+    ["2pe"]="61" ["2peter"]="61" ["2pedro"]="61"
+    ["1jo"]="62" ["1john"]="62" ["1joao"]="62"
+    ["2jo"]="63" ["2john"]="63" ["2joao"]="63"
+    ["3jo"]="64" ["3john"]="64" ["3joao"]="64"
+    ["jd"]="65" ["jude"]="65" ["judas"]="65"
+    ["ap"]="66" ["revelation"]="66" ["apocalipse"]="66"
+)
+
+get_book_name_from_db() {
+    local livro_id=$1
+    local name
+    name=$(sqlite3 "$DB_FILE" "SELECT name FROM book WHERE id = ${livro_id} LIMIT 1;" 2>/dev/null)
+    if [[ -n "$name" ]]; then
+        echo "$name"
+    else
+        for ((i=0; i<${#LIVROS[@]}; i+=2)); do
+            if [[ "${LIVROS[$i]}" == "$livro_id" ]]; then
+                echo "${LIVROS[$i+1]}"
+                return
+            fi
+        done
+    fi
+}
+
+# ─── NEW: Direct Verse Navigation ─────────────────────────────────────────────
+# Parses "Book Chapter:Verse" and jumps directly. Returns 0 on success.
+goto_verse() {
+    local ref="$1"
+    local prompted=0
+
+    if [[ -z "$ref" ]]; then
+        ref=$(dialog --title "${MESSAGES[goto_verse]}" \
+                     --inputbox "${MESSAGES[goto_prompt]}" 8 60 2>&1 >/dev/tty)
+        [[ -z "$ref" ]] && return 1
+        prompted=1
+    fi
+
+    # Normalize: trim, collapse spaces
+    ref=$(echo "$ref" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    # Extract chapter:verse suffix
+    local cv_part book_part chapter_num verse_num
+    if [[ "$ref" =~ ([0-9]+):([0-9]+)$ ]]; then
+        chapter_num="${BASH_REMATCH[1]}"
+        verse_num="${BASH_REMATCH[2]}"
+        book_part="${ref%${chapter_num}:${verse_num}}"
+        book_part=$(echo "$book_part" | sed 's/[[:space:]]*$//')
+    else
+        [[ $prompted -eq 1 ]] && \
+            dialog --title "${MESSAGES[error]}" --msgbox "${MESSAGES[goto_not_found]}" 7 50 >/dev/tty 2>&1
+        return 1
+    fi
+
+    # Try alias lookup (case-insensitive)
+    local book_key
+    book_key=$(echo "$book_part" | tr '[:upper:]' '[:lower:]')
+    local livro_id=""
+
+    # Direct alias match
+    if [[ -n "${BOOK_ALIASES[$book_key]+x}" ]]; then
+        livro_id="${BOOK_ALIASES[$book_key]}"
+    fi
+
+    # Try DB fuzzy match if alias not found
+    if [[ -z "$livro_id" ]]; then
+        livro_id=$(sqlite3 "$DB_FILE" \
+            "SELECT id FROM book WHERE LOWER(name) LIKE LOWER('${book_part}%') LIMIT 1;" 2>/dev/null)
+    fi
+
+    if [[ -z "$livro_id" ]]; then
+        [[ $prompted -eq 1 ]] && \
+            dialog --title "${MESSAGES[error]}" --msgbox "${MESSAGES[goto_not_found]}" 7 50 >/dev/tty 2>&1
+        return 1
+    fi
+
+    local nome_livro
+    nome_livro=$(get_book_name_from_db "$livro_id")
+
+    # Validate chapter/verse existence
+    local max_cap
+    max_cap=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;" 2>/dev/null)
+    if [[ -z "$max_cap" || "$chapter_num" -gt "$max_cap" || "$chapter_num" -lt 1 ]]; then
+        [[ $prompted -eq 1 ]] && \
+            dialog --title "${MESSAGES[error]}" --msgbox "${MESSAGES[goto_not_found]}" 7 50 >/dev/tty 2>&1
+        return 1
+    fi
+
+    # Store target verse for highlight on open
+    GOTO_TARGET_VERSE="$verse_num"
+    mostrar_versiculos "$livro_id" "$nome_livro" "$chapter_num"
+    GOTO_TARGET_VERSE=""
+    return 0
+}
+
+# ─── NEW: Favorites Manager ───────────────────────────────────────────────────
+add_to_favorites() {
+    local livro_id=$1 nome_livro=$2 capitulo=$3
+
+    # Show verse selection dialog
+    local max_verse
+    max_verse=$(sqlite3 "$DB_FILE" "SELECT MAX(verse) FROM verse WHERE book_id=$livro_id AND chapter=$capitulo;" 2>/dev/null)
+    declare -a verse_opts
+    for ((v=1; v<=max_verse; v++)); do
+        local vtext
+        vtext=$(sqlite3 "$DB_FILE" \
+            "SELECT text FROM verse WHERE book_id=$livro_id AND chapter=$capitulo AND verse=$v LIMIT 1;" 2>/dev/null | \
+            sed 's/<[^>]*>//g' | cut -c1-60)
+        verse_opts+=("$v" "${v}. ${vtext}...")
+    done
+
+    local chosen_verse
+    chosen_verse=$(dialog --title "${MESSAGES[favorites]}" \
+                          --menu "${MESSAGES[select_verse_fav]}" \
+                          40 100 40 "${verse_opts[@]}" 2>&1 >/dev/tty)
+    [[ -z "$chosen_verse" ]] && return
+
+    local fav_key="${DB_FILE}|${livro_id}|${nome_livro}|${capitulo}|${chosen_verse}"
+    if grep -qF "$fav_key" "$FAVORITES_FILE" 2>/dev/null; then
+        notify_send "${MESSAGES[favorites]}" "${MESSAGES[verse_already_fav]}"
+    else
+        echo "$fav_key" >> "$FAVORITES_FILE"
+        notify_send "${MESSAGES[favorites]}" "${MESSAGES[verse_favorited]}"
+    fi
+}
+
+manage_favorites() {
+    if [[ ! -f "$FAVORITES_FILE" ]] || [[ ! -s "$FAVORITES_FILE" ]]; then
+        dialog --title "${MESSAGES[favorites]}" --msgbox "${MESSAGES[no_favorites]}" 9 60 >/dev/tty 2>&1
+        return
+    fi
+
+    declare -a fav_items
+    while IFS="|" read -r db_path livro_id nome_livro capitulo versiculo; do
+        local bname
+        bname=$(bible_display_name "$db_path")
+        local vtext
+        vtext=$(sqlite3 "$db_path" \
+            "SELECT text FROM verse WHERE book_id=$livro_id AND chapter=$capitulo AND verse=$versiculo LIMIT 1;" 2>/dev/null | \
+            sed 's/<[^>]*>//g' | cut -c1-50)
+        fav_items+=("$db_path|$livro_id|$nome_livro|$capitulo|$versiculo" \
+                    "[${bname}] ${nome_livro} ${capitulo}:${versiculo} - ${vtext}...")
+    done < "$FAVORITES_FILE"
+
+    while true; do
+        local escolha
+        escolha=$(dialog --title "${MESSAGES[manage_favorites]}" \
+                         --menu "${MESSAGES[select_chapter_del]}" \
+                         40 120 40 "${fav_items[@]}" 2>&1 >/dev/tty)
+        [[ -z "$escolha" ]] && break
+
+        read -rsn1 -t 1 key </dev/tty >/dev/null 2>&1
+        if [[ "${key^^}" == "D" ]]; then
+            dialog --title "${MESSAGES[favorites]}" \
+                   --yesno "${MESSAGES[confirm_delete]}" 8 40 >/dev/tty 2>&1
+            if [[ $? -eq 0 ]]; then
+                grep -vF "$escolha" "$FAVORITES_FILE" > "${FAVORITES_FILE}.tmp"
+                mv "${FAVORITES_FILE}.tmp" "$FAVORITES_FILE"
+                notify_send "${MESSAGES[favorites]}" "${MESSAGES[verse_removed_fav]}"
+                # Rebuild list
+                fav_items=()
+                while IFS="|" read -r db_path livro_id nome_livro capitulo versiculo; do
+                    local bname
+                    bname=$(bible_display_name "$db_path")
+                    local vtext
+                    vtext=$(sqlite3 "$db_path" \
+                        "SELECT text FROM verse WHERE book_id=$livro_id AND chapter=$capitulo AND verse=$versiculo LIMIT 1;" 2>/dev/null | \
+                        sed 's/<[^>]*>//g' | cut -c1-50)
+                    fav_items+=("$db_path|$livro_id|$nome_livro|$capitulo|$versiculo" \
+                                "[${bname}] ${nome_livro} ${capitulo}:${versiculo} - ${vtext}...")
+                done < "$FAVORITES_FILE"
+                continue
+            fi
+        fi
+        IFS="|" read -r db_path livro_id nome_livro capitulo versiculo <<< "$escolha"
+        # Switch to correct bible if needed
+        if [[ "$db_path" != "$DB_FILE" ]]; then
+            DB_FILE="$db_path"
+            BIBLE_NAME=$(bible_display_name "$DB_FILE")
+        fi
+        GOTO_TARGET_VERSE="$versiculo"
+        mostrar_versiculos "$livro_id" "$nome_livro" "$capitulo"
+        GOTO_TARGET_VERSE=""
+        return
+    done
+}
+
+# ─── NEW: Translation Statistics ─────────────────────────────────────────────
+show_translation_stats() {
+    local -a all_bibles
+    while IFS= read -r f; do
+        all_bibles+=("$f")
+    done < <(find "${BIBLES_DIR}" -maxdepth 1 -iname "*.sqlite" 2>/dev/null | sort)
+
+    # Build bible selection menu
+    declare -a menu_opts
+    for f in "${all_bibles[@]}"; do
+        local dname
+        dname=$(bible_display_name "$f")
+        menu_opts+=("$f" "$dname")
+    done
+    menu_opts+=("$DB_FILE" "$(bible_display_name "$DB_FILE") (current)")
+
+    local chosen_bible
+    chosen_bible=$(dialog --title "${MESSAGES[translation_stats]}" \
+                          --menu "${MESSAGES[select_bible]}" \
+                          25 60 18 "${menu_opts[@]}" 2>&1 >/dev/tty)
+    [[ -z "$chosen_bible" ]] && return
+
+    local bname
+    bname=$(bible_display_name "$chosen_bible")
+
+    local total_books total_chapters total_verses approx_words
+    total_books=$(sqlite3 "$chosen_bible" "SELECT COUNT(DISTINCT id) FROM book;" 2>/dev/null || echo "N/A")
+    total_chapters=$(sqlite3 "$chosen_bible" "SELECT COUNT(DISTINCT book_id||'_'||chapter) FROM verse;" 2>/dev/null || echo "N/A")
+    total_verses=$(sqlite3 "$chosen_bible" "SELECT COUNT(*) FROM verse;" 2>/dev/null || echo "N/A")
+    approx_words=$(sqlite3 "$chosen_bible" \
+        "SELECT SUM(LENGTH(text) - LENGTH(REPLACE(text,' ','')) + 1) FROM verse;" 2>/dev/null || echo "N/A")
+
+    local longest_book longest_count
+    longest_book=$(sqlite3 "$chosen_bible" \
+        "SELECT b.name, COUNT(v.verse) as cnt FROM verse v JOIN book b ON v.book_id=b.id GROUP BY v.book_id ORDER BY cnt DESC LIMIT 1;" \
+        2>/dev/null | sed 's/|/ (/;s/$/)/')
+
+    local shortest_book
+    shortest_book=$(sqlite3 "$chosen_bible" \
+        "SELECT b.name, COUNT(v.verse) as cnt FROM verse v JOIN book b ON v.book_id=b.id GROUP BY v.book_id ORDER BY cnt ASC LIMIT 1;" \
+        2>/dev/null | sed 's/|/ (/;s/$/)/')
+
+    local report
+    report="=== ${bname} ===\n\n"
+    report+="${MESSAGES[stats_books]} ${total_books}\n"
+    report+="${MESSAGES[stats_chapters]} ${total_chapters}\n"
+    report+="${MESSAGES[stats_verses]} ${total_verses}\n"
+    report+="${MESSAGES[stats_words]} ${approx_words}\n"
+    report+="\n${MESSAGES[stats_longest_book]}\n  ${longest_book}\n"
+    report+="${MESSAGES[stats_shortest_book]}\n  ${shortest_book}\n"
+
+    dialog --title "${MESSAGES[translation_stats]}" \
+           --msgbox "$report" 20 60 >/dev/tty 2>&1
+}
+
+# ─── Help ─────────────────────────────────────────────────────────────────────
+help() {
+    cat <<-EOF | less -i
+    ${SCRIPT} - Multi-translation Bible reader for the terminal (Enhanced)
+
+    USAGE:
+        ${SCRIPT} [OPTIONS]
+
+    OPTIONS:
+        -h, --help          Show this help
+        -l, --book          Search a book by its initial letter
+        -m, --margin        Set extra margin for all text
+        -d, --dark          Dark theme (black background, white text)
+        -db,--dbrown        Dark brown theme (black background, orange text)
+        -w, --white         Light theme (white background, black text)
+        -b, --blue          Blue theme (dark blue background, cyan text)
+        -hi,--highlight     High contrast theme (grey background, green text)
+        -bb,--bbrown        Beige theme (beige background, brown text)
+        -g, --goto          Go directly to a verse (e.g., --goto "John 3:16")
+        --bible             Select a Bible translation directly (skip menu)
+        --download          Force download/refresh Bibles from git
+
+    INTERACTIVE CONTROLS (ENHANCED):
+        Navigation:
+        ↑/↓, w/s, j/k       Vertical scrolling
+        ←/→, h/l            Previous/next chapter
+        c                   Clear search terms and return to chapter top
+        q                   Quit to book selection
+
+        Search:
+        /                   Search terms in verses (LIKE mode)
+        R                   Regex search in current chapter
+        n/N                 Navigate between search results
+        F                   Toggle case-sensitive search
+
+        NEW - Direct Navigation:
+        G                   Go directly to a verse (e.g., John 3:16)
+
+        NEW - Favorites:
+        V                   Add a verse from current chapter to favorites
+
+        NEW - Continuous Reading:
+        C                   Toggle continuous reading mode (auto-advance chapters)
+
+        History & copy:
+        S                   Save chapter to history
+        Z                   Copy chapter to clipboard
+        D                   Delete item from history (in manager)
+
+    MAIN MENU (ENHANCED):
+        1.  Search book by number
+        2.  Search book by initial
+        3.  Search term in the Bible
+        4.  Search term in a specific book
+        5.  Last accessed chapter
+        6.  Manage chapter history
+        7.  Word of the day
+        8.  Word of the Day statistics
+        9.  Compare translations (with export & filter)
+        10. View favorites
+        11. Go to verse directly
+        12. Translation statistics
+        13. Continuous reading mode
+
+    EXAMPLES:
+        ${SCRIPT} --dark                      # Run with dark theme
+        ${SCRIPT} --goto "John 3:16"          # Jump directly to John 3:16
+        ${SCRIPT} --goto "Sl 23:1"            # Psalm 23:1 (Portuguese abbrev)
+        ${SCRIPT} --blue                      # Blue theme
+
+    DATA FILES:
+        Bibles directory            ${BIBLES_DIR}
+        Chapter history             ${HISTORY_FILE}
+        Favorite verses             ${FAVORITES_FILE}
+        Last chapter read           ${LAST_CHAPTER_FILE}
+        Default Bible config        ${DEFAULT_BIBLE_FILE}
+
+    DEPENDENCIES:
+        sqlite3, dialog, git        Required
+        xclip/wl-copy/termux-clipboard-set  For clipboard copy
+        enscript + ps2pdf OR pandoc  For PDF export of comparisons
+
+EOF
+    exit 0
+}
+
+# ─── Clipboard Setup ──────────────────────────────────────────────────────────
+setup_clipboard() {
+    if [[ -n "$TERMUX_VERSION" ]]; then
+        if command -v termux-clipboard-set &>/dev/null; then
+            clipboard_copy() { echo -ne "$1" | termux-clipboard-set; notify_send "${MESSAGES[app_name]}" "${MESSAGES[copied_clipboard]}"; }
+        else
+            clipboard_copy() { dialog --title "${MESSAGES[notice]}" --msgbox "${MESSAGES[no_clipboard_termux]}" 8 50 >/dev/tty 2>&1; }
+        fi
+    elif [[ ${XDG_SESSION_TYPE,,} == "wayland" ]]; then
+        if command -v wl-copy &>/dev/null; then
+            clipboard_copy() { echo -ne "$1" | wl-copy; notify_send "${MESSAGES[app_name]}" "${MESSAGES[copied_clipboard]}"; }
+        else
+            clipboard_copy() { dialog --title "${MESSAGES[notice]}" --msgbox "${MESSAGES[no_clipboard_wayland]}" 8 50 >/dev/tty 2>&1; }
+        fi
+    elif [[ ${XDG_SESSION_TYPE,,} == "x11" ]] || [[ -n "$DISPLAY" ]]; then
+        if command -v xclip &>/dev/null; then
+            clipboard_copy() { echo -ne "$1" | xclip -selection clipboard; notify_send "${MESSAGES[app_name]}" "${MESSAGES[copied_clipboard]}"; }
+        else
+            clipboard_copy() { dialog --title "${MESSAGES[notice]}" --msgbox "${MESSAGES[no_clipboard_x11]}" 8 50 >/dev/tty 2>&1; }
+        fi
+    else
+        if command -v pbcopy &>/dev/null; then
+            clipboard_copy() { echo -ne "$1" | pbcopy; notify_send "${MESSAGES[app_name]}" "${MESSAGES[copied_clipboard]}"; }
+        else
+            clipboard_copy() { dialog --title "${MESSAGES[notice]}" --msgbox "${MESSAGES[no_clipboard_generic]}" 8 50 >/dev/tty 2>&1; }
+        fi
+    fi
+}
+setup_clipboard
+
+# ─── Terminal Helpers ─────────────────────────────────────────────────────────
+hide_cursor()    { printf "\e[?25l"; }
+show_cursor()    { printf "\e[?25h"; }
+hide_echo()      { stty -echo -icanon </dev/tty >/dev/null 2>/dev/null; }
+show_echo()      { stty echo </dev/tty >/dev/null 2>/dev/null; }
+prepare_terminal() { hide_cursor; hide_echo; }
+reset_terminal() {
+    echo -ne "\033[?1000l\033[?1006l"
+    show_cursor
+    show_echo
+}
+
+notify_send() {
+    dialog --title "$1" --msgbox "$2" 8 40 >/dev/tty 2>&1
+    [[ ${XDG_SESSION_TYPE,,} != tty ]] && [[ -z "$TERMUX_VERSION" ]] &&
+        command -v notify-send >/dev/null && notify-send "$1" "$2"
+}
+
+# ─── History Manager ──────────────────────────────────────────────────────────
+gerenciar_historico() {
+    if [[ ! -f "$HISTORY_FILE" ]] || [[ ! -s "$HISTORY_FILE" ]]; then
+        dialog --title "${MESSAGES[history_title]}" --msgbox "${MESSAGES[no_history]}" 8 40 >/dev/tty 2>&1
+        return
+    fi
+
+    declare -a historico_itens
+    while IFS="|" read -r id nome cap; do
+        historico_itens+=("$id|$nome|$cap" "$nome ${MESSAGES[chapter_word]} $cap")
+    done < "$HISTORY_FILE"
+
+    while true; do
+        escolha=$(dialog --title "${MESSAGES[manage_history_title]}" \
+                         --menu "${MESSAGES[select_chapter_del]}" \
+                         40 80 40 "${historico_itens[@]}" \
+                         2>&1 >/dev/tty)
+        [[ -z "$escolha" ]] && break
+
+        read -rsn1 -t 1 key </dev/tty >/dev/null 2>&1
+        if [[ "${key^^}" == "D" ]]; then
+            dialog --title "${MESSAGES[history_title]}" \
+                   --yesno "${MESSAGES[confirm_delete]}" 8 40 >/dev/tty 2>&1
+            if [[ $? -eq 0 ]]; then
+                grep -vF "$escolha" "$HISTORY_FILE" > "${HISTORY_FILE}.tmp"
+                mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
+                historico_itens=()
+                while IFS="|" read -r id nome cap; do
+                    historico_itens+=("$id|$nome|$cap" "$nome ${MESSAGES[chapter_word]} $cap")
+                done < "$HISTORY_FILE"
+                dialog --title "${MESSAGES[history_title]}" --msgbox "${MESSAGES[item_removed]}" 8 40
+                continue
+            fi
+        fi
+        IFS="|" read -r livro_id nome_livro cap <<< "$escolha"
+        mostrar_versiculos "$livro_id" "$nome_livro" "$cap"
+        return
+    done
+}
+
+# ─── Random Chapter ────────────────────────────────────────────────────────────
+random_chapter() {
+    TOTAL_CHAPTERS=1189
+    [[ ! -f "$RANDOM_CHAPTER_FILE" ]] && touch "$RANDOM_CHAPTER_FILE"
+    if [[ $(wc -l < "$RANDOM_CHAPTER_FILE") -ge $TOTAL_CHAPTERS ]]; then
+        rm "$RANDOM_CHAPTER_FILE"; touch "$RANDOM_CHAPTER_FILE"
+    fi
+
+    while true; do
+        livro_id=$((RANDOM % 66 + 1))
+        nome_livro=$(get_book_name_from_db "$livro_id")
+        max_capitulos=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;")
+        capitulo=$((RANDOM % max_capitulos + 1))
+        if ! grep -q "^${livro_id}|${nome_livro}|${capitulo}$" "$RANDOM_CHAPTER_FILE"; then
+            echo "${livro_id}|${nome_livro}|${capitulo}" >> "$RANDOM_CHAPTER_FILE"
+            mostrar_versiculos "$livro_id" "$nome_livro" "$capitulo"
+            return
+        fi
+    done
+}
+
+show_random_stats() {
+    [[ ! -f "$RANDOM_CHAPTER_FILE" ]] && {
+        dialog --title "${MESSAGES[stats_title]}" --msgbox "${MESSAGES[stats_none]}" 7 40
+        return
+    }
+    local total_shown remaining stats_report
+    total_shown=$(wc -l < "$RANDOM_CHAPTER_FILE")
+    remaining=$((1189 - total_shown))
+    declare -A book_counts
+    while IFS="|" read -r id _ _; do ((book_counts[$id]++)); done < "$RANDOM_CHAPTER_FILE"
+    stats_report="${MESSAGES[stats_shown]} $total_shown\n${MESSAGES[stats_remaining]} $remaining\n\n${MESSAGES[stats_by_book]}\n"
+    for id in "${!book_counts[@]}"; do
+        local bname
+        bname=$(get_book_name_from_db "$id")
+        stats_report+="${bname}: ${book_counts[$id]}\n"
+    done
+    dialog --title "${MESSAGES[stats_title]}" --msgbox "$stats_report" 20 60
+}
+
+# ─── Core PDF writer (used by both export functions) ──────────────────────────
+# Usage: _write_pdf "plain text content" "/path/to/output" "Dialog title"
+# Tries enscript→ps2pdf first (fast, no LaTeX), then pandoc with multiple
+# engines, and falls back to TXT if nothing works.
+_write_pdf() {
+    local plain_text="$1"
+    local outfile="$2"   # WITHOUT extension
+    local dialog_title="$3"
+ 
+    local txt_tmp
+    txt_tmp=$(mktemp /tmp/bible_export_XXXXXX.txt)
+    printf '%s\n' "$plain_text" > "$txt_tmp"
+ 
+    local pdf_ok=0
+ 
+    # ── enscript + ps2pdf com conversão UTF-8 → ISO-8859-1 ───────────────────
+    if command -v enscript &>/dev/null && command -v ps2pdf &>/dev/null && command -v iconv &>/dev/null; then
+        local iso_tmp
+        iso_tmp=$(mktemp /tmp/bible_export_iso_XXXXXX.txt)
+ 
+        if ! iconv -f UTF-8 -t ISO-8859-1 "$txt_tmp" > "$iso_tmp" 2>/dev/null; then
+            iconv -f UTF-8 -t ISO-8859-1//TRANSLIT "$txt_tmp" > "$iso_tmp" 2>/dev/null
+        fi
+ 
+        local ps_tmp
+        ps_tmp=$(mktemp /tmp/bible_export_XXXXXX.ps)
+ 
+        enscript \
+            --no-header \
+            --word-wrap \
+            --margins=36:36:54:54 \
+            --encoding=latin1 \
+            -f Helvetica12 \
+            -o "$ps_tmp" \
+            "$iso_tmp" 2>/dev/null
+ 
+        if [[ -s "$ps_tmp" ]]; then
+            ps2pdf "$ps_tmp" "${outfile}.pdf" 2>/dev/null
+            [[ -f "${outfile}.pdf" ]] && pdf_ok=1
+        fi
+ 
+        rm -f "$iso_tmp" "$ps_tmp"
+    fi
+ 
+    # ── pandoc (fallback — vários engines em ordem de disponibilidade) ────────
+    if [[ $pdf_ok -eq 0 ]] && command -v pandoc &>/dev/null; then
+        local engines=(pdflatex xelatex lualatex wkhtmltopdf weasyprint)
+        for engine in "${engines[@]}"; do
+            if command -v "$engine" &>/dev/null 2>&1; then
+                pandoc "$txt_tmp" -o "${outfile}.pdf" \
+                       --pdf-engine="$engine" 2>/dev/null && pdf_ok=1 && break
+            fi
+        done
+        if [[ $pdf_ok -eq 0 ]]; then
+            pandoc "$txt_tmp" -o "${outfile}.pdf" 2>/dev/null && pdf_ok=1
+        fi
+    fi
+ 
+    rm -f "$txt_tmp"
+ 
+    if [[ $pdf_ok -eq 1 && -f "${outfile}.pdf" ]]; then
+        dialog --title "$dialog_title" \
+               --msgbox "${MESSAGES[export_done]}\n${outfile}.pdf" 8 72 >/dev/tty 2>&1
+    else
+        # Fallback absoluto: salva como TXT e avisa com mensagem i18n
+        printf '%s\n' "$plain_text" > "${outfile}.txt"
+        dialog --title "${MESSAGES[notice]}" \
+               --msgbox "${MESSAGES[pdf_tools_unavailable]}\n${outfile}.txt" 8 72 >/dev/tty 2>&1
+    fi
+}
+
+# ─── Export Comparison ────────────────────────────────────────────────────────
+export_comparison_to_file() {
+    local content="$1"
+    local title="$2"
+ 
+    local export_choice
+    export_choice=$(dialog --title "${MESSAGES[export_comparison]}" \
+                           --menu "${MESSAGES[export_comparison]}" 10 50 3 \
+                           "txt" "${MESSAGES[export_as_txt]}" \
+                           "pdf" "${MESSAGES[export_as_pdf]}" \
+                           2>&1 >/dev/tty)
+    [[ -z "$export_choice" ]] && return
+ 
+    # ── Pasta de destino organizada ───────────────────────────────────────────
+    local outdir="${HOME}/Documents/Bible"
+    mkdir -p "$outdir"
+ 
+    local safe_title
+    safe_title=$(echo "$title" | tr ' :/' '___')
+    local outfile="${outdir}/Bible_Comparison_${safe_title}_$(date +%Y%m%d_%H%M%S)"
+ 
+    # Strip ANSI escape codes
+    local plain
+    plain=$(echo -e "$content" | sed 's/\x1b\[[0-9;]*[mK]//g')
+ 
+    if [[ "$export_choice" == "txt" ]]; then
+        printf '%s\n' "$plain" > "${outfile}.txt"
+        dialog --title "${MESSAGES[export_comparison]}" \
+               --msgbox "${MESSAGES[export_done]}\n${outfile}.txt" 8 72 >/dev/tty 2>&1
+    else
+        _write_pdf "$plain" "$outfile" "${MESSAGES[export_comparison]}"
+    fi
+}
+
+# ─── Export Chapter/Verses from Reader ────────────────────────────────────────
+# Called with: export_chapter $livro_id $nome_livro $capitulo
+export_chapter() {
+    local livro_id=$1
+    local nome_livro=$2
+    local capitulo=$3
+ 
+    # Step 1: escopo — capítulo completo ou versículos específicos
+    local scope_choice
+    scope_choice=$(dialog --title "${MESSAGES[export_comparison]}" \
+                          --menu "${nome_livro} ${capitulo}" 12 60 4 \
+                          "all"    "${MESSAGES[export_entire_chapter]}" \
+                          "verses" "${MESSAGES[export_specific_verses]}" \
+                          2>&1 >/dev/tty)
+    [[ -z "$scope_choice" ]] && return
+ 
+    # Step 2: coleta o texto
+    local plain_text=""
+    plain_text+="${nome_livro} ${capitulo}"$'\n'$'\n'
+ 
+    if [[ "$scope_choice" == "all" ]]; then
+        while IFS= read -r linha; do
+            linha=$(echo "$linha" | sed 's/<[^>]*>//g')
+            plain_text+="$linha"$'\n'
+        done < <(sqlite3 -separator ". " "$DB_FILE" \
+            "SELECT verse, text FROM verse WHERE book_id=$livro_id AND chapter=$capitulo ORDER BY verse;")
+        plain_text+=$'\n'"(${nome_livro} ${capitulo} — ${BIBLE_NAME})"
+    else
+        local verse_input
+        verse_input=$(dialog --title "${MESSAGES[select_verses]}" \
+                             --inputbox "${MESSAGES[enter_verses]}" 8 52 2>&1 >/dev/tty)
+        [[ -z "$verse_input" ]] && return
+ 
+        declare -a varray
+        for item in $verse_input; do
+            if [[ "$item" == *-* ]]; then
+                local a b
+                a=${item%-*}; b=${item#*-}
+                for ((v=a; v<=b; v++)); do varray+=("$v"); done
+            else
+                varray+=("$item")
+            fi
+        done
+ 
+        for v in "${varray[@]}"; do
+            local row
+            row=$(sqlite3 -separator ". " "$DB_FILE" \
+                "SELECT verse, text FROM verse \
+                 WHERE book_id=$livro_id AND chapter=$capitulo AND verse=$v;")
+            [[ -n "$row" ]] && plain_text+="$(echo "$row" | sed 's/<[^>]*>//g')"$'\n'
+        done
+        plain_text+=$'\n'"(${nome_livro} ${capitulo} — ${BIBLE_NAME})"
+    fi
+ 
+    # Step 3: formato de saída
+    local fmt_choice
+    fmt_choice=$(dialog --title "${MESSAGES[export_comparison]}" \
+                        --menu "${MESSAGES[export_comparison]}" 10 50 3 \
+                        "txt" "${MESSAGES[export_as_txt]}" \
+                        "pdf" "${MESSAGES[export_as_pdf]}" \
+                        2>&1 >/dev/tty)
+    [[ -z "$fmt_choice" ]] && return
+ 
+    # ── Pasta de destino organizada ───────────────────────────────────────────
+    local outdir="${HOME}/Documents/Bible"
+    mkdir -p "$outdir"
+ 
+    local safe_ref
+    safe_ref=$(echo "${nome_livro}_${capitulo}" | tr ' ' '_')
+    local outfile="${outdir}/Bible_${safe_ref}_$(date +%Y%m%d_%H%M%S)"
+ 
+    if [[ "$fmt_choice" == "txt" ]]; then
+        printf '%s\n' "$plain_text" > "${outfile}.txt"
+        dialog --title "${MESSAGES[export_comparison]}" \
+               --msgbox "${MESSAGES[export_done]}\n${outfile}.txt" 8 72 >/dev/tty 2>&1
+    else
+        _write_pdf "$plain_text" "$outfile" "${MESSAGES[export_comparison]}"
+    fi
+}
+
+# ─── NEW: Filter Translations ──────────────────────────────────────────────────
+filter_translations() {
+    local -a all_bibles
+    while IFS= read -r f; do
+        all_bibles+=("$f")
+    done < <(find "${BIBLES_DIR}" -maxdepth 1 -iname "*.sqlite" 2>/dev/null | sort)
+
+    if [[ ${#all_bibles[@]} -le 1 ]]; then
+        echo "${all_bibles[@]}"
+        return
+    fi
+
+    declare -a checklist_opts
+    for f in "${all_bibles[@]}"; do
+        local dname
+        dname=$(bible_display_name "$f")
+        checklist_opts+=("$f" "$dname" "on")
+    done
+
+    local selected
+    selected=$(dialog --title "${MESSAGES[filter_translations]}" \
+                      --checklist "${MESSAGES[select_translations]}" \
+                      25 70 18 "${checklist_opts[@]}" \
+                      2>&1 >/dev/tty)
+    [[ -z "$selected" ]] && { printf '%s\n' "${all_bibles[@]}"; return; }
+
+    # Output selected (dialog returns space-separated quoted paths)
+    echo "$selected" | tr ' ' '\n' | sed 's/^"//;s/"$//'
+}
+
+# ─── Translation Comparator (Enhanced) ────────────────────────────────────────
+compare_translations() {
+    local -a all_bibles
+    while IFS= read -r f; do
+        all_bibles+=("$f")
+    done < <(find "${BIBLES_DIR}" -maxdepth 1 -iname "*.sqlite" 2>/dev/null | sort)
+
+    if [[ ${#all_bibles[@]} -eq 0 ]]; then
+        dialog --title "${MESSAGES[error]}" --msgbox "${MESSAGES[no_bible_found]}" 8 40 >/dev/tty 2>&1
+        return
+    fi
+
+    # Ask to filter if multiple bibles
+    local -a selected_bibles
+    if [[ ${#all_bibles[@]} -gt 1 ]]; then
+        local filter_choice
+        filter_choice=$(dialog --title "${MESSAGES[comparison_title]}" \
+                               --yesno "${MESSAGES[filter_translations]}?" \
+                               7 50 2>&1 >/dev/tty; echo $?)
+        if [[ "$filter_choice" -eq 0 ]]; then
+            while IFS= read -r f; do
+                [[ -n "$f" ]] && selected_bibles+=("$f")
+            done < <(filter_translations)
+        fi
+    fi
+    [[ ${#selected_bibles[@]} -eq 0 ]] && selected_bibles=("${all_bibles[@]}")
+
+    # Choose book
+    declare -a OPCOES_LIVROS
+    for ((i=0; i<${#LIVROS[@]}-2; i+=2)); do
+        local bname
+        bname=$(sqlite3 "$DB_FILE" "SELECT name FROM book WHERE id = ${LIVROS[$i]} LIMIT 1;" 2>/dev/null)
+        [[ -z "$bname" ]] && bname="${LIVROS[$i+1]}"
+        OPCOES_LIVROS+=("${LIVROS[$i]}" "$bname")
+    done
+
+    local livro_id
+    livro_id=$(dialog --title "${MESSAGES[comparison_title]}" \
+                      --menu "${MESSAGES[choose_book_compare]}" \
+                      40 60 40 "${OPCOES_LIVROS[@]}" \
+                      2>&1 >/dev/tty)
+    [[ -z "$livro_id" ]] && return
+
+    local max_cap
+    max_cap=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;")
+    declare -a OPCOES_CAP
+    for ((i=1; i<=max_cap; i++)); do
+        OPCOES_CAP+=("$i" "${MESSAGES[chapter_word]} $i")
+    done
+
+    local capitulo
+    capitulo=$(dialog --title "${MESSAGES[comparison_title]}" \
+                      --menu "${MESSAGES[choose_chapter_compare]}" \
+                      40 60 40 "${OPCOES_CAP[@]}" \
+                      2>&1 >/dev/tty)
+    [[ -z "$capitulo" ]] && return
+
+    local max_verse
+    max_verse=$(sqlite3 "$DB_FILE" "SELECT MAX(verse) FROM verse WHERE book_id = $livro_id AND chapter = $capitulo;")
+    declare -a OPCOES_VERSE
+    for ((i=1; i<=max_verse; i++)); do
+        OPCOES_VERSE+=("$i" "v.$i")
+    done
+
+    local versiculo
+    versiculo=$(dialog --title "${MESSAGES[comparison_title]}" \
+                       --menu "${MESSAGES[choose_verse_compare]}" \
+                       40 60 40 "${OPCOES_VERSE[@]}" \
+                       2>&1 >/dev/tty)
+    [[ -z "$versiculo" ]] && return
+
+    local bold="\033[1m"
+    local reset="\033[0m"
+    STYLE="${STYLE:-\033[38;5;231;48;5;16m}"
+
+    local book_display
+    book_display=$(sqlite3 "$DB_FILE" "SELECT name FROM book WHERE id = $livro_id LIMIT 1;" 2>/dev/null)
+    [[ -z "$book_display" ]] && book_display=$(get_book_name_from_db "$livro_id")
+
+    local header="${book_display} ${capitulo}:${versiculo}"
+    local -a lines=()
+    local raw_content=""   # for export (no ANSI)
+
+    lines+=("${bold}${header}${reset}")
+    lines+=("")
+    raw_content+="=== ${header} ===\n\n"
+
+    for bible_file in "${selected_bibles[@]}"; do
+        local bname
+        bname=$(bible_display_name "$bible_file")
+        local verse_text
+        verse_text=$(sqlite3 "$bible_file" \
+            "SELECT text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo AND verse = $versiculo LIMIT 1;" 2>/dev/null)
+        verse_text=$(echo "$verse_text" | sed 's/<[^>]*>//g' | sed 's/^[[:space:]]*//')
+
+        lines+=("-----------")
+        lines+=("${bold}${bname}${reset}")
+        lines+=("")
+        raw_content+="--- ${bname} ---\n"
+        if [[ -n "$verse_text" ]]; then
+            lines+=("$verse_text")
+            raw_content+="${verse_text}\n"
+        else
+            lines+=("${MESSAGES[no_verse_this_translation]}")
+            raw_content+="${MESSAGES[no_verse_this_translation]}\n"
+        fi
+        lines+=("")
+        raw_content+="\n"
+    done
+
+    local total_lines=${#lines[@]}
+    local header_footer=6
+    local lines_per_page=$(($(tput lines) - header_footer))
+    local current_line=0
+    local quit=0
+
+    display_compare_page() {
+        clear
+        echo -ne "${STYLE}\033[2J"
+        echo -e "${bold}${MESSAGES[comparison_title]}${reset}${STYLE}"
+        echo -e "${STYLE}--------------------------------------------------\n"
+        for ((i=current_line; i<current_line+lines_per_page && i<total_lines; i++)); do
+            echo -e "${STYLE}${lines[$i]}"
+        done
+        echo -e "\n--------------------------------------------------"
+        echo -e "${bold}${STYLE}${MESSAGES[line_label]} $((current_line+1))-$((current_line+lines_per_page < total_lines ? current_line+lines_per_page : total_lines))/${total_lines} | [↑/↓ j/k] [E Export] [Q ${MESSAGES[quit]}]"
+    }
+
+    prepare_terminal
+    while [[ $quit -eq 0 ]]; do
+        display_compare_page
+        echo -ne "\033[?1000h\033[?1006h"
+        IFS= read -rsn1 key </dev/tty >/dev/null 2>/dev/null
+        if [[ $key == $'\033' ]]; then
+            read -rsn2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
+            case "$key2" in
+                '[A') ((current_line = current_line > 0 ? current_line - 1 : 0)) ;;
+                '[B') ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line)) ;;
+                '[<')
+                    mouse_event=""
+                    while IFS= read -rsn1 char </dev/tty >/dev/null 2>/dev/null; do
+                        mouse_event+="$char"; [[ "$char" == "M" ]] && break
+                    done
+                    button=$(echo "$mouse_event" | cut -d';' -f1)
+                    case $button in
+                        64) ((current_line = current_line > 0 ? current_line - 1 : 0)) ;;
+                        65) ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line)) ;;
+                    esac ;;
+            esac
+        else
+            case "$key" in
+                'q'|'Q') quit=1 ;;
+                'k'|'K') ((current_line = current_line > 0 ? current_line - 1 : 0)) ;;
+                'j'|'J') ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line)) ;;
+                'e'|'E')
+                    reset_terminal
+                    export_comparison_to_file "$raw_content" "$header"
+                    prepare_terminal
+                    ;;
+            esac
+        fi
+    done
+    echo -ne "\033[0m"
+    reset_terminal
+    clear
+}
+
+# ─── Book Search ──────────────────────────────────────────────────────────────
+buscar_livros() {
+    local INICIAL
+    if [[ -z "$1" ]]; then
+        INICIAL=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                         --inputbox "${MESSAGES[enter_initial]}" 8 40 2>&1 >/dev/tty)
+    else
+        INICIAL="$1"
+    fi
+
+    if [[ -n "$INICIAL" ]]; then
+        INICIAL="${INICIAL,,}"
+        declare -a LIVROS_FILTRADOS
+        for ((i=0; i<${#LIVROS[@]}-2; i+=2)); do
+            local bname
+            bname=$(sqlite3 "$DB_FILE" "SELECT name FROM book WHERE id = ${LIVROS[$i]} LIMIT 1;" 2>/dev/null)
+            [[ -z "$bname" ]] && bname="${LIVROS[$i+1]}"
+            if [[ "${bname,,}" == ${INICIAL}* ]]; then
+                LIVROS_FILTRADOS+=("${LIVROS[$i]}" "$bname")
+            fi
+        done
+
+        if [[ ${#LIVROS_FILTRADOS[@]} -eq 0 ]]; then
+            dialog --title "${MESSAGES[error]}" \
+                   --msgbox "${MESSAGES[no_book_found]} '$INICIAL'." 8 40
+        else
+            local LIVRO
+            LIVRO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                           --menu "${MESSAGES[choose_book]}" 40 60 40 \
+                           "${LIVROS_FILTRADOS[@]}" 2>&1 >/dev/tty)
+            if [[ -n "$LIVRO" ]]; then
+                local NOME_LIVRO
+                NOME_LIVRO=$(get_book_name_from_db "$LIVRO")
+                mostrar_capitulos "$LIVRO" "$NOME_LIVRO"
+            fi
+        fi
+    else
+        dialog --title "${MESSAGES[error]}" --msgbox "${MESSAGES[inform_initial]}" 8 40
+    fi
+    LIVROS_FILTRADOS=()
+}
+
+build_livros_menu() {
+    declare -ga LIVROS_MENU=()
+    for ((i=0; i<${#LIVROS[@]}-2; i+=2)); do
+        local bname
+        bname=$(sqlite3 "$DB_FILE" "SELECT name FROM book WHERE id = ${LIVROS[$i]} LIMIT 1;" 2>/dev/null)
+        [[ -z "$bname" ]] && bname="${LIVROS[$i+1]}"
+        LIVROS_MENU+=("${LIVROS[$i]}" "$bname")
+    done
+    LIVROS_MENU+=("q" "${MESSAGES[quit]}")
+}
+
+# ─── Main Book Menu ───────────────────────────────────────────────────────────
+mostrar_livros() {
+    prepare_terminal
+    build_livros_menu
+
+    while true; do
+        local ultimo_capitulo_option
+        if [[ -f "$LAST_CHAPTER_FILE" ]]; then
+            ultimo_capitulo_option="${MESSAGES[last_chapter]}"
+        else
+            ultimo_capitulo_option="${MESSAGES[last_chapter_na]}"
+        fi
+
+        local OPCAO
+        OPCAO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                       --menu "${MESSAGES[choose_option]}" 28 70 20 \
+            "1"  "${MESSAGES[search_by_number]}" \
+            "2"  "${MESSAGES[search_by_initial]}" \
+            "3"  "${MESSAGES[search_term_bible]}" \
+            "4"  "${MESSAGES[search_term_book]}" \
+            "5"  "$ultimo_capitulo_option" \
+            "6"  "${MESSAGES[manage_history]}" \
+            "7"  "${MESSAGES[word_of_day]}" \
+            "8"  "${MESSAGES[word_of_day_stats]}" \
+            "9"  "${MESSAGES[compare_translations]}" \
+            "10" "${MESSAGES[view_favorites]}" \
+            "11" "${MESSAGES[goto_direct]}" \
+            "12" "${MESSAGES[trans_stats]}" \
+            "b"  "${MESSAGES[select_bible]}" \
+            "q"  "${MESSAGES[quit]}" \
+            2>&1 >/dev/tty)
+
+        case $OPCAO in
+            1)
+                local LIVRO
+                LIVRO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                               --menu "${MESSAGES[choose_book]}" 40 60 40 \
+                               "${LIVROS_MENU[@]}" 2>&1 >/dev/tty)
+                if [[ "$LIVRO" == "q" ]]; then
+                    clear; exit 0
+                elif [[ -n "$LIVRO" ]]; then
+                    local NOME_LIVRO
+                    NOME_LIVRO=$(get_book_name_from_db "$LIVRO")
+                    mostrar_capitulos "$LIVRO" "$NOME_LIVRO"
+                fi
+                ;;
+            2) buscar_livros ;;
+            3)
+                local TERMO
+                TERMO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                               --inputbox "${MESSAGES[enter_term]}" 8 40 2>&1 >/dev/tty)
+                [[ -n "$TERMO" ]] && buscar_termo_na_biblia "$TERMO"
+                ;;
+            4)
+                local LIVRO
+                LIVRO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                               --menu "${MESSAGES[choose_book_search]}" 40 60 40 \
+                               "${LIVROS_MENU[@]}" 2>&1 >/dev/tty)
+                if [[ "$LIVRO" == "q" ]]; then continue
+                elif [[ -n "$LIVRO" ]]; then
+                    local TERMO
+                    TERMO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                                   --inputbox "${MESSAGES[enter_term_book]}" 8 40 2>&1 >/dev/tty)
+                    [[ -n "$TERMO" ]] && buscar_termo_no_livro "$LIVRO" "$TERMO"
+                fi
+                ;;
+            5)
+                if [[ -f "$LAST_CHAPTER_FILE" ]]; then
+                    IFS="|" read -r livro_id nome_livro capitulo < "$LAST_CHAPTER_FILE"
+                    mostrar_versiculos "$livro_id" "$nome_livro" "$capitulo"
+                fi
+                ;;
+            6) gerenciar_historico ;;
+            7) random_chapter ;;
+            8) show_random_stats ;;
+            9) compare_translations ;;
+            10) manage_favorites ;;
+            11) goto_verse ;;
+            12) show_translation_stats ;;
+            b)
+                unset DB_FILE BIBLE_NAME
+                rm -f "$DEFAULT_BIBLE_FILE"
+                select_bible || exit 1
+                build_livros_menu
+                ;;
+            q)
+                clear; reset_terminal; exit 0 ;;
+        esac
+    done
+}
+
+# ─── Bible-wide Term Search (supports LIKE or Regex) ─────────────────────────
+buscar_termo_na_biblia() {
+    local termo=$1
+    local use_regex=${2:-0}
+    local RESULTADOS
+
+    if [[ $use_regex -eq 1 ]]; then
+        # SQLite does not support REGEXP by default; filter with grep after LIKE fetch
+        RESULTADOS=$(sqlite3 -separator "|" "$DB_FILE" \
+            "SELECT b.id, b.name, v.chapter, v.verse, v.text \
+             FROM verse v JOIN book b ON v.book_id = b.id \
+             ORDER BY b.id, v.chapter, v.verse;" | \
+            grep -E "$termo" 2>/dev/null)
+    else
+        RESULTADOS=$(sqlite3 -separator "|" "$DB_FILE" \
+            "SELECT b.id, b.name, v.chapter, v.verse, v.text \
+             FROM verse v JOIN book b ON v.book_id = b.id \
+             WHERE v.text LIKE '%$termo%' \
+             ORDER BY b.id, v.chapter, v.verse;")
+    fi
+
+    if [[ -z "$RESULTADOS" ]]; then
+        dialog --title "${MESSAGES[search_results]}" \
+               --msgbox "${MESSAGES[no_results]} '$termo'." 8 40
+    else
+        declare -a OPCOES_RESULTADOS
+        while IFS="|" read -r id nome capitulo versiculo texto; do
+            local texto_limpo
+            texto_limpo=$(echo "$texto" | sed 's/^[ \t]*//;s/[ \t]*$//' | tr -s ' ' | sed 's/<[^>]*>//g')
+            local texto_exibicao
+            texto_exibicao=$(echo "$texto_limpo" | cut -c 1-360)
+            OPCOES_RESULTADOS+=("$id,$capitulo,$versiculo" "$nome $capitulo:$versiculo - ${texto_exibicao}...")
+        done <<< "$RESULTADOS"
+
+        local SELECAO
+        SELECAO=$(dialog --title "${MESSAGES[search_results]}" \
+                         --menu "${MESSAGES[choose_verse]}" 40 160 40 \
+                         "${OPCOES_RESULTADOS[@]}" 2>&1 >/dev/tty)
+        if [[ -n "$SELECAO" ]]; then
+            IFS="," read -r livro_id capitulo versiculo <<< "$SELECAO"
+            local NOME_LIVRO
+            NOME_LIVRO=$(get_book_name_from_db "$livro_id")
+            mostrar_versiculos "$livro_id" "$NOME_LIVRO" "$capitulo"
+        fi
+    fi
+}
+
+# ─── Book Term Search ─────────────────────────────────────────────────────────
+buscar_termo_no_livro() {
+    local livro_id=$1
+    local termo=$2
+    local use_regex=${3:-0}
+    local RESULTADOS
+
+    if [[ $use_regex -eq 1 ]]; then
+        RESULTADOS=$(sqlite3 -separator " | " "$DB_FILE" \
+            "SELECT b.id, b.name, v.chapter, v.verse, v.text \
+             FROM verse v JOIN book b ON v.book_id = b.id \
+             WHERE v.book_id = $livro_id;" | \
+            grep -E "$termo" 2>/dev/null)
+    else
+        RESULTADOS=$(sqlite3 -separator " | " "$DB_FILE" \
+            "SELECT b.id, b.name, v.chapter, v.verse, v.text \
+             FROM verse v JOIN book b ON v.book_id = b.id \
+             WHERE v.book_id = $livro_id AND v.text LIKE '%$termo%';")
+    fi
+
+    if [[ -z "$RESULTADOS" ]]; then
+        dialog --title "${MESSAGES[search_results]}" \
+               --msgbox "${MESSAGES[no_results]} '$termo' ${MESSAGES[in_book]}" 8 40
+    else
+        declare -a OPCOES_RESULTADOS
+        while IFS="|" read -r id nome capitulo versiculo texto; do
+            OPCOES_RESULTADOS+=("$capitulo|$versiculo" "$nome $capitulo:$versiculo - $texto")
+        done <<< "$RESULTADOS"
+
+        local SELECAO
+        SELECAO=$(dialog --title "${MESSAGES[search_results]}" \
+                         --menu "${MESSAGES[choose_verse_open]}" 40 160 40 \
+                         "${OPCOES_RESULTADOS[@]}" 2>&1 >/dev/tty)
+        if [[ -n "$SELECAO" ]]; then
+            IFS="|" read -r capitulo versiculo <<< "$SELECAO"
+            local NOME_LIVRO
+            NOME_LIVRO=$(get_book_name_from_db "$livro_id")
+            mostrar_versiculos "$livro_id" "$NOME_LIVRO" "$capitulo"
+        fi
+    fi
+}
+
+# ─── Chapter List ─────────────────────────────────────────────────────────────
+mostrar_capitulos() {
+    local livro_id=$1
+    local nome_livro=$2
+    local CAPITULOS
+    CAPITULOS=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;")
+
+    if [[ -z "$CAPITULOS" ]]; then
+        dialog --title "${MESSAGES[error]}" \
+               --msgbox "${MESSAGES[no_chapters_found]} $nome_livro." 8 40
+        return
+    fi
+
+    declare -a OPCOES_CAPITULOS
+    for ((i=1; i<=CAPITULOS; i++)); do
+        OPCOES_CAPITULOS+=("$i" "${MESSAGES[chapter_word]} $i")
+    done
+
+    while true; do
+        local CAPITULO
+        CAPITULO=$(dialog --title "$nome_livro" \
+                          --menu "${MESSAGES[choose_chapter]}" 40 80 40 \
+                          "${OPCOES_CAPITULOS[@]}" 2>&1 >/dev/tty)
+        if [[ $? -eq 0 && -n "$CAPITULO" ]]; then
+            mostrar_versiculos "$livro_id" "$nome_livro" "$CAPITULO"
+        else
+            break
+        fi
+    done
+}
+
+# ─── Chapter Navigation ───────────────────────────────────────────────────────
+next_chapter() {
+    local next
+    next=$(sqlite3 "$DB_FILE" "SELECT MIN(chapter) FROM verse WHERE book_id = $livro_id AND chapter > $capitulo;")
+    if [[ -n "$next" ]]; then
+        mostrar_versiculos "$livro_id" "$nome_livro" "$next"
+    else
+        # Try next book
+        local next_book
+        next_book=$(sqlite3 "$DB_FILE" "SELECT MIN(id) FROM book WHERE id > $livro_id;")
+        if [[ -n "$next_book" ]]; then
+            local next_book_name
+            next_book_name=$(get_book_name_from_db "$next_book")
+            local first_chap
+            first_chap=$(sqlite3 "$DB_FILE" "SELECT MIN(chapter) FROM verse WHERE book_id = $next_book;")
+            mostrar_versiculos "$next_book" "$next_book_name" "$first_chap"
+        fi
+    fi
+}
+
+prev_chapter() {
+    local prev
+    prev=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id AND chapter < $capitulo;")
+    if [[ -n "$prev" ]]; then
+        mostrar_versiculos "$livro_id" "$nome_livro" "$prev"
+    else
+        local prev_book
+        prev_book=$(sqlite3 "$DB_FILE" "SELECT MAX(id) FROM book WHERE id < $livro_id;")
+        if [[ -n "$prev_book" ]]; then
+            local prev_book_name
+            prev_book_name=$(get_book_name_from_db "$prev_book")
+            local last_chap
+            last_chap=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $prev_book;")
+            mostrar_versiculos "$prev_book" "$prev_book_name" "$last_chap"
+        fi
+    fi
+}
+
+# ─── Clipboard Preparation ────────────────────────────────────────────────────
+prepare_clipboard() {
+    local versiculos_selecionados
+    versiculos_selecionados=$(dialog --title "${MESSAGES[select_verses]}" \
+        --inputbox "${MESSAGES[enter_verses]}" \
+        10 50 2>&1 >/dev/tty)
+
+    local texto_para_copiar
+    if [[ -z "$versiculos_selecionados" ]]; then
+        local versiculos
+        versiculos=$(sqlite3 -separator " " "$DB_FILE" \
+            "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo ORDER BY verse;")
+        texto_para_copiar="$nome_livro $capitulo\n\n"
+        while IFS= read -r linha; do
+            local linha_limpa
+            linha_limpa=$(echo "$linha" | sed -e 's/^[0-9]\+/\0./' -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
+            texto_para_copiar+="$linha_limpa\n"
+        done <<< "$versiculos"
+    else
+        declare -a versiculos_array
+        for item in $versiculos_selecionados; do
+            if [[ $item == *-* ]]; then
+                local inicio fim
+                inicio=${item%-*}; fim=${item#*-}
+                for ((v=inicio; v<=fim; v++)); do versiculos_array+=("$v"); done
+            else
+                versiculos_array+=("$item")
+            fi
+        done
+        texto_para_copiar=""
+        for v in "${versiculos_array[@]}"; do
+            local versiculo
+            versiculo=$(sqlite3 -separator " " "$DB_FILE" \
+                "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo AND verse = $v;")
+            if [[ -n "$versiculo" ]]; then
+                local versiculo_limpo
+                versiculo_limpo=$(echo "$versiculo" | sed -e 's/^[0-9]\+/\0./' -e 's/<[^>]*>//g' -e 's/^[ \t]*//')
+                texto_para_copiar+="$versiculo_limpo\n"
+            fi
+        done
+        texto_para_copiar+="(${nome_livro}, $capitulo)"
+    fi
+    clipboard_copy "$texto_para_copiar"
+}
+
+# ─── Verse Viewer (Enhanced) ──────────────────────────────────────────────────
+mostrar_versiculos() {
+    local livro_id=$1
+    local nome_livro=$2
+    local capitulo=$3
+    local all_screen="\033[2J"
+    local bold="\033[1m"
+    local reset="\033[0m"
+    HIGHLIGHT="${HIGHLIGHT:-\033[33;1m}"
+    STYLE="${STYLE:-\033[38;5;231;48;5;16m}"
+    # NEW: Verse number highlight color (bright cyan, distinct from text)
+    VERSE_NUM_COLOR="${VERSE_NUM_COLOR:-\033[38;5;87;1m}"
+
+    echo "$livro_id|$nome_livro|$capitulo" | tee "$LAST_CHAPTER_FILE" >/dev/null
+
+    clear
+    echo -ne "${STYLE}${all_screen}"
+
+    local VERSICULOS
+    VERSICULOS=$(sqlite3 -separator " " "$DB_FILE" \
+        "SELECT verse, text FROM verse WHERE book_id = $livro_id AND chapter = $capitulo ORDER BY verse;")
+
+    if [[ -z "$VERSICULOS" ]]; then
+        dialog --title "${MESSAGES[error]}" \
+               --msgbox "${MESSAGES[no_verses_found]} $nome_livro $capitulo." 8 40
+        return
+    fi
+
+    local formatted_text=""
+    while IFS= read -r linha; do
+        # NEW: Colorize verse number separately from the text
+        # Verse number is the leading digits at start of line
+        linha=$(echo "$linha" | sed \
+            -e 's/^[[:digit:]]\{1,\}/VERSE_NUM_START&VERSE_NUM_END/' \
+            -e 's|<i>\([^<]*\)</i>|\\e[3m\1\\e[23m|g' \
+            -e 's|<small>\([^<]*\)</small>|\L\1|g' \
+            -e 's/<[^>]*>//g')
+        # Replace markers with actual ANSI codes
+        linha="${linha/VERSE_NUM_START/${VERSE_NUM_COLOR}}"
+        linha="${linha/VERSE_NUM_END/${STYLE}}"
+        formatted_text+="$linha"$'\n'
+    done <<< "$VERSICULOS"
+
+    IFS=$'\n' read -d '' -r -a lines <<< \
+        "$(echo -e "$formatted_text" | fold -s -w $(($(tput cols) - ${KJA_MARGIN:-5})))"
+    local total_lines=${#lines[@]}
+    local header_and_footer_lines=10
+    local lines_per_page=$(($(tput lines) - header_and_footer_lines))
+    local current_line=0
+    local quit=0
+    local search_pattern=""
+    local search_matches=()
+    local current_match=0
+    local case_insensitive=1
+    # NEW: continuous reading mode
+    local continuous_mode=0
+    local continuous_timer=30
+
+    # NEW: If GOTO_TARGET_VERSE is set, scroll to that verse
+    if [[ -n "${GOTO_TARGET_VERSE:-}" ]]; then
+        for ((gi=0; gi<total_lines; gi++)); do
+            # Verse number lines start with the verse number in the colored span
+            if echo "${lines[$gi]}" | grep -qE "^.*${GOTO_TARGET_VERSE}\."; then
+                current_line=$gi
+                break
+            fi
+        done
+    fi
+
+    find_matches() {
+        search_matches=()
+        local grep_flags=""
+        [[ $case_insensitive -eq 1 ]] && grep_flags+="i"
+        for ((i=0; i<total_lines; i++)); do
+            if echo "${lines[i]}" | grep -qE$grep_flags "$search_pattern"; then
+                search_matches+=($i)
+            fi
+        done
+        current_match=0
+    }
+
+    display_page() {
+        clear
+        echo -ne "${STYLE}${all_screen}"
+        echo -e "${bold}$nome_livro $capitulo${reset}${STYLE}  [${BIBLE_NAME}]"
+        [[ -n "$search_pattern" ]] && \
+            echo -e "\033[33m${MESSAGES[pattern_label]} /$search_pattern (${#search_matches[@]} ${MESSAGES[matches_label]})$reset"
+        [[ $continuous_mode -eq 1 ]] && \
+            echo -e "\033[32m${MESSAGES[continuous_on]}$reset"
+        echo -e "${STYLE}--------------------------------------------------\n"
+
+        for ((i=current_line; i<current_line+lines_per_page && i<total_lines; i++)); do
+            local line="${lines[i]}"
+            if [[ -n "$search_pattern" ]]; then
+                line=$(awk -v search="$search_pattern" \
+                           -v style="${STYLE}" \
+                           -v yellow="${HIGHLIGHT}" \
+                           -v rst="$reset" \
+                           -v ignore_case="$case_insensitive" \
+                    'BEGIN { if (ignore_case == 1) IGNORECASE = 1 }
+                     { gsub(search, yellow "&" rst style); print }' \
+                    <<< "${STYLE}${line}")
+            fi
+            echo -e "${STYLE}$line"
+        done
+
+        local end_line=$((current_line + lines_per_page < total_lines ? current_line + lines_per_page : total_lines))
+        echo -e "\n--------------------------------------------------"
+        if [[ ${#search_matches[@]} -gt 0 ]]; then
+            echo -e "${MESSAGES[match_label]} $((current_match + 1))/${#search_matches[@]} | "
+        fi
+        echo -e "${bold}${STYLE}${MESSAGES[line_label]} $((current_line + 1))-${end_line}/$total_lines"
+        [[ -z "$TERMUX_VERSION" ]] && echo -e "${bold}${MESSAGES[nav_controls]}"
+        [[ -n "$TERMUX_VERSION" ]]  && echo -e "${bold}${MESSAGES[nav_controls_termux]}"
+    }
+
+    prepare_terminal
+    local needs_redraw=1
+    while [[ $quit -eq 0 ]]; do
+        # Only redraw when state actually changed
+        if [[ $needs_redraw -eq 1 ]]; then
+            display_page
+            echo -ne "\033[?1000h\033[?1006h"
+            needs_redraw=0
+        fi
+
+        # Blocking read in normal mode; timeout only in continuous mode
+        local key=""
+        if [[ $continuous_mode -eq 1 ]]; then
+            IFS= read -rsn1 -t "${continuous_timer}" key </dev/tty >/dev/null 2>/dev/null
+            local read_status=$?
+            # Timeout = advance chapter
+            if [[ $read_status -ne 0 ]]; then
+                reset_terminal
+                next_chapter
+                return
+            fi
+        else
+            IFS= read -rsn1 key </dev/tty >/dev/null 2>/dev/null
+        fi
+
+        if [[ $key == $'\033' ]]; then
+            read -rsn2 -t 0.1 key2 </dev/tty >/dev/null 2>/dev/null
+            case "$key2" in
+                '[A') ((current_line = current_line > 0 ? current_line - 1 : 0)); needs_redraw=1 ;;
+                '[B') ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line)); needs_redraw=1 ;;
+                '[C') reset_terminal; next_chapter; return ;;
+                '[D') reset_terminal; prev_chapter; return ;;
+                '[<')
+                    mouse_event=""
+                    while IFS= read -rsn1 char </dev/tty >/dev/null 2>/dev/null; do
+                        mouse_event+="$char"; [[ "$char" == "M" ]] && break
+                    done
+                    button=$(echo "$mouse_event" | cut -d';' -f1)
+                    case $button in
+                        64) ((current_line = current_line > 0 ? current_line - 1 : 0)); needs_redraw=1 ;;
+                        65) ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line)); needs_redraw=1 ;;
+                    esac ;;
+            esac
+        elif [[ $key == '/' ]]; then
+            reset_terminal
+            echo -ne "\033[33m/"
+            read -re search_pattern
+            if [[ -n "$search_pattern" ]]; then
+                find_matches
+                [[ ${#search_matches[@]} -gt 0 ]] && current_line=${search_matches[0]}
+            fi
+            prepare_terminal
+            needs_redraw=1
+        else
+            case "$key" in
+                'q'|'Q') quit=1 ;;
+                'n'|'N')
+                    if [[ ${#search_matches[@]} -gt 0 ]]; then
+                        ((current_match = (current_match + 1) % ${#search_matches[@]}))
+                        current_line=${search_matches[$current_match]}
+                        needs_redraw=1
+                    fi ;;
+                'k'|'K') ((current_line = current_line > 0 ? current_line - 1 : 0)); needs_redraw=1 ;;
+                'j'|'J') ((current_line = current_line + lines_per_page < total_lines ? current_line + 1 : current_line)); needs_redraw=1 ;;
+                's'|'S')
+                    if grep -q "^${livro_id}|${nome_livro}|${capitulo}$" "$HISTORY_FILE" 2>/dev/null; then
+                        notify_send "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                            "$nome_livro ${MESSAGES[chapter_word]} $capitulo ${MESSAGES[chapter_already_history]}"
+                    else
+                        echo "${livro_id}|${nome_livro}|${capitulo}" | tee -a "$HISTORY_FILE" >/dev/null
+                        notify_send "${MESSAGES[app_name]} ${BIBLE_NAME}" \
+                            "$nome_livro ${MESSAGES[chapter_word]} $capitulo ${MESSAGES[chapter_saved_history]}"
+                    fi
+                    needs_redraw=1 ;;
+                'c'|'C')
+                    if [[ $continuous_mode -eq 1 ]]; then
+                        continuous_mode=0
+                    else
+                        continuous_mode=1
+                        current_line=$((total_lines - lines_per_page > 0 ? total_lines - lines_per_page : 0))
+                    fi
+                    needs_redraw=1 ;;
+                'z'|'Z') reset_terminal; prepare_clipboard; prepare_terminal; needs_redraw=1 ;;
+                'g'|'G')
+                    reset_terminal
+                    goto_verse
+                    return ;;
+                'v'|'V')
+                    reset_terminal
+                    add_to_favorites "$livro_id" "$nome_livro" "$capitulo"
+                    prepare_terminal
+                    needs_redraw=1 ;;
+                'r'|'R')
+                    reset_terminal
+                    local regex_pat
+                    regex_pat=$(dialog --title "${MESSAGES[regex_mode]}" \
+                                       --inputbox "${MESSAGES[regex_prompt]}" 8 60 2>&1 >/dev/tty)
+                    if [[ -n "$regex_pat" ]]; then
+                        if echo "test" | grep -qE "$regex_pat" 2>/dev/null; then
+                            search_pattern="$regex_pat"
+                            case_insensitive=0
+                            find_matches
+                            [[ ${#search_matches[@]} -gt 0 ]] && current_line=${search_matches[0]}
+                        else
+                            dialog --title "${MESSAGES[error]}" \
+                                   --msgbox "${MESSAGES[regex_invalid]}" 7 40 >/dev/tty 2>&1
+                        fi
+                    fi
+                    prepare_terminal
+                    needs_redraw=1 ;;
+                'i'|'I')
+                    prepare_clipboard
+                    ~/.shell_utils/scripts/cliptext2image >/dev/null 2>&1 ;;
+                'p'|'P')
+                    prepare_clipboard
+                    ~/.shell_utils/scripts/cliptext2pdf >/dev/null 2>&1 ;;
+                'x'|'X') reset_terminal; export_chapter "$livro_id" "$nome_livro" "$capitulo"; prepare_terminal; needs_redraw=1 ;;
+                'l'|'L') reset_terminal; next_chapter; return ;;
+                'h'|'H') reset_terminal; prev_chapter; return ;;
+                'f'|'F')
+                    ((case_insensitive = !case_insensitive))
+                    [[ -n "$search_pattern" ]] && find_matches
+                    needs_redraw=1 ;;
+            esac
+        fi
+    done
+
+    echo -ne "\033[0m"
+    clear
+}
+
+# ─── Argument Parsing ─────────────────────────────────────────────────────────
+FORCE_DOWNLOAD=0
+FORCE_BOOK_INITIAL=""
+GOTO_DIRECT_REF=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)       help ;;
+        -d|--dark)       shift; STYLE='\033[38;5;231;48;5;16m' ;;
+        -db|--dbrown)    shift; STYLE='\033[38;5;209;48;5;16m' ;;
+        -w|--white)      shift; STYLE='\033[38;5;16;48;5;231m' ;;
+        -b|--blue)       shift; STYLE='\033[38;5;51;48;5;24m' ;;
+        -hi|--highlight) shift; STYLE='\033[38;5;155;48;5;241m' ;;
+        -bb|--bbrown)    shift; STYLE='\033[38;5;94;48;5;187m' ;;
+        -m|--margin)
+            { [[ "$2" =~ ^[0-9]+$ ]] && KJA_MARGIN="$2"; } || \
+            { echo -e "${RED}${MESSAGES[error]}: margin must be a number.$NC"; exit 1; }
+            shift 2 ;;
+        -l|--book)
+            if [[ -z "$2" ]]; then
+                echo "${MESSAGES[error]}: --book requires a name." >&2; exit 1
+            fi
+            FORCE_BOOK_INITIAL="$2"
+            shift 2 ;;
+        -g|--goto)
+            if [[ -z "$2" ]]; then
+                echo "${MESSAGES[error]}: --goto requires a reference." >&2; exit 1
+            fi
+            GOTO_DIRECT_REF="$2"
+            shift 2 ;;
+        --bible)
+            if [[ -z "$2" ]]; then
+                echo "${MESSAGES[error]}: --bible requires a path." >&2; exit 1
+            fi
+            DB_FILE="$2"
+            BIBLE_NAME=$(bible_display_name "$DB_FILE")
+            shift 2 ;;
+        --download)
+            FORCE_DOWNLOAD=1; shift ;;
+        *) shift ;;
+    esac
+done
+
+# ─── Force Download if Requested ─────────────────────────────────────────────
+if [[ $FORCE_DOWNLOAD -eq 1 ]]; then
+    download_bibles || exit 1
+fi
+
+# ─── Bible Selection (if not set via --bible) ─────────────────────────────────
+if [[ -z "$DB_FILE" ]]; then
+    if [[ -f "$DEFAULT_BIBLE_FILE" ]]; then
+        stored=$(cat "$DEFAULT_BIBLE_FILE")
+        if [[ -f "$stored" ]]; then
+            DB_FILE="$stored"
+            BIBLE_NAME=$(bible_display_name "$DB_FILE")
+        fi
+    fi
+
+    if [[ -z "$DB_FILE" ]]; then
+        kjf_match=$(find "${BIBLES_DIR}" -maxdepth 1 -iname "kjf.sqlite" 2>/dev/null | head -1)
+        if [[ -n "$kjf_match" ]]; then
+            DB_FILE="$kjf_match"
+            BIBLE_NAME=$(bible_display_name "$DB_FILE")
+            echo "$DB_FILE" > "$DEFAULT_BIBLE_FILE"
+        else
+            select_bible || exit 1
+        fi
+    fi
+fi
+
+# ─── Entry Point ──────────────────────────────────────────────────────────────
+if [[ -n "$GOTO_DIRECT_REF" ]]; then
+    # Direct verse jump from command line
+    prepare_terminal
+    goto_verse "$GOTO_DIRECT_REF" || mostrar_livros
+elif [[ -n "$FORCE_BOOK_INITIAL" ]]; then
+    prepare_terminal
+    buscar_livros "$FORCE_BOOK_INITIAL"
+else
+    mostrar_livros
+fi
+
+reset_terminal
