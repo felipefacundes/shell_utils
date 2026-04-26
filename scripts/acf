@@ -40,10 +40,10 @@ SCRIPT="${0##*/}"
 CACHEDIR="${HOME}/.cache"
 PATH1="/usr/share/acf/$FILE"
 PATH2="$HOME/.shell_utils/database/acf/$FILE"
-CACHE_KJA="${CACHEDIR}/${SCRIPT%.*}"
-HISTORY_FILE="${CACHE_KJA}/KJA_HISTORY_FILE.db"
-LAST_CHAPTER_FILE="${CACHE_KJA}/KJA_LAST_CHAPTER_FILE.db"
-RANDOM_CHAPTER_FILE="${CACHE_KJA}/KJA_RANDOM_CHAPTER_FILE.db"
+CACHE_ACF="${CACHEDIR}/${SCRIPT%.*}"
+HISTORY_FILE="${CACHE_ACF}/ACF_HISTORY_FILE.db"
+LAST_CHAPTER_FILE="${CACHE_ACF}/ACF_LAST_CHAPTER_FILE.db"
+RANDOM_CHAPTER_FILE="${CACHE_ACF}/ACF_RANDOM_CHAPTER_FILE.db"
 
 if [[ -f "$PATH1" ]]; then
 	DB_FILE="$PATH1"
@@ -53,7 +53,7 @@ elif [[ -f "$FILE" ]]; then
 	DB_FILE="$FILE"
 fi
 
-[[ ! -d "${CACHE_KJA}" ]] && mkdir -p "${CACHE_KJA}"
+[[ ! -d "${CACHE_ACF}" ]] && mkdir -p "${CACHE_ACF}"
 
 [ -f "$DB_FILE" ] && {
 	MD5SUM_DB_FILE=$(md5sum "$DB_FILE" | awk '{print $1}')
@@ -122,7 +122,7 @@ help() {
     VARIÁVEIS DE ESTILO (via linha de comando ou edição no script):
         STYLE               Controla cores do texto/fundo (códigos ANSI)
         HIGHLIGHT           Cor dos termos buscados (padrão: amarelo)
-        KJA_MARGIN          Margem lateral do texto (padrão: 5)
+        ACF_MARGIN          Margem lateral do texto (padrão: 5)
 
     CONTROLES INTERATIVOS:
         Navegação:
@@ -708,7 +708,7 @@ mostrar_versiculos() {
     done <<< "$VERSICULOS"
 
     # Divide o texto em linhas e configura paginação
-    IFS=$'\n' read -d '' -r -a lines <<< "$(echo -e "$formatted_text" | fold -s -w $(($(tput cols) - ${KJA_MARGIN:-5})))"
+    IFS=$'\n' read -d '' -r -a lines <<< "$(echo -e "$formatted_text" | fold -s -w $(($(tput cols) - ${ACF_MARGIN:-5})))"
     local total_lines=${#lines[@]}
 	local header_and_footer_lines=10
     local lines_per_page=$(($(tput lines) - header_and_footer_lines))  # Reserva espaço para cabeçalho/rodapé
@@ -930,7 +930,7 @@ while [ $# -gt 0 ]; do
 			STYLE='\033[38;5;94;48;5;187m'
 		;;
 		-m|--margin)
-			{ [[ "$2" =~ ^[0-9]+$ ]] && KJA_MARGIN="$2"; } || { echo -e "${RED}São aceitos apenas números para margem!$NC" && exit 1; }
+			{ [[ "$2" =~ ^[0-9]+$ ]] && ACF_MARGIN="$2"; } || { echo -e "${RED}São aceitos apenas números para margem!$NC" && exit 1; }
 			shift 2
 		;;
 		-l|--livro)
