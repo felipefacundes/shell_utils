@@ -92,8 +92,8 @@ MESSAGES=(
     [app_name]="Bíblia"
     [select_verses]="Selecionar Versículos"
     [enter_verses]="Digite os versículos desejados (ex: 1 3 5-7 10):"
-    [nav_controls]="[↑↓/jk Nav] [←→/hl Cap] [/ Buscar] [N Próx] [G Direto] [V Fav] [R Regex] [C Contínuo] [S Salvar] [X Exportar] [Z Copiar] [Q Sair]"
-    [nav_controls_termux]="[↑↓/jk Nav] [/ Buscar] [N Próx]\n[G Direto] [V Fav] [R Regex] [C Contínuo]\n[S Salvar] [X Exportar] [Z Copiar] [Q Sair]"
+    [nav_controls]="[↑↓/jk Nav] [←→/hl Cap] [/ Buscar] [N Próx] [G Direto] [T Comparar] [V Fav] [R Regex] [C Contínuo] [S Salvar] [X Exportar] [Z Copiar] [Q Sair]"
+    [nav_controls_termux]="[↑↓/jk Nav] [/ Buscar] [N Próx]\n[G Direto] [T Comparar] [V Fav] [R Regex] [C Contínuo]\n[S Salvar] [X Exportar] [Z Copiar] [Q Sair]"
     [pattern_label]="Padrão:"
     [matches_label]="matches"
     [line_label]="Linha"
@@ -147,6 +147,10 @@ MESSAGES=(
     [pdf_tools_warn]="Aviso: ferramentas PDF ausentes"
     [pdf_tools_warn_detail]="Instale iconv, enscript e ps2pdf para exportar PDF."
     [pdf_tools_unavailable]="Ferramentas PDF indisponíveis. Salvo como TXT:"
+    [verse_optional]="(versículo facultativo)"
+    [goto_prompt_short]="Digite referência (ex: João 3:16 ou João 3 ou Gn 1):"
+    [compare_goto_prompt]="Comparar por referência direta (ex: João 3:16)?"
+    [shortcut_compare]="T Comparar"
 
 )
 else
@@ -213,8 +217,8 @@ MESSAGES=(
     [app_name]="Bible"
     [select_verses]="Select Verses"
     [enter_verses]="Enter desired verses (e.g.: 1 3 5-7 10):"
-    [nav_controls]="[↑↓/jk Nav] [←→/hl Chap] [/ Search] [N Next] [G Goto] [V Favs] [R Regex] [C Continuous] [S Save] [Z Copy] [Q Quit]"
-    [nav_controls_termux]="[↑↓/jk Nav] [/ Search] [N Next]\n[G Goto] [V Favs] [R Regex] [C Continuous]\n[S Save] [Z Copy] [Q Quit]"
+    [nav_controls]="[↑↓/jk Nav] [←→/hl Chap] [/ Search] [N Next] [G Goto] [T Compare] [V Favs] [R Regex] [C Continuous] [S Save] [Z Copy] [Q Quit]"
+    [nav_controls_termux]="[↑↓/jk Nav] [/ Search] [N Next]\n[G Goto] [T Compare] [V Favs] [R Regex] [C Continuous]\n[S Save] [Z Copy] [Q Quit]"
     [pattern_label]="Pattern:"
     [matches_label]="matches"
     [line_label]="Line"
@@ -268,6 +272,10 @@ MESSAGES=(
     [pdf_tools_warn]="Warning: PDF tools missing"
     [pdf_tools_warn_detail]="Please install iconv, enscript and ps2pdf to export PDF."
     [pdf_tools_unavailable]="PDF tools unavailable. Saved as TXT:"
+    [verse_optional]="(verse optional)"
+    [goto_prompt_short]="Enter reference (e.g.: John 3:16 or John 3 or Gen 1):"
+    [compare_goto_prompt]="Compare by direct reference (e.g.: John 3:16)?"
+    [shortcut_compare]="T Compare"
 
 )
 fi
@@ -538,14 +546,14 @@ get_book_name_from_db() {
 }
 
 # ─── NEW: Direct Verse Navigation ─────────────────────────────────────────────
-# Parses "Book Chapter:Verse" and jumps directly. Returns 0 on success.
+# Parses "Book Chapter[:Verse]" and jumps directly. Verse is optional.
 goto_verse() {
     local ref="$1"
     local prompted=0
 
     if [[ -z "$ref" ]]; then
         ref=$(dialog --title "${MESSAGES[goto_verse]}" \
-                     --inputbox "${MESSAGES[goto_prompt]}" 8 60 2>&1 >/dev/tty)
+                     --inputbox "${MESSAGES[goto_prompt_short]}" 8 60 2>&1 >/dev/tty)
         [[ -z "$ref" ]] && return 1
         prompted=1
     fi
@@ -553,12 +561,21 @@ goto_verse() {
     # Normalize: trim, collapse spaces
     ref=$(echo "$ref" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    # Extract chapter:verse suffix
-    local cv_part book_part chapter_num verse_num
+    local chapter_num verse_num book_part
+    verse_num=""
+
+    # Try to extract optional Chapter:Verse or just Chapter at the end
+    # Pattern: optional "Num " prefix for book, then book name, then chapter[:verse]
     if [[ "$ref" =~ ([0-9]+):([0-9]+)$ ]]; then
+        # Has chapter:verse
         chapter_num="${BASH_REMATCH[1]}"
         verse_num="${BASH_REMATCH[2]}"
         book_part="${ref%${chapter_num}:${verse_num}}"
+        book_part=$(echo "$book_part" | sed 's/[[:space:]]*$//')
+    elif [[ "$ref" =~ [[:space:]]([0-9]+)$ ]]; then
+        # Has only chapter (trailing number after space)
+        chapter_num="${BASH_REMATCH[1]}"
+        book_part="${ref%${chapter_num}}"
         book_part=$(echo "$book_part" | sed 's/[[:space:]]*$//')
     else
         [[ $prompted -eq 1 ]] && \
@@ -566,20 +583,35 @@ goto_verse() {
         return 1
     fi
 
-    # Try alias lookup (case-insensitive)
-    local book_key
-    book_key=$(echo "$book_part" | tr '[:upper:]' '[:lower:]')
-    local livro_id=""
+    # Resolve book ID
+    local book_key livro_id=""
+    book_key=$(echo "$book_part" | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]//g')
 
-    # Direct alias match
+    # 1) Try alias without spaces
     if [[ -n "${BOOK_ALIASES[$book_key]+x}" ]]; then
         livro_id="${BOOK_ALIASES[$book_key]}"
     fi
 
-    # Try DB fuzzy match if alias not found
+    # 2) Try alias preserving spaces (for "1 samuel", "1 kings", etc.)
+    if [[ -z "$livro_id" ]]; then
+        local book_key_spaced
+        book_key_spaced=$(echo "$book_part" | tr '[:upper:]' '[:lower:]')
+        if [[ -n "${BOOK_ALIASES[$book_key_spaced]+x}" ]]; then
+            livro_id="${BOOK_ALIASES[$book_key_spaced]}"
+        fi
+    fi
+
+    # 3) Try DB fuzzy match (handles accented names and numbered books natively)
     if [[ -z "$livro_id" ]]; then
         livro_id=$(sqlite3 "$DB_FILE" \
             "SELECT id FROM book WHERE LOWER(name) LIKE LOWER('${book_part}%') LIMIT 1;" 2>/dev/null)
+    fi
+
+    # 4) Try DB match stripping leading digit+space from input
+    #    e.g. "1 joao" → strip to "joao" won't help, but try "1 jo" → look for name starting with "1"
+    if [[ -z "$livro_id" ]]; then
+        livro_id=$(sqlite3 "$DB_FILE" \
+            "SELECT id FROM book WHERE LOWER(name) LIKE LOWER('%${book_part}%') LIMIT 1;" 2>/dev/null)
     fi
 
     if [[ -z "$livro_id" ]]; then
@@ -591,7 +623,7 @@ goto_verse() {
     local nome_livro
     nome_livro=$(get_book_name_from_db "$livro_id")
 
-    # Validate chapter/verse existence
+    # Validate chapter existence
     local max_cap
     max_cap=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;" 2>/dev/null)
     if [[ -z "$max_cap" || "$chapter_num" -gt "$max_cap" || "$chapter_num" -lt 1 ]]; then
@@ -600,8 +632,8 @@ goto_verse() {
         return 1
     fi
 
-    # Store target verse for highlight on open
-    GOTO_TARGET_VERSE="$verse_num"
+    # Store target verse for highlight (empty if not specified)
+    GOTO_TARGET_VERSE="${verse_num}"
     mostrar_versiculos "$livro_id" "$nome_livro" "$chapter_num"
     GOTO_TARGET_VERSE=""
     return 0
@@ -1211,48 +1243,127 @@ compare_translations() {
     [[ ${#selected_bibles[@]} -eq 0 ]] && selected_bibles=("${all_bibles[@]}")
 
     # Choose book
-    declare -a OPCOES_LIVROS
-    for ((i=0; i<${#LIVROS[@]}-2; i+=2)); do
-        local bname
-        bname=$(sqlite3 "$DB_FILE" "SELECT name FROM book WHERE id = ${LIVROS[$i]} LIMIT 1;" 2>/dev/null)
-        [[ -z "$bname" ]] && bname="${LIVROS[$i+1]}"
-        OPCOES_LIVROS+=("${LIVROS[$i]}" "$bname")
-    done
+# ── Modo de escolha do versículo ─────────────────────────────────────────
+    local livro_id capitulo versiculo
 
-    local livro_id
-    livro_id=$(dialog --title "${MESSAGES[comparison_title]}" \
-                      --menu "${MESSAGES[choose_book_compare]}" \
-                      40 60 40 "${OPCOES_LIVROS[@]}" \
+    local nav_mode
+    nav_mode=$(dialog --title "${MESSAGES[comparison_title]}" \
+                      --menu "${MESSAGES[choose_option]}" 10 60 3 \
+                      "goto"  "${MESSAGES[goto_direct]}" \
+                      "menu"  "${MESSAGES[search_by_number]}" \
                       2>&1 >/dev/tty)
-    [[ -z "$livro_id" ]] && return
+    [[ -z "$nav_mode" ]] && return
 
-    local max_cap
-    max_cap=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;")
-    declare -a OPCOES_CAP
-    for ((i=1; i<=max_cap; i++)); do
-        OPCOES_CAP+=("$i" "${MESSAGES[chapter_word]} $i")
-    done
+    if [[ "$nav_mode" == "goto" ]]; then
+        # Reuse goto_verse logic but capture coordinates instead of opening viewer
+        local ref
+        ref=$(dialog --title "${MESSAGES[goto_verse]}" \
+                     --inputbox "${MESSAGES[goto_prompt_short]}" 8 60 2>&1 >/dev/tty)
+        [[ -z "$ref" ]] && return
 
-    local capitulo
-    capitulo=$(dialog --title "${MESSAGES[comparison_title]}" \
-                      --menu "${MESSAGES[choose_chapter_compare]}" \
-                      40 60 40 "${OPCOES_CAP[@]}" \
-                      2>&1 >/dev/tty)
-    [[ -z "$capitulo" ]] && return
+        ref=$(echo "$ref" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-    local max_verse
-    max_verse=$(sqlite3 "$DB_FILE" "SELECT MAX(verse) FROM verse WHERE book_id = $livro_id AND chapter = $capitulo;")
-    declare -a OPCOES_VERSE
-    for ((i=1; i<=max_verse; i++)); do
-        OPCOES_VERSE+=("$i" "v.$i")
-    done
+        local chapter_num verse_num book_part
+        verse_num="1"
 
-    local versiculo
-    versiculo=$(dialog --title "${MESSAGES[comparison_title]}" \
-                       --menu "${MESSAGES[choose_verse_compare]}" \
-                       40 60 40 "${OPCOES_VERSE[@]}" \
-                       2>&1 >/dev/tty)
-    [[ -z "$versiculo" ]] && return
+        if [[ "$ref" =~ ([0-9]+):([0-9]+)$ ]]; then
+            chapter_num="${BASH_REMATCH[1]}"
+            verse_num="${BASH_REMATCH[2]}"
+            book_part="${ref%${chapter_num}:${verse_num}}"
+            book_part=$(echo "$book_part" | sed 's/[[:space:]]*$//')
+        elif [[ "$ref" =~ [[:space:]]([0-9]+)$ ]]; then
+            chapter_num="${BASH_REMATCH[1]}"
+            book_part="${ref%${chapter_num}}"
+            book_part=$(echo "$book_part" | sed 's/[[:space:]]*$//')
+        else
+            dialog --title "${MESSAGES[error]}" --msgbox "${MESSAGES[goto_not_found]}" 7 50 >/dev/tty 2>&1
+            return
+        fi
+
+        local book_key
+        book_key=$(echo "$book_part" | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]//g')
+        livro_id=""
+
+        [[ -n "${BOOK_ALIASES[$book_key]+x}" ]] && livro_id="${BOOK_ALIASES[$book_key]}"
+
+        if [[ -z "$livro_id" ]]; then
+            local book_key_spaced
+            book_key_spaced=$(echo "$book_part" | tr '[:upper:]' '[:lower:]')
+            [[ -n "${BOOK_ALIASES[$book_key_spaced]+x}" ]] && livro_id="${BOOK_ALIASES[$book_key_spaced]}"
+        fi
+
+        if [[ -z "$livro_id" ]]; then
+            livro_id=$(sqlite3 "$DB_FILE" \
+                "SELECT id FROM book WHERE LOWER(name) LIKE LOWER('${book_part}%') LIMIT 1;" 2>/dev/null)
+        fi
+
+        if [[ -z "$livro_id" ]]; then
+            livro_id=$(sqlite3 "$DB_FILE" \
+                "SELECT id FROM book WHERE LOWER(name) LIKE LOWER('%${book_part}%') LIMIT 1;" 2>/dev/null)
+        fi
+
+        if [[ -z "$livro_id" ]]; then
+            dialog --title "${MESSAGES[error]}" --msgbox "${MESSAGES[goto_not_found]}" 7 50 >/dev/tty 2>&1
+            return
+        fi
+
+        capitulo="$chapter_num"
+        versiculo="$verse_num"
+
+        # If verse was omitted, ask which verse to compare
+        if [[ -z "$verse_num" || "$verse_num" == "1" && ! "$ref" =~ : ]]; then
+            local max_v
+            max_v=$(sqlite3 "$DB_FILE" "SELECT MAX(verse) FROM verse WHERE book_id=$livro_id AND chapter=$capitulo;" 2>/dev/null)
+            declare -a OPCOES_VERSE_CMP
+            for ((i=1; i<=max_v; i++)); do OPCOES_VERSE_CMP+=("$i" "v.$i"); done
+            versiculo=$(dialog --title "${MESSAGES[comparison_title]}" \
+                               --menu "${MESSAGES[choose_verse_compare]}" \
+                               40 60 40 "${OPCOES_VERSE_CMP[@]}" 2>&1 >/dev/tty)
+            [[ -z "$versiculo" ]] && return
+        fi
+
+    else
+        # Menu mode (original flow)
+        declare -a OPCOES_LIVROS
+        for ((i=0; i<${#LIVROS[@]}-2; i+=2)); do
+            local bname
+            bname=$(sqlite3 "$DB_FILE" "SELECT name FROM book WHERE id = ${LIVROS[$i]} LIMIT 1;" 2>/dev/null)
+            [[ -z "$bname" ]] && bname="${LIVROS[$i+1]}"
+            OPCOES_LIVROS+=("${LIVROS[$i]}" "$bname")
+        done
+
+        livro_id=$(dialog --title "${MESSAGES[comparison_title]}" \
+                          --menu "${MESSAGES[choose_book_compare]}" \
+                          40 60 40 "${OPCOES_LIVROS[@]}" \
+                          2>&1 >/dev/tty)
+        [[ -z "$livro_id" ]] && return
+
+        local max_cap
+        max_cap=$(sqlite3 "$DB_FILE" "SELECT MAX(chapter) FROM verse WHERE book_id = $livro_id;")
+        declare -a OPCOES_CAP
+        for ((i=1; i<=max_cap; i++)); do
+            OPCOES_CAP+=("$i" "${MESSAGES[chapter_word]} $i")
+        done
+
+        capitulo=$(dialog --title "${MESSAGES[comparison_title]}" \
+                          --menu "${MESSAGES[choose_chapter_compare]}" \
+                          40 60 40 "${OPCOES_CAP[@]}" \
+                          2>&1 >/dev/tty)
+        [[ -z "$capitulo" ]] && return
+
+        local max_verse
+        max_verse=$(sqlite3 "$DB_FILE" "SELECT MAX(verse) FROM verse WHERE book_id = $livro_id AND chapter = $capitulo;")
+        declare -a OPCOES_VERSE
+        for ((i=1; i<=max_verse; i++)); do
+            OPCOES_VERSE+=("$i" "v.$i")
+        done
+
+        versiculo=$(dialog --title "${MESSAGES[comparison_title]}" \
+                           --menu "${MESSAGES[choose_verse_compare]}" \
+                           40 60 40 "${OPCOES_VERSE[@]}" \
+                           2>&1 >/dev/tty)
+        [[ -z "$versiculo" ]] && return
+    fi
 
     local bold="\033[1m"
     local reset="\033[0m"
@@ -1900,6 +2011,11 @@ mostrar_versiculos() {
                     reset_terminal
                     goto_verse
                     return ;;
+                't'|'T')
+                    reset_terminal
+                    compare_translations
+                    prepare_terminal
+                    needs_redraw=1 ;;
                 'v'|'V')
                     reset_terminal
                     add_to_favorites "$livro_id" "$nome_livro" "$capitulo"
