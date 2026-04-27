@@ -1532,16 +1532,17 @@ mostrar_livros() {
                        --menu "${MESSAGES[choose_option]}" 28 70 20 \
             "1"  "${MESSAGES[search_by_number]}" \
             "2"  "${MESSAGES[search_by_initial]}" \
-            "3"  "${MESSAGES[search_term_bible]}" \
-            "4"  "${MESSAGES[search_term_book]}" \
-            "5"  "$ultimo_capitulo_option" \
-            "6"  "${MESSAGES[manage_history]}" \
-            "7"  "${MESSAGES[word_of_day]}" \
-            "8"  "${MESSAGES[word_of_day_stats]}" \
-            "9"  "${MESSAGES[compare_translations]}" \
-            "10" "${MESSAGES[view_favorites]}" \
-            "11" "${MESSAGES[goto_direct]}" \
-            "12" "${MESSAGES[trans_stats]}" \
+            "3" "${MESSAGES[goto_direct]}" \
+            "4"  "${MESSAGES[search_term_bible]}" \
+            "5"  "${MESSAGES[search_term_book]}" \
+            "6"  "$ultimo_capitulo_option" \
+            "7"  "${MESSAGES[manage_history]}" \
+            "8"  "${MESSAGES[word_of_day]}" \
+            "9"  "${MESSAGES[word_of_day_stats]}" \
+            "" "-----------------------------" \
+            "t"  "${MESSAGES[compare_translations]}" \
+            "v" "${MESSAGES[view_favorites]}" \
+            "s" "${MESSAGES[trans_stats]}" \
             "b"  "${MESSAGES[select_bible]}" \
             "q"  "${MESSAGES[quit]}" \
             2>&1 >/dev/tty)
@@ -1561,13 +1562,14 @@ mostrar_livros() {
                 fi
                 ;;
             2) buscar_livros ;;
-            3)
+            3) goto_verse ;;
+            4)
                 local TERMO
                 TERMO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
                                --inputbox "${MESSAGES[enter_term]}" 8 40 2>&1 >/dev/tty)
                 [[ -n "$TERMO" ]] && buscar_termo_na_biblia "$TERMO"
                 ;;
-            4)
+            5)
                 local LIVRO
                 LIVRO=$(dialog --title "${MESSAGES[app_name]} ${BIBLE_NAME}" \
                                --menu "${MESSAGES[choose_book_search]}" 40 60 40 \
@@ -1580,26 +1582,25 @@ mostrar_livros() {
                     [[ -n "$TERMO" ]] && buscar_termo_no_livro "$LIVRO" "$TERMO"
                 fi
                 ;;
-            5)
+            6)
                 if [[ -f "$LAST_CHAPTER_FILE" ]]; then
                     IFS="|" read -r livro_id nome_livro capitulo < "$LAST_CHAPTER_FILE"
                     mostrar_versiculos "$livro_id" "$nome_livro" "$capitulo"
                 fi
                 ;;
-            6) gerenciar_historico ;;
-            7) random_chapter ;;
-            8) show_random_stats ;;
-            9) compare_translations ;;
-            10) manage_favorites ;;
-            11) goto_verse ;;
-            12) show_translation_stats ;;
-            b)
+            7) gerenciar_historico ;;
+            8) random_chapter ;;
+            9) show_random_stats ;;
+            t|T) compare_translations ;;
+            v|V) manage_favorites ;;
+            s|S) show_translation_stats ;;
+            b|B)
                 unset DB_FILE BIBLE_NAME
                 rm -f "$DEFAULT_BIBLE_FILE"
                 select_bible || exit 1
                 build_livros_menu
                 ;;
-            q)
+            q|Q)
                 clear; reset_terminal; exit 0 ;;
         esac
     done
