@@ -296,6 +296,33 @@ local function load_vol_state()
     return 100
 end
 
+-- ── Save OSC Bar State ───────────────────────────────────────────────────────
+local osc_bar_state_file = os.getenv("HOME") .. "/.config/mpv/osc_bar_state"
+
+local function save_osc_bar_state()
+    local f = io.open(osc_bar_state_file, "w")
+    if f then
+        local val = user_opts.visibility == "always" and "1" or "0"
+        f:write(val)
+        f:close()
+        msg.debug("osc bar state saved: " .. val)
+    else
+        msg.warn("could not open osc bar state file for writing: " .. osc_bar_state_file)
+    end
+end
+
+local function load_osc_bar_state()
+    local f = io.open(osc_bar_state_file, "r")
+    if f then
+        local val = f:read("*l")
+        f:close()
+        msg.debug("osc bar state loaded: '" .. tostring(val) .. "'")
+        return val == "1"
+    end
+    msg.debug("osc bar state file not found, defaulting to auto")
+    return false
+end
+
 -- ── Save Video State ─────────────────────────────────────────────────────────
 local vid_state_file = os.getenv("HOME") .. "/.config/mpv/vid_state"
  
@@ -1431,6 +1458,11 @@ add_area("input", get_hitbox_coords(pos_x, pos_y, 1, osc_geo.w, osc_geo.h))
     lo.style = osc_styles.buttons
     bx = bx + 46
 
+    lo = add_layout("osc_bar_toggle")
+    lo.geometry = {x = bx, y = btn_y_bot, an = 4, w = 24, h = 18}
+    lo.style = osc_styles.buttons
+    bx = bx + 46
+
     lo = add_layout("speed")
     lo.geometry = {x = bx, y = btn_y_bot, an = 4, w = 60, h = 18}
     lo.style = osc_styles.buttons_sm
@@ -1941,6 +1973,35 @@ local function create_elements()
     ne.eventresponder["mbtn_left_up"] = do_vid_toggle
     mp.add_key_binding("ctrl+v", "vid-toggle", do_vid_toggle)
 
+    -- ── OSC bar toggle ────────────────────────────────────────────────────────
+    ne = new_element("osc_bar_toggle", "button")
+    ne.hover_effect = true
+    ne.content = function()
+        return user_opts.visibility == "always" and "👁" or "🕶"
+    end
+    ne.off = user_opts.visibility ~= "always"
+    ne.tooltip_style = osc_styles.tooltip
+    ne.tooltip_f = function()
+        return user_opts.visibility == "always" and "OSC bar: always visible" or "OSC bar: auto-hide"
+    end
+    local function do_osc_bar_toggle()
+        if user_opts.visibility == "always" then
+            user_opts.visibility = "auto"
+            state.osc_visible = false
+            mp.set_property_native("user-data/osc/visibility", "auto")
+            mp.osd_message("OSC bar: auto-hide")
+        else
+            user_opts.visibility = "always"
+            state.osc_visible = true
+            mp.set_property_native("user-data/osc/visibility", "always")
+            mp.osd_message("OSC bar: always visible")
+        end
+        save_osc_bar_state()
+        request_init()
+        request_tick()
+    end
+    ne.eventresponder["mbtn_left_up"] = do_osc_bar_toggle
+    mp.add_key_binding("ctrl+b", "osc-bar-toggle", do_osc_bar_toggle)
 
     -- ── Playlist search ───────────────────────────────────────────────────────
     ne = new_element("playlist_search", "button")
@@ -2511,6 +2572,19 @@ local function visibility_mode(mode, no_osd)
     request_tick()
 end
 
+local function do_osc_bar_toggle()
+    if user_opts.visibility == "always" then
+        visibility_mode("auto", true)
+        mp.osd_message("OSC bar: auto-hide")
+    else
+        visibility_mode("always", true)
+        mp.osd_message("OSC bar: always visible")
+    end
+    save_osc_bar_state()
+    request_init()
+end
+mp.add_key_binding("ctrl+b", "osc-bar-toggle", do_osc_bar_toggle)
+
 local function idlescreen_visibility(mode, no_osd)
     if mode == "cycle" then mode = user_opts.idlescreen and "no" or "yes" end
     user_opts.idlescreen = (mode == "yes")
@@ -2609,6 +2683,9 @@ set_tick_delay()
 visibility_mode(user_opts.visibility, true)
 state.shuffle = load_shuffle_state()
 state.vid_active = load_vid_state()
+if load_osc_bar_state() then
+    user_opts.visibility = "always"
+end
 
 vol_ignore_observer = true
 mp.add_timeout(0.5, function()
