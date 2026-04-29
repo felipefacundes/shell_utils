@@ -699,15 +699,7 @@ _cs_do_tab() {
     local word_start=$point
     while (( word_start > 0 )); do
         local prev_char="${line:$((word_start-1)):1}"
-        # Para no espaço somente se não estiver escapado ou dentro de caminho já completado
         if [[ "$prev_char" == " " ]]; then
-            # Verifica se o espaço faz parte de um caminho (há / antes do grupo de palavras)
-            local before="${line:0:$((word_start-1))}"
-            if [[ "$before" == */* ]]; then
-                # Espaço dentro de caminho — continua recuando
-                (( word_start-- ))
-                continue
-            fi
             break
         fi
         (( word_start-- ))
@@ -716,8 +708,12 @@ _cs_do_tab() {
     local cur="${line:$word_start:$((point - word_start))}"
     local before_word="${line:0:$word_start}"
     local is_cmd=0
-    if [[ -z "${before_word// /}" ]]; then
-        # Mesmo sem comando antes, se o token parece caminho não é comando
+    # Remove tokens VAR=valor do início para detectar corretamente se é comando
+    local before_stripped="${before_word}"
+    while [[ "$before_stripped" =~ ^[[:space:]]*[A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]+ ]]; do
+        before_stripped="${before_stripped#"${BASH_REMATCH[0]}"}"
+    done
+    if [[ -z "${before_stripped// /}" ]]; then
         local cur_check="${line:$word_start:$((point - word_start))}"
         cur_check="${cur_check//\"/}"
         local cur_expanded="${cur_check/#\~/$HOME}"
@@ -1677,19 +1673,35 @@ _cs_enter() {
         stty sane # Restaura o terminal para o estado original, necessário para shell scripts com read
         local _cs_first_token="${cmd_str%% *}"
 
-        if alias "$_cs_first_token" &>/dev/null 2>&1; then
+        # Detecta prefixo VAR=valor antes do comando real
+        local _cs_env_prefix="" _cs_cmd_rest="$cmd_str"
+        while [[ "$_cs_cmd_rest" =~ ^[[:space:]]*([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*)[[:space:]]+ ]]; do
+            _cs_env_prefix+="${BASH_REMATCH[1]} "
+            _cs_cmd_rest="${_cs_cmd_rest#*"${BASH_REMATCH[1]}"}"
+            _cs_cmd_rest="${_cs_cmd_rest#"${_cs_cmd_rest%%[![:space:]]*}"}"
+        done
+        _cs_first_token="${_cs_cmd_rest%% *}"
+
+        if [[ -n "$_cs_env_prefix" ]] && alias "$_cs_first_token" &>/dev/null 2>&1; then
             local _cs_alias_def
             _cs_alias_def=$(alias "$_cs_first_token" 2>/dev/null)
-            # Extrai o valor do alias: alias nome='valor' → valor
             _cs_alias_def="${_cs_alias_def#*\'}"
             _cs_alias_def="${_cs_alias_def%\'}"
-            local _cs_alias_args="${cmd_str#"$_cs_first_token"}"
+            local _cs_alias_args="${_cs_cmd_rest#"$_cs_first_token"}"
+            eval "env ${_cs_env_prefix} ${_cs_alias_def}${_cs_alias_args}"
+        elif alias "$_cs_first_token" &>/dev/null 2>&1; then
+            local _cs_alias_def
+            _cs_alias_def=$(alias "$_cs_first_token" 2>/dev/null)
+            _cs_alias_def="${_cs_alias_def#*\'}"
+            _cs_alias_def="${_cs_alias_def%\'}"
+            local _cs_alias_args="${_cs_cmd_rest#"$_cs_first_token"}"
             eval "${_cs_alias_def}${_cs_alias_args}"
         elif [[ -d "$_cs_path" ]]; then
             cd "$_cs_path" || true
         else
             eval "$cmd_str"
         fi
+
         _cs_exit_code=$? # Para ser usado no PS1 do bashrc
 
         [[ -n "$stty_save" ]] && stty "$stty_save" 2>/dev/null
