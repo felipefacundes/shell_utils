@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# License: GPLv3
-# Credits: Felipe Facundes
-
 # =============================================================================
 # musicplayer — Shell music player powered by MPV
 # Requires: mpv, whiptail (or dialog), find, sort
+# Optional: ffprobe (stats/info/validation), chafa or timg (album art),
+#           notify-send (desktop notifications), socat (IPC controls)
 # Lua scripts are loaded from ~/.config/mpv/scripts/ automatically by MPV.
 # =============================================================================
 
@@ -16,6 +15,7 @@ PLAYLIST_DIR="$HOME/Music/Playlists"
 CACHE_DIR="$HOME/.cache/musicplayer"
 VOLUME_CACHE="$HOME/.cache/mpv_volume_last"
 HISTORY_FILE="$CACHE_DIR/playlist_history"
+MPV_SOCKET="$CACHE_DIR/mpv.sock"
 DEBUG="${DEBUG:-0}"
 SCRIPT_NAME="$(basename "$0")"
 LOG_FILE="/tmp/musicplayer_$(date '+%Y%m%d_%H%M%S')_$$.log"
@@ -25,8 +25,9 @@ TMP_DIR=""
 MPV_PID=""
 
 # ── Colors / Logging ──────────────────────────────────────────────────────────
-RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+RED=$'\033[0;31m'; YELLOW=$'\033[1;33m'; GREEN=$'\033[0;32m'
+CYAN=$'\033[0;36m'; BOLD=$'\033[1m'; RESET=$'\033[0m'
+MAGENTA=$'\033[0;35m'; BLUE=$'\033[0;34m'; DIM=$'\033[2m'
 
 info()    { echo -e "${CYAN}→${RESET} $*"; }
 success() { echo -e "${GREEN}✓${RESET} $*"; }
@@ -54,7 +55,6 @@ check_deps() {
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
     done
 
-    # whiptail or dialog
     if command -v whiptail &>/dev/null; then
         DIALOG_CMD="whiptail"
     elif command -v dialog &>/dev/null; then
@@ -66,6 +66,13 @@ check_deps() {
     if [[ ${#missing[@]} -gt 0 ]]; then
         die "Missing dependencies: ${missing[*]}\nInstall with: sudo apt install ${missing[*]}"
     fi
+
+    # Optional tools — warn but don't abort
+    HAS_FFPROBE=0; command -v ffprobe     &>/dev/null && HAS_FFPROBE=1
+    HAS_CHAFA=0;   command -v chafa       &>/dev/null && HAS_CHAFA=1
+    HAS_TIMG=0;    command -v timg        &>/dev/null && HAS_TIMG=1
+    HAS_NOTIFY=0;  command -v notify-send &>/dev/null && HAS_NOTIFY=1
+    HAS_SOCAT=0;   command -v socat       &>/dev/null && HAS_SOCAT=1
 }
 
 # ── Directory Setup ───────────────────────────────────────────────────────────
@@ -111,7 +118,13 @@ show_history() {
     local i=1
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
-        items+=("$i" "$(basename "$line")")
+        local label
+        if [[ -f "$line" ]]; then
+            label="$(basename "$line")"
+        else
+            label="$(basename "$line") [missing]"
+        fi
+        items+=("$i" "$label")
         ((i++))
     done < "$HISTORY_FILE"
 
@@ -126,13 +139,29 @@ show_history() {
     start_mpv "$playlist"
 }
 
+clean_history() {
+    if [[ ! -f "$HISTORY_FILE" ]]; then
+        warn "No history file found."; return
+    fi
+    local before after tmp
+    before=$(grep -c '' "$HISTORY_FILE" 2>/dev/null || echo 0)
+    tmp="$(mktemp)"
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ -f "$line" ]] && echo "$line" >> "$tmp"
+    done < "$HISTORY_FILE"
+    mv "$tmp" "$HISTORY_FILE"
+    after=$(grep -c '' "$HISTORY_FILE" 2>/dev/null || echo 0)
+    local removed=$(( before - after ))
+    success "History cleaned: $removed missing entry(ies) removed ($after remaining)."
+}
+
 # ── Scan media files ──────────────────────────────────────────────────────────
 SCAN_RESULT_FILE=""
 
 scan_media() {
     local -a dirs=("$@")
     info "Scanning files..."
-
     find "${dirs[@]}" -type f \( \
         -iname "*.mp3"  -o -iname "*.flac" -o -iname "*.ogg"  -o \
         -iname "*.m4a"  -o -iname "*.wav"  -o -iname "*.opus" -o \
@@ -143,7 +172,38 @@ scan_media() {
     \) 2>/dev/null | sort > "$SCAN_RESULT_FILE"
 }
 
-# ── Ask playlist name via whiptail/dialog ─────────────────────────────────────
+# ── Validate media files with ffprobe ─────────────────────────────────────────
+validate_media() {
+    local input_file="$1"
+    local output_file="$2"
+
+    if [[ "$HAS_FFPROBE" -eq 0 ]]; then
+        warn "ffprobe not found — skipping validation. Install ffmpeg for this feature."
+        cp "$input_file" "$output_file"
+        return
+    fi
+
+    local total valid=0 broken=0
+    total=$(wc -l < "$input_file" | tr -d ' ')
+    info "Validating $total file(s) with ffprobe..."
+
+    : > "$output_file"
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        if ffprobe -v quiet -i "$f" 2>/dev/null; then
+            echo "$f" >> "$output_file"
+            ((valid++)) || true
+        else
+            warn "Broken/unreadable: $(basename "$f")"
+            log "INVALID: $f"
+            ((broken++)) || true
+        fi
+    done < "$input_file"
+
+    success "Validation complete: $valid valid, $broken broken."
+}
+
+# ── Ask playlist name ─────────────────────────────────────────────────────────
 ask_playlist_name() {
     local default_name
     default_name="playlist_$(date '+%Y-%m-%d_%Hh%M')"
@@ -158,12 +218,303 @@ ask_playlist_name() {
     echo "$name"
 }
 
+# ── IPC: send command to running MPV ──────────────────────────────────────────
+mpv_ipc() {
+    if [[ "$HAS_SOCAT" -eq 0 ]]; then
+        die "socat is required for IPC. Install with: sudo apt install socat"
+    fi
+    if [[ ! -S "$MPV_SOCKET" ]]; then
+        die "No running MPV instance found (socket: $MPV_SOCKET)"
+    fi
+    echo "$1" | socat - "UNIX-CONNECT:$MPV_SOCKET" 2>/dev/null
+}
+
+ipc_get() {
+    [[ "$HAS_SOCAT" -eq 0 ]] || [[ ! -S "$MPV_SOCKET" ]] && return 1
+    echo "$1" | socat - "UNIX-CONNECT:$MPV_SOCKET" 2>/dev/null \
+        | grep -o '"data":[^,}]*' | sed 's/"data"://' | tr -d '"'
+}
+
+ipc_pause()    { mpv_ipc '{ "command": ["cycle", "pause"] }';           info "Toggled pause."; }
+ipc_next()     { mpv_ipc '{ "command": ["playlist-next", "force"] }';   info "Next track."; }
+ipc_prev()     { mpv_ipc '{ "command": ["playlist-prev", "force"] }';   info "Previous track."; }
+ipc_stop()     { mpv_ipc '{ "command": ["quit"] }';                     info "MPV stopped."; }
+ipc_vol_up()   { mpv_ipc '{ "command": ["add", "volume", 5] }';         info "Volume +5%"; }
+ipc_vol_down() { mpv_ipc '{ "command": ["add", "volume", -5] }';        info "Volume -5%"; }
+
+ipc_queue() {
+    local file="$1"
+    [[ -f "$file" ]] || die "File not found: $file"
+    mpv_ipc "{ \"command\": [\"loadfile\", \"$file\", \"append-play\"] }"
+    success "Queued: $(basename "$file")"
+}
+
+ipc_now_playing() {
+    if [[ "$HAS_SOCAT" -eq 0 ]] || [[ ! -S "$MPV_SOCKET" ]]; then
+        die "No running MPV instance or socat not installed."
+    fi
+
+    local path title pos dur vol paused
+    path=$(  ipc_get '{ "command": ["get_property", "path"] }')
+    title=$( ipc_get '{ "command": ["get_property", "media-title"] }')
+    pos=$(   ipc_get '{ "command": ["get_property", "time-pos"] }')
+    dur=$(   ipc_get '{ "command": ["get_property", "duration"] }')
+    vol=$(   ipc_get '{ "command": ["get_property", "volume"] }')
+    paused=$(ipc_get '{ "command": ["get_property", "pause"] }')
+
+    local fmt_pos fmt_dur
+    fmt_pos=$(printf '%d:%02d' \
+        "$(echo "${pos:-0} / 60" | bc 2>/dev/null || echo 0)" \
+        "$(echo "${pos:-0} % 60" | bc 2>/dev/null || echo 0)")
+    fmt_dur=$(printf '%d:%02d' \
+        "$(echo "${dur:-0} / 60" | bc 2>/dev/null || echo 0)" \
+        "$(echo "${dur:-0} % 60" | bc 2>/dev/null || echo 0)")
+
+    local icon="▶"; [[ "$paused" == "true" ]] && icon="⏸"
+
+    echo ""
+    echo -e "${BOLD}${CYAN}── Now Playing ──────────────────────────────${RESET}"
+    echo -e "  ${BOLD}${icon}  ${title:-$(basename "${path:-?}")}${RESET}"
+    [[ -n "$path" ]] && echo -e "  ${DIM}${path}${RESET}"
+    echo -e "  ⏱  ${fmt_pos} / ${fmt_dur}    🔊 ${vol:-?}%"
+    echo -e "${CYAN}─────────────────────────────────────────────${RESET}"
+    echo ""
+
+    [[ -n "$path" ]] && [[ -f "$path" ]] && show_album_art "$path"
+}
+
+# ── Album art ─────────────────────────────────────────────────────────────────
+show_album_art() {
+    local media_file="$1"
+    [[ "$HAS_FFPROBE" -eq 0 ]] && { debug "ffprobe not available"; return; }
+    [[ "$HAS_CHAFA" -eq 0 ]] && [[ "$HAS_TIMG" -eq 0 ]] && {
+        debug "No image renderer (chafa/timg)"; return
+    }
+
+    local art_file="$TMP_DIR/cover_$$.jpg"
+    ffmpeg -v quiet -i "$media_file" -an -vcodec copy "$art_file" 2>/dev/null || true
+
+    if [[ ! -s "$art_file" ]]; then
+        local dir; dir="$(dirname "$media_file")"
+        for c in "$dir/cover.jpg" "$dir/cover.png" "$dir/folder.jpg" \
+                 "$dir/folder.png" "$dir/artwork.jpg" "$dir/front.jpg"; do
+            [[ -f "$c" ]] && { art_file="$c"; break; }
+        done
+    fi
+
+    [[ ! -s "$art_file" ]] && { debug "No art for: $(basename "$media_file")"; return; }
+
+    echo -e "${DIM}── Album Art ─────────────────────────────────${RESET}"
+    if [[ "$HAS_CHAFA" -eq 1 ]]; then
+        chafa --size 40x20 "$art_file" 2>/dev/null || true
+    else
+        timg --pixels-per-cell=1 -g 40x20 "$art_file" 2>/dev/null || true
+    fi
+    echo ""
+}
+
+# ── Desktop notification ──────────────────────────────────────────────────────
+notify_track() {
+    local media_file="$1"
+    [[ "$HAS_NOTIFY" -eq 0 ]] && return
+
+    local title; title="$(basename "$media_file")"
+
+    if [[ "$HAS_FFPROBE" -eq 1 ]]; then
+        local tag_title tag_artist
+        tag_title=$(ffprobe -v quiet -show_entries format_tags=title \
+            -of default=noprint_wrappers=1:nokey=1 "$media_file" 2>/dev/null | head -1)
+        tag_artist=$(ffprobe -v quiet -show_entries format_tags=artist \
+            -of default=noprint_wrappers=1:nokey=1 "$media_file" 2>/dev/null | head -1)
+        [[ -n "$tag_title"  ]] && title="$tag_title"
+        [[ -n "$tag_artist" ]] && title="$tag_artist — $title"
+    fi
+
+    local icon_file="$CACHE_DIR/notify_cover.jpg" icon_arg=""
+    if [[ "$HAS_FFPROBE" -eq 1 ]]; then
+        ffmpeg -v quiet -i "$media_file" -an -vcodec copy "$icon_file" 2>/dev/null || true
+    fi
+    [[ -s "$icon_file" ]] && icon_arg="--icon=$icon_file"
+
+    notify-send $icon_arg "musicplayer" "$title" \
+        --urgency=low --expire-time=3000 2>/dev/null || true
+}
+
+# ── Playlist info ─────────────────────────────────────────────────────────────
+show_playlist_info() {
+    local playlist="$1"
+    [[ -f "$playlist" ]] || die "Playlist not found: $playlist"
+
+    if [[ "$HAS_FFPROBE" -eq 0 ]]; then
+        warn "ffprobe not found — basic info only."
+        local count; count=$(grep -cv '^#' "$playlist" 2>/dev/null || echo 0)
+        echo ""
+        echo -e "${BOLD}${CYAN}── Playlist Info ────────────────────────────${RESET}"
+        echo -e "  File:   $(basename "$playlist")"
+        echo -e "  Path:   $playlist"
+        echo -e "  Tracks: $count"
+        echo -e "${CYAN}─────────────────────────────────────────────${RESET}"
+        return
+    fi
+
+    info "Reading metadata..."
+
+    local total_dur=0 total_size=0 valid=0 broken=0
+
+    while IFS= read -r f; do
+        [[ -z "$f" || "$f" == \#* ]] && continue
+        if [[ ! -f "$f" ]]; then ((broken++)) || true; continue; fi
+
+        local dur size
+        dur=$(ffprobe -v quiet -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 "$f" 2>/dev/null | head -1)
+        size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+
+        [[ "$dur" =~ ^[0-9]+(\.[0-9]+)?$ ]] && \
+            total_dur=$(echo "$total_dur + $dur" | bc)
+        total_size=$(( total_size + size ))
+        ((valid++)) || true
+    done < "$playlist"
+
+    local h m s
+    h=$(echo "$total_dur / 3600" | bc)
+    m=$(echo "($total_dur % 3600) / 60" | bc)
+    s=$(echo "$total_dur % 60" | bc | xargs printf "%.0f")
+    local size_mb; size_mb=$(echo "scale=1; $total_size / 1048576" | bc)
+
+    echo ""
+    echo -e "${BOLD}${CYAN}── Playlist Info ────────────────────────────${RESET}"
+    echo -e "  File:          $(basename "$playlist")"
+    echo -e "  Path:          $playlist"
+    echo -e "  Valid tracks:  ${GREEN}${valid}${RESET}"
+    [[ $broken -gt 0 ]] && \
+    echo -e "  Missing files: ${RED}${broken}${RESET}"
+    echo -e "  Duration:      ${h}h ${m}m ${s}s"
+    echo -e "  Total size:    ${size_mb} MB"
+    echo -e "${CYAN}─────────────────────────────────────────────${RESET}"
+    echo ""
+}
+
+# ── Library stats ─────────────────────────────────────────────────────────────
+show_library_stats() {
+    info "Scanning library: $MUSIC_DIR"
+    SCAN_RESULT_FILE="$TMP_DIR/stats_scan_$$.txt"
+    scan_media "$MUSIC_DIR" >/dev/null
+
+    local total_files
+    total_files=$(wc -l < "$SCAN_RESULT_FILE" | tr -d ' ')
+
+    if [[ "$HAS_FFPROBE" -eq 0 ]]; then
+        warn "ffprobe not found — showing file count only."
+        local size_mb; size_mb=$(du -sm "$MUSIC_DIR" 2>/dev/null | cut -f1)
+        echo ""
+        echo -e "${BOLD}${CYAN}── Library Stats ────────────────────────────${RESET}"
+        echo -e "  Directory: $MUSIC_DIR"
+        echo -e "  Tracks:    $total_files"
+        echo -e "  Size:      ~${size_mb} MB"
+        echo -e "${CYAN}─────────────────────────────────────────────${RESET}"
+        return
+    fi
+
+    info "Reading metadata for $total_files file(s)..."
+
+    local total_dur=0 total_size=0 i=0
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        local dur size
+        dur=$(ffprobe -v quiet -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 "$f" 2>/dev/null | head -1)
+        size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+        [[ "$dur" =~ ^[0-9]+(\.[0-9]+)?$ ]] && \
+            total_dur=$(echo "$total_dur + $dur" | bc)
+        total_size=$(( total_size + size ))
+        ((i++)) || true
+        (( i % 50 == 0 )) && info "  ...processed $i / $total_files"
+    done < "$SCAN_RESULT_FILE"
+
+    local h m s
+    h=$(echo "$total_dur / 3600" | bc)
+    m=$(echo "($total_dur % 3600) / 60" | bc)
+    s=$(echo "$total_dur % 60" | bc | xargs printf "%.0f")
+    local size_mb size_gb
+    size_mb=$(echo "scale=1; $total_size / 1048576"   | bc)
+    size_gb=$(echo "scale=2; $total_size / 1073741824" | bc)
+
+    local pl_count
+    pl_count=$(find "$PLAYLIST_DIR" -name "*.m3u" 2>/dev/null | wc -l | tr -d ' ')
+
+    echo ""
+    echo -e "${BOLD}${CYAN}── Library Stats ────────────────────────────${RESET}"
+    echo -e "  Music dir:  $MUSIC_DIR"
+    echo -e "  Tracks:     ${BOLD}${total_files}${RESET}"
+    echo -e "  Duration:   ${BOLD}${h}h ${m}m ${s}s${RESET}"
+    echo -e "  Size:       ${size_mb} MB  (${size_gb} GB)"
+    echo -e "  Playlists:  ${pl_count} saved in $PLAYLIST_DIR"
+    echo -e "${CYAN}─────────────────────────────────────────────${RESET}"
+    echo ""
+}
+
+# ── CLI search ────────────────────────────────────────────────────────────────
+flow_search() {
+    local query="$1"
+    [[ -z "$query" ]] && die "Usage: $SCRIPT_NAME --search TERM"
+
+    SCAN_RESULT_FILE="$TMP_DIR/search_scan_$$.txt"
+    scan_media "$MUSIC_DIR" >/dev/null
+
+    local results_file="$TMP_DIR/search_results_$$.txt"
+    grep -i "$query" "$SCAN_RESULT_FILE" > "$results_file" 2>/dev/null || true
+
+    local count; count=$(wc -l < "$results_file" | tr -d ' ')
+    if [[ "$count" -eq 0 ]]; then
+        warn "No results for: \"$query\""; exit 0
+    fi
+
+    success "$count result(s) for: \"$query\""
+
+    local items=() i=1
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        items+=("$i" "$(basename "$f")")
+        ((i++))
+    done < "$results_file"
+
+    local choice
+    choice=$("$DIALOG_CMD" --title "Search: $query" \
+        --menu "Select a track to play:" 22 80 15 \
+        "${items[@]}" 3>&1 1>&2 2>&3) || exit 0
+
+    local selected_file
+    selected_file="$(sed -n "${choice}p" "$results_file")"
+    [[ -f "$selected_file" ]] || die "File not found: $selected_file"
+    start_mpv "$selected_file"
+}
+
+# ── Random playlist ───────────────────────────────────────────────────────────
+flow_random() {
+    local count="${1:-20}"
+    [[ "$count" =~ ^[0-9]+$ ]] || die "--random requires a number."
+
+    SCAN_RESULT_FILE="$TMP_DIR/random_scan_$$.txt"
+    scan_media "$MUSIC_DIR" >/dev/null
+
+    local total; total=$(wc -l < "$SCAN_RESULT_FILE" | tr -d ' ')
+    [[ "$total" -eq 0 ]] && die "No media files found in $MUSIC_DIR"
+    [[ "$count" -gt "$total" ]] && count="$total"
+
+    local random_m3u="$TMP_DIR/random_$$.m3u"
+    echo "#EXTM3U" > "$random_m3u"
+    shuf -n "$count" "$SCAN_RESULT_FILE" >> "$random_m3u"
+
+    success "Random playlist: $count track(s) from $total available."
+    start_mpv "$random_m3u"
+}
+
 # ── Start MPV ─────────────────────────────────────────────────────────────────
 start_mpv() {
     local playlist_or_file="$1"
     local initial_volume
     initial_volume="$(get_saved_volume)"
-
     [[ -n "${OPT_VOLUME:-}" ]] && initial_volume="$OPT_VOLUME"
 
     local music_dir_arg="${OPT_DIRECTORY:-$MUSIC_DIR}"
@@ -172,15 +523,9 @@ start_mpv() {
     info "Shortcuts: S=Shuffle  R=Repeat  V=Video  I=Info  Ctrl+S=Search  N/P=Next/Prev"
     echo ""
 
-    # Verify playlist/file
     if [[ "$playlist_or_file" == *.m3u ]]; then
-        if [[ ! -f "$playlist_or_file" ]]; then
-            log "ERROR: Playlist not found: $playlist_or_file"
-            die "Playlist not found: $playlist_or_file"
-        fi
-        local linecount
-        linecount=$(wc -l < "$playlist_or_file")
-        log "Playlist: $playlist_or_file ($linecount lines)"
+        [[ ! -f "$playlist_or_file" ]] && die "Playlist not found: $playlist_or_file"
+        log "Playlist: $playlist_or_file ($(wc -l < "$playlist_or_file") lines)"
     else
         log "File: $playlist_or_file"
     fi
@@ -191,14 +536,11 @@ start_mpv() {
         --msg-level=all=warn
         --log-file="$LOG_FILE"
         --script-opts="music_dir=${music_dir_arg}"
+        --input-ipc-server="$MPV_SOCKET"
     )
 
-    # Enable video if explicitly requested
-    if [[ "${OPT_VIDEO:-0}" == "1" ]]; then
-        mpv_args=( "${mpv_args[@]/--no-video}" )
-    fi
+    [[ "${OPT_VIDEO:-0}" == "1" ]] && mpv_args=( "${mpv_args[@]/--no-video}" )
 
-    # Playlist or file argument
     if [[ "$playlist_or_file" == *.m3u ]]; then
         mpv_args+=(--playlist="$playlist_or_file")
     else
@@ -206,31 +548,37 @@ start_mpv() {
     fi
 
     log "MPV command: mpv ${mpv_args[*]}"
-    log "MPV path: $(command -v mpv)"
-    local mpv_ver
-    mpv_ver="$(mpv --version 2>&1 || true)"
+    local mpv_ver; mpv_ver="$(mpv --version 2>&1 || true)"
     log "MPV version: ${mpv_ver%%$'\n'*}"
 
     add_to_history "$playlist_or_file"
 
-    log "Launching MPV with /dev/tty as terminal..."
+    # Desktop notification on start
+    if [[ "$HAS_NOTIFY" -eq 1 ]]; then
+        local first_track
+        if [[ "$playlist_or_file" == *.m3u ]]; then
+            first_track=$(grep -v '^#' "$playlist_or_file" | grep -v '^$' | head -1)
+        else
+            first_track="$playlist_or_file"
+        fi
+        [[ -n "$first_track" ]] && notify_track "$first_track"
+    fi
+
+    log "Launching MPV..."
     set +e
     mpv "${mpv_args[@]}" </dev/tty >/dev/tty 2>>"$LOG_FILE"
     local rc=$?
     set -e
 
     log "MPV exited with code: $rc"
-    if [[ $rc -ne 0 ]]; then
-        warn "MPV exited with code $rc — check log: $LOG_FILE"
-    fi
+    [[ $rc -ne 0 ]] && warn "MPV exited with code $rc — check log: $LOG_FILE"
 }
 
-# ── Flow: no arguments → load from ~/Music/Playlists ─────────────────────────
+# ── Flow: no arguments ────────────────────────────────────────────────────────
 flow_no_args() {
     local playlists=()
-    while IFS= read -r f; do
-        playlists+=("$f")
-    done < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
 
     if [[ ${#playlists[@]} -eq 0 ]]; then
         error "No playlists found in $PLAYLIST_DIR"
@@ -240,7 +588,8 @@ flow_no_args() {
 
     local items=()
     for f in "${playlists[@]}"; do
-        items+=("$f" "$(basename "$f")" "OFF")
+        local count; count=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
+        items+=("$f" "$(basename "$f") ($count tracks)" "OFF")
     done
 
     local selected
@@ -249,38 +598,30 @@ flow_no_args() {
         "${items[@]}" 3>&1 1>&2 2>&3) || exit 0
 
     [[ -z "$selected" ]] && { warn "No playlist selected."; exit 0; }
-
     selected="$(echo "$selected" | tr -d '"')"
 
     local combined="$TMP_DIR/combined_$$.m3u"
     echo "#EXTM3U" > "$combined"
     for f in $selected; do
-        if [[ -f "$f" ]]; then
-            grep -v '^#' "$f" | grep -v '^$' >> "$combined"
-        fi
+        [[ -f "$f" ]] && grep -v '^#' "$f" | grep -v '^$' >> "$combined"
     done
 
-    local playlist_count
-    playlist_count=$(echo "$selected" | wc -w)
-    info "Playing $playlist_count playlist(s)."
+    info "Playing $(echo "$selected" | wc -w) playlist(s)."
     start_mpv "$combined"
 }
 
-# ── Flow: --playlist flag ─────────────────────────────────────────────────────
+# ── Flow: --playlist ──────────────────────────────────────────────────────────
 flow_select_playlist() {
     local playlists=()
-    while IFS= read -r f; do
-        playlists+=("$f")
-    done < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
 
-    if [[ ${#playlists[@]} -eq 0 ]]; then
-        error "No playlists found in $PLAYLIST_DIR"
-        exit 1
-    fi
+    [[ ${#playlists[@]} -eq 0 ]] && { error "No playlists found in $PLAYLIST_DIR"; exit 1; }
 
     local items=()
     for f in "${playlists[@]}"; do
-        items+=("$f" "$(basename "$f")" "OFF")
+        local count; count=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
+        items+=("$f" "$(basename "$f") ($count tracks)" "OFF")
     done
 
     local selected
@@ -293,133 +634,232 @@ flow_select_playlist() {
 
     local combined="$TMP_DIR/combined_$$.m3u"
     echo "#EXTM3U" > "$combined"
-    local total_songs=0
-    local playlist_count=0
-
+    local total_songs=0 pl_count=0
     for f in $selected; do
         if [[ -f "$f" ]]; then
-            local count
-            count=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
+            local c; c=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
             grep -v '^#' "$f" | grep -v '^$' >> "$combined"
-            ((total_songs += count)) || true
-            ((playlist_count++)) || true
+            ((total_songs += c)) || true
+            ((pl_count++))       || true
         fi
     done
 
-    info "Playing $playlist_count playlist(s) ($total_songs tracks)."
+    info "Playing $pl_count playlist(s) ($total_songs tracks)."
     start_mpv "$combined"
 }
 
-# ── Flow: --playlist-manager flag ────────────────────────────────────────────
+# ── Flow: --playlist-manager ──────────────────────────────────────────────────
 flow_playlist_manager() {
-    local playlists=()
-    while IFS= read -r f; do
-        playlists+=("$f")
-    done < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    while true; do
+        local playlists=()
+        while IFS= read -r f; do playlists+=("$f"); done \
+            < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
 
-    if [[ ${#playlists[@]} -eq 0 ]]; then
-        warn "No playlists found in $PLAYLIST_DIR"
-        exit 0
-    fi
+        [[ ${#playlists[@]} -eq 0 ]] && { warn "No playlists in $PLAYLIST_DIR"; return 0; }
 
-    # Build checklist with track counts
-    local items=()
+        local action
+        action=$("$DIALOG_CMD" --title "Playlist Manager — $PLAYLIST_DIR" \
+            --menu "Choose an action:" 15 65 7 \
+            "delete"    "Delete playlist(s)" \
+            "rename"    "Rename a playlist" \
+            "edit"      "Edit a playlist in \$EDITOR" \
+            "duplicate" "Duplicate a playlist" \
+            "export"    "Export playlist to a directory" \
+            "info"      "Show playlist info / stats" \
+            3>&1 1>&2 2>&3) || return 0
+
+        case "$action" in
+            delete)    pm_delete    ;;
+            rename)    pm_rename    ;;
+            edit)      pm_edit      ;;
+            duplicate) pm_duplicate ;;
+            export)    pm_export    ;;
+            info)      pm_info      ;;
+        esac
+    done
+}
+
+pm_delete() {
+    local playlists=() items=()
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
     for f in "${playlists[@]}"; do
-        local count
-        count=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
-        items+=("$f" "$(basename "$f") ($count tracks)" "OFF")
+        local c; c=$(grep -cv '^#' "$f" 2>/dev/null || echo 0)
+        items+=("$f" "$(basename "$f") ($c tracks)" "OFF")
     done
 
     local selected
-    selected=$("$DIALOG_CMD" --title "Playlist Manager — $PLAYLIST_DIR" \
-        --checklist "Select playlists to DELETE (SPACE to toggle):" 22 80 15 \
-        "${items[@]}" 3>&1 1>&2 2>&3) || { info "Cancelled."; exit 0; }
+    selected=$("$DIALOG_CMD" --title "Delete Playlists" \
+        --checklist "Select playlists to DELETE:" 22 80 15 \
+        "${items[@]}" 3>&1 1>&2 2>&3) || return 0
 
-    [[ -z "$selected" ]] && { warn "Nothing selected."; exit 0; }
-
+    [[ -z "$selected" ]] && { warn "Nothing selected."; return; }
     selected="$(echo "$selected" | tr -d '"')"
 
-    # Count how many are selected
-    local selected_count
-    selected_count=$(echo "$selected" | wc -w)
+    local names="" cnt; cnt=$(echo "$selected" | wc -w)
+    for f in $selected; do names+="• $(basename "$f")\n"; done
 
-    # List selected names for confirmation
-    local names=""
-    for f in $selected; do
-        names+="  • $(basename "$f")\n"
-    done
-
-    # Confirm deletion
     "$DIALOG_CMD" --title "Confirm Deletion" \
-        --yesno "Delete $selected_count playlist(s)?\n\n${names}\nThis cannot be undone." \
-        16 60 3>&1 1>&2 2>&3 || { info "Deletion cancelled."; exit 0; }
+        --yesno "Delete $cnt playlist(s)?\n\n${names}\nThis cannot be undone." \
+        16 60 3>&1 1>&2 2>&3 || { info "Cancelled."; return; }
 
-    # Delete
-    local deleted=0
-    local failed=0
+    local deleted=0 failed=0
     for f in $selected; do
         if [[ -f "$f" ]]; then
-            if rm -f "$f"; then
-                success "Deleted: $(basename "$f")"
-                log "Deleted playlist: $f"
-                ((deleted++)) || true
-            else
-                warn "Failed to delete: $(basename "$f")"
-                ((failed++)) || true
-            fi
-        else
-            warn "Not found (skipped): $f"
-            ((failed++)) || true
+            rm -f "$f" \
+                && { success "Deleted: $(basename "$f")"; ((deleted++)) || true; } \
+                || { warn "Failed: $(basename "$f")";     ((failed++))  || true; }
         fi
     done
+    info "$deleted deleted."; [[ $failed -gt 0 ]] && warn "$failed failed."
+}
 
-    echo ""
-    info "$deleted playlist(s) deleted."
-    [[ $failed -gt 0 ]] && warn "$failed file(s) could not be deleted."
+pm_rename() {
+    local playlists=() items=()
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    for f in "${playlists[@]}"; do items+=("$f" "$(basename "$f")"); done
+
+    local target
+    target=$("$DIALOG_CMD" --title "Rename Playlist" \
+        --menu "Select playlist to rename:" 22 80 15 \
+        "${items[@]}" 3>&1 1>&2 2>&3) || return 0
+
+    local current_name new_name
+    current_name="$(basename "$target" .m3u)"
+    new_name=$("$DIALOG_CMD" --title "Rename" \
+        --inputbox "New name for \"$current_name\":" 10 60 \
+        "$current_name" 3>&1 1>&2 2>&3) || return 0
+
+    new_name="$(echo "$new_name" | sed 's/[^a-zA-Z0-9._-]/_/g')"
+    [[ -z "$new_name" ]] && { warn "Name cannot be empty."; return; }
+
+    local new_path="$PLAYLIST_DIR/${new_name}.m3u"
+    [[ -f "$new_path" ]] && { warn "\"$new_name\" already exists."; return; }
+
+    mv "$target" "$new_path"
+    success "Renamed: $current_name → $new_name"
+}
+
+pm_edit() {
+    local playlists=() items=()
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    for f in "${playlists[@]}"; do items+=("$f" "$(basename "$f")"); done
+
+    local target
+    target=$("$DIALOG_CMD" --title "Edit Playlist" \
+        --menu "Select playlist to edit:" 22 80 15 \
+        "${items[@]}" 3>&1 1>&2 2>&3) || return 0
+
+    local editor="${EDITOR:-nano}"
+    command -v "$editor" &>/dev/null || \
+        for e in nano vim vi; do command -v "$e" &>/dev/null && editor="$e" && break; done
+
+    info "Opening \"$(basename "$target")\" in $editor..."
+    "$editor" "$target" </dev/tty >/dev/tty
+    success "Done editing: $(basename "$target")"
+}
+
+pm_duplicate() {
+    local playlists=() items=()
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    for f in "${playlists[@]}"; do items+=("$f" "$(basename "$f")"); done
+
+    local target
+    target=$("$DIALOG_CMD" --title "Duplicate Playlist" \
+        --menu "Select playlist to duplicate:" 22 80 15 \
+        "${items[@]}" 3>&1 1>&2 2>&3) || return 0
+
+    local base; base="$(basename "$target" .m3u)"
+    local new_name
+    new_name=$("$DIALOG_CMD" --title "Duplicate As" \
+        --inputbox "Name for the duplicate:" 10 60 \
+        "${base}_copy" 3>&1 1>&2 2>&3) || return 0
+
+    new_name="$(echo "$new_name" | sed 's/[^a-zA-Z0-9._-]/_/g')"
+    [[ -z "$new_name" ]] && { warn "Name cannot be empty."; return; }
+
+    local new_path="$PLAYLIST_DIR/${new_name}.m3u"
+    [[ -f "$new_path" ]] && { warn "\"$new_name\" already exists."; return; }
+
+    cp "$target" "$new_path"
+    success "Duplicated: $base → $new_name"
+}
+
+pm_export() {
+    local playlists=() items=()
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    for f in "${playlists[@]}"; do items+=("$f" "$(basename "$f")"); done
+
+    local target
+    target=$("$DIALOG_CMD" --title "Export Playlist" \
+        --menu "Select playlist to export:" 22 80 15 \
+        "${items[@]}" 3>&1 1>&2 2>&3) || return 0
+
+    local dest_dir
+    dest_dir=$("$DIALOG_CMD" --title "Export Destination" \
+        --inputbox "Destination directory:" 10 70 \
+        "$HOME" 3>&1 1>&2 2>&3) || return 0
+
+    dest_dir="${dest_dir/#\~/$HOME}"
+    [[ -d "$dest_dir" ]] || die "Directory not found: $dest_dir"
+
+    cp "$target" "$dest_dir/$(basename "$target")"
+    success "Exported to: $dest_dir/$(basename "$target")"
+}
+
+pm_info() {
+    local playlists=() items=()
+    while IFS= read -r f; do playlists+=("$f"); done \
+        < <(find "$PLAYLIST_DIR" -name "*.m3u" -type f 2>/dev/null | sort)
+    for f in "${playlists[@]}"; do items+=("$f" "$(basename "$f")"); done
+
+    local target
+    target=$("$DIALOG_CMD" --title "Playlist Info" \
+        --menu "Select playlist:" 22 80 15 \
+        "${items[@]}" 3>&1 1>&2 2>&3) || return 0
+
+    show_playlist_info "$target"
 }
 
 # ── Flow: directories ─────────────────────────────────────────────────────────
 flow_directories() {
     local -a dirs=("$@")
-
-    for d in "${dirs[@]}"; do
-        [[ -d "$d" ]] || die "Directory not found: $d"
-    done
+    for d in "${dirs[@]}"; do [[ -d "$d" ]] || die "Directory not found: $d"; done
 
     SCAN_RESULT_FILE="$TMP_DIR/scan_result_$$.txt"
-
     scan_media "${dirs[@]}" >/dev/null
 
-    local found
-    found="$(wc -l < "$SCAN_RESULT_FILE" | tr -d ' ')"
-
-    if [[ "$found" -eq 0 ]]; then
-        die "No media files found in the provided directories."
-    fi
-
+    local found; found=$(wc -l < "$SCAN_RESULT_FILE" | tr -d ' ')
+    [[ "$found" -eq 0 ]] && die "No media files found."
     success "$found media files found."
 
-    local name
-    name="$(ask_playlist_name)" || exit 0
+    if [[ "$HAS_FFPROBE" -eq 1 ]]; then
+        if "$DIALOG_CMD" --title "Validate Files?" \
+            --yesno "Validate files with ffprobe to filter broken ones?\n(Slower for large libraries)" \
+            9 65 3>&1 1>&2 2>&3; then
+            local validated="$TMP_DIR/validated_$$.txt"
+            validate_media "$SCAN_RESULT_FILE" "$validated"
+            SCAN_RESULT_FILE="$validated"
+            found=$(wc -l < "$SCAN_RESULT_FILE" | tr -d ' ')
+            success "$found valid file(s) after validation."
+        fi
+    fi
 
+    local name; name="$(ask_playlist_name)" || exit 0
     local playlist_file="$PLAYLIST_DIR/${name}.m3u"
-    {
-        echo "#EXTM3U"
-        cat "$SCAN_RESULT_FILE"
-    } > "$playlist_file"
-
+    { echo "#EXTM3U"; cat "$SCAN_RESULT_FILE"; } > "$playlist_file"
     success "Playlist saved to $playlist_file"
     start_mpv "$playlist_file"
 }
 
-# ── Flow: individual media files ──────────────────────────────────────────────
+# ── Flow: individual files ────────────────────────────────────────────────────
 flow_media_files() {
     local -a files=("$@")
-
-    for f in "${files[@]}"; do
-        [[ -f "$f" ]] || warn "File not found: $f"
-    done
-
+    for f in "${files[@]}"; do [[ -f "$f" ]] || warn "File not found: $f"; done
     info "${#files[@]} file(s) provided."
 
     local save_choice
@@ -428,8 +868,7 @@ flow_media_files() {
         3>&1 1>&2 2>&3; echo $?) || true
 
     if [[ "$save_choice" == "0" ]]; then
-        local name
-        name="$(ask_playlist_name)" || exit 0
+        local name; name="$(ask_playlist_name)" || exit 0
         local playlist_file="$PLAYLIST_DIR/${name}.m3u"
         { echo "#EXTM3U"; printf '%s\n' "${files[@]}"; } > "$playlist_file"
         success "Playlist saved to $playlist_file"
@@ -453,49 +892,72 @@ ${BOLD}USAGE:${RESET}
   $SCRIPT_NAME ~/Music/Funk ~/Videos    Scan directories and create playlist
   $SCRIPT_NAME song.mp3 video.mp4       Play files directly
   $SCRIPT_NAME playlist.m3u             Play a .m3u playlist
-  $SCRIPT_NAME --history                Open one of the last 5 playlists
-  $SCRIPT_NAME --playlist-manager       Manage (delete) playlists interactively
-  $SCRIPT_NAME --help                   This help text
 
-${BOLD}OPTIONS:${RESET}
+${BOLD}PLAYBACK:${RESET}
   -p,  --playlist           Checklist menu of available playlists
-  -pm, --playlist-manager   Interactive manager to delete .m3u playlists
-  -d,  --directory DIR      Set root directory for the Fuse Search
-  -v,  --volume N           Start with volume N (0-150), ignores cache
-       --video              Enable video output (disabled by default)
-       --debug              Enable debug messages
        --history            Show history of last 5 playlists
+       --random [N]         Play N random tracks from MUSIC_DIR (default: 20)
+       --video              Enable video output (disabled by default)
+  -v,  --volume N           Start with volume N (0-150), ignores saved cache
 
-${BOLD}MPV SHORTCUTS (set in ~/.config/mpv/scripts/):${RESET}
-  Ctrl+S    Interactive music search (Fuse Search)
-  S         Toggle Shuffle
-  R         Toggle Repeat (OFF → ONE → ALL)
-  V         Toggle Video ON/OFF
-  I         Current track info (OSD)
-  N or >    Next track
-  P or <    Previous track
-  SPACE     Play/Pause
+${BOLD}LIBRARY & SEARCH:${RESET}
+  -s,  --search TERM        Search MUSIC_DIR and pick a track to play
+       --stats              Show library statistics (tracks, duration, size)
+       --info PLAYLIST      Show info/stats for a specific .m3u playlist
+
+${BOLD}PLAYLIST MANAGER:${RESET}
+  -pm, --playlist-manager   Manage playlists: delete, rename, edit,
+                            duplicate, export, info
+
+${BOLD}IPC — control a running MPV instance:${RESET}
+       --pause              Toggle pause/resume
+       --next               Skip to next track
+       --prev               Go to previous track
+       --stop               Quit MPV
+       --vol-up             Volume +5%
+       --vol-down           Volume -5%
+       --queue FILE         Append a file to the current playlist
+       --now-playing        Show current track info (+ album art if available)
+
+${BOLD}MAINTENANCE:${RESET}
+       --clean-history      Remove missing entries from history
+  -d,  --directory DIR      Override MUSIC_DIR for this session
+       --debug              Enable verbose debug output
+  -h,  --help               This help text
+
+${BOLD}MPV SHORTCUTS (defined in ~/.config/mpv/scripts/):${RESET}
+  Ctrl+S    Interactive music search    S         Toggle Shuffle
+  R         Toggle Repeat               V         Toggle Video
+  I         Track info (OSD)            SPACE     Play/Pause
+  N / >     Next track                  P / <     Previous track
   + / -     Volume +5% / -5%
 
-${BOLD}ENVIRONMENT VARIABLES:${RESET}
+${BOLD}OPTIONAL DEPENDENCIES:${RESET}
+  ffprobe      Metadata, stats, validation, art  (package: ffmpeg)
+  socat        IPC controls for running MPV       (package: socat)
+  chafa        Album art in terminal              (package: chafa)
+  timg         Album art alternative              (package: timg)
+  notify-send  Desktop notifications              (package: libnotify-bin)
+
+${BOLD}ENVIRONMENT:${RESET}
   MUSIC_DIR   Root music directory (default: ~/Music)
+  EDITOR      Editor for playlist editing        (default: nano)
   DEBUG       Set to 1 for verbose logs
 
-${BOLD}DIRECTORIES:${RESET}
-  Playlists: $PLAYLIST_DIR
-  Cache:     $CACHE_DIR
-  Volume:    $VOLUME_CACHE
+${BOLD}PATHS:${RESET}
+  Playlists:  $PLAYLIST_DIR
+  Cache:      $CACHE_DIR
+  Volume:     $VOLUME_CACHE
+  IPC socket: $MPV_SOCKET
 EOF
 }
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
-OPT_PLAYLIST=0
-OPT_PLAYLIST_MANAGER=0
-OPT_HISTORY=0
-OPT_HELP=0
-OPT_VOLUME=""
-OPT_DIRECTORY=""
-OPT_VIDEO=0
+OPT_PLAYLIST=0; OPT_PLAYLIST_MANAGER=0; OPT_HISTORY=0; OPT_HELP=0
+OPT_VOLUME=""; OPT_DIRECTORY=""; OPT_VIDEO=0; OPT_RANDOM=""
+OPT_SEARCH=""; OPT_STATS=0; OPT_INFO=""; OPT_CLEAN_HISTORY=0
+OPT_PAUSE=0; OPT_NEXT=0; OPT_PREV=0; OPT_STOP=0
+OPT_VOL_UP=0; OPT_VOL_DOWN=0; OPT_QUEUE=""; OPT_NOW_PLAYING=0
 POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
@@ -510,6 +972,28 @@ while [[ $# -gt 0 ]]; do
         -d|--directory)          OPT_DIRECTORY="$2"; shift 2 ;;
         --directory=*)           OPT_DIRECTORY="${1#*=}"; shift ;;
         --video)                 OPT_VIDEO=1; shift ;;
+        --random)
+            if [[ -n "${2:-}" ]] && [[ "$2" =~ ^[0-9]+$ ]]; then
+                OPT_RANDOM="$2"; shift 2
+            else
+                OPT_RANDOM="20"; shift
+            fi ;;
+        --random=*)              OPT_RANDOM="${1#*=}"; shift ;;
+        -s|--search)             OPT_SEARCH="$2"; shift 2 ;;
+        --search=*)              OPT_SEARCH="${1#*=}"; shift ;;
+        --stats)                 OPT_STATS=1; shift ;;
+        --info)                  OPT_INFO="$2"; shift 2 ;;
+        --info=*)                OPT_INFO="${1#*=}"; shift ;;
+        --clean-history)         OPT_CLEAN_HISTORY=1; shift ;;
+        --pause)                 OPT_PAUSE=1; shift ;;
+        --next)                  OPT_NEXT=1; shift ;;
+        --prev)                  OPT_PREV=1; shift ;;
+        --stop)                  OPT_STOP=1; shift ;;
+        --vol-up)                OPT_VOL_UP=1; shift ;;
+        --vol-down)              OPT_VOL_DOWN=1; shift ;;
+        --queue)                 OPT_QUEUE="$2"; shift 2 ;;
+        --queue=*)               OPT_QUEUE="${1#*=}"; shift ;;
+        --now-playing)           OPT_NOW_PLAYING=1; shift ;;
         --*)                     warn "Unknown option: $1"; shift ;;
         *)                       POSITIONAL+=("$1"); shift ;;
     esac
@@ -519,51 +1003,50 @@ done
 main() {
     check_deps
     setup_dirs
-
     log "Args received: $*"
-
     [[ -n "$OPT_DIRECTORY" ]] && MUSIC_DIR="$OPT_DIRECTORY"
 
-    if [[ "$OPT_HELP" == "1" ]]; then
-        show_help
-        exit 0
+    [[ "$OPT_HELP"          == "1" ]] && { show_help;             exit 0; }
+    [[ "$OPT_CLEAN_HISTORY" == "1" ]] && { clean_history;         exit 0; }
+    [[ "$OPT_STATS"         == "1" ]] && { show_library_stats;    exit 0; }
+
+    if [[ -n "$OPT_INFO" ]]; then
+        local t="$OPT_INFO"
+        [[ ! -f "$t" ]] && t="$PLAYLIST_DIR/$OPT_INFO"
+        [[ "$t" != *.m3u ]] && t="${t}.m3u"
+        show_playlist_info "$t"; exit 0
     fi
 
-    if [[ "$OPT_HISTORY" == "1" ]]; then
-        show_history
-        exit 0
-    fi
+    # IPC (no MPV launch)
+    [[ "$OPT_PAUSE"       == "1" ]] && { ipc_pause;              exit 0; }
+    [[ "$OPT_NEXT"        == "1" ]] && { ipc_next;               exit 0; }
+    [[ "$OPT_PREV"        == "1" ]] && { ipc_prev;               exit 0; }
+    [[ "$OPT_STOP"        == "1" ]] && { ipc_stop;               exit 0; }
+    [[ "$OPT_VOL_UP"      == "1" ]] && { ipc_vol_up;             exit 0; }
+    [[ "$OPT_VOL_DOWN"    == "1" ]] && { ipc_vol_down;           exit 0; }
+    [[ -n "$OPT_QUEUE"         ]]  && { ipc_queue "$OPT_QUEUE";  exit 0; }
+    [[ "$OPT_NOW_PLAYING" == "1" ]] && { ipc_now_playing;        exit 0; }
 
-    if [[ "$OPT_PLAYLIST_MANAGER" == "1" ]]; then
-        flow_playlist_manager
-        exit 0
-    fi
+    [[ "$OPT_HISTORY"          == "1" ]] && { show_history;          exit 0; }
+    [[ "$OPT_PLAYLIST_MANAGER" == "1" ]] && { flow_playlist_manager; exit 0; }
+    [[ "$OPT_PLAYLIST"         == "1" ]] && { flow_select_playlist;  exit 0; }
 
-    if [[ "$OPT_PLAYLIST" == "1" ]]; then
-        flow_select_playlist
-        exit 0
-    fi
+    [[ -n "$OPT_SEARCH" ]] && { flow_search "$OPT_SEARCH"; exit 0; }
+    [[ -n "$OPT_RANDOM" ]] && { flow_random "$OPT_RANDOM"; exit 0; }
 
     if [[ ${#POSITIONAL[@]} -eq 0 ]]; then
-        flow_no_args
-        exit 0
+        flow_no_args; exit 0
     fi
 
-    # Classify positional arguments
     local -a dirs=() files=() playlists=()
     for arg in "${POSITIONAL[@]}"; do
-        if [[ "$arg" == *.m3u ]]; then
-            playlists+=("$arg")
-        elif [[ -d "$arg" ]]; then
-            dirs+=("$arg")
-        elif [[ -f "$arg" ]]; then
-            files+=("$arg")
-        else
-            warn "Ignoring: $arg (not found)"
+        if   [[ "$arg" == *.m3u ]]; then playlists+=("$arg")
+        elif [[ -d "$arg" ]];       then dirs+=("$arg")
+        elif [[ -f "$arg" ]];       then files+=("$arg")
+        else warn "Ignoring: $arg (not found)"
         fi
     done
 
-    # Priority: .m3u > directories > files
     if [[ ${#playlists[@]} -gt 0 ]]; then
         if [[ ${#playlists[@]} -eq 1 ]]; then
             start_mpv "${playlists[0]}"
@@ -575,14 +1058,11 @@ main() {
             done
             start_mpv "$combined"
         fi
-    elif [[ ${#dirs[@]} -gt 0 ]]; then
-        flow_directories "${dirs[@]}"
-    elif [[ ${#files[@]} -gt 0 ]]; then
-        flow_media_files "${files[@]}"
+    elif [[ ${#dirs[@]}   -gt 0 ]]; then flow_directories "${dirs[@]}"
+    elif [[ ${#files[@]}  -gt 0 ]]; then flow_media_files "${files[@]}"
     else
         error "No valid arguments provided."
-        show_help
-        exit 1
+        show_help; exit 1
     fi
 }
 

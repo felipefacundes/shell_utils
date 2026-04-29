@@ -1809,7 +1809,7 @@ local function create_elements()
     ne.off = not state.shuffle
     ne.tooltip_style = osc_styles.tooltip
     ne.tooltip_f = function() return state.shuffle and "Shuffle: on" or "Shuffle: off" end
-    ne.eventresponder["mbtn_left_up"] = function()
+    local function do_shuffle_toggle()
         state.shuffle = not state.shuffle
         if state.shuffle then
             mp.osd_message("Shuffle: on")
@@ -1819,6 +1819,8 @@ local function create_elements()
         save_shuffle_state()
         request_init()
     end
+    ne.eventresponder["mbtn_left_up"] = do_shuffle_toggle
+    mp.add_key_binding("ctrl+r", "shuffle-toggle", do_shuffle_toggle)
 
     -- ── Loop A-B ──────────────────────────────────────────────────────────────
     ne = new_element("loop_ab", "button")
@@ -1901,12 +1903,12 @@ local function create_elements()
     ne.off = not state.vid_active
     ne.tooltip_style = osc_styles.tooltip
     ne.tooltip_f = function() return state.vid_active and "Video: on" or "Video: off" end
-    ne.eventresponder["mbtn_left_up"] = function()
+    local function do_vid_toggle()
         if state.vid_active then
             mp.set_property("vid", "no")
             state.vid_active = false
             mp.osd_message("Video: off")
-            save_vid_state()   -- <<< NOVO
+            save_vid_state()
             request_init()
         else
             local pos = mp.get_property_number("playback-time") or 0
@@ -1932,10 +1934,12 @@ local function create_elements()
             mp.commandv("loadfile", mp.get_property("path"), "replace", 0, options)
             state.vid_active = true
             mp.osd_message("Video: on (reloading...)")
-            save_vid_state()   -- <<< NOVO
+            save_vid_state()
             request_init()
         end
     end
+    ne.eventresponder["mbtn_left_up"] = do_vid_toggle
+    mp.add_key_binding("ctrl+v", "vid-toggle", do_vid_toggle)
 
 
     -- ── Playlist search ───────────────────────────────────────────────────────
