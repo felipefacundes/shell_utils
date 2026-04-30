@@ -1812,6 +1812,12 @@ _cs_enter() {
         _gt_sync_hist
     fi
 
+    # Se o cursor não está na coluna 0, pula linha antes do prompt
+    printf '\e[6n' >&2
+    local _cs_pos_report
+    IFS='[;' read -sd R -ra _cs_pos_report -t 1 </dev/tty 2>/dev/null
+    local _cs_col="${_cs_pos_report[2]:-1}"
+    (( _cs_col > 1 )) && printf '\n' >&2
     _cs_show_prompt
     READLINE_LINE=""; READLINE_POINT=0
     tput sgr0

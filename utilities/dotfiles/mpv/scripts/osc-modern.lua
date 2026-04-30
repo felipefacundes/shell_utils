@@ -24,6 +24,10 @@ local opt = require "mp.options"
 local utils = require "mp.utils"
 mp.set_property("osc", "no")
 
+-- ── State directory ──────────────────────────────────────────────────────────
+local state_dir = os.getenv("HOME") .. "/.config/mpv/mpv-state"
+os.execute("mkdir -p " .. state_dir)
+
 -- ── Opções do usuário ────────────────────────────────────────────────────────
 local user_opts = {
     idlescreen                  = true,
@@ -268,7 +272,7 @@ local state = {
 }
 
 -- ── Save Volume State ────────────────────────────────────────────────────────
-local vol_state_file = os.getenv("HOME") .. "/.config/mpv/vol_state"
+local vol_state_file = state_dir .. "/vol_state"
 local vol_ignore_observer = false
 
 local function save_vol_state()
@@ -297,7 +301,7 @@ local function load_vol_state()
 end
 
 -- ── Save OSC Bar State ───────────────────────────────────────────────────────
-local osc_bar_state_file = os.getenv("HOME") .. "/.config/mpv/osc_bar_state"
+local osc_bar_state_file = state_dir .. "/osc_bar_state"
 
 local function save_osc_bar_state()
     local f = io.open(osc_bar_state_file, "w")
@@ -324,7 +328,7 @@ local function load_osc_bar_state()
 end
 
 -- ── Save Video State ─────────────────────────────────────────────────────────
-local vid_state_file = os.getenv("HOME") .. "/.config/mpv/vid_state"
+local vid_state_file = state_dir .. "/vid_state"
  
 local function save_vid_state()
     local f = io.open(vid_state_file, "w")
@@ -352,7 +356,7 @@ local function load_vid_state()
 end
 
 -- ── Save Shuffle State ───────────────────────────────────────────────────────
-local shuffle_state_file = os.getenv("HOME") .. "/.config/mpv/shuffle_state"
+local shuffle_state_file = state_dir .. "/shuffle_state"
 
 local function save_shuffle_state()
     local f = io.open(shuffle_state_file, "w")

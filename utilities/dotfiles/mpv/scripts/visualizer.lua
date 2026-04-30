@@ -3,7 +3,7 @@
 
 -- ============================================================
 --  MPV Audio Visualizer Script — Extended Edition v3
---  Cicle com: k  |  Toggle modo: K
+--  Cycle with: k  |  Toggle mode: K
 -- ============================================================
 local opts = {
     mode = "novideo",
@@ -24,10 +24,12 @@ if not (mp.get_property("options/lavfi-complex", "") == "") then
 end
 
 -- ============================================================
---  Persistência: salva/carrega última visualização escolhida
+--  Persistence: save/load last chosen visualization
 -- ============================================================
-local state_file = (os.getenv("HOME") or os.getenv("USERPROFILE") or ".") ..
-                   "/.config/mpv/visualizer_state.txt"
+local state_dir  = (os.getenv("HOME") or os.getenv("USERPROFILE") or ".") ..
+                   "/.config/mpv/mpv-state"
+os.execute("mkdir -p " .. state_dir)
+local state_file = state_dir .. "/visualizer_state.txt"
 
 local function save_state()
     local f = io.open(state_file, "w")
@@ -52,11 +54,11 @@ end
 load_state()
 
 -- ============================================================
---  Lista de visualizações disponíveis
+--  List of available visualizations
 -- ============================================================
 local visualizer_name_list = {
     "off",
-    -- Clássicas
+    -- Classic
     "showcqt",
     "showcqtbar",
     "avectorscope",
@@ -72,12 +74,12 @@ local visualizer_name_list = {
     "cava_mirror2",
     "plasma_wave",
     "plasma_wave2",
-    -- Espectrais modernas
+    -- Modern spectral
     "spectrum_fire",
     "spectrum_rainbow",
     "spectrum_ice",
     "spectrum_mono",
-    -- Osciloscópio / Waveform
+    -- Oscilloscope / Waveform
     "waveform_center",
     "waveform_center2",
     "waveform_rgb",
@@ -86,20 +88,20 @@ local visualizer_name_list = {
     "waveform_glow",
     "showwaves2",
     "waveform_glow2",
-    -- Vetorscópio estilizado
+    -- Styled vectorscope
     "vectorscope_color",
     "vectorscope_lissajous",
-    -- Estilo clipe musical
+    -- Music clip style
     "musicviz_bars",
     "musicviz_bars2",
     "musicviz_circle",
     "musicviz_circle2",
-    -- Espectrograma 3D / waterfall
+    -- 3D spectrogram / waterfall
     "waterfall",
     "waterfall_hot",
     -- Cyberpunk
     "cyberpunk",
-    -- Novos
+    -- New
     "nebula_drift",
     "prism_scope",
     "lava_mirror",
@@ -107,13 +109,13 @@ local visualizer_name_list = {
 }
 
 -- ============================================================
---  Módulo de opções e log
+--  Options module and logger
 -- ============================================================
 local options = require 'mp.options'
 local msg     = require 'mp.msg'
 
 -- ============================================================
---  Helper: dimensões
+--  Helper: dimensions
 -- ============================================================
 local function get_dims(quality)
     local w, fps
@@ -123,20 +125,20 @@ local function get_dims(quality)
     elseif quality == "high"     then w = 1920; fps = 60
     elseif quality == "veryhigh" then w = 2560; fps = 60
     else
-        msg.log("error", "qualidade inválida"); return nil
+        msg.log("error", "invalid quality"); return nil
     end
     local h = math.floor(w * opts.height / 16)
     return w, h, fps
 end
 
 -- ============================================================
---  Gerador de filtros lavfi
+--  lavfi filter generator
 -- ============================================================
 local function get_visualizer(name, quality, vtrack)
     local w, h, fps = get_dims(quality)
     if not w then return "" end
 
-    -- ── Clássicas ────────────────────────────────────────────
+    -- ── Classic ──────────────────────────────────────────────
 
     if name == "showcqt" then
         local count = math.ceil(w * 180 / 1920 / fps)
@@ -239,7 +241,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":colors=0x00FFFF," ..
             "format=yuv420p [vo]"
 
-    -- cava_bars2: verde-limão neon
+    -- cava_bars2: neon lime green
     elseif name == "cava_bars2" then
         return "[aid1] asplit [ao]," ..
             "showfreqs=" ..
@@ -266,10 +268,10 @@ local function get_visualizer(name, quality, vtrack)
             "[f0b] vflip [f1];" ..
             "[f0][f1] vstack [vo]"
 
-    -- plasma_wave: 3 bandas de freq em waveform cline simétricas (espelho vertical)
-    -- Graves=magenta, Médios=laranja-ouro, Agudos=ciano — cada banda espelhada
-    -- Resultado: 6 faixas de onda fluindo simétricas = efeito plasma hipnótico
-    -- cava_mirror2: laranja neon espelhado
+    -- plasma_wave: 3 frequency bands in symmetric cline waveforms (vertical mirror)
+    -- Bass=magenta, Mids=orange-gold, Highs=cyan — each band mirrored
+    -- Result: 6 symmetric wave strips flowing = hypnotic plasma effect
+    -- cava_mirror2: neon orange mirrored
     elseif name == "cava_mirror2" then
         local hh = math.floor(h / 2)
         return "[aid1] asplit [ao]," ..
@@ -285,10 +287,10 @@ local function get_visualizer(name, quality, vtrack)
 
     elseif name == "plasma_wave" then
         local slice = math.floor(h / 6)
-        local slice2 = h - slice * 5  -- ajuste para soma exata
+        local slice2 = h - slice * 5  -- adjustment for exact sum
         return "[aid1] asplit=4 [ao][pw1][pw2][pw3];" ..
 
-            -- GRAVES → magenta quente
+            -- BASS → hot magenta
             "[pw1] lowpass=f=250," ..
             "showwaves=" ..
                 "size=" .. w .. "x" .. slice ..
@@ -299,7 +301,7 @@ local function get_visualizer(name, quality, vtrack)
             "split [g0][g1];" ..
             "[g1] vflip [g1f];" ..
 
-            -- MÉDIOS → âmbar/ouro
+            -- MIDS → amber/gold
             "[pw2] bandpass=f=1800:width_type=o:w=4," ..
             "showwaves=" ..
                 "size=" .. w .. "x" .. slice ..
@@ -310,7 +312,7 @@ local function get_visualizer(name, quality, vtrack)
             "split [m0][m1];" ..
             "[m1] vflip [m1f];" ..
 
-            -- AGUDOS → ciano elétrico
+            -- HIGHS → electric cyan
             "[pw3] highpass=f=5000," ..
             "showwaves=" ..
                 "size=" .. w .. "x" .. slice2 ..
@@ -321,12 +323,12 @@ local function get_visualizer(name, quality, vtrack)
             "split [a0][a1];" ..
             "[a1] vflip [a1f];" ..
 
-            -- Empilha: agudo-espelho / médio-espelho / grave-espelho / grave / médio / agudo
+            -- Stack: high-mirror / mid-mirror / bass-mirror / bass / mid / high
             "[a1f][m1f][g1f][g0][m0][a0] vstack=inputs=6," ..
             "format=yuv420p [vo]"
 
 
-    -- plasma_wave2: Graves=verde-limão, Médios=violeta elétrico, Agudos=laranja neon
+    -- plasma_wave2: Bass=lime green, Mids=electric violet, Highs=neon orange
     elseif name == "plasma_wave2" then
         local slice = math.floor(h / 6)
         local slice2 = h - slice * 5
@@ -355,7 +357,7 @@ local function get_visualizer(name, quality, vtrack)
             "[a1f][m1f][g1f][g0][m0][a0] vstack=inputs=6," ..
             "format=yuv420p [vo]"
 
-    -- ── Espectrais modernas ───────────────────────────────────
+    -- ── Modern spectral ───────────────────────────────────────
 
     elseif name == "spectrum_fire" then
         return "[aid1] asplit [ao]," ..
@@ -401,7 +403,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":win_func=flattop" ..
                 ":orientation=vertical [vo]"
 
-    -- ── Waveform modernas ─────────────────────────────────────
+    -- ── Modern waveforms ──────────────────────────────────────
 
     elseif name == "waveform_center" then
         return "[aid1] asplit [ao]," ..
@@ -424,7 +426,7 @@ local function get_visualizer(name, quality, vtrack)
             "format=yuv420p [vwR];" ..
             "[vwL][vwR] vstack [vo]"
 
-    -- CORRIGIDO: laranja (0xFF6600) → rosa pink (0xFF1493)
+    -- FIXED: orange (0xFF6600) → pink (0xFF1493)
     elseif name == "waveform_born" then
         local hh = math.floor(h / 3)
         local hh2 = h - hh * 2
@@ -453,7 +455,7 @@ local function get_visualizer(name, quality, vtrack)
             "format=rgb0 [vo]"
 
 
-    -- waveform_center2: laranja neon
+    -- waveform_center2: neon orange
     elseif name == "waveform_center2" then
         return "[aid1] asplit [ao]," ..
             "showwaves=" ..
@@ -463,7 +465,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":colors=0xFF6200," ..
             "format=rgb0 [vo]"
 
-    -- waveform_rgb2: verde-limão (L) + violeta (R)
+    -- waveform_rgb2: lime green (L) + violet (R)
     elseif name == "waveform_rgb2" then
         local hh = math.floor(h / 2)
         return "[aid1] asplit [ao]," ..
@@ -476,7 +478,7 @@ local function get_visualizer(name, quality, vtrack)
             "format=yuv420p [vwR];" ..
             "[vwL][vwR] vstack [vo]"
 
-    -- showwaves2: azul elétrico (L) + amarelo neon (R)
+    -- showwaves2: electric blue (L) + neon yellow (R)
     elseif name == "showwaves2" then
         local hh = math.floor(h / 2)
         return "[aid1] asplit [ao]," ..
@@ -489,7 +491,7 @@ local function get_visualizer(name, quality, vtrack)
             "format=rgb0 [vwR];" ..
             "[vwL][vwR] vstack [vo]"
 
-    -- waveform_glow2: ciano elétrico + violeta (p2p)
+    -- waveform_glow2: electric cyan + violet (p2p)
     elseif name == "waveform_glow2" then
         return "[aid1] asplit [ao]," ..
             "showwaves=" ..
@@ -499,7 +501,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":colors=0x00FFFF|0xBF00FF," ..
             "format=rgb0 [vo]"
 
-    -- ── Vetorscópio estilizado ────────────────────────────────
+    -- ── Styled vectorscope ────────────────────────────────────
 
     elseif name == "vectorscope_color" then
         local sq = math.min(w, h)
@@ -527,7 +529,7 @@ local function get_visualizer(name, quality, vtrack)
             "scale=w=" .. w .. ":h=" .. h .. "," ..
             "format=rgb0 [vo]"
 
-    -- ── Estilo clipe musical ──────────────────────────────────
+    -- ── Music clip style ──────────────────────────────────────
 
     elseif name == "musicviz_bars" then
         return "[aid1] asplit [ao]," ..
@@ -542,7 +544,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":colors=0xFF0055," ..
             "format=yuv420p [vo]"
 
-    -- musicviz_bars2: violeta elétrico
+    -- musicviz_bars2: electric violet
     elseif name == "musicviz_bars2" then
         return "[aid1] asplit [ao]," ..
             "showfreqs=" ..
@@ -565,8 +567,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":colors=0xFF00FF," ..
             "format=yuv420p [vo]"
 
-
-    -- musicviz_circle2: amarelo neon
+    -- musicviz_circle2: neon yellow
     elseif name == "musicviz_circle2" then
         return "[aid1] asplit [ao]," ..
             "showfreqs=" ..
@@ -576,7 +577,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":colors=0xFFFF00," ..
             "format=yuv420p [vo]"
 
-    -- ── Waterfall / espectrograma ─────────────────────────────
+    -- ── Waterfall / spectrogram ───────────────────────────────
 
     elseif name == "waterfall" then
         return "[aid1] asplit [ao]," ..
@@ -642,11 +643,11 @@ local function get_visualizer(name, quality, vtrack)
 
     -- ── Nebula Drift ──────────────────────────────────────────
     --
-    --  TOP 55%: showspectrum waterfall "intensity" — espectrograma quente
-    --           rolando verticalmente, parece névoa galáctica em movimento.
-    --  BOT 45%: showwaves cline stereo espelhado (vflip) em rosa/ciano —
-    --           ondas simétricas pulsando abaixo do espectrograma.
-    --  Resultado: visual fluido e coeso, sem repetição.
+    --  TOP 55%: showspectrum waterfall "intensity" — warm spectrogram
+    --           scrolling vertically, resembles a moving galactic nebula.
+    --  BOT 45%: stereo cline waveform mirrored (vflip) in pink/cyan —
+    --           symmetric waves pulsing below the spectrogram.
+    --  Result: fluid and cohesive visual, no repetition.
 
     elseif name == "nebula_drift" then
         local top_h = math.floor(h * 0.55)
@@ -654,7 +655,7 @@ local function get_visualizer(name, quality, vtrack)
         local hbot  = math.floor(bot_h / 2)
         return "[aid1] asplit=3 [ao][nd1][nd2];" ..
 
-            -- TOP: espectrograma waterfall intensity
+            -- TOP: intensity waterfall spectrogram
             "[nd1] showspectrum=" ..
                 "size=" .. w .. "x" .. top_h ..
                 ":slide=scroll" ..
@@ -666,7 +667,7 @@ local function get_visualizer(name, quality, vtrack)
                 ":orientation=vertical," ..
             "format=yuv420p [nd_top];" ..
 
-            -- BOT: waveform cline espelhada verticalmente
+            -- BOT: vertically mirrored cline waveform
             "[nd2] channelsplit=channel_layout=stereo [ndL][ndR];" ..
             "[ndL] showwaves=" ..
                 "size=" .. w .. "x" .. hbot ..
@@ -684,22 +685,22 @@ local function get_visualizer(name, quality, vtrack)
 
     -- ── Prism Scope ───────────────────────────────────────────
     --
-    --  Faixa fina de showfreqs line (ciano) no topo.
-    --  Vetorscópio avectorscope dot zoom=1.5 (verde-ciano) no centro.
-    --  Faixa fina de showfreqs line (magenta) na base.
-    --  aresample explícito isola o ramo do vetorscópio — evita corrupção
-    --  de heap quando o arquivo não está em 96kHz nativamente.
+    --  Thin showfreqs line strip (cyan) at the top.
+    --  avectorscope dot zoom=1.5 (cyan-green) in the center.
+    --  Thin showfreqs line strip (magenta) at the bottom.
+    --  Explicit aresample isolates the vectorscope branch — prevents heap
+    --  corruption when the file is not natively at 96kHz.
 
-    -- prism_scope: pipeline LINEAR — zero splits, zero ramos paralelos
-    -- Gera uma tela tall (h*3) com showspectrum separate scroll,
-    -- depois crop em 3 faixas e vstack — estável em qualquer sample rate.
+    -- prism_scope: LINEAR pipeline — zero splits, zero parallel branches
+    -- Generates a tall frame (h*3) with showspectrum separate scroll,
+    -- then crops into 3 strips and vstacks — stable at any sample rate.
     --
-    --  TOP  crop: espectro canal L — color=cool (azul-ciano)
-    --  MID  crop: espectro combinado — color=rainbow
-    --  BOT  crop: espectro canal R — color=cool (invertido hflip)
+    --  TOP  crop: L channel spectrum — color=cool (blue-cyan)
+    --  MID  crop: combined spectrum — color=rainbow
+    --  BOT  crop: R channel spectrum — color=cool (hflip inverted)
 
     elseif name == "prism_scope" then
-        local fh = h * 3   -- altura total do frame gerado
+        local fh = h * 3   -- total height of generated frame
         local y1 = 0
         local y2 = h
         local y3 = h * 2
@@ -723,10 +724,10 @@ local function get_visualizer(name, quality, vtrack)
 
     -- ── Lava Mirror ───────────────────────────────────────────
     --
-    --  3 bandas de frequência em barras (graves=vermelho, médios=laranja, agudos=amarelo).
-    --  Cada banda é espelhada com hflip e unida lado a lado via hstack →
-    --  barras crescem do centro para as bordas como lava eruptando.
-    --  As 3 duplas são empilhadas verticalmente.
+    --  3 frequency bands in bar mode (bass=red, mids=orange, highs=yellow).
+    --  Each band is mirrored with hflip and joined side by side via hstack →
+    --  bars grow from the center outward like erupting lava.
+    --  The 3 pairs are stacked vertically.
 
     elseif name == "lava_mirror" then
         local slice  = math.floor(h / 3)
@@ -734,7 +735,7 @@ local function get_visualizer(name, quality, vtrack)
         local hw     = math.floor(w / 2)
         return "[aid1] asplit=4 [ao][lv1][lv2][lv3];" ..
 
-            -- GRAVES → vermelho
+            -- BASS → red
             "[lv1] lowpass=f=300," ..
             "showfreqs=" ..
                 "size=" .. hw .. "x" .. slice ..
@@ -746,7 +747,7 @@ local function get_visualizer(name, quality, vtrack)
             "[r1] hflip [r1f];" ..
             "[r1f][r0] hstack [lava_low];" ..
 
-            -- MÉDIOS → laranja
+            -- MIDS → orange
             "[lv2] bandpass=f=2000:width_type=o:w=4," ..
             "showfreqs=" ..
                 "size=" .. hw .. "x" .. slice ..
@@ -758,7 +759,7 @@ local function get_visualizer(name, quality, vtrack)
             "[o1] hflip [o1f];" ..
             "[o1f][o0] hstack [lava_mid];" ..
 
-            -- AGUDOS → amarelo
+            -- HIGHS → yellow
             "[lv3] highpass=f=5000," ..
             "showfreqs=" ..
                 "size=" .. hw .. "x" .. slice3 ..
@@ -773,7 +774,7 @@ local function get_visualizer(name, quality, vtrack)
             "[lava_low][lava_mid][lava_hi] vstack=inputs=3," ..
             "format=yuv420p [vo]"
 
-    -- lava_mirror2: azul elétrico / ciano / verde-limão
+    -- lava_mirror2: electric blue / cyan / lime green
     elseif name == "lava_mirror2" then
         local slice  = math.floor(h / 3)
         local slice3 = h - slice * 2
@@ -812,7 +813,7 @@ local function get_visualizer(name, quality, vtrack)
             "[lava2_low][lava2_mid][lava2_hi] vstack=inputs=3," ..
             "format=yuv420p [vo]"
 
-    -- ── Desligado ─────────────────────────────────────────────
+    -- ── Off ───────────────────────────────────────────────────
 
     elseif name == "off" then
         local hasvideo = false
@@ -828,12 +829,12 @@ local function get_visualizer(name, quality, vtrack)
         end
     end
 
-    msg.log("error", "nome de visualização inválido: " .. tostring(name))
+    msg.log("error", "invalid visualization name: " .. tostring(name))
     return ""
 end
 
 -- ============================================================
---  Seleção baseada em modo
+--  Mode-based selection
 -- ============================================================
 local function select_visualizer(vtrack, atrack)
     if atrack == nil or opts.mode == "off" then
@@ -851,12 +852,12 @@ local function select_visualizer(vtrack, atrack)
         end
         return ""
     end
-    msg.log("error", "modo inválido: " .. tostring(opts.mode))
+    msg.log("error", "invalid mode: " .. tostring(opts.mode))
     return ""
 end
 
 -- ============================================================
---  Hook principal
+--  Main hook
 -- ============================================================
 local function visualizer_hook()
     local count = mp.get_property_number("track-list/count", -1)
@@ -883,7 +884,7 @@ local function visualizer_hook()
 end
 
 -- ============================================================
---  Inicialização de opções e clamps
+--  Options initialization and clamping
 -- ============================================================
 options.read_options(opts, nil, visualizer_hook)
 opts.height = math.min(12, math.max(4, math.floor(opts.height)))
@@ -897,7 +898,7 @@ mp.observe_property("current-tracks/audio", "native", visualizer_hook)
 mp.observe_property("current-tracks/video", "native", visualizer_hook)
 
 -- ============================================================
---  Atalhos de teclado
+--  Key bindings
 -- ============================================================
 local function cycle_visualizer()
     local index = 1
@@ -908,7 +909,7 @@ local function cycle_visualizer()
         end
     end
     opts.name = visualizer_name_list[index]
-    mp.osd_message("Visualização: " .. opts.name, 2)
+    mp.osd_message("Visualizer: " .. opts.name, 2)
     save_state()
     visualizer_hook()
 end
@@ -923,7 +924,7 @@ local function toggle_mode()
         end
     end
     opts.mode = modes[index]
-    mp.osd_message("Modo: " .. opts.mode, 2)
+    mp.osd_message("Mode: " .. opts.mode, 2)
     save_state()
     visualizer_hook()
 end
