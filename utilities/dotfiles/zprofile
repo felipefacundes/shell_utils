@@ -19,7 +19,7 @@ for dm in "${dms[@]}"; do
         echo -e "${bred}WARNING: ${running_dm^^} display manager is currently running.${color_off}"
         echo "This script performs better when display managers are temporarily disabled."
         echo -e "${bred} To override warnings and continue, use the 'select-wm' command.${color_off}"
-        exit
+        return
     fi
 done
 
@@ -266,7 +266,7 @@ echo -e "${bwhite}e - Exit"
 echo -e "${byellow}r - Reboot"
 echo -e "${bred}s - Shutdown${color_off}"
 echo
-read -r option
+read -n 1 -s -r option
 echo
 
 clear
@@ -294,7 +294,7 @@ install_xinit() {
 }
 
 check_xinitrc_config() {
-    local xinitrc_original="$HOME/.shell_utils/xinitrc"
+    local xinitrc_original="$HOME/.shell_utils/utilities/dotfiles/xinitrc"
     local xinitrc_current="$HOME/.xinitrc"
     local md5_original=""
     local md5_current=""
@@ -332,8 +332,8 @@ check_xinitrc_config() {
         echo ""
         echo "Recommended actions:"
         echo "  - Backup current: cp ~/.xinitrc ~/.xinitrc.backup"
-        echo "  - Restore template: cp ~/.shell_utils/xinitrc ~/.xinitrc"
-        echo "  - Review differences: diff ~/.xinitrc ~/.shell_utils/xinitrc"
+        echo "  - Restore template: cp ~/.shell_utils/utilities/dotfiles/xinitrc ~/.xinitrc"
+        echo "  - Review differences: diff ~/.xinitrc ~/.shell_utils/utilities/dotfiles/xinitrc"
         echo ""
         echo -e "${bred}Continuing in 3 seconds with potentially unstable configuration...${color_off}"
         sleep 3
@@ -463,7 +463,7 @@ ${bcyan}TROUBLESHOOTING${color_off}
         ${yellow}Check:${color_off} Display manager conflicts
     
     ${bred}3. Missing .xinitrc template${color_off}
-        ${yellow}Fix:${color_off} Ensure ~/.shell_utils/xinitrc exists
+        ${yellow}Fix:${color_off} Ensure ~/.shell_utils/utilities/dotfiles/xinitrc exists
     
     ${bred}4. Keyboard layout wrong${color_off}
         ${yellow}Fix:${color_off} Modify XKB_DEFAULT_LAYOUT in script

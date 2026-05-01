@@ -177,7 +177,7 @@ ${bcyan}TROUBLESHOOTING${color_off}
         ${yellow}Check:${color_off} Display manager conflicts
     
     ${bred}3. Missing .xinitrc template${color_off}
-        ${yellow}Fix:${color_off} Ensure ~/.shell_utils/xinitrc exists
+        ${yellow}Fix:${color_off} Ensure ~/.shell_utils/utilities/dotfiles/xinitrc exists
     
     ${bred}4. Keyboard layout wrong${color_off}
         ${yellow}Fix:${color_off} Modify XKB_DEFAULT_LAYOUT in script
@@ -456,7 +456,7 @@ echo -e "${bcyan}3 - Terminal"
 echo -e "${byellow}r - Reboot"
 echo -e "${bred}s - Shutdown${color_off}"
 echo
-read -r option
+read -n 1 -s -r option
 echo
 
 clear
@@ -484,7 +484,7 @@ install_xinit() {
 }
 
 check_xinitrc_config() {
-    local xinitrc_original="$HOME/.shell_utils/xinitrc"
+    local xinitrc_original="$HOME/.shell_utils/utilities/dotfiles/xinitrc"
     local xinitrc_current="$HOME/.xinitrc"
     local md5_original=""
     local md5_current=""
@@ -522,8 +522,8 @@ check_xinitrc_config() {
         echo ""
         echo "Recommended actions:"
         echo "  - Backup current: cp ~/.xinitrc ~/.xinitrc.backup"
-        echo "  - Restore template: cp ~/.shell_utils/xinitrc ~/.xinitrc"
-        echo "  - Review differences: diff ~/.xinitrc ~/.shell_utils/xinitrc"
+        echo "  - Restore template: cp ~/.shell_utils/utilities/dotfiles/xinitrc ~/.xinitrc"
+        echo "  - Review differences: diff ~/.xinitrc ~/.shell_utils/utilities/dotfiles/xinitrc"
         echo ""
         echo -e "${bred}Continuing in 3 seconds with potentially unstable configuration...${color_off}"
         sleep 3
