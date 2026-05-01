@@ -2,7 +2,7 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-source=~/.shell_utils/Xresources
+source=~/.shell_utils/utilities/dotfiles/Xresources
 settings=~/.Xresources
 
 message() {

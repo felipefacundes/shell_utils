@@ -10,7 +10,7 @@ alias freds_imgs='Freds_img'
 alias shell_utils_default_fish='cp -f ~/.shell_utils/shell_utils.fish ~/.config/fish/conf.d/'
 alias shell_utils_default_zshrc='mv -v --backup=t ~/.zshrc ~/.zshrc.shell_utils-backup-$(date +"%Y%m%d%H%M%S"); cp -f ~/.shell_utils/utilities/dotfiles/zshrc ~/.zshrc'
 alias shell_utils_default_bashrc='mv -v --backup=t ~/.bashrc ~/.bashrc.shell_utils-backup-$(date +"%Y%m%d%H%M%S"); cp -f ~/.shell_utils/utilities/dotfiles/bashrc ~/.bashrc'
-alias shell_utils_default_inputrc='mv -v --backup=t ~/.inputrc ~/.inputrc.shell_utils-backup-$(date +"%Y%m%d%H%M%S"); cp -f ~/.shell_utils/inputrc ~/.inputrc'
+alias shell_utils_default_inputrc='mv -v --backup=t ~/.inputrc ~/.inputrc.shell_utils-backup-$(date +"%Y%m%d%H%M%S"); cp -f ~/.shell_utils/utilities/dotfiles/inputrc ~/.inputrc'
 alias shell_utils_defaults='shell_utils_default_zshrc; shell_utils_default_bashrc; shell_utils_default_inputrc; shell_utils_default_fish'
 
 #
