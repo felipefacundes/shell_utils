@@ -1891,8 +1891,10 @@ _cs_install_binds() {
         READLINE_POINT=0
 
         local pasted=""
-        if [[ -n "$TERMUX_VERSION" ]] && command -v termux-clipboard-get &>/dev/null; then
-            pasted=$(termux-clipboard-get 2>/dev/null)
+        # if [[ -n "$TERMUX_VERSION" ]] && command -v termux-clipboard-get &>/dev/null; then
+        #     pasted=$(termux-clipboard-get 2>/dev/null)
+        if [[ -n "$TERMUX_VERSION" ]]; then
+            pasted="$_CS_PASTE_BUF"
         elif [[ -n "$_CS_WAYLAND_DISPLAY" ]] && command -v wl-paste &>/dev/null; then
             pasted=$(WAYLAND_DISPLAY="$_CS_WAYLAND_DISPLAY" \
                 wl-paste --no-newline --type text/plain\;charset=utf-8 2>/dev/null)

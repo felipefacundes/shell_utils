@@ -4,6 +4,8 @@ alias sed_man='helps sed_man'
 alias sed_info='helps sed_info'
 alias sed_help='helps sed_help'
 
+alias rclone_help='helps sed_help'
+
 alias swap_help='helps swap_help'
 
 alias docker_help='helps docker_basic'
