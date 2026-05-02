@@ -697,8 +697,9 @@ _cs_do_tab() {
     local line="$_CS_BUFFER" point=$_CS_POS
     local after="${line:$point}"
     local word_start=$point
+    local prev_char=""
     while (( word_start > 0 )); do
-        local prev_char="${line:$((word_start-1)):1}"
+        prev_char="${line:$((word_start-1)):1}"
         if [[ "$prev_char" == " " ]]; then
             break
         fi
@@ -1813,30 +1814,17 @@ _cs_enter() {
     fi
 
     # Se o cursor não está na coluna 0, pula linha antes do prompt
-    # printf '\e[6n' >&2
-    # local _cs_pos_report
-    # IFS='[;' read -sd R -ra _cs_pos_report -t 1 </dev/tty 2>/dev/null
-    # local _cs_col="${_cs_pos_report[2]:-1}"
-    # (( _cs_col > 1 )) && printf '\n' >&2
-    # _cs_show_prompt
-    # READLINE_LINE=""; READLINE_POINT=0
-    # tput sgr0
-    # if  (( _CS_ML_LINES > 0 )); then
-    #     MULT_ON=1
-    # fi
-    if [[ -z "$TERMUX_VERSION" ]]; then
-        printf '\e[6n' >&2
-        local _cs_pos_report _cs_col=1
-        IFS='[;' read -sd R -ra _cs_pos_report -t 1 </dev/tty 2>/dev/null
-        _cs_col="${_cs_pos_report[2]:-1}"
-        (( _cs_col > 1 )) && printf '\n' >&2
-    else
-        # No Termux \e[6n vaza para o input, usa marcador visual como o zsh
-        printf '\e[7m%%\e[m\r' >&2
-    fi
+    printf '\e[6n' >&2
+    local _cs_pos_report
+    IFS='[;' read -sd R -ra _cs_pos_report -t 1 </dev/tty 2>/dev/null
+    local _cs_col="${_cs_pos_report[2]:-1}"
+    (( _cs_col > 1 )) && printf '\n' >&2
     _cs_show_prompt
     READLINE_LINE=""; READLINE_POINT=0
     tput sgr0
+    if  (( _CS_ML_LINES > 0 )); then
+        MULT_ON=1
+    fi
 }
 
 # ══════════════════════════════════════════════════════════════
