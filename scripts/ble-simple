@@ -1813,17 +1813,27 @@ _cs_enter() {
     fi
 
     # Se o cursor não está na coluna 0, pula linha antes do prompt
+    # printf '\e[6n' >&2
+    # local _cs_pos_report
+    # IFS='[;' read -sd R -ra _cs_pos_report -t 1 </dev/tty 2>/dev/null
+    # local _cs_col="${_cs_pos_report[2]:-1}"
+    # (( _cs_col > 1 )) && printf '\n' >&2
+    # _cs_show_prompt
+    # READLINE_LINE=""; READLINE_POINT=0
+    # tput sgr0
+    # if  (( _CS_ML_LINES > 0 )); then
+    #     MULT_ON=1
+    # fi
     printf '\e[6n' >&2
-    local _cs_pos_report
-    IFS='[;' read -sd R -ra _cs_pos_report -t 1 </dev/tty 2>/dev/null
-    local _cs_col="${_cs_pos_report[2]:-1}"
+    local _cs_pos_report _cs_col=1
+    local _cs_tmp
+    if IFS='[;' read -sd R -ra _cs_pos_report -t 1 _cs_tmp </dev/tty 2>/dev/null; then
+        _cs_col="${_cs_pos_report[2]:-1}"
+    fi
     (( _cs_col > 1 )) && printf '\n' >&2
     _cs_show_prompt
     READLINE_LINE=""; READLINE_POINT=0
     tput sgr0
-    if  (( _CS_ML_LINES > 0 )); then
-        MULT_ON=1
-    fi
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -1891,10 +1901,8 @@ _cs_install_binds() {
         READLINE_POINT=0
 
         local pasted=""
-        # if [[ -n "$TERMUX_VERSION" ]] && command -v termux-clipboard-get &>/dev/null; then
-        #     pasted=$(termux-clipboard-get 2>/dev/null)
-        if [[ -n "$TERMUX_VERSION" ]]; then
-            pasted="$_CS_PASTE_BUF"
+        if [[ -n "$TERMUX_VERSION" ]] && command -v termux-clipboard-get &>/dev/null; then
+            pasted=$(termux-clipboard-get 2>/dev/null)
         elif [[ -n "$_CS_WAYLAND_DISPLAY" ]] && command -v wl-paste &>/dev/null; then
             pasted=$(WAYLAND_DISPLAY="$_CS_WAYLAND_DISPLAY" \
                 wl-paste --no-newline --type text/plain\;charset=utf-8 2>/dev/null)
