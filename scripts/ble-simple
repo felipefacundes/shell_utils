@@ -603,11 +603,7 @@ _cs_redraw() {
         else
             colored="$_CS_BUFFER"
         fi
-        if [[ -z "$TERMUX_VERSION" ]]; then
-            printf '\r\e[2K%s%s' "$_CS_PS1_LAST" "$colored" >&2
-        else
-            printf '\e[2K\r%s%s' "$_CS_PS1_LAST" "$colored" >&2
-        fi
+        printf '\r\e[2K%s%s' "$_CS_PS1_LAST" "$colored" >&2
         printf '\r\e[%dG' "$(( _CS_PS1_LEN + _CS_POS + 1 ))" >&2
         _gt_overlay
     fi
@@ -1115,6 +1111,7 @@ _cs_insert() {
 }
 
 _cs_backspace() {
+    [[ -n "$READLINE_LINE" ]] && printf '\nDEBUG READLINE_LINE=%s\n' "$READLINE_LINE" >&2
     _cs_sync_from_readline
     if (( _CS_POS == 0 )); then
         _cs_redraw; return
