@@ -538,20 +538,16 @@ _cs_redraw() {
     [[ -z "$_CS_PS1_EXPANDED" ]] && _cs_ps1_update
     local _sintax_mode; _sintax_mode=$(cat "$_CS_SINTAX_FILE" 2>/dev/null || printf "1")
 
-    # Verifica se o buffer tem múltiplas linhas
     if [[ "$_CS_BUFFER" == *$'\n'* ]]; then
         local -a lines=()
         mapfile -t lines <<< "$_CS_BUFFER"
         local nlines=${#lines[@]}
 
-        # Sobe até a linha onde está o prompt ($) e limpa dali para baixo
-        # _CS_ML_LINES guarda quantas linhas foram desenhadas (incluindo a do prompt)
         if (( _CS_ML_LINES > 1 )); then
             printf '\e[%dA' "$(( _CS_ML_LINES - 1 ))" >&2
         fi
         printf '\r\e[J' >&2
 
-        # Desenha todas as linhas
         local li colored_line _save_buf
         for (( li=0; li < nlines; li++ )); do
             _save_buf="$_CS_BUFFER"
@@ -572,7 +568,6 @@ _cs_redraw() {
 
         _CS_ML_LINES=$nlines
 
-        # Calcula linha e coluna do cursor
         local pos_remaining=$_CS_POS cur_line=0 cur_col=0
         for (( li=0; li < nlines; li++ )); do
             if (( pos_remaining <= ${#lines[$li]} )); then
@@ -601,17 +596,46 @@ _cs_redraw() {
         else
             colored="$_CS_BUFFER"
         fi
-        # Calcula quantas linhas o conteúdo anterior pode ter ocupado
+
         local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
         local _prev_len=$(( _CS_PS1_LEN + ${#_CS_BUFFER} ))
         local _prev_lines=$(( _prev_len / _term_cols ))
-        # Sobe e limpa todas as linhas do wrap anterior
+
         if (( _prev_lines > 0 )); then
             printf '\e[%dA' "$_prev_lines" >&2
         fi
-        printf '\r\e[J%s%s' "$_CS_PS1_LAST" "$colored" >&2
-        printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
-        _gt_overlay
+
+        if [[ -n "$TERMUX_VERSION" ]]; then
+            local _ghost_inline=""
+            local _ghost_len=0
+            if [[ -n "$_GT_SUGGESTION" && \
+                  "$_GT_SUGGESTION" == "${_CS_BUFFER}"* && \
+                  "$_GT_SUGGESTION" != "$_CS_BUFFER" ]]; then
+                local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
+                if [[ "$_gt_mode" != "0" ]]; then
+                    local _ghost_text="${_GT_SUGGESTION:${#_CS_BUFFER}}"
+                    _ghost_len=${#_ghost_text}
+                    local _content_len=$(( _CS_PS1_LEN + ${#_CS_BUFFER} ))
+                    local _available=$(( _term_cols - ( _content_len % _term_cols ) ))
+                    if (( _ghost_len <= _available )); then
+                        _ghost_inline="${_gt_gh}${_ghost_text}${_gt_b0}"
+                    else
+                        _ghost_len=0
+                    fi
+                fi
+            fi
+            printf '\r\e[J%s%s%s' "$_CS_PS1_LAST" "$colored" "$_ghost_inline" >&2
+            local _cursor_target=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
+            local _current_col=$(( _CS_PS1_LEN + ${#_CS_BUFFER} + _ghost_len + 1 ))
+            local _move_left=$(( _current_col - _cursor_target ))
+            if (( _move_left > 0 )); then
+                printf '\e[%dD' "$_move_left" >&2
+            fi
+        else
+            printf '\r\e[J%s%s' "$_CS_PS1_LAST" "$colored" >&2
+            _gt_overlay
+            printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
+        fi
     fi
 
     READLINE_LINE=""
