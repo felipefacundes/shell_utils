@@ -626,11 +626,15 @@ _cs_redraw() {
             fi
             printf '\r\e[J%s%s%s' "$_CS_PS1_LAST" "$colored" "$_ghost_inline" >&2
             local _cursor_target=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
-            local _current_col=$(( _CS_PS1_LEN + ${#_CS_BUFFER} + _ghost_len + 1 ))
-            local _move_left=$(( _current_col - _cursor_target ))
-            if (( _move_left > 0 )); then
-                printf '\e[%dD' "$_move_left" >&2
+            local _total_drawn=$(( _CS_PS1_LEN + ${#_CS_BUFFER} + _ghost_len ))
+            local _drawn_lines=$(( _total_drawn / _term_cols ))
+            local _current_col=$(( _total_drawn % _term_cols + 1 ))
+            local _cursor_line=$(( ( _CS_PS1_LEN + _CS_POS ) / _term_cols ))
+            local _lines_up=$(( _drawn_lines - _cursor_line ))
+            if (( _lines_up > 0 )); then
+                printf '\e[%dA' "$_lines_up" >&2
             fi
+            printf '\r\e[%dG' "$_cursor_target" >&2
         else
             printf '\r\e[J%s%s' "$_CS_PS1_LAST" "$colored" >&2
             _gt_overlay
