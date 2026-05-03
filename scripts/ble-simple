@@ -1111,7 +1111,8 @@ _cs_insert() {
 }
 
 _cs_backspace() {
-    [[ -n "$READLINE_LINE" ]] && printf '\nDEBUG READLINE_LINE=%s\n' "$READLINE_LINE" >&2
+    [[ -n "$READLINE_LINE" ]] && printf 'DEBUG READLINE_LINE="%s"\n' "$READLINE_LINE" >> "${TMPDIR}/cs_debug.log"
+    printf 'DEBUG POS=%s BUF="%s"\n' "$_CS_POS" "$_CS_BUFFER" >> "${TMPDIR}/cs_debug.log"
     _cs_sync_from_readline
     if (( _CS_POS == 0 )); then
         _cs_redraw; return
@@ -1121,8 +1122,6 @@ _cs_backspace() {
     (( _CS_POS-- ))
     _gt_get_suggestion "$_CS_BUFFER"           # com lock → revela progressivamente
     _cs_redraw
-    READLINE_LINE=""
-    READLINE_POINT=0
 }
 
 _cs_delete() {
