@@ -537,7 +537,7 @@ _gt_overlay() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_redraw() {
-    printf 'REDRAW POS=%s BUF="%s"\n' "$_CS_POS" "$_CS_BUFFER" >> "${TMPDIR}/cs_debug.log"
+    printf 'REDRAW POS=%s BUF="%s" PS1LEN=%s\n' "$_CS_POS" "$_CS_BUFFER" "$_CS_PS1_LEN" >> "${TMPDIR}/cs_debug.log"
     [[ -z "$_CS_PS1_EXPANDED" ]] && _cs_ps1_update
     local _sintax_mode; _sintax_mode=$(cat "$_CS_SINTAX_FILE" 2>/dev/null || printf "1")
 
