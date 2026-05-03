@@ -612,8 +612,7 @@ _cs_redraw() {
         fi
         printf '\r\e[J%s%s' "$_CS_PS1_LAST" "$colored" >&2
         printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
-        #_gt_overlay
-        printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
+        _gt_overlay
     fi
 
     READLINE_LINE=""
