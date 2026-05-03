@@ -189,6 +189,8 @@ _cs_ps1_update() {
     last="${last//\\[/}"
     last="${last//\\]/}"
     _CS_PS1_LEN=${#last}
+    printf 'PS1UPDATE expanded="%s" last="%s" len=%s\n' \
+    "$_CS_PS1_EXPANDED" "$_CS_PS1_LAST" "$_CS_PS1_LEN" >> "${TMPDIR}/cs_debug.log"
 }
 
 # ══════════════════════════════════════════════════════════════
