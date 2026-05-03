@@ -519,15 +519,14 @@ _gt_overlay() {
         ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
     fi
 
-    # Posição: após o prompt + toda a linha (não apenas até o cursor),
-    # pois o texto colorido já foi desenhado pelo _cs_redraw até o fim.
-    # O ghost vai colado ao final do conteúdo atual do buffer.
     local col=$(( _CS_PS1_LEN + ${#line} + 1 ))
+    local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
+    local _cur_col=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
 
     if [[ -z "$ghost" ]]; then
-        printf '\e7\e[%dG\e[K\e8' "$col" >&2
+        printf '\e[s\e[%dG\e[K\e[u' "$col" >&2
     else
-        printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
+        printf '\e[s\e[%dG\e[K%s\e[u' "$col" "$ghost" >&2
     fi
 }
 
@@ -605,15 +604,16 @@ _cs_redraw() {
         fi
         # Calcula quantas linhas o conteúdo anterior pode ter ocupado
         local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
-        local _total_len=$(( _CS_PS1_LEN + _CS_PREV_BUF_LEN ))
-        local _prev_lines=$(( _total_len / _term_cols ))
+        local _prev_len=$(( _CS_PS1_LEN + ${#_CS_BUFFER} ))
+        local _prev_lines=$(( _prev_len / _term_cols ))
+        # Sobe e limpa todas as linhas do wrap anterior
         if (( _prev_lines > 0 )); then
             printf '\e[%dA' "$_prev_lines" >&2
         fi
-        printf '\r\e[2K%s%s\e[K' "$_CS_PS1_LAST" "$colored" >&2
+        printf '\r\e[J%s%s' "$_CS_PS1_LAST" "$colored" >&2
         printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
-        _CS_PREV_BUF_LEN=${#_CS_BUFFER}
-        _gt_overlay
+        #_gt_overlay
+        printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
     fi
 
     READLINE_LINE=""
