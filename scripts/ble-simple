@@ -607,6 +607,7 @@ _cs_redraw() {
         else
             colored="$_CS_BUFFER"
         fi
+        printf 'COLS=%s PREV=%s PREVLINES=%s\n' "$_term_cols" "$_CS_PREV_BUF_LEN" "$_prev_lines" >&2
         printf '\r\e[2K%s%s' "$_CS_PS1_LAST" "$colored" >&2
         # Calcula quantas linhas o conteúdo anterior pode ter ocupado
         local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
