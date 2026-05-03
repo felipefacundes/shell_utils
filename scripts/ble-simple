@@ -537,6 +537,7 @@ _gt_overlay() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_redraw() {
+    printf 'REDRAW POS=%s BUF="%s"\n' "$_CS_POS" "$_CS_BUFFER" >> "${TMPDIR}/cs_debug.log"
     [[ -z "$_CS_PS1_EXPANDED" ]] && _cs_ps1_update
     local _sintax_mode; _sintax_mode=$(cat "$_CS_SINTAX_FILE" 2>/dev/null || printf "1")
 
@@ -1086,23 +1087,23 @@ _cs_list_completions() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_sync_from_readline() {
-    (( _CS_PASTING )) && return    # ← nunca sincroniza durante paste
-    if [[ -n "$READLINE_LINE" ]]; then
-        local inserted="$READLINE_LINE"
-        _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${inserted}${_CS_BUFFER:$_CS_POS}"
-        (( _CS_POS += ${#inserted} ))
-        _GT_SUG_LOCKED=""
+    # (( _CS_PASTING )) && return    # ← nunca sincroniza durante paste
+    # if [[ -n "$READLINE_LINE" ]]; then
+    #     local inserted="$READLINE_LINE"
+    #     _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${inserted}${_CS_BUFFER:$_CS_POS}"
+    #     (( _CS_POS += ${#inserted} ))
+    #     _GT_SUG_LOCKED=""
         READLINE_LINE=""
         READLINE_POINT=0
-    fi
+    # fi
 }
 
 _cs_insert() {
+    printf 'INSERT char="%s" POS=%s BUF="%s"\n' "$1" "$_CS_POS" "$_CS_BUFFER" >> "${TMPDIR}/cs_debug.log"
     if (( _CS_PASTING )); then
         return
     fi
-    READLINE_LINE=""
-    READLINE_POINT=0   # ← só chama quando NÃO está em paste
+    _cs_sync_from_readline   # ← só chama quando NÃO está em paste
     _cs_tab_reset
     _GT_SUG_LOCKED=""
     _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${1}${_CS_BUFFER:$_CS_POS}"
@@ -1112,10 +1113,10 @@ _cs_insert() {
 }
 
 _cs_backspace() {
-    [[ -n "$READLINE_LINE" ]] && printf 'DEBUG READLINE_LINE="%s"\n' "$READLINE_LINE" >> "${TMPDIR}/cs_debug.log"
-    printf 'DEBUG POS=%s BUF="%s"\n' "$_CS_POS" "$_CS_BUFFER" >> "${TMPDIR}/cs_debug.log"
     READLINE_LINE=""
     READLINE_POINT=0
+    printf 'ANTES POS=%s BUF="%s" READLINE="%s"\n' "$_CS_POS" "$_CS_BUFFER" "$READLINE_LINE" >> "${TMPDIR}/cs_debug.log"
+    _cs_sync_from_readline
     if (( _CS_POS == 0 )); then
         _cs_redraw; return
     fi
@@ -1127,8 +1128,7 @@ _cs_backspace() {
 }
 
 _cs_delete() {
-    READLINE_LINE=""
-    READLINE_POINT=0
+    _cs_sync_from_readline
     _cs_tab_reset
     if (( _CS_POS < ${#_CS_BUFFER} )); then
         _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_BUFFER:$((_CS_POS+1))}"
@@ -1138,8 +1138,7 @@ _cs_delete() {
 }
 
 _cs_left() {
-    READLINE_LINE=""
-    READLINE_POINT=0
+    _cs_sync_from_readline
     if  (( _CS_ML_LINES > 0 )); then
         MULT_ON=1
     fi
@@ -1149,8 +1148,7 @@ _cs_left() {
 }
 
 _cs_right() {
-    READLINE_LINE=""
-    READLINE_POINT=0
+    _cs_sync_from_readline
     if  (( _CS_ML_LINES > 0 )); then
         MULT_ON=1
     fi
@@ -1313,16 +1311,14 @@ _cs_accept_ghost() {
 }
 
 _cs_home() {
-    READLINE_LINE=""
-    READLINE_POINT=0
+    _cs_sync_from_readline
     _cs_tab_reset
     _CS_POS=0
     _cs_redraw
 }
 
 _cs_end() {
-    READLINE_LINE=""
-    READLINE_POINT=0
+    _cs_sync_from_readline
     _cs_tab_reset
     _CS_POS=${#_CS_BUFFER}
     _cs_redraw
@@ -1532,8 +1528,7 @@ _cs_page_down() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_enter() {
-    READLINE_LINE=""
-    READLINE_POINT=0
+    _cs_sync_from_readline
     # Durante bracketed paste, \n é parte do conteúdo colado
     if (( _CS_PASTING )); then
         _CS_PASTE_BUF+=$'\n'
