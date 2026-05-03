@@ -49,7 +49,6 @@ _CS_HIST_SAVED=""
 _CS_HIST_PREFIX=""
 _CS_HIST_CACHE=()
 _CS_HIST_MAX=0
-_CS_PREV_BUF_LEN=0
 _CS_HIST_PAGE_POS=-1
 _CS_HIST_SAVED_PAGE=""
 _CS_ENTER_HANDLED=0
@@ -190,8 +189,6 @@ _cs_ps1_update() {
     last="${last//\\[/}"
     last="${last//\\]/}"
     _CS_PS1_LEN=${#last}
-    printf 'PS1UPDATE expanded="%s" last="%s" len=%s\n' \
-    "$_CS_PS1_EXPANDED" "$_CS_PS1_LAST" "$_CS_PS1_LEN" >> "${TMPDIR}/cs_debug.log"
 }
 
 # ══════════════════════════════════════════════════════════════
@@ -540,9 +537,6 @@ _gt_overlay() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_redraw() {
-    printf 'COLS=%s PREV=%s PREVLINES=%s PS1LEN=%s POS=%s\n' \
-            "$_term_cols" "$_CS_PREV_BUF_LEN" "$_prev_lines" "$_CS_PS1_LEN" "$_CS_POS" >> "${TMPDIR}/cs_debug.log"
-    printf 'REDRAW POS=%s BUF="%s" PS1LEN=%s\n' "$_CS_POS" "$_CS_BUFFER" "$_CS_PS1_LEN" >> "${TMPDIR}/cs_debug.log"
     [[ -z "$_CS_PS1_EXPANDED" ]] && _cs_ps1_update
     local _sintax_mode; _sintax_mode=$(cat "$_CS_SINTAX_FILE" 2>/dev/null || printf "1")
 
@@ -609,17 +603,17 @@ _cs_redraw() {
         else
             colored="$_CS_BUFFER"
         fi
-        printf '\r\e[2K%s%s' "$_CS_PS1_LAST" "$colored" >&2
         # Calcula quantas linhas o conteúdo anterior pode ter ocupado
         local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
-        local _total_len=$(( _CS_PS1_LEN + _CS_PREV_BUF_LEN ))
-        local _prev_lines=$(( _total_len / _term_cols ))
+        local _prev_len=$(( _CS_PS1_LEN + ${#_CS_BUFFER} ))
+        local _prev_lines=$(( _prev_len / _term_cols ))
+        # Sobe e limpa todas as linhas do wrap anterior
         if (( _prev_lines > 0 )); then
             printf '\e[%dA' "$_prev_lines" >&2
         fi
-        printf '\r\e[2K%s%s\e[K' "$_CS_PS1_LAST" "$colored" >&2
+        printf '\r\e[J%s%s' "$_CS_PS1_LAST" "$colored" >&2
         printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
-        _CS_PREV_BUF_LEN=${#_CS_BUFFER}
+        _gt_overlay
     fi
 
     READLINE_LINE=""
@@ -1100,19 +1094,18 @@ _cs_list_completions() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_sync_from_readline() {
-    # (( _CS_PASTING )) && return    # ← nunca sincroniza durante paste
-    # if [[ -n "$READLINE_LINE" ]]; then
-    #     local inserted="$READLINE_LINE"
-    #     _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${inserted}${_CS_BUFFER:$_CS_POS}"
-    #     (( _CS_POS += ${#inserted} ))
-    #     _GT_SUG_LOCKED=""
+    (( _CS_PASTING )) && return    # ← nunca sincroniza durante paste
+    if [[ -n "$READLINE_LINE" ]]; then
+        local inserted="$READLINE_LINE"
+        _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${inserted}${_CS_BUFFER:$_CS_POS}"
+        (( _CS_POS += ${#inserted} ))
+        _GT_SUG_LOCKED=""
         READLINE_LINE=""
         READLINE_POINT=0
-    # fi
+    fi
 }
 
 _cs_insert() {
-    printf 'INSERT char="%s" POS=%s BUF="%s"\n' "$1" "$_CS_POS" "$_CS_BUFFER" >> "${TMPDIR}/cs_debug.log"
     if (( _CS_PASTING )); then
         return
     fi
@@ -1126,9 +1119,6 @@ _cs_insert() {
 }
 
 _cs_backspace() {
-    READLINE_LINE=""
-    READLINE_POINT=0
-    printf 'ANTES POS=%s BUF="%s" READLINE="%s"\n' "$_CS_POS" "$_CS_BUFFER" "$READLINE_LINE" >> "${TMPDIR}/cs_debug.log"
     _cs_sync_from_readline
     if (( _CS_POS == 0 )); then
         _cs_redraw; return
