@@ -1101,7 +1101,8 @@ _cs_insert() {
     if (( _CS_PASTING )); then
         return
     fi
-    _cs_sync_from_readline   # ← só chama quando NÃO está em paste
+    READLINE_LINE=""
+    READLINE_POINT=0   # ← só chama quando NÃO está em paste
     _cs_tab_reset
     _GT_SUG_LOCKED=""
     _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${1}${_CS_BUFFER:$_CS_POS}"
@@ -1113,7 +1114,8 @@ _cs_insert() {
 _cs_backspace() {
     [[ -n "$READLINE_LINE" ]] && printf 'DEBUG READLINE_LINE="%s"\n' "$READLINE_LINE" >> "${TMPDIR}/cs_debug.log"
     printf 'DEBUG POS=%s BUF="%s"\n' "$_CS_POS" "$_CS_BUFFER" >> "${TMPDIR}/cs_debug.log"
-    _cs_sync_from_readline
+    READLINE_LINE=""
+    READLINE_POINT=0
     if (( _CS_POS == 0 )); then
         _cs_redraw; return
     fi
@@ -1125,7 +1127,8 @@ _cs_backspace() {
 }
 
 _cs_delete() {
-    _cs_sync_from_readline
+    READLINE_LINE=""
+    READLINE_POINT=0
     _cs_tab_reset
     if (( _CS_POS < ${#_CS_BUFFER} )); then
         _CS_BUFFER="${_CS_BUFFER:0:$_CS_POS}${_CS_BUFFER:$((_CS_POS+1))}"
@@ -1135,7 +1138,8 @@ _cs_delete() {
 }
 
 _cs_left() {
-    _cs_sync_from_readline
+    READLINE_LINE=""
+    READLINE_POINT=0
     if  (( _CS_ML_LINES > 0 )); then
         MULT_ON=1
     fi
@@ -1145,7 +1149,8 @@ _cs_left() {
 }
 
 _cs_right() {
-    _cs_sync_from_readline
+    READLINE_LINE=""
+    READLINE_POINT=0
     if  (( _CS_ML_LINES > 0 )); then
         MULT_ON=1
     fi
@@ -1308,14 +1313,16 @@ _cs_accept_ghost() {
 }
 
 _cs_home() {
-    _cs_sync_from_readline
+    READLINE_LINE=""
+    READLINE_POINT=0
     _cs_tab_reset
     _CS_POS=0
     _cs_redraw
 }
 
 _cs_end() {
-    _cs_sync_from_readline
+    READLINE_LINE=""
+    READLINE_POINT=0
     _cs_tab_reset
     _CS_POS=${#_CS_BUFFER}
     _cs_redraw
@@ -1525,7 +1532,8 @@ _cs_page_down() {
 # ══════════════════════════════════════════════════════════════
 
 _cs_enter() {
-    _cs_sync_from_readline
+    READLINE_LINE=""
+    READLINE_POINT=0
     # Durante bracketed paste, \n é parte do conteúdo colado
     if (( _CS_PASTING )); then
         _CS_PASTE_BUF+=$'\n'
