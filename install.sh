@@ -67,7 +67,7 @@ oh_my_zsh_defaults() {
 
 zsh_install() {
     test -f ~/.zshrc && mv -v --backup=t ~/.zshrc ~/.zshrc.shell_utils-backup-"$backup_date"
-    cp -f "${shell_utils_dir}/zshrc" ~/.zshrc
+    cp -f "${shell_utils_dir}/utilities/dotfiles/zshrc" ~/.zshrc
     echo -e "\n${byellow_on_blue}The SHELL_UTILS has been successfully installed! Destination: ${shell_utils_dir}${nc}"
     sleep "$delay" && zsh
 }
@@ -80,7 +80,7 @@ oh_my_bash_defaults() {
 
 bash_install() {
     test -f ~/.bashrc && mv -v --backup=t ~/.bashrc ~/.bashrc.shell_utils-backup-"$backup_date"
-    cp -f "${shell_utils_dir}/bashrc" ~/.bashrc
+    cp -f "${shell_utils_dir}/utilities/dotfiles/bashrc" ~/.bashrc
     echo -e "\n${byellow_on_blue}The SHELL_UTILS has been successfully installed! Destination: ${shell_utils_dir}${nc}"
     sleep "$delay" && bash
 }
