@@ -519,10 +519,10 @@ _gt_overlay() {
         ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
     fi
 
-    local col=$(( _CS_PS1_LEN + ${#line} + 1 ))
-    local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
-    local _cur_col=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
+    printf 'OVERLAY line="%s" ghost="%s" col=%s\n' \
+        "$line" "${ghost:0:20}" "$(( _CS_PS1_LEN + ${#line} + 1 ))" >> "${TMPDIR}/cs_debug.log"
 
+    local col=$(( _CS_PS1_LEN + ${#line} + 1 ))
     if [[ -z "$ghost" ]]; then
         printf '\e[s\e[%dG\e[K\e[u' "$col" >&2
     else
