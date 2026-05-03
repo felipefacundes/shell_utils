@@ -613,15 +613,12 @@ _cs_redraw() {
         # Calcula quantas linhas o conteúdo anterior pode ter ocupado
         local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
         local _total_len=$(( _CS_PS1_LEN + _CS_PREV_BUF_LEN ))
-        local _prev_lines=$(( (_total_len + _term_cols - 1) / _term_cols ))
-        (( _prev_lines < 1 )) && _prev_lines=1
+        local _prev_lines=$(( _total_len / _term_cols ))
         local _i
         for (( _i=0; _i < _prev_lines; _i++ )); do
             printf '\e[2K\e[1A' >&2
         done
-        printf '\e[2K\r' >&2
-        printf '%s' "$_CS_PS1_UPPER" >&2
-        printf '%s%s' "$_CS_PS1_LAST" "$colored" >&2
+        printf '\e[2K\r%s%s' "$_CS_PS1_LAST" "$colored" >&2
         printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
         _CS_PREV_BUF_LEN=${#_CS_BUFFER}
     fi
