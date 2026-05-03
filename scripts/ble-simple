@@ -519,14 +519,23 @@ _gt_overlay() {
         ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
     fi
 
-    printf 'OVERLAY line="%s" ghost="%s" col=%s\n' \
-        "$line" "${ghost:0:20}" "$(( _CS_PS1_LEN + ${#line} + 1 ))" >> "${TMPDIR}/cs_debug.log"
-
+    local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
     local col=$(( _CS_PS1_LEN + ${#line} + 1 ))
-    if [[ -z "$ghost" ]]; then
-        printf '\e[s\e[%dG\e[K\e[u' "$col" >&2
+    local cursor_col=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
+
+    if [[ -n "$TERMUX_VERSION" ]]; then
+        # No Termux \e[s/\e[u causam loop — desenha ghost e reposiciona cursor explicitamente
+        if [[ -z "$ghost" ]]; then
+            printf '\e[%dG\e[K\e[%dG' "$col" "$cursor_col" >&2
+        else
+            printf '\e[%dG\e[K%s\e[%dG' "$col" "$ghost" "$cursor_col" >&2
+        fi
     else
-        printf '\e[s\e[%dG\e[K%s\e[u' "$col" "$ghost" >&2
+        if [[ -z "$ghost" ]]; then
+            printf '\e[s\e[%dG\e[K\e[u' "$col" >&2
+        else
+            printf '\e[s\e[%dG\e[K%s\e[u' "$col" "$ghost" >&2
+        fi
     fi
 }
 
