@@ -1121,6 +1121,8 @@ _cs_backspace() {
     (( _CS_POS-- ))
     _gt_get_suggestion "$_CS_BUFFER"           # com lock → revela progressivamente
     _cs_redraw
+    READLINE_LINE=""
+    READLINE_POINT=0
 }
 
 _cs_delete() {
