@@ -509,6 +509,7 @@ _gt_get_suggestion_fresh() {
 _gt_overlay() {
     local _gt_mode; _gt_mode=$(cat "$_GT_STATE_FILE" 2>/dev/null || printf "1")
     [[ "$_gt_mode" == "0" ]] && return
+    [[ -n "$TERMUX_VERSION" ]] && return
 
     local line="$_CS_BUFFER"
     local ghost=""
@@ -519,30 +520,12 @@ _gt_overlay() {
         ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
     fi
 
-    local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
     local col=$(( _CS_PS1_LEN + ${#line} + 1 ))
-    local cursor_col=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
 
-    if [[ -n "$TERMUX_VERSION" ]]; then
-        local ghost_len=$(( ${#_GT_SUGGESTION} - ${#line} ))
-        local content_len=$(( _CS_PS1_LEN + ${#line} ))
-        local available=$(( _term_cols - ( content_len % _term_cols ) ))
-        # Se o ghost ultrapassa a linha, não desenha para evitar loop
-        if [[ -n "$ghost" ]] && (( ghost_len > available )); then
-            printf '\e[%dG' "$cursor_col" >&2
-            return
-        fi
-        if [[ -z "$ghost" ]]; then
-            printf '\e[%dG\e[K\e[%dG' "$col" "$cursor_col" >&2
-        else
-            printf '\e[%dG\e[K%s\e[%dG' "$col" "$ghost" "$cursor_col" >&2
-        fi
+    if [[ -z "$ghost" ]]; then
+        printf '\e[s\e[%dG\e[K\e[u' "$col" >&2
     else
-        if [[ -z "$ghost" ]]; then
-            printf '\e[s\e[%dG\e[K\e[u' "$col" >&2
-        else
-            printf '\e[s\e[%dG\e[K%s\e[u' "$col" "$ghost" >&2
-        fi
+        printf '\e[s\e[%dG\e[K%s\e[u' "$col" "$ghost" >&2
     fi
 }
 
