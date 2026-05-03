@@ -524,7 +524,14 @@ _gt_overlay() {
     local cursor_col=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
 
     if [[ -n "$TERMUX_VERSION" ]]; then
-        # No Termux \e[s/\e[u causam loop — desenha ghost e reposiciona cursor explicitamente
+        local ghost_len=$(( ${#_GT_SUGGESTION} - ${#line} ))
+        local content_len=$(( _CS_PS1_LEN + ${#line} ))
+        local available=$(( _term_cols - ( content_len % _term_cols ) ))
+        # Se o ghost ultrapassa a linha, não desenha para evitar loop
+        if [[ -n "$ghost" ]] && (( ghost_len > available )); then
+            printf '\e[%dG' "$cursor_col" >&2
+            return
+        fi
         if [[ -z "$ghost" ]]; then
             printf '\e[%dG\e[K\e[%dG' "$col" "$cursor_col" >&2
         else
