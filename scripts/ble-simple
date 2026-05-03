@@ -618,7 +618,7 @@ _cs_redraw() {
         if (( _prev_lines > 0 )); then
             printf '\e[%dA' "$_prev_lines" >&2
         fi
-        printf '\r\e[0J%s%s' "$_CS_PS1_LAST" "$colored" >&2
+        printf '\r\e[2K%s%s' "$_CS_PS1_LAST" "$colored" >&2
         printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
         _CS_PREV_BUF_LEN=${#_CS_BUFFER}
     fi
