@@ -696,15 +696,77 @@ _cs_do_shift_tab() {
     _cs_redraw
 }
 
+# _cs_quote_completion() {
+#     local completion="$1"
+#     if [[ "$completion" == *' '* ]]; then
+#         completion="${completion/#\~/$HOME}"
+#         completion="${completion//\"/}"
+#         # Trailing slash será preservada dentro das aspas
+#         completion="\"${completion}\""
+#     fi
+#     printf '%s' "$completion"
+# }
+
 _cs_quote_completion() {
     local completion="$1"
-    if [[ "$completion" == *' '* ]]; then
-        completion="${completion/#\~/$HOME}"
-        completion="${completion//\"/}"
-        # Trailing slash será preservada dentro das aspas
-        completion="\"${completion}\""
+    local trailing_slash=""
+    [[ "$completion" == */ ]] && trailing_slash="/" && completion="${completion%/}"
+
+    # Escapa sempre com \ se contém espaço ou qualquer caractere não-seguro
+    # Inclui caracteres unicode problemáticos via verificação de espaço e ASCII especial
+    local needs_escape=0
+    [[ "$completion" == *' '* ]] && needs_escape=1
+    [[ "$completion" == *"'"* ]] && needs_escape=1
+    [[ "$completion" == *'"'* ]] && needs_escape=1
+    [[ "$completion" == *'('* ]] && needs_escape=1
+    [[ "$completion" == *')'* ]] && needs_escape=1
+    [[ "$completion" == *'['* ]] && needs_escape=1
+    [[ "$completion" == *']'* ]] && needs_escape=1
+    [[ "$completion" == *'{'* ]] && needs_escape=1
+    [[ "$completion" == *'}'* ]] && needs_escape=1
+    [[ "$completion" == *'&'* ]] && needs_escape=1
+    [[ "$completion" == *';'* ]] && needs_escape=1
+    [[ "$completion" == *'!'* ]] && needs_escape=1
+    [[ "$completion" == *'#'* ]] && needs_escape=1
+    [[ "$completion" == *'$'* ]] && needs_escape=1
+    [[ "$completion" == *'`'* ]] && needs_escape=1
+    [[ "$completion" == *'|'* ]] && needs_escape=1
+    [[ "$completion" == *'<'* ]] && needs_escape=1
+    [[ "$completion" == *'>'* ]] && needs_escape=1
+    [[ "$completion" == *','* ]] && needs_escape=1
+    [[ "$completion" == *'~'* ]] && needs_escape=1
+    [[ "$completion" == *'*'* ]] && needs_escape=1
+    [[ "$completion" == *'?'* ]] && needs_escape=1
+    [[ "$completion" == *'\'* ]] && needs_escape=1
+
+    if (( needs_escape )); then
+        # Escapa \ primeiro para não duplo-escapar
+        completion="${completion//\\/\\\\}"
+        completion="${completion// /\\ }"
+        completion="${completion//\'/\\\'}"
+        completion="${completion//\"/\\\"}"
+        completion="${completion//(/\\(}"
+        completion="${completion//)/\\)}"
+        completion="${completion//[/\\[}"
+        completion="${completion//]/\\]}"
+        completion="${completion//\{/\\\{}"
+        completion="${completion//\}/\\\}}"
+        completion="${completion//&/\\&}"
+        completion="${completion//;/\\;}"
+        completion="${completion//!/\\!}"
+        completion="${completion//#/\\#}"
+        completion="${completion//\$/\\\$}"
+        completion="${completion//\`/\\\`}"
+        completion="${completion//|/\\|}"
+        completion="${completion//</\\<}"
+        completion="${completion//>/\\>}"
+        completion="${completion//,/\\,}"
+        completion="${completion//~/\\~}"
+        completion="${completion//\*/\\*}"
+        completion="${completion//\?/\\?}"
     fi
-    printf '%s' "$completion"
+
+    printf '%s' "${completion}${trailing_slash}"
 }
 
 _cs_do_tab() {
