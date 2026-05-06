@@ -696,18 +696,18 @@ _cs_do_shift_tab() {
     _cs_redraw
 }
 
-# _cs_quote_completion() {
-#     local completion="$1"
-#     if [[ "$completion" == *' '* ]]; then
-#         completion="${completion/#\~/$HOME}"
-#         completion="${completion//\"/}"
-#         # Trailing slash será preservada dentro das aspas
-#         completion="\"${completion}\""
-#     fi
-#     printf '%s' "$completion"
-# }
-
 _cs_quote_completion() {
+    local completion="$1"
+    if [[ "$completion" == *' '* ]]; then
+        completion="${completion/#\~/$HOME}"
+        completion="${completion//\"/}"
+        # Trailing slash será preservada dentro das aspas
+        completion="\"${completion}\""
+    fi
+    printf '%s' "$completion"
+}
+
+f_cs_quote_completion() {
     local completion="$1"
     local trailing_slash=""
     [[ "$completion" == */ ]] && trailing_slash="/" && completion="${completion%/}"
