@@ -731,15 +731,46 @@ _cs_do_tab() {
     local line="$_CS_BUFFER" point=$_CS_POS
     local after="${line:$point}"
     local word_start=$point
+    local prev_char=""
     while (( word_start > 0 )); do
-        local prev_char="${line:$((word_start-1)):1}"
+        prev_char="${line:$((word_start-1)):1}"
         if [[ "$prev_char" == " " ]]; then
+            # Verifica se o espaço está escapado com backslash
+            if (( word_start >= 2 )) && [[ "${line:$((word_start-2)):1}" == '\' ]]; then
+                (( word_start-- ))
+                continue
+            fi
+            local ahead="${line:$word_start:$((point - word_start))}"
+            local before_space="${line:0:$((word_start-1))}"
+            local last_token="${before_space##* }"
+            if [[ "$ahead" == */* && "$last_token" == */* ]]; then
+                (( word_start-- ))
+                continue
+            fi
+            # Verifica se estamos dentro de aspas duplas abertas
+            local before_point="${line:0:$point}"
+            local quote_count="${before_point//[^\"]/}"
+            if (( ${#quote_count} % 2 == 1 )); then
+                (( word_start-- ))
+                continue
+            fi
             break
         fi
         (( word_start-- ))
     done
+    printf 'DEBUG word_start=%s cur="%s"\n' "$word_start" "${line:$word_start:$((point - word_start))}" >> "${TMPDIR}/cs_debug.log"
 
     local cur="${line:$word_start:$((point - word_start))}"
+    # Normaliza cur: remove aspas externas e backslashes de escape
+    local cur_clean="$cur"
+    # Remove aspas duplas abertas no início
+    cur_clean="${cur_clean#\"}"
+    # Remove aspas simples abertas no início  
+    cur_clean="${cur_clean#\'}"
+    # Converte espaços escapados: "\ " → " "
+    cur_clean="${cur_clean//\\ / }"
+    # Expande ~ se presente
+    local cur_expanded="${cur_clean/#\~/$HOME}"
     local before_word="${line:0:$word_start}"
     local is_cmd=0
     # Remove tokens VAR=valor do início para detectar corretamente se é comando
@@ -760,6 +791,62 @@ _cs_do_tab() {
 
     local -a completions=()
     local cmd="${_CS_BUFFER%% *}"
+    
+    # Path com espaço: trata completamente e retorna
+    if [[ ! "$is_cmd" == "1" && "$cur_expanded" == *' '* ]]; then
+        local _shopt_save
+        _shopt_save=$(shopt -p nullglob dotglob 2>/dev/null)
+        shopt -s nullglob dotglob
+        local _glob_matches=()
+        local _f
+        for _f in "${cur_expanded}"*; do
+            [[ "$cur" == ~* ]] && _f="${_f/#$HOME/\~}"
+            [[ -d "${_f/#\~/$HOME}" && "$_f" != */ ]] && _f+="/"
+            _glob_matches+=("$_f")
+        done
+        eval "$_shopt_save"
+        if (( ${#_glob_matches[@]} == 0 )); then
+            printf '\a' >&2; _cs_redraw; return
+        fi
+        if (( ${#_glob_matches[@]} == 1 )); then
+            local _completion="${_glob_matches[0]}"
+            if [[ "$cur" == *'\ '* ]]; then
+                _completion="${_completion// /\\ }"
+            else
+                _completion="$(_cs_quote_completion "$_completion")"
+            fi
+            local _clean="${_completion//\"/}"; _clean="${_clean//\\ / }"
+            local _suffix=""
+            [[ -d "${_clean/#\~/$HOME}" && "$_clean" != */ ]] && _suffix="/"
+            _CS_BUFFER="${line:0:$word_start}${_completion}${_suffix}${after}"
+            _CS_POS=$(( word_start + ${#_completion} + ${#_suffix} ))
+            _cs_tab_reset; _cs_redraw; return
+        fi
+        mapfile -t completions < <(printf '%s\n' "${_glob_matches[@]}" | sort -u)
+        local -a _filt=()
+        local _ci
+        for _ci in "${completions[@]}"; do
+            [[ -n "$_ci" ]] && _filt+=("$_ci")
+        done
+        completions=("${_filt[@]}")
+        local _n=${#completions[@]}
+        _CS_TAB_COMPLETIONS=("${completions[@]}")
+        _CS_TAB_STATE=-1
+        _CS_TAB_WORD_START=$word_start
+        _CS_TAB_ORIG_BUFFER="$line"
+        _CS_TAB_ORIG_POS=$point
+        local _first="${_CS_TAB_COMPLETIONS[0]}"
+        if [[ "$cur" == *'\ '* ]]; then
+            _first="${_first// /\\ }"
+        else
+            _first="$(_cs_quote_completion "$_first")"
+        fi
+        _cs_list_completions "${cur_expanded##*/}" "${completions[@]##*/}"
+        _CS_TAB_STATE=0
+        _CS_BUFFER="${line:0:$word_start}${_first}${after}"
+        _CS_POS=$(( word_start + ${#_first} ))
+        _cs_redraw; return
+    fi
 
     if (( ! is_cmd )) && declare -f _completion_loader &>/dev/null; then
         _completion_loader "$cmd" 2>/dev/null
@@ -800,7 +887,7 @@ _cs_do_tab() {
         if (( ${#completions[@]} == 0 )); then
             if (( is_cmd )); then
                 local -a cmd_matches=() dir_matches=()
-                mapfile -t cmd_matches < <(compgen -c -- "$cur" 2>/dev/null | sort -u)
+                mapfile -t cmd_matches < <(compgen -c -- "$cur_clean" 2>/dev/null | sort -u)
                 mapfile -t dir_matches < <(compgen -d -- "$cur" 2>/dev/null | sort -u)
                 local _di
                 for _di in "${dir_matches[@]}"; do
@@ -809,7 +896,65 @@ _cs_do_tab() {
                 done
                 mapfile -t completions < <(printf '%s\n' "${cmd_matches[@]}" | sort -u)
             else
-                mapfile -t completions < <(compgen -f -- "$cur" 2>/dev/null | sort -u)
+
+                if [[ "$cur_expanded" == *' '* ]]; then
+                    local _shopt_save
+                    _shopt_save=$(shopt -p nullglob dotglob 2>/dev/null)
+                    shopt -s nullglob dotglob
+                    local _glob_matches=()
+                    local _f
+                    for _f in "${cur_expanded}"*; do
+                        if [[ "$cur" == ~* ]]; then
+                            _f="${_f/#$HOME/\~}"
+                        fi
+                        [[ -d "${_f/#\~/$HOME}" && "$_f" != */ ]] && _f+="/"
+                        _glob_matches+=("$_f")
+                    done
+                    eval "$_shopt_save"
+                    if (( ${#_glob_matches[@]} > 0 )); then
+                        local _n=${#_glob_matches[@]}
+                        if (( _n == 1 )); then
+                            local _completion="${_glob_matches[0]}"
+                            if [[ "$cur" == *'\ '* ]]; then
+                                _completion="${_completion// /\\ }"
+                            else
+                                _completion="$(_cs_quote_completion "$_completion")"
+                            fi
+                            local _clean="${_completion//\"/}"
+                            _clean="${_clean//\\ / }"
+                            local _suffix=""
+                            [[ -d "${_clean/#\~/$HOME}" && "$_clean" != */ ]] && _suffix="/"
+                            _CS_BUFFER="${line:0:$word_start}${_completion}${_suffix}${after}"
+                            _CS_POS=$(( word_start + ${#_completion} + ${#_suffix} ))
+                            _cs_tab_reset; _cs_redraw; return
+                        else
+                            mapfile -t completions < <(printf '%s\n' "${_glob_matches[@]}" | sort -u)
+                            # Filtra vazios
+                            local -a _filt=()
+                            for _ci in "${completions[@]}"; do
+                                [[ -n "$_ci" ]] && _filt+=("$_ci")
+                            done
+                            completions=("${_filt[@]}")
+                            _CS_TAB_COMPLETIONS=("${completions[@]}")
+                            _CS_TAB_STATE=-1
+                            _CS_TAB_WORD_START=$word_start
+                            _CS_TAB_ORIG_BUFFER="$line"
+                            _CS_TAB_ORIG_POS=$point
+                            local _first="${_CS_TAB_COMPLETIONS[0]}"
+                            if [[ "$cur" == *'\ '* ]]; then
+                                _first="${_first// /\\ }"
+                            else
+                                _first="$(_cs_quote_completion "$_first")"
+                            fi
+                            _cs_list_completions "${cur_expanded##*/}" "${_glob_matches[@]##*/}"
+                            _CS_TAB_STATE=0
+                            _CS_BUFFER="${line:0:$word_start}${_first}${after}"
+                            _CS_POS=$(( word_start + ${#_first} ))
+                            _cs_redraw; return
+                        fi
+                    fi
+                fi
+
                 local i
                 for (( i=0; i < ${#completions[@]}; i++ )); do
                     [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
@@ -884,13 +1029,21 @@ _cs_do_tab() {
     #     _cs_tab_reset; _cs_redraw; return
     # fi
 
+    printf 'DEBUG before_n1 n=%s completions="%s"\n' "$n" "${completions[*]}" >> "${TMPDIR}/cs_debug.log"
     if (( n == 1 )); then
         local completion="${completions[0]}"
+        printf 'DEBUG n1 completion="%s" cur="%s" word_start=%s\n' "$completion" "$cur" "$word_start" >> "${TMPDIR}/cs_debug.log"
         if [[ "${cur}" == ~* || "${line:0:$word_start}" == *~* ]]; then
             completion="${completion/#$HOME/\~}"
         fi
-        completion="$(_cs_quote_completion "$completion")"
+        # Se o cur original usava \ para escapar espaços, mantém esse estilo
+        if [[ "$cur" == *'\ '* ]]; then
+            completion="${completion// /\\ }"
+        else
+            completion="$(_cs_quote_completion "$completion")"
+        fi
         local _clean="${completion//\"/}"
+        _clean="${_clean//\\ / }"
         local suffix=""
         if [[ -d "${_clean/#\~/$HOME}" ]]; then
             [[ "$_clean" != */ ]] && suffix="/"
@@ -905,7 +1058,7 @@ _cs_do_tab() {
     local common
     common=$(_cs_common_prefix "${completions[@]}")
 
-    if [[ "${#common}" -gt "${#cur}" ]]; then
+    if [[ "${#common}" -gt "${#cur_clean}" ]]; then
         _CS_BUFFER="${line:0:$word_start}${common}${after}"
         _CS_POS=$(( word_start + ${#common} ))
         if (( is_cmd )); then
@@ -919,7 +1072,65 @@ _cs_do_tab() {
             done
             mapfile -t completions < <(printf '%s\n' "${cmd_matches2[@]}" | sort -u)
         else
-            mapfile -t completions < <(compgen -f -- "$common" 2>/dev/null | sort -u)
+
+            if [[ "$cur_expanded" == *' '* ]]; then
+                local _shopt_save
+                _shopt_save=$(shopt -p nullglob dotglob 2>/dev/null)
+                shopt -s nullglob dotglob
+                local _glob_matches=()
+                local _f
+                for _f in "${cur_expanded}"*; do
+                    if [[ "$cur" == ~* ]]; then
+                        _f="${_f/#$HOME/\~}"
+                    fi
+                    [[ -d "${_f/#\~/$HOME}" && "$_f" != */ ]] && _f+="/"
+                    _glob_matches+=("$_f")
+                done
+                eval "$_shopt_save"
+                if (( ${#_glob_matches[@]} > 0 )); then
+                    local _n=${#_glob_matches[@]}
+                    if (( _n == 1 )); then
+                        local _completion="${_glob_matches[0]}"
+                        if [[ "$cur" == *'\ '* ]]; then
+                            _completion="${_completion// /\\ }"
+                        else
+                            _completion="$(_cs_quote_completion "$_completion")"
+                        fi
+                        local _clean="${_completion//\"/}"
+                        _clean="${_clean//\\ / }"
+                        local _suffix=""
+                        [[ -d "${_clean/#\~/$HOME}" && "$_clean" != */ ]] && _suffix="/"
+                        _CS_BUFFER="${line:0:$word_start}${_completion}${_suffix}${after}"
+                        _CS_POS=$(( word_start + ${#_completion} + ${#_suffix} ))
+                        _cs_tab_reset; _cs_redraw; return
+                    else
+                        mapfile -t completions < <(printf '%s\n' "${_glob_matches[@]}" | sort -u)
+                        # Filtra vazios
+                        local -a _filt=()
+                        for _ci in "${completions[@]}"; do
+                            [[ -n "$_ci" ]] && _filt+=("$_ci")
+                        done
+                        completions=("${_filt[@]}")
+                        _CS_TAB_COMPLETIONS=("${completions[@]}")
+                        _CS_TAB_STATE=-1
+                        _CS_TAB_WORD_START=$word_start
+                        _CS_TAB_ORIG_BUFFER="$line"
+                        _CS_TAB_ORIG_POS=$point
+                        local _first="${_CS_TAB_COMPLETIONS[0]}"
+                        if [[ "$cur" == *'\ '* ]]; then
+                            _first="${_first// /\\ }"
+                        else
+                            _first="$(_cs_quote_completion "$_first")"
+                        fi
+                        _cs_list_completions "${cur_expanded##*/}" "${_glob_matches[@]##*/}"
+                        _CS_TAB_STATE=0
+                        _CS_BUFFER="${line:0:$word_start}${_first}${after}"
+                        _CS_POS=$(( word_start + ${#_first} ))
+                        _cs_redraw; return
+                    fi
+                fi
+            fi
+            
             local i
             for (( i=0; i < ${#completions[@]}; i++ )); do
                 [[ -d "${completions[$i]}" && "${completions[$i]}" != */ ]] \
@@ -977,6 +1188,12 @@ _cs_do_tab() {
         _CS_POS=$(( _CS_TAB_WORD_START + ${#_first_c} ))
         _cs_redraw; return
     fi
+    printf 'DEBUG cur_clean="%s" cur_expanded="%s"\n' "$cur_clean" "$cur_expanded" >> "${TMPDIR}/cs_debug.log"
+    printf 'DEBUG glob_pattern="%s"\n' "${cur_expanded}*" >> "${TMPDIR}/cs_debug.log"
+    for _f in "${cur_expanded}"*; do
+        printf 'DEBUG glob_match="%s"\n' "$_f" >> "${TMPDIR}/cs_debug.log"
+    done
+    printf 'DEBUG completions="%s" n=%s\n' "${completions[*]}" "${#completions[@]}" >> "${TMPDIR}/cs_debug.log"
 
     _CS_TAB_COMPLETIONS=("${completions[@]}")
     _CS_TAB_STATE=-1
