@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes (adapted for KeePassXC)
+
+# Match windows with "KeePassXC" in title AND app_id is null
+filter() {
+    swaymsg -t get_tree | jq -r '.. | select(.name? != null) | select(.name? | test("KeePassXC")) | select(.app_id? == null) | .name'
+}
+
+# Get the exact window title and escape special characters for Sway
+get_kp_title_escaped() {
+    local title
+    title=$(swaymsg -t get_tree | jq -r '.. | select(.name? != null) | select(.name? | test("KeePassXC")) | select(.app_id? == null) | .name' | head -1)
+    # Escape [ and ] for Sway criteria
+    title="${title//\[/\\[}"
+    title="${title//\]/\\]}"
+    echo "$title"
+}
+
+# Get the con_id for the KeePassXC window
+get_kp_con_id() {
+    swaymsg -t get_tree | jq -r '.. | select(.name? != null) | select(.name? | test("KeePassXC")) | select(.app_id? == null) | .id' | head -1
+}
+
+# Get the floating state of the window
+get_floating_state() {
+    local con_id="$1"
+    swaymsg -t get_tree | jq -r ".. | select(.id? == $con_id) | .floating" 2>/dev/null
+}
+
+help() {
+    cat << EOF
+${0##*/} - Toggle KeePassXC visibility in Sway scratchpad
+
+SYNOPSIS
+    ${0##*/} [OPTION]
+
+DESCRIPTION
+    This script manages a KeePassXC window in the Sway window manager.
+    It toggles the visibility of KeePassXC between the scratchpad 
+    and the current workspace, preserving its original window state.
+
+USAGE EXAMPLES
+    ${0##*/}          # Normal toggle
+    ${0##*/} --debug  # Show debug info
+
+OPTIONS
+    -h, --help      Display this help message
+    --debug         Show debug information
+EOF
+    exit 0
+}
+
+[[ "$1" == "-h" || "$1" == "--help" ]] && help
+
+DEBUG=false
+[[ "$1" == "--debug" ]] && DEBUG=true
+
+$DEBUG && {
+    echo "========== DEBUG INFO =========="
+    echo "Filter output:"
+    filter
+    echo ""
+    echo "Escaped title:"
+    get_kp_title_escaped
+    echo ""
+    echo "Con ID:"
+    get_kp_con_id
+    echo ""
+}
+
+# Check if KeePassXC window exists
+check_string=$(filter)
+
+if [[ -z "$check_string" ]]; then
+    $DEBUG && echo "Window not found, launching KeePassXC..."
+    
+    # Launch KeePassXC
+    keepassxc 2>/dev/null &
+    
+    # Wait for the window to appear
+    for i in {1..10}; do
+        sleep 0.2
+        check_string=$(filter)
+        if [[ -n "$check_string" ]]; then
+            break
+        fi
+    done
+    
+    if [[ -n "$check_string" ]]; then
+        kp_title=$(get_kp_title_escaped)
+        swaymsg "[title=\"$kp_title\"]" move container to scratchpad
+        echo "KeePassXC opened and moved to scratchpad."
+    else
+        echo "Failed to open KeePassXC window."
+        exit 1
+    fi
+fi
+
+# Get the escaped window title and con_id
+kp_title=$(get_kp_title_escaped)
+con_id=$(get_kp_con_id)
+
+$DEBUG && echo "Using title: $kp_title"
+$DEBUG && echo "Using con_id: $con_id"
+
+# Save floating state BEFORE any operation
+floating_state="auto_off"
+if [[ -n "$con_id" && "$con_id" != "null" ]]; then
+    floating_state=$(get_floating_state "$con_id")
+    $DEBUG && echo "Current floating state: $floating_state"
+fi
+
+# Toggle KeePassXC visibility
+if ! swaymsg "[title=\"$kp_title\"]" scratchpad show 2>/dev/null; then
+    $DEBUG && echo "Window is visible, moving to scratchpad..."
+    # Save state file to remember the floating state
+    echo "$floating_state" > "/tmp/keepassxc_floating_state"
+    swaymsg "[title=\"$kp_title\"]" move container to scratchpad
+else
+    $DEBUG && echo "Window was in scratchpad, showing and restoring state..."
+    
+    # Read saved floating state
+    saved_state="auto_off"
+    if [[ -f "/tmp/keepassxc_floating_state" ]]; then
+        saved_state=$(cat "/tmp/keepassxc_floating_state")
+        $DEBUG && echo "Saved floating state: $saved_state"
+    fi
+    
+    # If the window was not floating before, disable floating
+    if [[ "$saved_state" == "auto_off" ]]; then
+        $DEBUG && echo "Restoring to non-floating state..."
+        # Wait a tiny bit for the window to appear
+        sleep 0.05
+        swaymsg "[title=\"$kp_title\"]" floating disable
+    fi
+    
+    # Focus the window
+    swaymsg "[title=\"$kp_title\"]" focus
+fi

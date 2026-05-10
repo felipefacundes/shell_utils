@@ -597,13 +597,31 @@ _cs_redraw() {
             colored="$_CS_BUFFER"
         fi
 
-        local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
-        local _prev_len=$(( _CS_PS1_LEN + ${#_CS_BUFFER} ))
-        local _prev_lines=$(( _prev_len / _term_cols ))
+        # local _term_cols; _term_cols=$(tput cols 2>/dev/null || printf '80')
+        # local _prev_len=$(( _CS_PS1_LEN + ${#_CS_BUFFER} ))
+        # local _prev_lines=$(( _prev_len / _term_cols ))
 
+        local _term_cols=$(( COLUMNS > 0 ? COLUMNS : 80 ))
+        local _buf_visual="${_CS_BUFFER//\\/}"
+        local _char_count
+        _char_count=$(printf '%s' "$_buf_visual" | wc -m 2>/dev/null || printf '%s' "${#_buf_visual}")
+        local _prev_len=$(( _CS_PS1_LEN + _char_count ))
+        local _prev_lines=$(( _prev_len / _term_cols ))
         if (( _prev_lines > 0 )); then
             printf '\e[%dA' "$_prev_lines" >&2
         fi
+        printf '\r\e[2K%s%s\e[K' "$_CS_PS1_LAST" "$colored" >&2
+        printf '\r\e[%dG' "$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))" >&2
+
+        local _prev_lines=$(( _prev_len / _term_cols ))
+        printf 'DEBUG redraw buf_len=%s pos=%s visual_len=%s\n' \
+            "${#_CS_BUFFER}" "$_CS_POS" "$_char_count" >> "${TMPDIR}/cs_debug.log"
+        if (( _prev_lines > 0 )); then
+            printf '\e[%dA' "$_prev_lines" >&2
+        fi
+
+        printf 'DEBUG term_cols=%s buf_visual="%s" char_count=%s wide_count=%s prev_len=%s prev_lines=%s\n' \
+            "$_term_cols" "${_buf_visual:0:30}" "$_char_count" "$_wide_count" "$_prev_len" "$_prev_lines" >> "${TMPDIR}/cs_debug.log"
 
         if [[ -n "$TERMUX_VERSION" ]]; then
             local _ghost_inline=""
@@ -624,6 +642,7 @@ _cs_redraw() {
                     fi
                 fi
             fi
+            printf 'DEBUG buf_len=%s colored_len=%s\n' "${#_CS_BUFFER}" "${#colored}" >> "${TMPDIR}/cs_debug.log"
             printf '\r\e[J%s%s%s' "$_CS_PS1_LAST" "$colored" "$_ghost_inline" >&2
             local _cursor_target=$(( ( _CS_PS1_LEN + _CS_POS ) % _term_cols + 1 ))
             local _total_drawn=$(( _CS_PS1_LEN + ${#_CS_BUFFER} + _ghost_len ))
@@ -696,77 +715,34 @@ _cs_do_shift_tab() {
     _cs_redraw
 }
 
-_cs_quote_completion() {
-    local completion="$1"
-    if [[ "$completion" == *' '* ]]; then
-        completion="${completion/#\~/$HOME}"
-        completion="${completion//\"/}"
-        # Trailing slash será preservada dentro das aspas
-        completion="\"${completion}\""
-    fi
-    printf '%s' "$completion"
-}
+# _cs_quote_completion() {
+#     local completion="$1"
+#     if [[ "$completion" == *' '* ]]; then
+#         completion="${completion/#\~/$HOME}"
+#         completion="${completion//\"/}"
+#         # Trailing slash será preservada dentro das aspas
+#         completion="\"${completion}\""
+#     fi
+#     printf '%s' "$completion"
+# }
 
-f_cs_quote_completion() {
+_cs_quote_completion() {
     local completion="$1"
     local trailing_slash=""
     [[ "$completion" == */ ]] && trailing_slash="/" && completion="${completion%/}"
 
-    # Escapa sempre com \ se contém espaço ou qualquer caractere não-seguro
-    # Inclui caracteres unicode problemáticos via verificação de espaço e ASCII especial
-    local needs_escape=0
-    [[ "$completion" == *' '* ]] && needs_escape=1
-    [[ "$completion" == *"'"* ]] && needs_escape=1
-    [[ "$completion" == *'"'* ]] && needs_escape=1
-    [[ "$completion" == *'('* ]] && needs_escape=1
-    [[ "$completion" == *')'* ]] && needs_escape=1
-    [[ "$completion" == *'['* ]] && needs_escape=1
-    [[ "$completion" == *']'* ]] && needs_escape=1
-    [[ "$completion" == *'{'* ]] && needs_escape=1
-    [[ "$completion" == *'}'* ]] && needs_escape=1
-    [[ "$completion" == *'&'* ]] && needs_escape=1
-    [[ "$completion" == *';'* ]] && needs_escape=1
-    [[ "$completion" == *'!'* ]] && needs_escape=1
-    [[ "$completion" == *'#'* ]] && needs_escape=1
-    [[ "$completion" == *'$'* ]] && needs_escape=1
-    [[ "$completion" == *'`'* ]] && needs_escape=1
-    [[ "$completion" == *'|'* ]] && needs_escape=1
-    [[ "$completion" == *'<'* ]] && needs_escape=1
-    [[ "$completion" == *'>'* ]] && needs_escape=1
-    [[ "$completion" == *','* ]] && needs_escape=1
-    [[ "$completion" == *'~'* ]] && needs_escape=1
-    [[ "$completion" == *'*'* ]] && needs_escape=1
-    [[ "$completion" == *'?'* ]] && needs_escape=1
-    [[ "$completion" == *'\'* ]] && needs_escape=1
+    local result="" i c
+    local safe_chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-+@=%^:~//'
+    for (( i=0; i<${#completion}; i++ )); do
+        c="${completion:$i:1}"
+        if [[ "$safe_chars" == *"$c"* ]]; then
+            result+="$c"
+        else
+            result+="\\${c}"
+        fi
+    done
 
-    if (( needs_escape )); then
-        # Escapa \ primeiro para não duplo-escapar
-        completion="${completion//\\/\\\\}"
-        completion="${completion// /\\ }"
-        completion="${completion//\'/\\\'}"
-        completion="${completion//\"/\\\"}"
-        completion="${completion//(/\\(}"
-        completion="${completion//)/\\)}"
-        completion="${completion//[/\\[}"
-        completion="${completion//]/\\]}"
-        completion="${completion//\{/\\\{}"
-        completion="${completion//\}/\\\}}"
-        completion="${completion//&/\\&}"
-        completion="${completion//;/\\;}"
-        completion="${completion//!/\\!}"
-        completion="${completion//#/\\#}"
-        completion="${completion//\$/\\\$}"
-        completion="${completion//\`/\\\`}"
-        completion="${completion//|/\\|}"
-        completion="${completion//</\\<}"
-        completion="${completion//>/\\>}"
-        completion="${completion//,/\\,}"
-        completion="${completion//~/\\~}"
-        completion="${completion//\*/\\*}"
-        completion="${completion//\?/\\?}"
-    fi
-
-    printf '%s' "${completion}${trailing_slash}"
+    printf '%s' "${result}${trailing_slash}"
 }
 
 _cs_do_tab() {
@@ -820,7 +796,6 @@ _cs_do_tab() {
         fi
         (( word_start-- ))
     done
-    printf 'DEBUG word_start=%s cur="%s"\n' "$word_start" "${line:$word_start:$((point - word_start))}" >> "${TMPDIR}/cs_debug.log"
 
     local cur="${line:$word_start:$((point - word_start))}"
     # Normaliza cur: remove aspas externas e backslashes de escape
@@ -867,6 +842,12 @@ _cs_do_tab() {
             _glob_matches+=("$_f")
         done
         eval "$_shopt_save"
+        printf 'DEBUG glob_matches="%s"\n' "${_glob_matches[*]}" >> "${TMPDIR}/cs_debug.log"
+        printf 'DEBUG glob_n="%s"\n' "${#_glob_matches[@]}" >> "${TMPDIR}/cs_debug.log"
+        if (( ${#_glob_matches[@]} == 1 )); then
+            printf 'DEBUG single_match="%s"\n' "${_glob_matches[0]}" >> "${TMPDIR}/cs_debug.log"
+            printf 'DEBUG after_quote="%s"\n' "$(_cs_quote_completion "${_glob_matches[0]}")" >> "${TMPDIR}/cs_debug.log"
+        fi
         if (( ${#_glob_matches[@]} == 0 )); then
             printf '\a' >&2; _cs_redraw; return
         fi
@@ -881,7 +862,12 @@ _cs_do_tab() {
             local _suffix=""
             [[ -d "${_clean/#\~/$HOME}" && "$_clean" != */ ]] && _suffix="/"
             _CS_BUFFER="${line:0:$word_start}${_completion}${_suffix}${after}"
-            _CS_POS=$(( word_start + ${#_completion} + ${#_suffix} ))
+            local _completion_visual="${_completion//\\/}"
+            local _completion_visual_len
+            _completion_visual_len=$(printf '%s' "$_completion_visual" | wc -m 2>/dev/null || printf '%s' "${#_completion_visual}")
+            _CS_POS=$(( word_start + _completion_visual_len + ${#_suffix} ))
+            printf 'DEBUG final_buf="%s" final_pos=%s buf_len=%s\n' \
+            "${_CS_BUFFER:0:50}" "$_CS_POS" "${#_CS_BUFFER}" >> "${TMPDIR}/cs_debug.log"
             _cs_tab_reset; _cs_redraw; return
         fi
         mapfile -t completions < <(printf '%s\n' "${_glob_matches[@]}" | sort -u)
@@ -987,7 +973,10 @@ _cs_do_tab() {
                             local _suffix=""
                             [[ -d "${_clean/#\~/$HOME}" && "$_clean" != */ ]] && _suffix="/"
                             _CS_BUFFER="${line:0:$word_start}${_completion}${_suffix}${after}"
-                            _CS_POS=$(( word_start + ${#_completion} + ${#_suffix} ))
+                            local _completion_visual="${_completion//\\/}"
+                            local _completion_visual_len
+                            _completion_visual_len=$(printf '%s' "$_completion_visual" | wc -m 2>/dev/null || printf '%s' "${#_completion_visual}")
+                            _CS_POS=$(( word_start + _completion_visual_len + ${#_suffix} ))
                             _cs_tab_reset; _cs_redraw; return
                         else
                             mapfile -t completions < <(printf '%s\n' "${_glob_matches[@]}" | sort -u)
@@ -1090,11 +1079,12 @@ _cs_do_tab() {
     #     _CS_POS=$(( word_start + ${#completion} + ${#suffix} ))
     #     _cs_tab_reset; _cs_redraw; return
     # fi
+    
+    printf 'DEBUG completion_raw="%s"\n' "${completions[0]}" >> "${TMPDIR}/cs_debug.log"
+    printf 'DEBUG completion_after_quote="%s"\n' "$(_cs_quote_completion "${completions[0]}")" >> "${TMPDIR}/cs_debug.log"
 
-    printf 'DEBUG before_n1 n=%s completions="%s"\n' "$n" "${completions[*]}" >> "${TMPDIR}/cs_debug.log"
     if (( n == 1 )); then
         local completion="${completions[0]}"
-        printf 'DEBUG n1 completion="%s" cur="%s" word_start=%s\n' "$completion" "$cur" "$word_start" >> "${TMPDIR}/cs_debug.log"
         if [[ "${cur}" == ~* || "${line:0:$word_start}" == *~* ]]; then
             completion="${completion/#$HOME/\~}"
         fi
@@ -1163,7 +1153,10 @@ _cs_do_tab() {
                         local _suffix=""
                         [[ -d "${_clean/#\~/$HOME}" && "$_clean" != */ ]] && _suffix="/"
                         _CS_BUFFER="${line:0:$word_start}${_completion}${_suffix}${after}"
-                        _CS_POS=$(( word_start + ${#_completion} + ${#_suffix} ))
+                        local _completion_visual="${_completion//\\/}"
+                        local _completion_visual_len
+                        _completion_visual_len=$(printf '%s' "$_completion_visual" | wc -m 2>/dev/null || printf '%s' "${#_completion_visual}")
+                        _CS_POS=$(( word_start + _completion_visual_len + ${#_suffix} ))
                         _cs_tab_reset; _cs_redraw; return
                     else
                         mapfile -t completions < <(printf '%s\n' "${_glob_matches[@]}" | sort -u)
@@ -1250,12 +1243,6 @@ _cs_do_tab() {
         _CS_POS=$(( _CS_TAB_WORD_START + ${#_first_c} ))
         _cs_redraw; return
     fi
-    printf 'DEBUG cur_clean="%s" cur_expanded="%s"\n' "$cur_clean" "$cur_expanded" >> "${TMPDIR}/cs_debug.log"
-    printf 'DEBUG glob_pattern="%s"\n' "${cur_expanded}*" >> "${TMPDIR}/cs_debug.log"
-    for _f in "${cur_expanded}"*; do
-        printf 'DEBUG glob_match="%s"\n' "$_f" >> "${TMPDIR}/cs_debug.log"
-    done
-    printf 'DEBUG completions="%s" n=%s\n' "${completions[*]}" "${#completions[@]}" >> "${TMPDIR}/cs_debug.log"
 
     _CS_TAB_COMPLETIONS=("${completions[@]}")
     _CS_TAB_STATE=-1
