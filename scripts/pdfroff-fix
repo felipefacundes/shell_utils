@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# fix-groff-pdf — Creates missing PDF-related tmac shims
+# for groff installations that ship without them (e.g. Arch Linux).
+#
+# Priority:
+#   1. ~/.shell_utils/utilities/groff/tmac/  (user-provided, e.g. from Termux)
+#   2. Shim pointing to pdf.tmac             (auto-generated fallback)
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+USER_TMAC_DIR="${HOME}/.shell_utils/utilities/groff/tmac"
+
+# --- Detect groff version ----------------------------------------------------
+GROFF_VERSION=$(groff --version 2>/dev/null | grep -oP '(?<=version )\d+\.\d+\.\d+' | head -1)
+
+if [[ -z "$GROFF_VERSION" ]]; then
+    echo -e "${RED}Error: groff not found or version could not be detected.${NC}"
+    exit 1
+fi
+
+echo -e "${CYAN}Detected groff version:${NC} $GROFF_VERSION"
+
+TMAC_DIR="/usr/share/groff/${GROFF_VERSION}/tmac"
+
+if [[ ! -d "$TMAC_DIR" ]]; then
+    echo -e "${RED}Error: tmac directory not found: $TMAC_DIR${NC}"
+    exit 1
+fi
+
+PDF_TMAC="${TMAC_DIR}/pdf.tmac"
+
+if [[ ! -f "$PDF_TMAC" ]]; then
+    echo -e "${RED}Error: pdf.tmac not found in $TMAC_DIR${NC}"
+    echo "Install the full groff package: sudo pacman -S groff"
+    exit 1
+fi
+
+# --- Install function --------------------------------------------------------
+# For pdfmark and spdf: priority is user tmac dir, fallback is shim.
+# For sanitize: user tmac dir only (no meaningful shim possible).
+install_tmac() {
+    local name="$1"
+    local target="${TMAC_DIR}/${name}"
+    local user_source="${USER_TMAC_DIR}/${name}"
+
+    if [[ -f "$target" ]]; then
+        echo -e "${YELLOW}Already exists, skipping:${NC} $target"
+        return
+    fi
+
+    if [[ -f "$user_source" ]]; then
+        echo -e "${CYAN}Using user-provided file:${NC} $user_source"
+        sudo cp "$user_source" "$target"
+        sudo chmod 644 "$target"
+        echo -e "${GREEN}✓ Installed:${NC} $target"
+    else
+        # sanitize.tmac has no meaningful shim — warn and skip
+        if [[ "$name" == "sanitize.tmac" ]]; then
+        echo -e "${RED}Warning: $user_source not found — skipping $name.${NC}"
+        echo -e "         Place it in ${USER_TMAC_DIR}/ and re-run this script."
+        return
+        fi
+        echo -e "${YELLOW}User file not found:${NC} $user_source"
+        echo -e "${CYAN}Falling back to shim pointing to pdf.tmac${NC}"
+        echo ".so ${PDF_TMAC}" | sudo tee "$target" > /dev/null
+        sudo chmod 644 "$target"
+        echo -e "${GREEN}✓ Installed shim:${NC} $target"
+    fi
+}
+
+# --- Run ---------------------------------------------------------------------
+echo ""
+install_tmac "pdfmark.tmac"
+install_tmac "spdf.tmac"
+install_tmac "sanitize.tmac"
+echo ""
+echo -e "${GREEN}Done.${NC} groff PDF macros are ready."

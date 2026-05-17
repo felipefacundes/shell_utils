@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# ------------------------------------------------------------------------------
+# md2pdf — Convert Markdown to PDF with ABNT formatting via XeLaTeX
+#
+# Usage:
+#   md2pdf file.md
+#   md2pdf file.md output.pdf
+#   md2pdf *.md               (batch convert multiple files)
+#
+# Dependencies: pandoc, xelatex (texlive-core), Liberation Serif font
+# ------------------------------------------------------------------------------
+
+set -euo pipefail
+
+# --- Terminal colors ---------------------------------------------------------
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# --- Check dependencies ------------------------------------------------------
+for dep in pandoc xelatex; do
+    if ! command -v "$dep" &>/dev/null; then
+        echo -e "${RED}Error: '$dep' not found.${NC}"
+        echo "Install with: sudo pacman -S pandoc texlive-core texlive-latexextra texlive-fontsextra texlive-fontsrecommended"
+        exit 1
+    fi
+done
+
+# --- Usage -------------------------------------------------------------------
+if [[ $# -eq 0 ]]; then
+    echo "Usage: md2pdf <file.md> [output.pdf]"
+    echo "       md2pdf *.md"
+    exit 1
+fi
+
+# --- Temporary LaTeX header file ---------------------------------------------
+# Created once and reused for all conversions in the session.
+HEADER_TEX=$(mktemp /tmp/md2pdf-XXXXXX.tex)
+trap "rm -f '$HEADER_TEX'" EXIT
+
+cat > "$HEADER_TEX" << 'LATEX'
+% --- ABNT formatting packages ------------------------------------------------
+
+\usepackage{xcolor}
+
+% 1.5 line spacing
+\usepackage{setspace}
+\onehalfspacing
+
+% Justified text
+\usepackage{ragged2e}
+\justifying
+
+% Blue headings
+\usepackage{titlesec}
+\titleformat{\section}
+  {\normalfont\Large\bfseries\color{blue}}{\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries\color{blue}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}
+  {\normalfont\normalsize\bfseries\color{blue}}{\thesubsubsection}{1em}{}
+
+% Page break after document title block
+% Ensures the title stays alone on the first page
+\usepackage{etoolbox}
+\makeatletter
+\preto\@maketitle{\clearpage}
+\appto\@maketitle{\clearpage}
+\makeatother
+LATEX
+
+# --- Conversion function -----------------------------------------------------
+convert_file() {
+    local input="$1"
+    local output="$2"
+
+    echo -e "${YELLOW}Converting:${NC} $input → $output"
+
+    if pandoc "$input" -o "$output" \
+        --pdf-engine=xelatex \
+        -V mainfont="Liberation Serif" \
+        -V sansfont="Liberation Sans" \
+        -V monofont="Liberation Mono" \
+        -V fontsize=12pt \
+        -V "geometry:top=3cm, left=3cm, bottom=2cm, right=2cm" \
+        -V colorlinks=true \
+        -V linkcolor=blue \
+        --toc \
+        --number-sections \
+        --highlight-style=tango \
+        -H "$HEADER_TEX"; then
+
+        echo -e "${GREEN}✓ Done:${NC} $output"
+    else
+        echo -e "${RED}✗ Failed to convert:${NC} $input"
+        return 1
+    fi
+}
+
+# --- Process arguments -------------------------------------------------------
+
+# Case: md2pdf input.md output.pdf  (two args, second ends in .pdf)
+if [[ $# -eq 2 && "${2##*.}" == "pdf" ]]; then
+    convert_file "$1" "$2"
+    exit $?
+fi
+
+# Case: one or more .md files
+for input in "$@"; do
+    if [[ ! -f "$input" ]]; then
+        echo -e "${RED}File not found:${NC} $input"
+        continue
+    fi
+    if [[ "${input##*.}" != "md" ]]; then
+        echo -e "${YELLOW}Warning: '$input' does not appear to be Markdown, skipping.${NC}"
+        continue
+    fi
+    # Replace .md extension with .pdf
+    output="${input%.md}.pdf"
+    convert_file "$input" "$output"
+done
