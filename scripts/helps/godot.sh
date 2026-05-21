@@ -22,6 +22,18 @@ godot_animation_generate() {
     fi
 }
 
+godot_instantiate_methods() {
+	cat <<-'EOF'
+	# Object Instantiation Methods in Godot: add_sibling(object), get_tree().current_scene.add_child(object), get_parent().add_sibling(object), etc.
+	EOF
+	clear
+	if [[ "${LANG,,}" =~ pt_ ]]; then
+		markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/godot_instantiate_methods_pt.md
+    else
+		markdown_reader -nc -nf ~/.shell_utils/scripts/helps/markdowns/godot_instantiate_methods.md
+    fi
+}
+
 godot_comment_markers() {
 	cat <<-'EOF'
 	# Godot Comment Markers - This guide presents the special comment markers that Godot 4 highlights in the script editor. These markers help organize code, track tasks, and highlight important notices directly in comments.

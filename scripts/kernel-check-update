@@ -246,6 +246,7 @@ monitor_kernel_updates() {
            [[ -n "$CURRENT_INITRAMFS_TIMESTAMP" ]] && \
            [[ "$CURRENT_KERNEL_VERSION" != "$INSTALLED_KERNEL_VERSION" ]] && \
            [[ "$STORED_INITRAMFS_TIMESTAMP" != "$CURRENT_INITRAMFS_TIMESTAMP" ]] && \
+           [[ ! -f /var/lib/pacman/db.lck ]] && \
            ! pidof pacman >/dev/null; then
             
             # Send periodic desktop notifications (every 5 minutes)
