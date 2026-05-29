@@ -111,14 +111,21 @@ create_odt_reference() {
 convert_with_libreoffice() {
     local input="$1"
     local output="$2"
+    local log_file="/tmp/md2pdf-$(basename "${input%.md}").log"
     echo -e "${YELLOW}Converting (LibreOffice):${NC} $input → $output"
+    echo "[md2pdf] $(date '+%Y-%m-%d %H:%M:%S') — start: $input" > "$log_file"
 
-    # Step 1: Convert Markdown → ODT via pandoc (preserving fonts and structure)
+    # Step 1a: Try Markdown → ODT via pandoc with full font/style options
     local tmp_odt
     tmp_odt=$(mktemp /tmp/md2pdf-XXXXXX.odt)
     trap "rm -f '$tmp_odt'" RETURN
 
-    if ! pandoc "$input" -o "$tmp_odt" \
+    local pandoc_err
+    pandoc_err=$(mktemp /tmp/md2pdf-pandoc-err-XXXXXX.txt)
+    trap "rm -f '$pandoc_err'" RETURN
+
+    echo "[md2pdf] Step 1a: pandoc → ODT (with reference-doc)" >> "$log_file"
+    if pandoc "$input" -o "$tmp_odt" \
         --toc \
         --number-sections \
         --highlight-style=tango \
@@ -129,13 +136,32 @@ convert_with_libreoffice() {
         -V "geometry:top=3cm, left=3cm, bottom=2cm, right=2cm" \
         -V colorlinks=true \
         -V linkcolor=blue \
-        --reference-doc=<(create_odt_reference) 2>/dev/null || \
-    pandoc "$input" -o "$tmp_odt" \
-        --toc \
-        --number-sections \
-        --highlight-style=tango; then
-        echo -e "${RED}✗ Failed to generate ODT for:${NC} $input"
-        return 1
+        --reference-doc=<(create_odt_reference) \
+        2>"$pandoc_err"; then
+        echo "[md2pdf] Step 1a: success" >> "$log_file"
+    else
+        # Step 1b: Fallback — plain ODT without reference-doc
+        echo "[md2pdf] Step 1a: failed — stderr below" >> "$log_file"
+        cat "$pandoc_err" >> "$log_file"
+        echo -e "${YELLOW}  ⚠ pandoc (with reference-doc) failed, trying plain ODT fallback…${NC}"
+        echo -e "${YELLOW}  (see log: $log_file)${NC}"
+
+        echo "[md2pdf] Step 1b: pandoc → ODT (plain fallback)" >> "$log_file"
+        if pandoc "$input" -o "$tmp_odt" \
+            --toc \
+            --number-sections \
+            --highlight-style=tango \
+            2>"$pandoc_err"; then
+            echo "[md2pdf] Step 1b: success" >> "$log_file"
+        else
+            echo "[md2pdf] Step 1b: failed — stderr below" >> "$log_file"
+            cat "$pandoc_err" >> "$log_file"
+            echo -e "${RED}✗ Failed to generate ODT for:${NC} $input"
+            echo -e "${RED}  pandoc error output:${NC}"
+            cat "$pandoc_err" >&2
+            echo -e "${YELLOW}  Full log:${NC} $log_file"
+            return 1
+        fi
     fi
 
     # Step 2: Convert ODT → PDF via LibreOffice headless
@@ -143,23 +169,74 @@ convert_with_libreoffice() {
     lo_outdir=$(mktemp -d /tmp/md2pdf-lo-XXXXXX)
     trap "rm -rf '$lo_outdir'" RETURN
 
-    if libreoffice --headless \
-        --infilter="writer_pdf_Export" \
+    # Isolated user profile — avoids lock conflicts with running LO instances
+    local lo_profile
+    lo_profile=$(mktemp -d /tmp/md2pdf-lo-profile-XXXXXX)
+    trap "rm -rf '$lo_profile'" RETURN
+
+    # Remove any stale lock files that cause "Unspecified Application Error"
+    local lo_lock="$HOME/.config/libreoffice/4/.lock"
+    [[ -f "$lo_lock" ]] && rm -f "$lo_lock" && \
+        echo "[md2pdf] Removed stale LO lock: $lo_lock" >> "$log_file"
+
+    echo "[md2pdf] Step 2: LibreOffice headless → PDF (outdir: $lo_outdir)" >> "$log_file"
+    local lo_err
+    lo_err=$(mktemp /tmp/md2pdf-lo-err-XXXXXX.txt)
+    trap "rm -f '$lo_err'" RETURN
+
+    # NOTE: --infilter is intentionally omitted — it conflicts with headless
+    # pdf conversion and is the most common cause of "Unspecified Application Error".
+    # A separate UserInstallation profile is used to prevent session lock conflicts.
+    if timeout 120 libreoffice \
+        --headless \
+        -env:UserInstallation="file://$lo_profile" \
         --convert-to pdf \
         --outdir "$lo_outdir" \
-        "$tmp_odt" >/dev/null 2>&1; then
-        # LibreOffice names the output after the input basename
-        local lo_pdf
-        lo_pdf="$lo_outdir/$(basename "${tmp_odt%.odt}").pdf"
+        "$tmp_odt" \
+        >"$lo_err" 2>&1; then
+        cat "$lo_err" >> "$log_file"
+        # LibreOffice names the PDF after the ODT basename (without path/extension)
+        local odt_basename
+        odt_basename=$(basename "${tmp_odt%.odt}")
+        local lo_pdf="$lo_outdir/${odt_basename}.pdf"
         if [[ -f "$lo_pdf" ]]; then
             mv "$lo_pdf" "$output"
+            echo "[md2pdf] Step 2: success → $output" >> "$log_file"
             echo -e "${GREEN}✓ Done:${NC} $output"
             return 0
+        else
+            # LibreOffice sometimes drops the tempfile hash — scan for any pdf
+            local found_pdf
+            found_pdf=$(find "$lo_outdir" -maxdepth 1 -name "*.pdf" | head -1)
+            if [[ -n "$found_pdf" ]]; then
+                mv "$found_pdf" "$output"
+                echo "[md2pdf] Step 2: success (fallback scan) → $output" >> "$log_file"
+                echo -e "${GREEN}✓ Done:${NC} $output"
+                return 0
+            fi
+            echo "[md2pdf] Step 2: exited 0 but PDF not found. outdir contents:" >> "$log_file"
+            ls -lh "$lo_outdir" >> "$log_file"
+            echo -e "${RED}✗ LibreOffice ran but PDF was not created.${NC}"
+            echo -e "${YELLOW}  outdir contents:${NC}"
+            ls -lh "$lo_outdir" >&2
+            echo -e "${YELLOW}  Full log:${NC} $log_file"
+            return 1
         fi
+    else
+        local exit_code=$?
+        cat "$lo_err" >> "$log_file"
+        if [[ $exit_code -eq 124 ]]; then
+            echo "[md2pdf] Step 2: LibreOffice timed out after 120s" >> "$log_file"
+            echo -e "${RED}✗ LibreOffice timed out (120s). Try with pandoc instead.${NC}"
+        else
+            echo "[md2pdf] Step 2: LibreOffice failed (exit $exit_code)" >> "$log_file"
+            echo -e "${RED}✗ LibreOffice failed to convert ODT to PDF.${NC}"
+            echo -e "${RED}  LibreOffice output:${NC}"
+            cat "$lo_err" >&2
+        fi
+        echo -e "${YELLOW}  Full log:${NC} $log_file"
+        return 1
     fi
-
-    echo -e "${RED}✗ Failed to convert (LibreOffice):${NC} $input"
-    return 1
 }
 
 # --- Pandoc/XeLaTeX conversion function --------------------------------------
