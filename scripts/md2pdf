@@ -14,6 +14,8 @@
 # Termux:       pandoc, groff (pdfroff used as pdf-engine; libreoffice not checked)
 # ------------------------------------------------------------------------------
 
+TMPDIR="${TMPDIR:-/tmp}"
+
 # --- Terminal colors ---------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -62,7 +64,7 @@ fi
 
 # --- Temporary LaTeX header file ---------------------------------------------
 # Created once and reused for all conversions in the session.
-HEADER_TEX=$(mktemp /tmp/md2pdf-XXXXXX.tex)
+HEADER_TEX=$(mktemp "${TMPDIR}"/md2pdf-XXXXXX.tex)
 trap "rm -f '$HEADER_TEX'" EXIT
 
 cat > "$HEADER_TEX" << 'LATEX'
@@ -96,7 +98,7 @@ create_odt_reference() {
     # Produce an ODT reference file that carries the Liberation Serif font.
     # We create it via pandoc from an empty markdown so the structure is valid.
     local ref_odt
-    ref_odt=$(mktemp /tmp/md2pdf-ref-XXXXXX.odt)
+    ref_odt=$(mktemp "${TMPDIR}/md2pdf-ref-XXXXXX.odt")
     pandoc -o "$ref_odt" \
         --metadata title="" \
         -V mainfont="Liberation Serif" \
@@ -111,17 +113,17 @@ create_odt_reference() {
 convert_with_libreoffice() {
     local input="$1"
     local output="$2"
-    local log_file="/tmp/md2pdf-$(basename "${input%.md}").log"
+    local log_file="${TMPDIR}/md2pdf-$(basename "${input%.md}").log"
     echo -e "${YELLOW}Converting (LibreOffice):${NC} $input → $output"
     echo "[md2pdf] $(date '+%Y-%m-%d %H:%M:%S') — start: $input" > "$log_file"
 
     # Step 1a: Try Markdown → ODT via pandoc with full font/style options
     local tmp_odt
-    tmp_odt=$(mktemp /tmp/md2pdf-XXXXXX.odt)
+    tmp_odt=$(mktemp "${TMPDIR}/md2pdf-XXXXXX.odt")
     trap "rm -f '$tmp_odt'" RETURN
 
     local pandoc_err
-    pandoc_err=$(mktemp /tmp/md2pdf-pandoc-err-XXXXXX.txt)
+    pandoc_err=$(mktemp "${TMPDIR}/md2pdf-pandoc-err-XXXXXX.txt")
     trap "rm -f '$pandoc_err'" RETURN
 
     echo "[md2pdf] Step 1a: pandoc → ODT (with reference-doc)" >> "$log_file"
@@ -166,12 +168,12 @@ convert_with_libreoffice() {
 
     # Step 2: Convert ODT → PDF via LibreOffice headless
     local lo_outdir
-    lo_outdir=$(mktemp -d /tmp/md2pdf-lo-XXXXXX)
+    lo_outdir=$(mktemp -d "${TMPDIR}/md2pdf-lo-XXXXXX")
     trap "rm -rf '$lo_outdir'" RETURN
 
     # Isolated user profile — avoids lock conflicts with running LO instances
     local lo_profile
-    lo_profile=$(mktemp -d /tmp/md2pdf-lo-profile-XXXXXX)
+    lo_profile=$(mktemp -d "${TMPDIR}/md2pdf-lo-profile-XXXXXX")
     trap "rm -rf '$lo_profile'" RETURN
 
     # Remove any stale lock files that cause "Unspecified Application Error"
@@ -181,7 +183,7 @@ convert_with_libreoffice() {
 
     echo "[md2pdf] Step 2: LibreOffice headless → PDF (outdir: $lo_outdir)" >> "$log_file"
     local lo_err
-    lo_err=$(mktemp /tmp/md2pdf-lo-err-XXXXXX.txt)
+    lo_err=$(mktemp "${TMPDIR}/md2pdf-lo-err-XXXXXX.txt")
     trap "rm -f '$lo_err'" RETURN
 
     # NOTE: --infilter is intentionally omitted — it conflicts with headless

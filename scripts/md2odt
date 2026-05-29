@@ -95,6 +95,37 @@ main() {
     temp_file=""
     cd "$TMPDIR" || true
 
+    # --- Temporary LaTeX header file ---------------------------------------------
+    # Created once and reused for all conversions in the session.
+    HEADER_TEX=$(mktemp "${TMPDIR}"/md2pdf-XXXXXX.tex)
+    trap "rm -f '$HEADER_TEX'" EXIT
+
+    cat > "$HEADER_TEX" << 'LATEX'
+    % --- ABNT formatting packages ------------------------------------------------
+    \usepackage{xcolor}
+    % 1.5 line spacing
+    \usepackage{setspace}
+    \onehalfspacing
+    % Justified text
+    \usepackage{ragged2e}
+    \justifying
+    % Blue headings
+    \usepackage{titlesec}
+    \titleformat{\section}
+    {\normalfont\Large\bfseries\color{blue}}{\thesection}{1em}{}
+    \titleformat{\subsection}
+    {\normalfont\large\bfseries\color{blue}}{\thesubsection}{1em}{}
+    \titleformat{\subsubsection}
+    {\normalfont\normalsize\bfseries\color{blue}}{\thesubsubsection}{1em}{}
+    % Page break after document title block
+    % Ensures the title stays alone on the first page
+    \usepackage{etoolbox}
+    \makeatletter
+    \preto\@maketitle{\clearpage}
+    \appto\@maketitle{\clearpage}
+    \makeatother
+LATEX
+
     if [[ "$use_clipboard" == true ]]; then
         temp_file=$(mktemp clipboard_content_XXXXXX.md)
         echo -e "${GREEN}Copying clipboard content to $temp_file${NC}"
@@ -126,9 +157,25 @@ main() {
     echo -e "${GREEN}Converting $input_file to $output_file${NC}"
     
     if [[ "$output_file" =~ / ]]; then
-        pandoc -s -o "$output_file" "$input_file"
+        pandoc -s -o "$output_file" "$input_file" \
+        -V fontsize=12pt \
+        -V "geometry:top=3cm, left=3cm, bottom=2cm, right=2cm" \
+        -V colorlinks=true \
+        -V linkcolor=blue \
+        --toc \
+        --number-sections \
+        --highlight-style=tango \
+        -H "$HEADER_TEX"
     else
-        pandoc -s -o "$pwd"/"$output_file" "$input_file"
+        pandoc -s -o "$pwd"/"$output_file" "$input_file" \
+        -V fontsize=12pt \
+        -V "geometry:top=3cm, left=3cm, bottom=2cm, right=2cm" \
+        -V colorlinks=true \
+        -V linkcolor=blue \
+        --toc \
+        --number-sections \
+        --highlight-style=tango \
+        -H "$HEADER_TEX"
     fi
 
     # Cleans up temp file if it exists
