@@ -106,7 +106,7 @@ if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
     help
 fi
 
-if [[ "$arg" == "-d" || "$arg" == "--disconnect" ]]; then
+if [[ "$arg" == "-d" || "$arg" == "-down" || "$arg" == "--disconnect" ]]; then
     if sudo wg-quick down wgcf-profile 2>/dev/null; then
         echo -e "\n${YELLOW}WGCF successfully disconnected. Command executed:${NC}"
         echo -e "${SUDO_COLOR}sudo${NC} ${GREEN}wg-quick down wgcf-profile${NC}" | tee -a "$temp_log"
@@ -117,7 +117,7 @@ if [[ "$arg" == "-d" || "$arg" == "--disconnect" ]]; then
     fi
 fi
 
-if [[ "$arg" == "-up" || "$arg" == "--connect" ]]; then
+if [[ "$arg" == "-up" || "$arg" == "-u" || "$arg" == "-c" || "$arg" == "--connect" ]]; then
     connection_up
 fi
 

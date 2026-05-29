@@ -1,0 +1,335 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+Script: video2sprite
+Description: Converts video to sprite sheet frames (PNG sequence)
+             Optimized for sprite creation for Godot Engine
+
+Usage: video2sprite <video_file> [OPTIONS]
+
+Extraction modes:
+  -f, --fps <num>         Extract frames per second (default: 1 fps)
+  -s, --seconds <num>     Extract 1 frame every N seconds (default: 3 seconds)
+  -t, --total <num>       Extract a total of N frames evenly distributed
+  -m, --manual <list>     Extract frames at specific seconds (e.g.: "0.5,1.2,3.0,5.5")
+  -c, --columns <num>     Number of columns for sprite sheet (default: automatic)
+  -r, --rows <num>        Number of rows for sprite sheet (default: automatic)
+
+Additional options:
+  -o, --output <dir>      Custom output directory
+  --sprite-sheet          Generate a sprite sheet in addition to individual frames
+  --width <pixels>        Output width (maintains aspect ratio)
+  --height <pixels>       Output height (maintains aspect ratio)
+  --crop <x:y:w:h>        Crop region (ffmpeg format)
+  --no-resize             Keep original resolution
+  --transparent <color>   Make a specific color transparent (e.g.: "0x00FF00")
+  --optimize              Optimize PNGs with optipng (if installed)
+
+Examples:
+  video2sprite character.mp4 -f 4                    # 4 frames per second
+  video2sprite explosion.mp4 -s 0.5                   # 1 frame every 0.5s
+  video2sprite enemy.mp4 -t 16                        # 16 frames total
+  video2sprite animation.mp4 -f 2 --sprite-sheet      # Sprite sheet at 2 fps
+  video2sprite sprite.mp4 -m "0.5,1.0,1.5,2.0"       # Frames at specific moments
+  video2sprite char.mp4 -f 8 --width 64 --crop 0:0:100:100  # Resize and crop
+DOCUMENTATION
+
+script_name="${0##*/}"
+
+# Default values
+fps=""
+seconds=""
+total=""
+manual=""
+output_dir=""
+columns=""
+rows=""
+sprite_sheet=false
+width=""
+height=""
+crop=""
+no_resize=false
+transparent=""
+optimize=false
+
+# Help function
+show_help() {
+    head -35 "$0" | tail -31
+    exit 0
+}
+
+# Argument parsing
+video_file=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|--fps)
+            fps="$2"
+            shift 2
+            ;;
+        -s|--seconds)
+            seconds="$2"
+            shift 2
+            ;;
+        -t|--total)
+            total="$2"
+            shift 2
+            ;;
+        -m|--manual)
+            manual="$2"
+            shift 2
+            ;;
+        -c|--columns)
+            columns="$2"
+            shift 2
+            ;;
+        -r|--rows)
+            rows="$2"
+            shift 2
+            ;;
+        -o|--output)
+            output_dir="$2"
+            shift 2
+            ;;
+        --sprite-sheet)
+            sprite_sheet=true
+            shift
+            ;;
+        --width)
+            width="$2"
+            shift 2
+            ;;
+        --height)
+            height="$2"
+            shift 2
+            ;;
+        --crop)
+            crop="$2"
+            shift 2
+            ;;
+        --no-resize)
+            no_resize=true
+            shift
+            ;;
+        --transparent)
+            transparent="$2"
+            shift 2
+            ;;
+        --optimize)
+            optimize=true
+            shift
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            show_help
+            ;;
+        *)
+            video_file="$1"
+            shift
+            ;;
+    esac
+done
+
+# Check if video file was provided
+if [ -z "$video_file" ]; then
+    echo "Error: No video file specified."
+    echo "Usage: $script_name <video_file> [OPTIONS]"
+    exit 1
+fi
+
+# Check if file exists
+if [ ! -f "$video_file" ]; then
+    echo "Error: File '$video_file' not found."
+    exit 1
+fi
+
+# Default mode: 1 fps if no mode is specified
+if [ -z "$fps" ] && [ -z "$seconds" ] && [ -z "$total" ] && [ -z "$manual" ]; then
+    fps=1
+    echo "Using default mode: 1 frame per second (-f 1)"
+fi
+
+# Count how many modes were activated
+modes=0
+[ -n "$fps" ] && ((modes++))
+[ -n "$seconds" ] && ((modes++))
+[ -n "$total" ] && ((modes++))
+[ -n "$manual" ] && ((modes++))
+
+if [ $modes -gt 1 ]; then
+    echo "Error: Only one extraction mode can be used at a time."
+    exit 1
+fi
+
+# Get filename without extension
+filename=$(basename "$video_file")
+filename_no_ext="${filename%.*}"
+
+# Create output directory
+if [ -z "$output_dir" ]; then
+    # Directory name based on mode used
+    if [ -n "$fps" ]; then
+        output_dir="${filename_no_ext}_fps${fps}"
+    elif [ -n "$seconds" ]; then
+        output_dir="${filename_no_ext}_each${seconds}s"
+    elif [ -n "$total" ]; then
+        output_dir="${filename_no_ext}_total${total}"
+    elif [ -n "$manual" ]; then
+        output_dir="${filename_no_ext}_manual"
+    fi
+fi
+
+# Create output directory
+if [ ! -d "$output_dir" ]; then
+    mkdir -p "$output_dir"
+    echo "Directory '$output_dir' created."
+fi
+
+# Build video filter
+vf_filter=""
+
+# Add crop if specified
+if [ -n "$crop" ]; then
+    vf_filter="crop=$crop"
+    echo "Applying crop: $crop"
+fi
+
+# Add scale if specified
+if ! $no_resize; then
+    if [ -n "$width" ] && [ -n "$height" ]; then
+        scale_filter="scale=$width:$height"
+    elif [ -n "$width" ]; then
+        scale_filter="scale=$width:-1"
+    elif [ -n "$height" ]; then
+        scale_filter="scale=-1:$height"
+    fi
+    
+    if [ -n "$scale_filter" ]; then
+        [ -n "$vf_filter" ] && vf_filter="$vf_filter,$scale_filter" || vf_filter="$scale_filter"
+        echo "Applying resize: $scale_filter"
+    fi
+fi
+
+# Build base ffmpeg command
+echo "Converting '$video_file' to PNG frames..."
+
+ffmpeg_cmd="ffmpeg -i \"$video_file\""
+
+# Build frame selection filter
+if [ -n "$fps" ]; then
+    echo "Mode: $fps frames per second"
+    select_filter="fps=$fps"
+elif [ -n "$seconds" ]; then
+    echo "Mode: 1 frame every $seconds seconds"
+    fps_value=$(echo "scale=6; 1 / $seconds" | bc)
+    select_filter="fps=$fps_value"
+elif [ -n "$total" ]; then
+    echo "Mode: $total frames total"
+    duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$video_file")
+    fps_value=$(echo "scale=6; $total / $duration" | bc)
+    select_filter="fps=$fps_value"
+elif [ -n "$manual" ]; then
+    echo "Mode: Manual frames at $manual"
+    # For manual mode, extract each frame individually
+    IFS=',' read -ra TIMES <<< "$manual"
+    frame_num=1
+    for time in "${TIMES[@]}"; do
+        output_file="${output_dir}/frame_$(printf "%08d" $frame_num).png"
+        ffmpeg_cmd_manual="ffmpeg -ss $time -i \"$video_file\" -vframes 1"
+        
+        # Add filters if necessary
+        if [ -n "$vf_filter" ]; then
+            ffmpeg_cmd_manual="$ffmpeg_cmd_manual -vf \"$vf_filter\""
+        fi
+        
+        ffmpeg_cmd_manual="$ffmpeg_cmd_manual \"$output_file\""
+        eval "$ffmpeg_cmd_manual"
+        ((frame_num++))
+    done
+    echo "Manual conversion completed! $((frame_num-1)) frames extracted."
+    
+    # Skip the rest of normal extraction
+    skip_normal=true
+fi
+
+if [ ! "$skip_normal" = true ]; then
+    # Add selection filter
+    if [ -n "$vf_filter" ]; then
+        vf_filter="$vf_filter,$select_filter"
+    else
+        vf_filter="$select_filter"
+    fi
+    
+    # Add transparency if specified
+    if [ -n "$transparent" ]; then
+        ffmpeg_cmd="$ffmpeg_cmd -vf \"$vf_filter,colorchannelmixer=aa=1.0,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(eq(r(X,Y),$transparent),0,255)'\""
+    else
+        ffmpeg_cmd="$ffmpeg_cmd -vf \"$vf_filter\""
+    fi
+    
+    # Run conversion
+    ffmpeg_cmd="$ffmpeg_cmd \"${output_dir}/frame_%08d.png\""
+    if eval "$ffmpeg_cmd"; then
+        frame_count=$(ls "${output_dir}"/frame_*.png 2>/dev/null | wc -l)
+        echo "Conversion completed! $frame_count frames extracted in '$output_dir/'"
+    else
+        echo "Error during video conversion."
+        exit 1
+    fi
+fi
+
+# Create sprite sheet if requested
+if $sprite_sheet; then
+    echo "Generating sprite sheet..."
+    
+    if [ -z "$columns" ] || [ -z "$rows" ]; then
+        # Calculate grid automatically
+        total_frames=$(ls "${output_dir}"/frame_*.png 2>/dev/null | wc -l)
+        if [ $total_frames -eq 0 ]; then
+            echo "Error: No frames found to create sprite sheet."
+            exit 1
+        fi
+        
+        if [ -z "$columns" ]; then
+            columns=$(echo "sqrt($total_frames)" | bc)
+            [ "$columns" -lt 1 ] && columns=1
+        fi
+        
+        if [ -z "$rows" ]; then
+            rows=$(( (total_frames + columns - 1) / columns ))
+        fi
+    fi
+    
+    echo "Sprite sheet: ${columns}x${rows} grid"
+    
+    # Use ImageMagick montage to create sprite sheet
+    if command -v montage &> /dev/null; then
+        sprite_output="${output_dir}_spritesheet.png"
+        montage "${output_dir}"/frame_*.png -tile ${columns}x${rows} -geometry +0+0 -background none "$sprite_output"
+        echo "Sprite sheet created: $sprite_output"
+    else
+        echo "Warning: ImageMagick (montage) not found. Sprite sheet was not generated."
+        echo "Install with: sudo apt install imagemagick  # Debian/Ubuntu"
+        echo "              sudo pacman -S imagemagick    # Arch"
+    fi
+fi
+
+# Optimize PNGs if requested
+if $optimize; then
+    if command -v optipng &> /dev/null; then
+        echo "Optimizing PNGs..."
+        optipng -o7 "${output_dir}"/frame_*.png
+        echo "Optimization completed!"
+    else
+        echo "Warning: optipng not found. PNGs were not optimized."
+        echo "Install with: sudo apt install optipng  # Debian/Ubuntu"
+        echo "              sudo pacman -S optipng    # Arch"
+    fi
+fi
+
+echo "Process completed successfully!"
+echo "Frames saved in: $output_dir/"

@@ -3,10 +3,9 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-Script: video2frames
+Script: video2images
 Description: Converts video to PNG image sequence
-Usage: video2frames video.mp4 [num_frames]
-       num_frames: número de frames a extrair (padrão: 8)
+Usage: video2images video.mp4
 DOCUMENTATION
 
 script_name="${0##*/}"
@@ -14,7 +13,7 @@ script_name="${0##*/}"
 # Check if argument was provided
 if [ $# -eq 0 ]; then
     echo "Error: No video file specified."
-    echo "Usage: $script_name <video_file> [num_frames]"
+    echo "Usage: $script_name <video_file>"
     exit 1
 fi
 
@@ -23,9 +22,6 @@ if [ ! -f "$1" ]; then
     echo "Error: File '$1' not found."
     exit 1
 fi
-
-# Set number of frames (default: 8)
-num_frames="${2:-8}"
 
 # Get filename without extension
 filename=$(basename "$1")
@@ -40,23 +36,11 @@ if [ ! -d "$output_dir" ]; then
     echo "Directory '$output_dir' created."
 fi
 
-# Get video duration
-duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$1")
-
-# Calculate frame interval
-if (( $(echo "$duration > 0" | bc -l) )); then
-    interval=$(echo "scale=6; $duration / $num_frames" | bc)
-else
-    echo "Error: Could not determine video duration."
-    exit 1
-fi
-
 # Convert video to PNG images
 echo "Converting '$1' to PNG images in '$output_dir/'..."
-echo "Extracting $num_frames frames with interval of $interval seconds..."
 
-# Extract frames using select filter
-if ffmpeg -i "$1" -vf "select='not(mod(n,floor($interval*30)))',setpts=N/FRAME_RATE/TB" -vframes "$num_frames" "${output_dir}/frame_%08d.png"; then
+# Check if conversion was successful
+if ffmpeg -i "$1" "${output_dir}/frame_%08d.png"; then
     echo "Conversion completed successfully!"
     echo "Images saved in: $output_dir/"
 else

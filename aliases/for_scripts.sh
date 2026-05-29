@@ -73,8 +73,7 @@ alias numero_primo='prime'
 
 alias xrdb_settings='~/.shell_utils/scripts/xresources-settings'
 
-alias video2images='~/.shell_utils/scripts/video2frames'
-alias video2pngs='video2images'
+alias video2pngs='~/.shell_utils/scripts/video2images'
 
 alias images2video='~/.shell_utils/scripts/frames2video'
 alias pngs2video='images2video'

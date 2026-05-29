@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
-
 # ------------------------------------------------------------------------------
 # md2pdf — Convert Markdown to PDF with ABNT formatting via XeLaTeX
 #
@@ -11,9 +10,9 @@
 #   md2pdf *.md               (batch convert multiple files)
 #
 # Dependencies: pandoc, xelatex (texlive-core), Liberation Serif font
+# Optional:     libreoffice (used as primary converter when available)
+# Termux:       pandoc, groff (pdfroff used as pdf-engine; libreoffice not checked)
 # ------------------------------------------------------------------------------
-
-set -euo pipefail
 
 # --- Terminal colors ---------------------------------------------------------
 RED='\033[0;31m'
@@ -21,14 +20,38 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# --- Detect environment (Termux vs desktop) ----------------------------------
+if [[ -n "$TERMUX_VERSION" ]]; then
+    IS_TERMUX=true
+else
+    IS_TERMUX=false
+fi
+
 # --- Check dependencies ------------------------------------------------------
-for dep in pandoc xelatex; do
-    if ! command -v "$dep" &>/dev/null; then
-        echo -e "${RED}Error: '$dep' not found.${NC}"
-        echo "Install with: sudo pacman -S pandoc texlive-core texlive-latexextra texlive-fontsextra texlive-fontsrecommended"
-        exit 1
+if [[ "$IS_TERMUX" == true ]]; then
+    for dep in pandoc groff; do
+        if ! command -v "$dep" &>/dev/null; then
+            echo -e "${RED}Error: '$dep' not found.${NC}"
+            echo "Install with: apt install pandoc groff"
+            exit 1
+        fi
+    done
+    USE_LIBREOFFICE=false
+else
+    for dep in pandoc xelatex; do
+        if ! command -v "$dep" &>/dev/null; then
+            echo -e "${RED}Error: '$dep' not found.${NC}"
+            echo "Install with: sudo pacman -S pandoc texlive-core texlive-latexextra texlive-fontsextra texlive-fontsrecommended"
+            exit 1
+        fi
+    done
+    # --- Detect LibreOffice --------------------------------------------------
+    if command -v libreoffice >/dev/null 2>&1; then
+        USE_LIBREOFFICE=true
+    else
+        USE_LIBREOFFICE=false
     fi
-done
+fi
 
 # --- Usage -------------------------------------------------------------------
 if [[ $# -eq 0 ]]; then
@@ -44,17 +67,13 @@ trap "rm -f '$HEADER_TEX'" EXIT
 
 cat > "$HEADER_TEX" << 'LATEX'
 % --- ABNT formatting packages ------------------------------------------------
-
 \usepackage{xcolor}
-
 % 1.5 line spacing
 \usepackage{setspace}
 \onehalfspacing
-
 % Justified text
 \usepackage{ragged2e}
 \justifying
-
 % Blue headings
 \usepackage{titlesec}
 \titleformat{\section}
@@ -63,7 +82,6 @@ cat > "$HEADER_TEX" << 'LATEX'
   {\normalfont\large\bfseries\color{blue}}{\thesubsection}{1em}{}
 \titleformat{\subsubsection}
   {\normalfont\normalsize\bfseries\color{blue}}{\thesubsubsection}{1em}{}
-
 % Page break after document title block
 % Ensures the title stays alone on the first page
 \usepackage{etoolbox}
@@ -73,13 +91,82 @@ cat > "$HEADER_TEX" << 'LATEX'
 \makeatother
 LATEX
 
-# --- Conversion function -----------------------------------------------------
-convert_file() {
+# --- Helper: create a minimal ODT reference document on the fly --------------
+create_odt_reference() {
+    # Produce an ODT reference file that carries the Liberation Serif font.
+    # We create it via pandoc from an empty markdown so the structure is valid.
+    local ref_odt
+    ref_odt=$(mktemp /tmp/md2pdf-ref-XXXXXX.odt)
+    pandoc -o "$ref_odt" \
+        --metadata title="" \
+        -V mainfont="Liberation Serif" \
+        -V sansfont="Liberation Sans" \
+        -V monofont="Liberation Mono" \
+        /dev/null 2>/dev/null || true
+    cat "$ref_odt"
+    rm -f "$ref_odt"
+}
+
+# --- LibreOffice conversion function -----------------------------------------
+convert_with_libreoffice() {
     local input="$1"
     local output="$2"
+    echo -e "${YELLOW}Converting (LibreOffice):${NC} $input → $output"
 
-    echo -e "${YELLOW}Converting:${NC} $input → $output"
+    # Step 1: Convert Markdown → ODT via pandoc (preserving fonts and structure)
+    local tmp_odt
+    tmp_odt=$(mktemp /tmp/md2pdf-XXXXXX.odt)
+    trap "rm -f '$tmp_odt'" RETURN
 
+    if ! pandoc "$input" -o "$tmp_odt" \
+        --toc \
+        --number-sections \
+        --highlight-style=tango \
+        -V mainfont="Liberation Serif" \
+        -V sansfont="Liberation Sans" \
+        -V monofont="Liberation Mono" \
+        -V fontsize=12pt \
+        -V "geometry:top=3cm, left=3cm, bottom=2cm, right=2cm" \
+        -V colorlinks=true \
+        -V linkcolor=blue \
+        --reference-doc=<(create_odt_reference) 2>/dev/null || \
+    pandoc "$input" -o "$tmp_odt" \
+        --toc \
+        --number-sections \
+        --highlight-style=tango; then
+        echo -e "${RED}✗ Failed to generate ODT for:${NC} $input"
+        return 1
+    fi
+
+    # Step 2: Convert ODT → PDF via LibreOffice headless
+    local lo_outdir
+    lo_outdir=$(mktemp -d /tmp/md2pdf-lo-XXXXXX)
+    trap "rm -rf '$lo_outdir'" RETURN
+
+    if libreoffice --headless \
+        --infilter="writer_pdf_Export" \
+        --convert-to pdf \
+        --outdir "$lo_outdir" \
+        "$tmp_odt" >/dev/null 2>&1; then
+        # LibreOffice names the output after the input basename
+        local lo_pdf
+        lo_pdf="$lo_outdir/$(basename "${tmp_odt%.odt}").pdf"
+        if [[ -f "$lo_pdf" ]]; then
+            mv "$lo_pdf" "$output"
+            echo -e "${GREEN}✓ Done:${NC} $output"
+            return 0
+        fi
+    fi
+
+    echo -e "${RED}✗ Failed to convert (LibreOffice):${NC} $input"
+    return 1
+}
+
+# --- Pandoc/XeLaTeX conversion function --------------------------------------
+convert_with_pandoc() {
+    local input="$1"
+    local output="$2"
+    echo -e "${YELLOW}Converting (pandoc):${NC} $input → $output"
     if pandoc "$input" -o "$output" \
         --pdf-engine=xelatex \
         -V mainfont="Liberation Serif" \
@@ -93,7 +180,6 @@ convert_file() {
         --number-sections \
         --highlight-style=tango \
         -H "$HEADER_TEX"; then
-
         echo -e "${GREEN}✓ Done:${NC} $output"
     else
         echo -e "${RED}✗ Failed to convert:${NC} $input"
@@ -101,8 +187,37 @@ convert_file() {
     fi
 }
 
-# --- Process arguments -------------------------------------------------------
+# --- Termux/pdfroff conversion function --------------------------------------
+convert_with_pdfroff() {
+    local input="$1"
+    local output="$2"
+    echo -e "${YELLOW}Converting (pdfroff):${NC} $input → $output"
+    if pandoc "$input" -o "$output" \
+        --pdf-engine=pdfroff \
+        --toc \
+        --number-sections \
+        --highlight-style=tango; then
+        echo -e "${GREEN}✓ Done:${NC} $output"
+    else
+        echo -e "${RED}✗ Failed to convert:${NC} $input"
+        return 1
+    fi
+}
 
+# --- Unified conversion dispatcher -------------------------------------------
+convert_file() {
+    local input="$1"
+    local output="$2"
+    if [[ "$IS_TERMUX" == true ]]; then
+        convert_with_pdfroff "$input" "$output"
+    elif [[ "$USE_LIBREOFFICE" == true ]]; then
+        convert_with_libreoffice "$input" "$output"
+    else
+        convert_with_pandoc "$input" "$output"
+    fi
+}
+
+# --- Process arguments -------------------------------------------------------
 # Case: md2pdf input.md output.pdf  (two args, second ends in .pdf)
 if [[ $# -eq 2 && "${2##*.}" == "pdf" ]]; then
     convert_file "$1" "$2"
