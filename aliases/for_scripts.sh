@@ -1,6 +1,10 @@
 alias doc2pdf='~/.shell_utils/scripts/utils/odt2pdf'
 alias docx2pdf='~/.shell_utils/scripts/utils/odt2pdf'
 
+alias ext_rename='~/.shell_utils/scripts/rename-ext'
+alias extension_rename='ext_rename'
+alias rename_extension='ext_rename'
+
 alias fff='PREVIEW_MODE=0 ~/.shell_utils/scripts/preview'
 alias juros_compostos='~/.shell_utils/scripts/compound-interest'
 

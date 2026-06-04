@@ -1,0 +1,424 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+#
+# grub-kernel-selector - Interactive GRUB kernel selection tool
+#
+# This script allows you to select the default kernel for GRUB bootloader
+# by managing the GRUB_TOP_LEVEL parameter in /etc/default/grub
+#
+
+set -euo pipefail
+
+# Color definitions
+readonly COLOR_RESET='\033[0m'
+readonly COLOR_BOLD='\033[1m'
+readonly COLOR_DIM='\033[2m'
+readonly COLOR_RED='\033[31m'
+readonly COLOR_GREEN='\033[32m'
+readonly COLOR_YELLOW='\033[33m'
+readonly COLOR_BLUE='\033[34m'
+readonly COLOR_MAGENTA='\033[35m'
+readonly COLOR_CYAN='\033[36m'
+readonly COLOR_WHITE='\033[37m'
+readonly COLOR_BG_RED='\033[41m'
+readonly COLOR_BG_GREEN='\033[42m'
+readonly COLOR_BG_YELLOW='\033[43m'
+readonly COLOR_BG_BLUE='\033[44m'
+
+# Configuration
+readonly GRUB_CONFIG="/etc/default/grub"
+readonly BOOT_DIR="/boot"
+readonly KERNEL_PATTERN="vmlinuz-*"
+readonly MIN_KERNEL_SIZE=$((1 * 1024 * 1024)) # 1MB in bytes
+readonly GRUB_MKCONFIG="/boot/grub/grub.cfg"
+
+# Whiptail dimensions
+readonly WHIPTAIL_HEIGHT=20
+readonly WHIPTAIL_WIDTH=80
+readonly WHIPTAIL_LIST_HEIGHT=15
+
+# Script metadata
+readonly SCRIPT_NAME="${0##*/}"
+readonly SCRIPT_VERSION="1.0.2"
+
+# Functions
+print_error() {
+    echo -e "${COLOR_RED}${COLOR_BOLD}[ERROR]${COLOR_RESET} ${COLOR_RED}$*${COLOR_RESET}" >&2
+}
+
+print_warning() {
+    echo -e "${COLOR_YELLOW}${COLOR_BOLD}[WARNING]${COLOR_RESET} ${COLOR_YELLOW}$*${COLOR_RESET}" >&2
+}
+
+print_success() {
+    echo -e "${COLOR_GREEN}${COLOR_BOLD}[SUCCESS]${COLOR_RESET} ${COLOR_GREEN}$*${COLOR_RESET}"
+}
+
+print_info() {
+    echo -e "${COLOR_BLUE}${COLOR_BOLD}[INFO]${COLOR_RESET} ${COLOR_BLUE}$*${COLOR_RESET}"
+}
+
+print_step() {
+    echo -e "${COLOR_CYAN}${COLOR_BOLD}[STEP]${COLOR_RESET} ${COLOR_CYAN}$*${COLOR_RESET}"
+}
+
+print_header() {
+    echo -e "${COLOR_MAGENTA}${COLOR_BOLD}════════════════════════════════════════════════════════════${COLOR_RESET}"
+    echo -e "${COLOR_MAGENTA}${COLOR_BOLD}  $*${COLOR_RESET}"
+    echo -e "${COLOR_MAGENTA}${COLOR_BOLD}════════════════════════════════════════════════════════════${COLOR_RESET}"
+}
+
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${COLOR_BOLD}${COLOR_CYAN}╔══════════════════════════════════════════════════════════════════╗
+║              ${COLOR_GREEN}GRUB Kernel Selector v${SCRIPT_VERSION}${COLOR_CYAN}                         ║
+╚══════════════════════════════════════════════════════════════════╝${COLOR_RESET}
+
+${COLOR_BOLD}NAME${COLOR_RESET}
+    ${COLOR_GREEN}${SCRIPT_NAME}${COLOR_RESET} - Interactive GRUB default kernel selection tool
+
+${COLOR_BOLD}SYNOPSIS${COLOR_RESET}
+    ${COLOR_GREEN}${SCRIPT_NAME}${COLOR_RESET} [OPTIONS]
+
+${COLOR_BOLD}DESCRIPTION${COLOR_RESET}
+    This script provides an interactive way to select which kernel should be
+    the default boot option in GRUB bootloader. It manages the 
+    ${COLOR_YELLOW}GRUB_TOP_LEVEL${COLOR_RESET} parameter in ${COLOR_DIM}${GRUB_CONFIG}${COLOR_RESET}.
+
+    The script will:
+    ${COLOR_DIM}•${COLOR_RESET} Scan ${COLOR_DIM}${BOOT_DIR}${COLOR_RESET} for available kernel images
+    ${COLOR_DIM}•${COLOR_RESET} Validate kernel images (regular files > 1MB)
+    ${COLOR_DIM}•${COLOR_RESET} Present a selection menu (when multiple kernels found)
+    ${COLOR_DIM}•${COLOR_RESET} Add or update ${COLOR_YELLOW}GRUB_TOP_LEVEL${COLOR_RESET} in GRUB configuration
+    ${COLOR_DIM}•${COLOR_RESET} Regenerate GRUB configuration
+
+${COLOR_BOLD}OPTIONS${COLOR_RESET}
+    ${COLOR_GREEN}-h, --help${COLOR_RESET}     Display this help message and exit
+    ${COLOR_GREEN}--version${COLOR_RESET}      Display version information and exit
+
+${COLOR_BOLD}EXAMPLES${COLOR_RESET}
+    ${COLOR_DIM}# Run the interactive kernel selector${COLOR_RESET}
+    ${COLOR_GREEN}\$${COLOR_RESET} sudo ${SCRIPT_NAME}
+
+    ${COLOR_DIM}# Display help${COLOR_RESET}
+    ${COLOR_GREEN}\$${COLOR_RESET} ${SCRIPT_NAME} --help
+
+${COLOR_BOLD}ENVIRONMENT${COLOR_RESET}
+    ${COLOR_YELLOW}GRUB_CONFIG${COLOR_RESET}    Path to GRUB configuration file
+                    (default: ${COLOR_DIM}${GRUB_CONFIG}${COLOR_RESET})
+
+${COLOR_BOLD}FILES${COLOR_RESET}
+    ${COLOR_DIM}${GRUB_CONFIG}${COLOR_RESET}
+        GRUB default configuration file where ${COLOR_YELLOW}GRUB_TOP_LEVEL${COLOR_RESET} is set
+
+    ${COLOR_DIM}${BOOT_DIR}/vmlinuz-*${COLOR_RESET}
+        Kernel images scanned for selection
+
+${COLOR_BOLD}EXIT STATUS${COLOR_RESET}
+    ${COLOR_GREEN}0${COLOR_RESET}   Success
+    ${COLOR_RED}1${COLOR_RESET}   Error (permissions, no kernels found, user cancelled, etc.)
+
+${COLOR_BOLD}NOTES${COLOR_RESET}
+    ${COLOR_YELLOW}⚠${COLOR_RESET}  This script requires ${COLOR_BOLD}sudo${COLOR_RESET} privileges to modify GRUB configuration
+    ${COLOR_YELLOW}⚠${COLOR_RESET}  A backup of ${COLOR_DIM}${GRUB_CONFIG}${COLOR_RESET} is created before modification
+    ${COLOR_YELLOW}⚠${COLOR_RESET}  Kernel images smaller than 1MB are considered invalid
+
+${COLOR_BOLD}AUTHOR${COLOR_RESET}
+    GRUB Kernel Selector Team
+
+${COLOR_BOLD}REPORTING BUGS${COLOR_RESET}
+    Please report issues at: ${COLOR_DIM}<repository-url>${COLOR_RESET}
+
+${COLOR_BOLD}COPYRIGHT${COLOR_RESET}
+    Copyright © $(date +%Y) GRUB Kernel Selector
+    License: GPLv3 <https://www.gnu.org/licenses/gpl-3.0.pt-br.html>
+
+${COLOR_CYAN}${COLOR_DIM}══════════════════════════════════════════════════════════════════${COLOR_RESET}
+EOF
+}
+
+show_version() {
+    echo -e "${COLOR_GREEN}GRUB Kernel Selector${COLOR_RESET} ${COLOR_BOLD}v${SCRIPT_VERSION}${COLOR_RESET}"
+    echo -e "${COLOR_DIM}Interactive GRUB default kernel selection tool${COLOR_RESET}"
+}
+
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        print_error "This script requires root privileges"
+        print_info "Please run with: ${COLOR_BOLD}sudo ${SCRIPT_NAME}${COLOR_RESET}"
+        exit 1
+    fi
+}
+
+check_requirements() {
+    local missing_tools=()
+    
+    if ! command -v whiptail &> /dev/null; then
+        missing_tools+=("whiptail")
+    fi
+    
+    if ! command -v grub-mkconfig &> /dev/null; then
+        missing_tools+=("grub-mkconfig")
+    fi
+    
+    if [[ ${#missing_tools[@]} -gt 0 ]]; then
+        print_error "Missing required tools: ${COLOR_BOLD}${missing_tools[*]}${COLOR_RESET}"
+        print_info "Please install them using your package manager"
+        print_info "Example: ${COLOR_DIM}sudo apt install whiptail grub2-common${COLOR_RESET}"
+        exit 1
+    fi
+}
+
+backup_grub_config() {
+    local backup_file="${GRUB_CONFIG}.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    if [[ -f "$GRUB_CONFIG" ]]; then
+        print_step "Creating backup of GRUB configuration..."
+        cp "$GRUB_CONFIG" "$backup_file"
+        print_success "Backup created: ${COLOR_DIM}$backup_file${COLOR_RESET}"
+    fi
+}
+
+find_kernels() {
+    local -a kernels=()
+    
+    print_step "Scanning for kernel images in ${COLOR_DIM}${BOOT_DIR}${COLOR_RESET}..."
+    
+    # Use find command for more precise file matching
+    while IFS= read -r -d '' kernel_path; do
+        # Double-check it's a regular file and matches vmlinuz- pattern
+        if [[ -f "$kernel_path" ]] && [[ "$(basename "$kernel_path")" =~ ^vmlinuz- ]]; then
+            local size
+            size=$(stat -c%s "$kernel_path" 2>/dev/null || stat -f%z "$kernel_path" 2>/dev/null)
+            
+            if [[ -n "$size" ]] && [[ $size -gt $MIN_KERNEL_SIZE ]]; then
+                kernels+=("$kernel_path")
+                local size_mb=$((size / 1024 / 1024))
+                print_info "Found: ${COLOR_BOLD}$(basename "$kernel_path")${COLOR_RESET} ${COLOR_DIM}(${size_mb}MB)${COLOR_RESET}"
+            else
+                if [[ -n "$size" ]]; then
+                    print_warning "Skipping ${COLOR_DIM}$(basename "$kernel_path")${COLOR_RESET} - too small (${size} bytes)"
+                fi
+            fi
+        fi
+    done < <(find "$BOOT_DIR" -maxdepth 1 -name "vmlinuz-*" -type f -print0 2>/dev/null)
+    
+    # Return array by printing each element on separate line
+    if [[ ${#kernels[@]} -gt 0 ]]; then
+        printf '%s\n' "${kernels[@]}"
+    fi
+}
+
+select_kernel_whiptail() {
+    local -a kernels=("$@")
+    local -a menu_items=()
+    
+    # Build the menu items array correctly for whiptail
+    for kernel in "${kernels[@]}"; do
+        local kernel_name
+        kernel_name=$(basename "$kernel")
+        local kernel_version
+        kernel_version=$(echo "$kernel_name" | sed 's/vmlinuz-//')
+        
+        # Get kernel size for display
+        local size
+        size=$(stat -c%s "$kernel" 2>/dev/null || stat -f%z "$kernel" 2>/dev/null)
+        local size_mb=$((size / 1024 / 1024))
+        
+        # Only add valid kernels (not empty or boot directory)
+        if [[ -n "$kernel_version" ]] && [[ "$kernel_version" != "boot" ]]; then
+            # Add tag and item to menu
+            menu_items+=("$kernel" "$kernel_version  [${size_mb} MB]")
+        fi
+    done
+    
+    # Check if we have valid menu items
+    if [[ ${#menu_items[@]} -eq 0 ]]; then
+        print_error "No valid kernel entries for menu"
+        return 1
+    fi
+    
+    # Display whiptail menu
+    local selection
+    selection=$(whiptail --title "GRUB Kernel Selector" \
+        --menu "Select the default kernel for GRUB boot:" \
+        $WHIPTAIL_HEIGHT $WHIPTAIL_WIDTH $WHIPTAIL_LIST_HEIGHT \
+        "${menu_items[@]}" \
+        3>&1 1>&2 2>&3)
+    
+    local exit_code=$?
+    
+    if [[ $exit_code -ne 0 ]]; then
+        return 1
+    fi
+    
+    echo "$selection"
+    return 0
+}
+
+update_grub_config() {
+    local kernel_path="$1"
+    local kernel_name
+    kernel_name=$(basename "$kernel_path")
+    
+    print_step "Updating GRUB configuration..."
+    
+    # Check if GRUB_TOP_LEVEL exists (commented or uncommented)
+    if grep -q "^#*GRUB_TOP_LEVEL=" "$GRUB_CONFIG" 2>/dev/null; then
+        # Exists - uncomment and update
+        print_info "GRUB_TOP_LEVEL found, updating value..."
+        sed -i "s|^#*GRUB_TOP_LEVEL=.*|GRUB_TOP_LEVEL=\"${BOOT_DIR}/${kernel_name}\"|" "$GRUB_CONFIG"
+    else
+        # Doesn't exist - add it
+        print_info "Adding GRUB_TOP_LEVEL to configuration..."
+        echo "GRUB_TOP_LEVEL=\"${BOOT_DIR}/${kernel_name}\"" >> "$GRUB_CONFIG"
+    fi
+    
+    print_success "GRUB_TOP_LEVEL set to: ${COLOR_BOLD}${BOOT_DIR}/${kernel_name}${COLOR_RESET}"
+}
+
+regenerate_grub() {
+    print_step "Regenerating GRUB configuration..."
+    
+    if grub-mkconfig -o "$GRUB_MKCONFIG" 2>&1; then
+        print_success "GRUB configuration regenerated successfully!"
+    else
+        print_error "Failed to regenerate GRUB configuration"
+        print_warning "You may need to run: ${COLOR_BOLD}sudo grub-mkconfig -o ${GRUB_MKCONFIG}${COLOR_RESET} manually"
+        return 1
+    fi
+}
+
+show_summary() {
+    local kernel_path="$1"
+    local kernel_name
+    kernel_name=$(basename "$kernel_path")
+    
+    echo ""
+    print_header "GRUB Kernel Selection Complete"
+    echo ""
+    echo -e "  ${COLOR_BOLD}Selected kernel:${COLOR_RESET} ${COLOR_GREEN}${kernel_name}${COLOR_RESET}"
+    echo -e "  ${COLOR_BOLD}Configuration:${COLOR_RESET}  ${COLOR_DIM}${GRUB_CONFIG}${COLOR_RESET}"
+    echo ""
+    print_info "The system will boot with this kernel on next restart"
+    echo -e "  Run ${COLOR_BOLD}reboot${COLOR_RESET} to apply changes"
+    echo ""
+}
+
+main() {
+    # Parse command line arguments
+    case "${1:-}" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        --version)
+            show_version
+            exit 0
+            ;;
+        "")
+            # Continue with main execution
+            ;;
+        *)
+            print_error "Unknown option: ${COLOR_BOLD}$1${COLOR_RESET}"
+            echo ""
+            print_info "Use ${COLOR_BOLD}--help${COLOR_RESET} for usage information"
+            exit 1
+            ;;
+    esac
+    
+    # Pre-flight checks
+    print_header "GRUB Kernel Selector v${SCRIPT_VERSION}"
+    echo ""
+    
+    check_root
+    check_requirements
+    
+    # Find valid kernel images
+    local -a kernels=()
+    
+    # Read kernel list from find_kernels function
+    while IFS= read -r kernel_path; do
+        if [[ -n "$kernel_path" ]] && [[ -f "$kernel_path" ]]; then
+            # Additional validation to ensure it's a real kernel
+            local basename_check
+            basename_check=$(basename "$kernel_path")
+            if [[ "$basename_check" =~ ^vmlinuz- ]] && [[ "$basename_check" != "vmlinuz-" ]]; then
+                kernels+=("$kernel_path")
+            fi
+        fi
+    done < <(find_kernels)
+    
+    if [[ ${#kernels[@]} -eq 0 ]]; then
+        print_error "No valid kernel images found in ${COLOR_DIM}${BOOT_DIR}${COLOR_RESET}"
+        print_info "Expected pattern: ${COLOR_DIM}${KERNEL_PATTERN}${COLOR_RESET} (>1MB)"
+        exit 1
+    fi
+    
+    local selected_kernel
+    
+    if [[ ${#kernels[@]} -eq 1 ]]; then
+        # Only one kernel found
+        local single_kernel="${kernels[0]}"
+        local kernel_name
+        kernel_name=$(basename "$single_kernel")
+        
+        # Show kernel size
+        local size
+        size=$(stat -c%s "$single_kernel" 2>/dev/null || stat -f%z "$single_kernel" 2>/dev/null)
+        local size_mb=$((size / 1024 / 1024))
+        
+        echo ""
+        print_info "Only one kernel image found:"
+        echo ""
+        echo -e "  ${COLOR_BOLD}${COLOR_CYAN}┌─────────────────────────────────────────┐${COLOR_RESET}"
+        echo -e "  ${COLOR_BOLD}${COLOR_CYAN}│${COLOR_RESET} Kernel: ${COLOR_GREEN}${kernel_name}${COLOR_RESET}"
+        echo -e "  ${COLOR_BOLD}${COLOR_CYAN}│${COLOR_RESET} Size:   ${COLOR_DIM}${size_mb} MB${COLOR_RESET}"
+        echo -e "  ${COLOR_BOLD}${COLOR_CYAN}└─────────────────────────────────────────┘${COLOR_RESET}"
+        echo ""
+        
+        selected_kernel="$single_kernel"
+        
+        print_info "This kernel will be set as default automatically"
+        echo ""
+    else
+        # Multiple kernels - show selection menu
+        echo ""
+        print_info "Found ${COLOR_BOLD}${#kernels[@]}${COLOR_RESET} kernel images"
+        echo ""
+        
+        selected_kernel=$(select_kernel_whiptail "${kernels[@]}")
+        
+        if [[ -z "$selected_kernel" ]]; then
+            echo ""
+            print_warning "No kernel selected. Operation cancelled by user"
+            exit 1
+        fi
+    fi
+    
+    # Confirm selection
+    echo ""
+    print_info "Selected kernel: ${COLOR_BOLD}$(basename "$selected_kernel")${COLOR_RESET}"
+    
+    if [[ ${#kernels[@]} -gt 1 ]]; then
+        if ! whiptail --title "Confirm Selection" \
+            --yesno "Set $(basename "$selected_kernel") as the default GRUB kernel?" \
+            10 60; then
+            echo ""
+            print_warning "Operation cancelled by user"
+            exit 1
+        fi
+    fi
+    
+    # Apply changes
+    echo ""
+    backup_grub_config
+    update_grub_config "$selected_kernel"
+    regenerate_grub
+    show_summary "$selected_kernel"
+}
+
+# Run main function
+main "$@"
