@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
 
 _ghost_history_data=""
 _ghost_suggestion=""
 _ghost_prompt_len=0
+_ghost_state_file="$HOME/.cache/ghost_mode"
+_ghost_mode="clean"
+
+_ghost_load_state() {
+    if [[ -f "$_ghost_state_file" ]]; then
+        _ghost_mode=$(cat "$_ghost_state_file" 2>/dev/null || echo "clean")
+    else
+        _ghost_mode="clean"
+    fi
+}
+
+_ghost_save_state() {
+    mkdir -p "$(dirname "$_ghost_state_file")" 2>/dev/null
+    echo "$_ghost_mode" | tee "$_ghost_state_file" > /dev/null
+}
 
 _ghost_init_history() {
     _ghost_history_data=$(
@@ -22,6 +39,10 @@ _ghost_refresh() {
     history -a
     _ghost_init_history
     _ghost_update_prompt_len
+    
+    if [[ "$_ghost_mode" == "ghost" ]]; then
+        printf '\e[?2026h' >/dev/tty
+    fi
 }
 
 _ghost_get_suggestion() {
@@ -35,100 +56,216 @@ _ghost_get_suggestion() {
     done <<< "$_ghost_history_data"
 }
 
-_ghost_render() {
-    if [[ $READLINE_POINT -eq ${#READLINE_LINE} ]]; then
-        _ghost_get_suggestion
-    else
-        _ghost_suggestion=""
-    fi
-    
+# Render modo ghost
+_ghost_render_ghost() {
+    [[ $READLINE_POINT -eq ${#READLINE_LINE} ]] \
+        && _ghost_get_suggestion \
+        || _ghost_suggestion=""
     local col=$(( _ghost_prompt_len + ${#READLINE_LINE} + 1 ))
-    
     if [[ -n "$_ghost_suggestion" ]]; then
-        printf '\e[s\e[%dG\e[38;5;244m%s\e[0m\e[u' "$col" "$_ghost_suggestion" >/dev/tty
+        printf '\e[s\e[%dG\e[38;5;244m%s\e[0m\e[K\e[u\e[?2026l\e[?2026h' \
+            "$col" "$_ghost_suggestion" >/dev/tty
     else
-        printf '\e[s\e[%dG\e[K\e[u' "$col" >/dev/tty
+        printf '\e[s\e[%dG\e[K\e[u\e[?2026l\e[?2026h' "$col" >/dev/tty
     fi
 }
 
-_ghost_handle_char() {
-    local char="$1"
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${char}${READLINE_LINE:$READLINE_POINT}"
+# Handlers modo ghost
+_ghost_self_insert() {
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${_ghost_char}${READLINE_LINE:$READLINE_POINT}"
     READLINE_POINT=$(( READLINE_POINT + 1 ))
-    _ghost_render
+    _ghost_render_ghost
 }
 
-# Função para aceitar ghost (Ctrl+F)
 _ghost_accept() {
-    if [[ -n "$_ghost_suggestion" && $READLINE_POINT -eq ${#READLINE_LINE} ]]; then
+    if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
+        READLINE_POINT=$(( READLINE_POINT + 1 ))
+    elif [[ -n "$_ghost_suggestion" ]]; then
         READLINE_LINE+="$_ghost_suggestion"
         READLINE_POINT=${#READLINE_LINE}
         _ghost_suggestion=""
     fi
-    _ghost_render
+    _ghost_render_ghost
 }
 
-# Função para aceitar palavra (Alt+F)
 _ghost_accept_word() {
-    _ghost_get_suggestion
     [[ -z "$_ghost_suggestion" ]] && return
-    
     local word="${_ghost_suggestion%% *}"
     [[ "$_ghost_suggestion" == *' '* ]] && word+=' '
-    
     READLINE_LINE+="$word"
     READLINE_POINT=${#READLINE_LINE}
-    _ghost_suggestion=""
-    _ghost_render
+    _ghost_suggestion="${_ghost_suggestion#"$word"}"
+    _ghost_render_ghost
 }
 
-_ghost_backspace() {
+# Backspace normal - apaga 1 caractere
+_ghost_backspace_ghost() {
     if [[ $READLINE_POINT -gt 0 ]]; then
         READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT - 1))}${READLINE_LINE:$READLINE_POINT}"
         READLINE_POINT=$(( READLINE_POINT - 1 ))
     fi
-    _ghost_render
+    _ghost_render_ghost
+}
+
+# Ctrl+Backspace - apaga palavra anterior (sem afetar a previsão)
+_ghost_backward_kill_word_ghost() {
+    if [[ $READLINE_POINT -gt 0 ]]; then
+        local before="${READLINE_LINE:0:$READLINE_POINT}"
+        local after="${READLINE_LINE:$READLINE_POINT}"
+        local new_point=$READLINE_POINT
+        
+        # Remove espaços em branco antes da palavra
+        while [[ $new_point -gt 0 && "${before:$((new_point - 1)):1}" == " " ]]; do
+            new_point=$((new_point - 1))
+        done
+        
+        # Remove a palavra
+        while [[ $new_point -gt 0 && "${before:$((new_point - 1)):1}" != " " ]]; do
+            new_point=$((new_point - 1))
+        done
+        
+        READLINE_LINE="${before:0:$new_point}${after}"
+        READLINE_POINT=$new_point
+    fi
+    _ghost_render_ghost
+}
+
+_ghost_left_ghost() {
+    READLINE_POINT=$(( READLINE_POINT > 0 ? READLINE_POINT - 1 : 0 ))
+    _ghost_render_ghost
+}
+
+# Configura binds para modo ghost
+_ghost_setup_ghost_binds() {
+    # Limpa binds anteriores
+    for i in {32..126}; do
+        oct=$(printf '\\%03o' "$i")
+        bind -r "$oct" 2>/dev/null
+    done
+    bind -r '\e[C' 2>/dev/null
+    bind -r '\e[D' 2>/dev/null
+    bind -r '\C-?' 2>/dev/null
+    bind -r '\C-h' 2>/dev/null
+    bind -r '\C-u' 2>/dev/null
+    bind -r '\C-a' 2>/dev/null
+    bind -r '\C-e' 2>/dev/null
+    bind -r '\C-l' 2>/dev/null
+    bind -r '\ef' 2>/dev/null
+    
+    # Caracteres imprimíveis com bind -x
+    for i in {32..126}; do
+        oct=$(printf '\\%03o' "$i")
+        if [[ $i -eq 92 ]]; then
+            bind -x "\"$oct\": _ghost_char='\\\\'; _ghost_self_insert"
+        elif [[ $i -eq 39 ]]; then
+            bind -x "\"$oct\": _ghost_char=\"'\"; _ghost_self_insert"
+        else
+            safe=$(printf '%q' "$(printf "\\$(printf '%03o' "$i")")")
+            bind -x "\"$oct\": _ghost_char=$safe; _ghost_self_insert"
+        fi
+    done
+    
+    # Teclas controle modo ghost
+    bind -x '"\e[C": _ghost_accept'
+    bind -x '"\e[D": _ghost_left_ghost'
+    bind -x '"\ef": _ghost_accept_word'
+    bind -x '"\C-?": _ghost_backspace_ghost'              # Backspace normal
+    bind -x '"\C-h": _ghost_backward_kill_word_ghost'     # Ctrl+Backspace
+    bind -x '"\C-u": READLINE_LINE=""; READLINE_POINT=0; _ghost_suggestion=""; _ghost_render_ghost'
+    bind -x '"\C-a": READLINE_POINT=0; _ghost_render_ghost'
+    bind -x '"\C-e": READLINE_POINT=${#READLINE_LINE}; _ghost_render_ghost'
+    bind -x '"\C-l": clear; _ghost_render_ghost'
+}
+
+# Configura binds para modo clean
+_ghost_setup_clean_binds() {
+    # Limpa binds anteriores
+    for i in {32..126}; do
+        oct=$(printf '\\%03o' "$i")
+        bind -r "$oct" 2>/dev/null
+    done
+    bind -r '\e[C' 2>/dev/null
+    bind -r '\e[D' 2>/dev/null
+    bind -r '\C-?' 2>/dev/null
+    bind -r '\C-h' 2>/dev/null
+    bind -r '\C-u' 2>/dev/null
+    bind -r '\C-a' 2>/dev/null
+    bind -r '\C-e' 2>/dev/null
+    bind -r '\C-l' 2>/dev/null
+    bind -r '\ef' 2>/dev/null
+    
+    # Caracteres imprimíveis com self-insert nativo
+    for i in {32..126}; do
+        if [[ $i -eq 92 ]]; then
+            bind '"\\\\": self-insert'
+        elif [[ $i -eq 34 ]]; then
+            bind '"\\\"": self-insert'
+        elif [[ $i -eq 39 ]]; then
+            bind "\"\\'\": self-insert"
+        else
+            char=$(printf "\\$(printf '%03o' "$i")")
+            bind "\"$char\": self-insert"
+        fi
+    done
+    
+    # SETAS 100% NATIVAS
+    bind '"\e[D": backward-char'
+    bind '"\e[C": forward-char'
+    
+    # Backspace normal (nativo)
+    bind '"\C-?": backward-delete-char'
+    
+    # Ctrl+Backspace - apaga palavra (nativo)
+    bind '"\C-h": backward-kill-word'
+    
+    # Outros atalhos nativos
+    bind '"\C-u": unix-line-discard'
+    bind '"\C-a": beginning-of-line'
+    bind '"\C-e": end-of-line'
+    bind '"\C-l": clear-screen'
+}
+
+# Toggle Ctrl+F
+_ghost_toggle() {
+    if [[ "$_ghost_mode" == "clean" ]]; then
+        _ghost_mode="ghost"
+        _ghost_save_state
+        _ghost_setup_ghost_binds
+        printf '\e[?2026h' >/dev/tty
+        _ghost_render_ghost
+    else
+        _ghost_mode="clean"
+        _ghost_save_state
+        _ghost_suggestion=""
+        printf '\e[?2026l' >/dev/tty
+        _ghost_setup_clean_binds
+    fi
 }
 
 _ghost_pre_accept_line() {
     printf '\e[K' >/dev/tty
     _ghost_suggestion=""
+    if [[ "$_ghost_mode" == "ghost" ]]; then
+        printf '\e[?2026l' >/dev/tty
+    fi
 }
 
+# Inicialização
+_ghost_load_state
 _ghost_init_history
 _ghost_update_prompt_len
 
 bind 'set show-mode-in-prompt off'
 
-# Caracteres imprimíveis com self-insert
-for i in {32..126}; do
-    if [[ $i -eq 92 ]]; then
-        bind '"\\\\": self-insert'
-    elif [[ $i -eq 34 ]]; then
-        bind '"\\\"": self-insert'
-    elif [[ $i -eq 39 ]]; then
-        bind "\"\\'\": self-insert"
-    else
-        char=$(printf "\\$(printf '%03o' "$i")")
-        bind "\"$char\": self-insert"
-    fi
-done
+# Configura binds iniciais baseado no estado
+if [[ "$_ghost_mode" == "ghost" ]]; then
+    _ghost_setup_ghost_binds
+else
+    _ghost_setup_clean_binds
+fi
 
-# Teclas de controle
-bind -x '"\C-f": _ghost_accept'           # Ctrl+F - aceita ghost (com redesenho)
-bind -x '"\ef": _ghost_accept_word'       # Alt+F - aceita palavra
-bind -x '"\C-?": _ghost_backspace'        # Backspace
-bind -x '"\C-h": _ghost_backspace'        # Ctrl+H
-bind -x '"\C-u": READLINE_LINE=""; READLINE_POINT=0; _ghost_suggestion=""; _ghost_render'
-bind -x '"\C-a": READLINE_POINT=0; _ghost_render'
-bind -x '"\C-e": READLINE_POINT=${#READLINE_LINE}; _ghost_render'
-bind -x '"\C-l": clear; _ghost_render'
-
-# SETA ESQUERDA: nativa, sem redesenho
-bind '"\e[D": backward-char'
-
-# SETA DIREITA: nativa, sem redesenho, mas não aceita ghost
-bind '"\e[C": forward-char'
+# Ctrl+F toggle (comum)
+bind -x '"\C-f": _ghost_toggle'
 
 # Enter
 bind -x '"\C-x\C-m": _ghost_pre_accept_line'
