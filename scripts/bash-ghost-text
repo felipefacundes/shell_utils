@@ -1,514 +1,137 @@
 #!/usr/bin/env bash
-# ghost-text.bash — Ghost text do histórico (estilo fish/zsh)
-#
-# INSTALAÇÃO: última linha do ~/.bashrc:
-#   source ~/ghost-text.bash
-#
-# Modos de operação:
-#   BASH_GHOST_TEXT=0 - Ghost text desativado
-#   BASH_GHOST_TEXT=1 - Completa com um toque (seta direita ou Ctrl+F)
-#   BASH_GHOST_TEXT=2 - Completa por palavras (cada seta adiciona uma palavra)
-#   BASH_GHOST_TEXT=3 - Completa por caracteres (cada seta adiciona um caractere)
-#
-# Atalhos:
-#   →  ou Ctrl+F  : aceita sugestão (comportamento depende do modo)
-#   ↑ ↓           : histórico filtrado pelo prefixo digitado
-#   ghost-detach  : desativa
 
-[[ "${_GT_LOADED:-}" == "1" ]] && return 0
-_GT_LOADED=1
+_ghost_history_data=""
+_ghost_suggestion=""
+_ghost_prompt_len=0
 
-# Modo de operação (padrão: 1)
-: "${BASH_GHOST_TEXT:=1}"
-
-(( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3) )) && {
-    printf 'ghost-text: requer Bash 4.3+\n' >&2; return 1
+_ghost_init_history() {
+    _ghost_history_data=$(
+        fc -ln -2000 2>/dev/null | sed 's/^[[:space:]]*//' | tac | awk '!seen[$0]++'
+    )
 }
 
-_gt_b0=$'\e[0m'
-_gt_gh=$'\e[38;5;240m'   # cinza — ghost text
-
-_GT_SUGGESTION=""
-_GT_SUG_LOCKED=""         # sugestão travada para o backspace progressivo
-_GT_PLEN=0
-declare -ga _GT_HIST=()
-_GT_HIST_IDX=-1
-_GT_HIST_SAVED=""
-_GT_HIST_PREFIX=""
-_GT_ORIGINAL_PS1=""
-
-# ── Histórico ─────────────────────────────────────────────────
-_gt_load_hist() {
-    history -a 2>/dev/null; history -n 2>/dev/null
-    local hfile="${HISTFILE:-$HOME/.bash_history}"
-    _GT_HIST=()
-    [[ -f "$hfile" ]] && \
-        mapfile -t _GT_HIST < <(grep -v '^#[0-9]\+$' "$hfile" 2>/dev/null)
+_ghost_update_prompt_len() {
+    local plain
+    plain=$(printf '%s' "${PS1@P}" \
+        | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\x01|\x02//g')
+    local last="${plain##*$'\n'}"
+    _ghost_prompt_len=${#last}
 }
 
-_gt_sync_hist() {
-    history -a 2>/dev/null; history -n 2>/dev/null
-    local hfile="${HISTFILE:-$HOME/.bash_history}"
-    [[ -f "$hfile" ]] && \
-        mapfile -t _GT_HIST < <(grep -v '^#[0-9]\+$' "$hfile" 2>/dev/null)
+_ghost_refresh() {
+    history -a
+    _ghost_init_history
+    _ghost_update_prompt_len
 }
 
-_gt_hist_reset() { _GT_HIST_IDX=-1; _GT_HIST_SAVED=""; _GT_HIST_PREFIX=""; }
-
-# ── Sugestão ──────────────────────────────────────────────────
-# Busca no histórico + arquivos locais se parecer caminho
-_gt_find_suggestion() {
-    _GT_SUGGESTION=""
-    local cur="$1"
-    [[ ${#cur} -lt 1 ]] && return
-
-    # 1. Histórico (mais recente primeiro)
-    local i
-    for (( i=${#_GT_HIST[@]}-1; i>=0; i-- )); do
-        [[ "${_GT_HIST[$i]}" == "${cur}"* && "${_GT_HIST[$i]}" != "$cur" ]] \
-            && { _GT_SUGGESTION="${_GT_HIST[$i]}"; return; }
-    done
-
-    # 2. Arquivos/diretórios locais (se última palavra parecer caminho)
-    local last_word="${cur##* }"
-    if [[ -n "$last_word" ]]; then
-        local match
-        match=$(compgen -f -- "$last_word" 2>/dev/null | head -1)
-        if [[ -n "$match" && "$match" != "$last_word" ]]; then
-            _GT_SUGGESTION="${cur%"$last_word"}${match}"
-            [[ -d "$match" ]] && _GT_SUGGESTION+="/"
+_ghost_get_suggestion() {
+    _ghost_suggestion=""
+    [[ -z "$READLINE_LINE" ]] && return
+    while IFS= read -r line; do
+        if [[ "$line" == "$READLINE_LINE"* && "$line" != "$READLINE_LINE" ]]; then
+            _ghost_suggestion="${line#$READLINE_LINE}"
+            return
         fi
-    fi
+    done <<< "$_ghost_history_data"
 }
 
-# Sugestão com lock — estilo zsh:
-# Ao apagar (backspace), mantém a sugestão travada enquanto a linha
-# ainda for prefixo dela, revelando progressivamente o ghost.
-# Ao inserir, força busca nova (lock liberado).
-_gt_get_suggestion() {
-    local cur="$1"
-    if [[ -z "$cur" ]]; then
-        _GT_SUGGESTION=""; _GT_SUG_LOCKED=""; return
-    fi
-    # Linha ainda é prefixo da sugestão travada → mantém (backspace progressivo)
-    if [[ -n "$_GT_SUG_LOCKED" && \
-          "$_GT_SUG_LOCKED" == "${cur}"* && \
-          "$_GT_SUG_LOCKED" != "$cur" ]]; then
-        _GT_SUGGESTION="$_GT_SUG_LOCKED"
-        return
-    fi
-    # Lock expirou ou não existe → busca nova
-    _gt_find_suggestion "$cur"
-    _GT_SUG_LOCKED="$_GT_SUGGESTION"
-}
-
-# Inserção: libera lock e busca novo (usuário digitou algo novo)
-_gt_get_suggestion_fresh() {
-    _GT_SUG_LOCKED=""
-    _gt_get_suggestion "$1"
-}
-
-# ── Calcula o comprimento real do PS1 (removendo códigos ESC) ─
-_gt_calc_ps1_length() {
-    local ps1="$1"
-    # Remove códigos de escape do PS1 para contar caracteres visíveis
-    # Primeiro, converte \e, \033, \x1b para ESC real
-    ps1=$(printf '%s' "$ps1" | sed 's/\\e/\x1b/g; s/\\033/\x1b/g; s/\\x1b/\x1b/g')
-    # Depois remove sequências ESC [...] (códigos de cor)
-    ps1=$(printf '%s' "$ps1" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g')
-    # Remove outros escapes comuns do bash
-    ps1="${ps1//\\u/$USER}"
-    ps1="${ps1//\\h/${HOSTNAME%%.*}}"
-    ps1="${ps1//\\H/$HOSTNAME}"
-    ps1="${ps1//\\w/${PWD/#$HOME/\~}}"
-    ps1="${ps1//\\W/${PWD##*/}}"
-    ps1="${ps1//\\$/$}"
-    ps1="${ps1//\\n/}"
-    ps1="${ps1//\\r/}"
-    ps1="${ps1//\\t/}"
-    ps1="${ps1//\\d/}"
-    ps1="${ps1//\\@/}"
-    ps1="${ps1//\\A/}"
-    ps1="${ps1//\\u/}"
-    
-    # Retorna o comprimento
-    printf '%s' "$ps1" | wc -m
-}
-
-# ── Calcula PLEN a partir do PS1 atual ────────────────────────
-_gt_calc_plen() {
-    local expanded
-    expanded="${PS1@P}"
-    # Remove sequências de escape ANSI (cores, etc.)
-    expanded=$(printf '%s' "$expanded" | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b[^[[][a-zA-Z]//g')
-    _GT_PLEN=${#expanded}
-}
-
-# ── Overlay sem reset de PS1 ──────────────────────────────────
-# Em vez de trocar o PS1, calculamos a posição correta baseado no
-# comprimento real do prompt atual
-_gt_overlay() {
-    # Se ghost text estiver desativado, não faz nada
-    [[ "$BASH_GHOST_TEXT" == "0" ]] && return
-    
-    local line="$READLINE_LINE"
-    local ghost=""
-    if [[ -n "$_GT_SUGGESTION" && \
-          "$_GT_SUGGESTION" == "${line}"* && \
-          "$_GT_SUGGESTION" != "$line" ]]; then
-        ghost="${_gt_gh}${_GT_SUGGESTION:${#line}}${_gt_b0}"
-    fi
-    
-    # Calcula a posição do cursor: comprimento do prompt + linha atual + 1
-    local line_len=$(printf '%s' "$line" | wc -m)
-    local col=$(( _GT_PLEN + line_len + 1 ))
-    
-    if [[ -z "$ghost" ]]; then
-        # Apenas limpa o ghost text
-        printf '\e7\e[%dG\e[K\e8' "$col" >&2
+_ghost_render() {
+    if [[ $READLINE_POINT -eq ${#READLINE_LINE} ]]; then
+        _ghost_get_suggestion
     else
-        # Mostra o ghost text
-        printf '\e7\e[%dG\e[K%s\e8' "$col" "$ghost" >&2
+        _ghost_suggestion=""
+    fi
+    
+    local col=$(( _ghost_prompt_len + ${#READLINE_LINE} + 1 ))
+    
+    if [[ -n "$_ghost_suggestion" ]]; then
+        printf '\e[s\e[%dG\e[38;5;244m%s\e[0m\e[u' "$col" "$_ghost_suggestion" >/dev/tty
+    else
+        printf '\e[s\e[%dG\e[K\e[u' "$col" >/dev/tty
     fi
 }
 
-# ── Edição ────────────────────────────────────────────────────
-_gt_self_insert() {
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${_GT_CHAR}${READLINE_LINE:$READLINE_POINT}"
-    (( READLINE_POINT++ ))
-    _gt_hist_reset
-    _gt_get_suggestion_fresh "$READLINE_LINE"   # busca fresca ao digitar
-    _gt_overlay
+_ghost_handle_char() {
+    local char="$1"
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${char}${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=$(( READLINE_POINT + 1 ))
+    _ghost_render
 }
 
-# Backspace estilo zsh: mantém lock → revela ghost progressivamente
-_gt_backspace() {
-    (( READLINE_POINT > 0 )) && {
-        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT-1))}${READLINE_LINE:$READLINE_POINT}"
-        (( READLINE_POINT-- ))
-    }
-    _gt_hist_reset
-    _gt_get_suggestion "$READLINE_LINE"   # com lock → revela progressivamente
-    _gt_overlay
-}
-
-_gt_delete_char() {
-    (( READLINE_POINT < ${#READLINE_LINE} )) && \
-        READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${READLINE_LINE:$((READLINE_POINT+1))}"
-    _gt_get_suggestion "$READLINE_LINE"
-    _gt_overlay
-}
-
-_gt_move_left() {
-    (( READLINE_POINT > 0 )) && (( READLINE_POINT-- ))
-    _gt_overlay
-}
-
-# Função modificada para suportar os 4 modos (0, 1, 2, 3)
-_gt_right_or_ghost() {
-    # Modo 0: Ghost text desativado - apenas move para direita
-    if [[ "$BASH_GHOST_TEXT" == "0" ]]; then
-        if (( READLINE_POINT < ${#READLINE_LINE} )); then
-            (( READLINE_POINT++ ))
-        fi
-        _gt_overlay
-        return
-    fi
-    
-    # Modo 1: Completa com um toque (comportamento original)
-    if [[ "$BASH_GHOST_TEXT" == "1" ]]; then
-        if (( READLINE_POINT < ${#READLINE_LINE} )); then
-            (( READLINE_POINT++ ))
-        else
-            # Cursor no fim: aceita ghost COMPLETO de uma vez
-            _gt_get_suggestion "$READLINE_LINE"
-            if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-                READLINE_LINE="$_GT_SUGGESTION"
-                READLINE_POINT=${#READLINE_LINE}
-                _GT_SUG_LOCKED=""
-            fi
-        fi
-    
-    # Modo 2: Completa por palavras (tokens)
-    elif [[ "$BASH_GHOST_TEXT" == "2" ]]; then
-        _gt_get_suggestion "$READLINE_LINE"
-        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-            if (( READLINE_POINT < ${#_GT_SUGGESTION} )); then
-                # Pega o resto da sugestão
-                local rest="${_GT_SUGGESTION:${#READLINE_LINE}}"
-                
-                # Encontra o próximo token (palavra)
-                # Tokens são separados por espaços
-                if [[ "$rest" =~ ^([^[:space:]]+)([[:space:]]*)(.*) ]]; then
-                    local next_token="${BASH_REMATCH[1]}"
-                    local spaces="${BASH_REMATCH[2]}"
-                    
-                    # Adiciona o token completo mais os espaços que o seguem
-                    READLINE_LINE+="${next_token}${spaces}"
-                    READLINE_POINT=${#READLINE_LINE}
-                    
-                    # Se completou toda a sugestão, limpa o lock
-                    if [[ "$READLINE_LINE" == "$_GT_SUGGESTION" ]]; then
-                        _GT_SUG_LOCKED=""
-                    fi
-                else
-                    # Se não conseguir separar por tokens, adiciona o resto todo
-                    READLINE_LINE="$_GT_SUGGESTION"
-                    READLINE_POINT=${#READLINE_LINE}
-                    _GT_SUG_LOCKED=""
-                fi
-            fi
-        elif (( READLINE_POINT < ${#READLINE_LINE} )); then
-            # Se não há sugestão, apenas move o cursor
-            (( READLINE_POINT++ ))
-        fi
-    
-    # Modo 3: Completa progressivamente (um caractere por toque)
-    elif [[ "$BASH_GHOST_TEXT" == "3" ]]; then
-        _gt_get_suggestion "$READLINE_LINE"
-        if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-            if (( READLINE_POINT < ${#_GT_SUGGESTION} )); then
-                # Adiciona apenas o próximo caractere da sugestão
-                local next_char="${_GT_SUGGESTION:${#READLINE_LINE}:1}"
-                READLINE_LINE+="$next_char"
-                READLINE_POINT=${#READLINE_LINE}
-                
-                # Se completou toda a sugestão, limpa o lock
-                if [[ "$READLINE_LINE" == "$_GT_SUGGESTION" ]]; then
-                    _GT_SUG_LOCKED=""
-                fi
-            fi
-        elif (( READLINE_POINT < ${#READLINE_LINE} )); then
-            # Se não há sugestão, apenas move o cursor
-            (( READLINE_POINT++ ))
-        fi
-    fi
-    
-    _gt_overlay
-}
-
-_gt_accept_ghost() {
-    [[ "$BASH_GHOST_TEXT" == "0" ]] && return
-    
-    _gt_get_suggestion "$READLINE_LINE"
-    if [[ -n "$_GT_SUGGESTION" && "$_GT_SUGGESTION" == "${READLINE_LINE}"* ]]; then
-        READLINE_LINE="$_GT_SUGGESTION"
+# Função para aceitar ghost (Ctrl+F)
+_ghost_accept() {
+    if [[ -n "$_ghost_suggestion" && $READLINE_POINT -eq ${#READLINE_LINE} ]]; then
+        READLINE_LINE+="$_ghost_suggestion"
         READLINE_POINT=${#READLINE_LINE}
-        _GT_SUG_LOCKED=""
+        _ghost_suggestion=""
     fi
-    _gt_overlay
+    _ghost_render
 }
 
-_gt_home()          { READLINE_POINT=0; _gt_overlay; }
-_gt_end()           { READLINE_POINT=${#READLINE_LINE}; _gt_overlay; }
-_gt_kill_line()     { READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}"; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_overlay; }
-_gt_kill_to_start() { READLINE_LINE="${READLINE_LINE:$READLINE_POINT}"; READLINE_POINT=0; _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_overlay; }
-_gt_clear_screen()  { clear; _gt_overlay; }
-
-_gt_kill_word() {
-    if (( READLINE_POINT > 0 )); then
-        local b="${READLINE_LINE:0:$READLINE_POINT}" a="${READLINE_LINE:$READLINE_POINT}"
-        b="${b% }"; b="${b% *}"
-        READLINE_LINE="${b:+${b} }${a}"
-        READLINE_POINT=${#b}
-        (( ${#b} > 0 )) && (( READLINE_POINT++ ))
-    fi
-    _GT_SUG_LOCKED=""; _gt_hist_reset; _gt_overlay
-}
-
-# ── Histórico filtrado ────────────────────────────────────────
-_gt_hist_up() {
-    local hlen="${#_GT_HIST[@]}"
-    (( hlen == 0 )) && return
-    if (( _GT_HIST_IDX == -1 )); then
-        _GT_HIST_SAVED="$READLINE_LINE"
-        _GT_HIST_PREFIX="$READLINE_LINE"
-        _GT_HIST_IDX=$hlen
-    fi
-    local i
-    for (( i=_GT_HIST_IDX-1; i>=0; i-- )); do
-        if [[ "${_GT_HIST[$i]}" == "${_GT_HIST_PREFIX}"* && \
-              "${_GT_HIST[$i]}" != "$READLINE_LINE" ]]; then
-            _GT_HIST_IDX=$i
-            READLINE_LINE="${_GT_HIST[$i]}"
-            READLINE_POINT=${#READLINE_LINE}
-            _GT_SUG_LOCKED=""; _gt_find_suggestion "$READLINE_LINE"
-            _gt_overlay; return
-        fi
-    done
-}
-
-_gt_hist_down() {
-    (( _GT_HIST_IDX == -1 )) && return
-    local hlen="${#_GT_HIST[@]}" i
-    for (( i=_GT_HIST_IDX+1; i<hlen; i++ )); do
-        if [[ "${_GT_HIST[$i]}" == "${_GT_HIST_PREFIX}"* ]]; then
-            _GT_HIST_IDX=$i
-            READLINE_LINE="${_GT_HIST[$i]}"
-            READLINE_POINT=${#READLINE_LINE}
-            _GT_SUG_LOCKED=""; _gt_find_suggestion "$READLINE_LINE"
-            _gt_overlay; return
-        fi
-    done
-    _GT_HIST_IDX=-1
-    READLINE_LINE="$_GT_HIST_SAVED"
+# Função para aceitar palavra (Alt+F)
+_ghost_accept_word() {
+    _ghost_get_suggestion
+    [[ -z "$_ghost_suggestion" ]] && return
+    
+    local word="${_ghost_suggestion%% *}"
+    [[ "$_ghost_suggestion" == *' '* ]] && word+=' '
+    
+    READLINE_LINE+="$word"
     READLINE_POINT=${#READLINE_LINE}
-    _GT_SUG_LOCKED=""; _gt_find_suggestion "$READLINE_LINE"
-    _gt_overlay
+    _ghost_suggestion=""
+    _ghost_render
 }
 
-# ── PROMPT_COMMAND ────────────────────────────────────────────
-_gt_prompt_cmd() {
-    _gt_sync_hist
-    # Atualiza PS1 original (pode ter mudado por git, venv, etc.)
-    _GT_ORIGINAL_PS1="$PS1"
-    _gt_calc_plen
-    _GT_HIST_IDX=-1; _GT_HIST_SAVED=""; _GT_HIST_PREFIX=""
-    _GT_SUGGESTION=""; _GT_SUG_LOCKED=""
+_ghost_backspace() {
+    if [[ $READLINE_POINT -gt 0 ]]; then
+        READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT - 1))}${READLINE_LINE:$READLINE_POINT}"
+        READLINE_POINT=$(( READLINE_POINT - 1 ))
+    fi
+    _ghost_render
 }
 
-# ── Binds ─────────────────────────────────────────────────────
-_gt_install_binds() {
-    local c
-
-    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
-             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
-             0 1 2 3 4 5 6 7 8 9; do
-        eval "_gti_${c}() { _GT_CHAR='${c}'; _gt_self_insert; }"
-        bind -x "\"${c}\": _gti_${c}" 2>/dev/null
-    done
-
-    _gti_space()    { _GT_CHAR=' ';  _gt_self_insert; }
-    _gti_tilde()    { _GT_CHAR='~';  _gt_self_insert; }
-    _gti_bang()     { _GT_CHAR='!';  _gt_self_insert; }
-    _gti_at()       { _GT_CHAR='@';  _gt_self_insert; }
-    _gti_hash()     { _GT_CHAR='#';  _gt_self_insert; }
-    _gti_dollar()   { _GT_CHAR='$';  _gt_self_insert; }
-    _gti_percent()  { _GT_CHAR='%';  _gt_self_insert; }
-    _gti_caret()    { _GT_CHAR='^';  _gt_self_insert; }
-    _gti_amp()      { _GT_CHAR='&';  _gt_self_insert; }
-    _gti_star()     { _GT_CHAR='*';  _gt_self_insert; }
-    _gti_lparen()   { _GT_CHAR='(';  _gt_self_insert; }
-    _gti_rparen()   { _GT_CHAR=')';  _gt_self_insert; }
-    _gti_minus()    { _GT_CHAR='-';  _gt_self_insert; }
-    _gti_under()    { _GT_CHAR='_';  _gt_self_insert; }
-    _gti_equal()    { _GT_CHAR='=';  _gt_self_insert; }
-    _gti_plus()     { _GT_CHAR='+';  _gt_self_insert; }
-    _gti_lbrack()   { _GT_CHAR='[';  _gt_self_insert; }
-    _gti_rbrack()   { _GT_CHAR=']';  _gt_self_insert; }
-    _gti_lbrace()   { _GT_CHAR='{';  _gt_self_insert; }
-    _gti_rbrace()   { _GT_CHAR='}';  _gt_self_insert; }
-    _gti_pipe()     { _GT_CHAR='|';  _gt_self_insert; }
-    _gti_semi()     { _GT_CHAR=';';  _gt_self_insert; }
-    _gti_colon()    { _GT_CHAR=':';  _gt_self_insert; }
-    _gti_squote()   { _GT_CHAR="'";  _gt_self_insert; }
-    _gti_dquote()   { _GT_CHAR='"';  _gt_self_insert; }
-    _gti_comma()    { _GT_CHAR=',';  _gt_self_insert; }
-    _gti_dot()      { _GT_CHAR='.';  _gt_self_insert; }
-    _gti_slash()    { _GT_CHAR='/';  _gt_self_insert; }
-    _gti_lt()       { _GT_CHAR='<';  _gt_self_insert; }
-    _gti_gt()       { _GT_CHAR='>';  _gt_self_insert; }
-    _gti_question() { _GT_CHAR='?';  _gt_self_insert; }
-    _gti_bslash()   { _GT_CHAR='\\'; _gt_self_insert; }
-    _gti_backtick() { _GT_CHAR='`';  _gt_self_insert; }
-
-    bind -x '" ":  _gti_space'    2>/dev/null
-    bind -x '"~":  _gti_tilde'    2>/dev/null
-    bind -x '"!":  _gti_bang'     2>/dev/null
-    bind -x '"@":  _gti_at'       2>/dev/null
-    bind -x '"#":  _gti_hash'     2>/dev/null
-    bind -x '"$":  _gti_dollar'   2>/dev/null
-    bind -x '"%":  _gti_percent'  2>/dev/null
-    bind -x '"^":  _gti_caret'    2>/dev/null
-    bind -x '"&":  _gti_amp'      2>/dev/null
-    bind -x '"*":  _gti_star'     2>/dev/null
-    bind -x '"(":  _gti_lparen'   2>/dev/null
-    bind -x '")":  _gti_rparen'   2>/dev/null
-    bind -x '"-":  _gti_minus'    2>/dev/null
-    bind -x '"_":  _gti_under'    2>/dev/null
-    bind -x '"=":  _gti_equal'    2>/dev/null
-    bind -x '"+":  _gti_plus'     2>/dev/null
-    bind -x '"[":  _gti_lbrack'   2>/dev/null
-    bind -x '"]":  _gti_rbrack'   2>/dev/null
-    bind -x '"{":  _gti_lbrace'   2>/dev/null
-    bind -x '"}":  _gti_rbrace'   2>/dev/null
-    bind -x '"|":  _gti_pipe'     2>/dev/null
-    bind -x '";":  _gti_semi'     2>/dev/null
-    bind -x '":":  _gti_colon'    2>/dev/null
-    bind -x "\"'\": _gti_squote"  2>/dev/null
-    bind -x '"\"": _gti_dquote'   2>/dev/null
-    bind -x '",":  _gti_comma'    2>/dev/null
-    bind -x '".":  _gti_dot'      2>/dev/null
-    bind -x '"/":  _gti_slash'    2>/dev/null
-    bind -x '"<":  _gti_lt'       2>/dev/null
-    bind -x '">":  _gti_gt'       2>/dev/null
-    bind -x '"?":  _gti_question' 2>/dev/null
-    bind -x '"\\": _gti_bslash'   2>/dev/null
-    bind -x '"`":  _gti_backtick' 2>/dev/null
-
-    bind -x '"\C-h":    _gt_backspace'       2>/dev/null
-    bind -x '"\x7f":    _gt_backspace'       2>/dev/null
-    bind -x '"\e[3~":   _gt_delete_char'     2>/dev/null
-    bind -x '"\e[D":    _gt_move_left'       2>/dev/null
-    bind -x '"\eOD":    _gt_move_left'       2>/dev/null
-    bind -x '"\e[C":    _gt_right_or_ghost'  2>/dev/null
-    bind -x '"\eOC":    _gt_right_or_ghost'  2>/dev/null
-    bind -x '"\C-f":    _gt_accept_ghost'    2>/dev/null
-    bind -x '"\C-a":    _gt_home'            2>/dev/null
-    bind -x '"\e[H":    _gt_home'            2>/dev/null
-    bind -x '"\eOH":    _gt_home'            2>/dev/null
-    bind -x '"\C-e":    _gt_end'             2>/dev/null
-    bind -x '"\e[F":    _gt_end'             2>/dev/null
-    bind -x '"\eOF":    _gt_end'             2>/dev/null
-    bind -x '"\C-k":    _gt_kill_line'       2>/dev/null
-    bind -x '"\C-u":    _gt_kill_to_start'   2>/dev/null
-    bind -x '"\C-w":    _gt_kill_word'       2>/dev/null
-    bind -x '"\C-l":    _gt_clear_screen'    2>/dev/null
-    bind -x '"\e[A":    _gt_hist_up'         2>/dev/null
-    bind -x '"\eOA":    _gt_hist_up'         2>/dev/null
-    bind -x '"\e[B":    _gt_hist_down'       2>/dev/null
-    bind -x '"\eOB":    _gt_hist_down'       2>/dev/null
+_ghost_pre_accept_line() {
+    printf '\e[K' >/dev/tty
+    _ghost_suggestion=""
 }
 
-# ── Desinstalar ───────────────────────────────────────────────
-ghost-detach() {
-    local c
-    for c in a b c d e f g h i j k l m n o p q r s t u v w x y z \
-             A B C D E F G H I J K L M N O P Q R S T U V W X Y Z \
-             0 1 2 3 4 5 6 7 8 9; do
-        bind -r "\"${c}\"" 2>/dev/null
-    done
-    local syms=('~' '!' '@' '#' '$' '%' '^' '&' '*' '(' ')' '-' '_'
-                '=' '+' '[' ']' '{' '}' '|' ';' ':' "'" '"' ',' '.'
-                '/' '<' '>' '?' '\\' '`' ' ')
-    local s
-    for s in "${syms[@]}"; do bind -r "\"${s}\"" 2>/dev/null; done
-    bind -r '"\C-h"' '"\x7f"' '"\e[3~"' '"\e[D"' '"\eOD"' \
-         '"\e[C"'   '"\eOC"' '"\C-f"'  '"\C-a"' '"\e[H"' \
-         '"\eOH"'   '"\C-e"' '"\e[F"'  '"\eOF"' '"\C-k"' \
-         '"\C-u"'   '"\C-w"' '"\C-l"'  '"\e[A"' '"\eOA"' \
-         '"\e[B"'   '"\eOB"' 2>/dev/null
-    bind '"\e[A": previous-history' '"\eOA": previous-history' 2>/dev/null
-    bind '"\e[B": next-history'     '"\eOB": next-history'     2>/dev/null
-    bind '"\e[C": forward-char'     '"\eOC": forward-char'     2>/dev/null
-    bind '"\e[D": backward-char'    '"\eOD": backward-char'    2>/dev/null
-    bind '"\C-l": clear-screen'                                2>/dev/null
-    [[ -n "$_GT_ORIGINAL_PS1" ]] && PS1="$_GT_ORIGINAL_PS1"
-    PROMPT_COMMAND="${PROMPT_COMMAND//; _gt_prompt_cmd/}"
-    PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd; /}"
-    PROMPT_COMMAND="${PROMPT_COMMAND//_gt_prompt_cmd/}"
-    _GT_LOADED=0
-    printf 'ghost-text desanexado.\n'
-}
+_ghost_init_history
+_ghost_update_prompt_len
 
-# ── Ativa ─────────────────────────────────────────────────────
-_GT_ORIGINAL_PS1="$PS1"
-_gt_install_binds
-_gt_load_hist
-_gt_calc_plen
+bind 'set show-mode-in-prompt off'
 
-if [[ -z "${PROMPT_COMMAND:-}" ]]; then
-    PROMPT_COMMAND="_gt_prompt_cmd"
-elif [[ "$PROMPT_COMMAND" != *"_gt_prompt_cmd"* ]]; then
-    PROMPT_COMMAND="_gt_prompt_cmd ${PROMPT_COMMAND}"
-fi
+# Caracteres imprimíveis com self-insert
+for i in {32..126}; do
+    if [[ $i -eq 92 ]]; then
+        bind '"\\\\": self-insert'
+    elif [[ $i -eq 34 ]]; then
+        bind '"\\\"": self-insert'
+    elif [[ $i -eq 39 ]]; then
+        bind "\"\\'\": self-insert"
+    else
+        char=$(printf "\\$(printf '%03o' "$i")")
+        bind "\"$char\": self-insert"
+    fi
+done
+
+# Teclas de controle
+bind -x '"\C-f": _ghost_accept'           # Ctrl+F - aceita ghost (com redesenho)
+bind -x '"\ef": _ghost_accept_word'       # Alt+F - aceita palavra
+bind -x '"\C-?": _ghost_backspace'        # Backspace
+bind -x '"\C-h": _ghost_backspace'        # Ctrl+H
+bind -x '"\C-u": READLINE_LINE=""; READLINE_POINT=0; _ghost_suggestion=""; _ghost_render'
+bind -x '"\C-a": READLINE_POINT=0; _ghost_render'
+bind -x '"\C-e": READLINE_POINT=${#READLINE_LINE}; _ghost_render'
+bind -x '"\C-l": clear; _ghost_render'
+
+# SETA ESQUERDA: nativa, sem redesenho
+bind '"\e[D": backward-char'
+
+# SETA DIREITA: nativa, sem redesenho, mas não aceita ghost
+bind '"\e[C": forward-char'
+
+# Enter
+bind -x '"\C-x\C-m": _ghost_pre_accept_line'
+bind '"\C-m": "\C-x\C-m\C-j"'
+
+PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }_ghost_refresh"
