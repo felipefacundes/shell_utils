@@ -7,6 +7,7 @@ _ghost_suggestion=""
 _ghost_prompt_len=0
 _ghost_state_file="$HOME/.cache/ghost_mode"
 _ghost_mode="clean"
+_ghost_last_ps1=""
 
 _ghost_load_state() {
     if [[ -f "$_ghost_state_file" ]]; then
@@ -23,16 +24,21 @@ _ghost_save_state() {
 
 _ghost_init_history() {
     _ghost_history_data=$(
-        fc -ln -2000 2>/dev/null | sed 's/^[[:space:]]*//' | tac | awk '!seen[$0]++'
+        fc -ln -10000 2>/dev/null | sed 's/^[[:space:]]*//' | tac | awk '!seen[$0]++'
     )
 }
 
 _ghost_update_prompt_len() {
-    local plain
-    plain=$(printf '%s' "${PS1@P}" \
-        | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\x01|\x02//g')
-    local last="${plain##*$'\n'}"
-    _ghost_prompt_len=${#last}
+    local current_ps1="${PS1@P}"
+    
+    if [[ "$current_ps1" != "$_ghost_last_ps1" || $_ghost_prompt_len -eq 0 ]]; then
+        _ghost_last_ps1="$current_ps1"
+        local plain
+        plain=$(printf '%s' "$current_ps1" \
+            | sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z]//g; s/\x01|\x02//g')
+        local last="${plain##*$'\n'}"
+        _ghost_prompt_len=${#last}
+    fi
 }
 
 _ghost_refresh() {
@@ -56,8 +62,9 @@ _ghost_get_suggestion() {
     done <<< "$_ghost_history_data"
 }
 
-# Render modo ghost
 _ghost_render_ghost() {
+    _ghost_update_prompt_len
+    
     [[ $READLINE_POINT -eq ${#READLINE_LINE} ]] \
         && _ghost_get_suggestion \
         || _ghost_suggestion=""
@@ -70,14 +77,14 @@ _ghost_render_ghost() {
     fi
 }
 
-# Handlers modo ghost
 _ghost_self_insert() {
     READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${_ghost_char}${READLINE_LINE:$READLINE_POINT}"
     READLINE_POINT=$(( READLINE_POINT + 1 ))
     _ghost_render_ghost
 }
 
-_ghost_accept() {
+# Seta direita: completa ghost INTEIRO
+_ghost_accept_all() {
     if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
         READLINE_POINT=$(( READLINE_POINT + 1 ))
     elif [[ -n "$_ghost_suggestion" ]]; then
@@ -88,17 +95,82 @@ _ghost_accept() {
     _ghost_render_ghost
 }
 
-_ghost_accept_word() {
-    [[ -z "$_ghost_suggestion" ]] && return
-    local word="${_ghost_suggestion%% *}"
-    [[ "$_ghost_suggestion" == *' '* ]] && word+=' '
-    READLINE_LINE+="$word"
-    READLINE_POINT=${#READLINE_LINE}
-    _ghost_suggestion="${_ghost_suggestion#"$word"}"
+# Verifica se caractere é um delimitador
+_ghost_is_delimiter() {
+    [[ "$1" =~ [\ =/\;.,|\\:_-] ]]
+}
+
+# Alt+F: completa UMA PALAVRA do ghost
+_ghost_accept_word2() {
+    if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
+        # Navegação por palavra no texto existente
+        local after="${READLINE_LINE:$READLINE_POINT}"
+        while [[ "${after:0:1}" == " " ]]; do
+            READLINE_POINT=$(( READLINE_POINT + 1 ))
+            after="${READLINE_LINE:$READLINE_POINT}"
+        done
+        while [[ -n "$after" && "${after:0:1}" != " " ]]; do
+            READLINE_POINT=$(( READLINE_POINT + 1 ))
+            after="${READLINE_LINE:$READLINE_POINT}"
+        done
+    elif [[ -n "$_ghost_suggestion" ]]; then
+        # Completa UMA palavra do ghost
+        local word="${_ghost_suggestion%% *}"
+        [[ "$_ghost_suggestion" == *' '* ]] && word+=' '
+        READLINE_LINE+="$word"
+        READLINE_POINT=${#READLINE_LINE}
+        _ghost_suggestion="${_ghost_suggestion#"$word"}"
+    fi
     _ghost_render_ghost
 }
 
-# Backspace normal - apaga 1 caractere
+# Alt+W: completa UMA PALAVRA do ghost (com delimitadores)
+_ghost_accept_word() {
+    if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
+        # Navegação por palavra no texto existente
+        local after="${READLINE_LINE:$READLINE_POINT}"
+        while [[ -n "$after" ]] && _ghost_is_delimiter "${after:0:1}"; do
+            READLINE_POINT=$(( READLINE_POINT + 1 ))
+            after="${READLINE_LINE:$READLINE_POINT}"
+        done
+        while [[ -n "$after" ]] && ! _ghost_is_delimiter "${after:0:1}"; do
+            READLINE_POINT=$(( READLINE_POINT + 1 ))
+            after="${READLINE_LINE:$READLINE_POINT}"
+        done
+    elif [[ -n "$_ghost_suggestion" ]]; then
+        local remaining="$_ghost_suggestion"
+        local word=""
+        
+        while [[ -n "$remaining" ]]; do
+            local char="${remaining:0:1}"
+            if _ghost_is_delimiter "$char"; then
+                if [[ -n "$word" ]]; then
+                    break
+                fi
+                word+="$char"
+                remaining="${remaining:1}"
+                if [[ "$char" == " " ]]; then
+                    while [[ "${remaining:0:1}" == " " ]]; do
+                        word+=" "
+                        remaining="${remaining:1}"
+                    done
+                fi
+                break
+            else
+                word+="$char"
+                remaining="${remaining:1}"
+            fi
+        done
+        
+        [[ -z "$word" ]] && word="$remaining"
+        
+        READLINE_LINE+="$word"
+        READLINE_POINT=${#READLINE_LINE}
+        _ghost_suggestion="${_ghost_suggestion#"$word"}"
+    fi
+    _ghost_render_ghost
+}
+
 _ghost_backspace_ghost() {
     if [[ $READLINE_POINT -gt 0 ]]; then
         READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT - 1))}${READLINE_LINE:$READLINE_POINT}"
@@ -107,20 +179,18 @@ _ghost_backspace_ghost() {
     _ghost_render_ghost
 }
 
-# Ctrl+Backspace - apaga palavra anterior (sem afetar a previsão)
+# Ctrl+Backspace: apaga palavra anterior (com múltiplos delimitadores)
 _ghost_backward_kill_word_ghost() {
     if [[ $READLINE_POINT -gt 0 ]]; then
         local before="${READLINE_LINE:0:$READLINE_POINT}"
         local after="${READLINE_LINE:$READLINE_POINT}"
         local new_point=$READLINE_POINT
         
-        # Remove espaços em branco antes da palavra
-        while [[ $new_point -gt 0 && "${before:$((new_point - 1)):1}" == " " ]]; do
+        while [[ $new_point -gt 0 ]] && _ghost_is_delimiter "${before:$((new_point - 1)):1}"; do
             new_point=$((new_point - 1))
         done
         
-        # Remove a palavra
-        while [[ $new_point -gt 0 && "${before:$((new_point - 1)):1}" != " " ]]; do
+        while [[ $new_point -gt 0 ]] && ! _ghost_is_delimiter "${before:$((new_point - 1)):1}"; do
             new_point=$((new_point - 1))
         done
         
@@ -144,13 +214,15 @@ _ghost_setup_ghost_binds() {
     done
     bind -r '\e[C' 2>/dev/null
     bind -r '\e[D' 2>/dev/null
+    bind -r '\ea' 2>/dev/null
+    bind -r '\ed' 2>/dev/null
+    bind -r '\ew' 2>/dev/null
     bind -r '\C-?' 2>/dev/null
     bind -r '\C-h' 2>/dev/null
     bind -r '\C-u' 2>/dev/null
     bind -r '\C-a' 2>/dev/null
     bind -r '\C-e' 2>/dev/null
     bind -r '\C-l' 2>/dev/null
-    bind -r '\ef' 2>/dev/null
     
     # Caracteres imprimíveis com bind -x
     for i in {32..126}; do
@@ -166,11 +238,19 @@ _ghost_setup_ghost_binds() {
     done
     
     # Teclas controle modo ghost
-    bind -x '"\e[C": _ghost_accept'
-    bind -x '"\e[D": _ghost_left_ghost'
-    bind -x '"\ef": _ghost_accept_word'
-    bind -x '"\C-?": _ghost_backspace_ghost'              # Backspace normal
-    bind -x '"\C-h": _ghost_backward_kill_word_ghost'     # Ctrl+Backspace
+    bind -x '"\e[C": _ghost_accept_all'                   # Seta direita: completa ghost INTEIRO
+    bind -x '"\ew": _ghost_accept_word'                   # Alt+W: completa 1 PALAVRA
+    bind -x '"\ef": _ghost_accept_word2'                  # Alt+F: completa 1 PALAVRA
+    bind -x '"\e[D": _ghost_left_ghost'                   # Seta esquerda (com ghost render)
+    bind -x '"\C-?": _ghost_backspace_ghost'              # Backspace
+    bind -x '"\C-h": _ghost_backward_kill_word_ghost'     # Ctrl+Backspace: apaga 1 PALAVRA
+    
+    # Alt+A e Alt+D: navegação nativa SEM redesenho (mesmo em modo ghost!)
+    bind '"\ea": backward-char'                           # Alt+A: esquerda nativo
+    bind '"\e,": backward-char'                           # Alt+A: esquerda nativo
+    bind '"\ed": forward-char'                            # Alt+D: direita nativo
+    bind '"\e.": forward-char'                            # Alt+D: direita nativo
+    
     bind -x '"\C-u": READLINE_LINE=""; READLINE_POINT=0; _ghost_suggestion=""; _ghost_render_ghost'
     bind -x '"\C-a": READLINE_POINT=0; _ghost_render_ghost'
     bind -x '"\C-e": READLINE_POINT=${#READLINE_LINE}; _ghost_render_ghost'
@@ -186,13 +266,15 @@ _ghost_setup_clean_binds() {
     done
     bind -r '\e[C' 2>/dev/null
     bind -r '\e[D' 2>/dev/null
+    bind -r '\ea' 2>/dev/null
+    bind -r '\ed' 2>/dev/null
+    bind -r '\ew' 2>/dev/null
     bind -r '\C-?' 2>/dev/null
     bind -r '\C-h' 2>/dev/null
     bind -r '\C-u' 2>/dev/null
     bind -r '\C-a' 2>/dev/null
     bind -r '\C-e' 2>/dev/null
     bind -r '\C-l' 2>/dev/null
-    bind -r '\ef' 2>/dev/null
     
     # Caracteres imprimíveis com self-insert nativo
     for i in {32..126}; do
@@ -212,6 +294,10 @@ _ghost_setup_clean_binds() {
     bind '"\e[D": backward-char'
     bind '"\e[C": forward-char'
     
+    # Alt+A e Alt+D: navegação nativa
+    bind '"\ea": backward-char'
+    bind '"\ed": forward-char'
+    
     # Backspace normal (nativo)
     bind '"\C-?": backward-delete-char'
     
@@ -227,6 +313,8 @@ _ghost_setup_clean_binds() {
 
 # Toggle Ctrl+F
 _ghost_toggle() {
+    _ghost_update_prompt_len
+    
     if [[ "$_ghost_mode" == "clean" ]]; then
         _ghost_mode="ghost"
         _ghost_save_state
@@ -257,17 +345,14 @@ _ghost_update_prompt_len
 
 bind 'set show-mode-in-prompt off'
 
-# Configura binds iniciais baseado no estado
 if [[ "$_ghost_mode" == "ghost" ]]; then
     _ghost_setup_ghost_binds
 else
     _ghost_setup_clean_binds
 fi
 
-# Ctrl+F toggle (comum)
 bind -x '"\C-f": _ghost_toggle'
 
-# Enter
 bind -x '"\C-x\C-m": _ghost_pre_accept_line'
 bind '"\C-m": "\C-x\C-m\C-j"'
 
