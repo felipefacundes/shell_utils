@@ -357,8 +357,9 @@ function __smartcd::autoexecRun() {
 }
 
 # Key binding for Ctrl+g
-[[ -n "$BASH_VERSION" ]] && bind '"\C-g":"smartcd --\n"'
-[[ -n "$ZSH_VERSION" ]] && bindkey -s '^g' 'smartcd --\n'
+[[ -n "$BASH_VERSION" ]] && bind -r '\C-f'
+[[ -n "$BASH_VERSION" ]] && bind '"\C-f":"smartcd --\n"'
+[[ -n "$ZSH_VERSION" ]] && bindkey -s '^f' 'smartcd --\n'
 
 # Simple wrapper that joins all arguments
 function __smartcd_wrapper() {

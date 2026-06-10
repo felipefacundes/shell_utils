@@ -1,0 +1,581 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+#===============================================================================
+# Script: omb-theme-manager
+# Description: Oh-My-Bash Theme Manager with whiptail interface
+# Version: 1.0.0
+#===============================================================================
+
+set -o nounset
+set -o pipefail
+
+#===============================================================================
+# Color definitions for terminal output
+#===============================================================================
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly MAGENTA='\033[0;35m'
+readonly CYAN='\033[0;36m'
+readonly WHITE='\033[1;37m'
+readonly BOLD='\033[1m'
+readonly NC='\033[0m' # No Color
+readonly BG_RED='\033[41m'
+readonly BG_GREEN='\033[42m'
+readonly BG_YELLOW='\033[43m'
+
+#===============================================================================
+# Constants
+#===============================================================================
+readonly BASHRC_FILE="$HOME/.bashrc"
+readonly OMB_THEME_VAR="OMB_THEME"
+
+# Available themes list
+readonly AVAILABLE_THEMES=(
+    # Single line themes
+    "random"
+    "agnoster"
+    "minimal"
+    "simple"
+    "dos"
+    "iterate"
+    "sirup"
+    "robbyrussell"
+    "gallifrey"
+    "pro"
+    "garo"
+    "primer"
+    "absimple"
+    "pure"
+    "example"
+    "rr"
+    "standard"
+    "clean"
+    "dulcie"
+    "binaryanomaly"
+    "half-life"
+    "n0qorg"
+    "zitron"
+    "powerline"
+    "vscode"
+    "candy"
+    "font"
+    "pete"
+    "morris"
+    "zitron"
+    "roderik"
+    "rainbowbrite"
+    "binaryanomaly"
+    "mbriggs"
+    "tonotdo"
+    "hawaii50"
+    "powerline-naked"
+    "powerline-icon"
+    "powerline-wizard"
+    "powerline-light"
+    # Double line themes
+    "powerline-multiline"
+    "cooperkid"
+    "purity"
+    "duru"
+    "tylenol"
+    "modern"
+    "envy"
+    "bakke"
+    "mairan"
+    "rjorgenson"
+    "ht"
+    "powerbash10k"
+    "brainy"
+    "slick"
+    "wanelo"
+    "edsonarios"
+    "demula"
+    "rana"
+    "sexy"
+    "nekolight"
+    "nekonight"
+    "nekonight_moon"
+    "pzq"
+    "minimal-gh"
+    "bobby"
+    "lucky"
+    "cupcake"
+    "brunton"
+    "developer"
+    "doubletime"
+    "doubletime_multiline_pyonly"
+    "nwinkler_random_colors"
+    "nwinkler"
+    "axin"
+    "90210"
+    "emperor"
+    "tonka"
+    "kitsune"
+)
+
+#===============================================================================
+# Utility functions
+#===============================================================================
+
+print_color() {
+    local color="$1"
+    local message="$2"
+    echo -e "${color}${message}${NC}"
+}
+
+print_error() {
+    print_color "$RED" "✗ ERROR: $1" >&2
+}
+
+print_success() {
+    print_color "$GREEN" "✓ SUCCESS: $1"
+}
+
+print_warning() {
+    print_color "$YELLOW" "⚠ WARNING: $1"
+}
+
+print_info() {
+    print_color "$CYAN" "ℹ INFO: $1"
+}
+
+#===============================================================================
+# Help function
+#===============================================================================
+
+show_help() {
+    echo -e "$(cat <<EOF
+${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════╗
+║            ${WHITE}OH-MY-BASH THEME MANAGER${CYAN}                        ║
+╚══════════════════════════════════════════════════════════════╝${NC}
+
+${BOLD}${GREEN}DESCRIPTION:${NC}
+    Interactive theme manager for Oh-My-Bash.
+    Allows easy visualization and selection of themes.
+
+${BOLD}${GREEN}USAGE:${NC}
+    ${YELLOW}$(basename "$0")${NC} ${WHITE}[OPTIONS]${NC}
+
+${BOLD}${GREEN}OPTIONS:${NC}
+    ${YELLOW}-h, --help${NC}        Show this help message
+    ${YELLOW}-l, --list${NC}        List all available themes
+    ${YELLOW}-c, --check${NC}       Check current configuration only
+    ${YELLOW}-s, --set THEME${NC}   Set a specific theme (non-interactive mode)
+
+${BOLD}${GREEN}EXAMPLES:${NC}
+    ${CYAN}# Start interactive theme manager${NC}
+    ${WHITE}$(basename "$0")${NC}
+
+    ${CYAN}# List available themes${NC}
+    ${WHITE}$(basename "$0") --list${NC}
+
+    ${CYAN}# Check current configuration${NC}
+    ${WHITE}$(basename "$0") --check${NC}
+
+    ${CYAN}# Set a specific theme${NC}
+    ${WHITE}$(basename "$0") --set agnoster${NC}
+
+${BOLD}${GREEN}AVAILABLE THEMES:${NC}
+    ${MAGENTA}agnoster, pure, rr, mairan, rjorgenson, brainy, iterate,
+    standard, demula, powerline-naked, powerline-multiline, 90210,
+    clean, dulcie, brunton, binaryanomaly, random, font, powerline,
+    duru, vscode, candy, hawaii50, emperor, tylenol, morris, pzq,
+    zitron, kitsune${NC}
+
+${BOLD}${GREEN}REQUIREMENTS:${NC}
+    • Oh-My-Bash installed
+    • whiptail (terminal dialog)
+    • Writable ~/.bashrc
+
+${BOLD}${YELLOW}NOTE:${NC}
+    Changes will only take effect after restarting the terminal or
+    running: ${WHITE}source ~/.bashrc${NC}
+
+${BOLD}${RED}IMPORTANT:${NC}
+    Ensure the OMB_THEME variable is not commented out and
+    is properly formatted (no extra spaces).
+
+${BOLD}${CYAN}════════════════════════════════════════════════════════════════${NC}
+EOF
+)"
+}
+
+#===============================================================================
+# Validation functions
+#===============================================================================
+
+check_bashrc_exists() {
+    if [[ ! -f "$BASHRC_FILE" ]]; then
+        print_error "File $BASHRC_FILE not found"
+        return 1
+    fi
+    return 0
+}
+
+check_whiptail_installed() {
+    if ! command -v whiptail &>/dev/null; then
+        print_error "whiptail is not installed. Install with: sudo apt-get install whiptail"
+        return 1
+    fi
+    return 0
+}
+
+check_omb_theme_commented() {
+    local commented_line
+    commented_line=$(grep -n "^[[:space:]]*#[[:space:]]*$OMB_THEME_VAR" "$BASHRC_FILE" | head -n1)
+    
+    if [[ -n "$commented_line" ]]; then
+        local line_number
+        line_number=$(echo "$commented_line" | cut -d: -f1)
+        
+        echo -e "\n${BOLD}${YELLOW}╔════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${BOLD}${YELLOW}║         OMB_THEME VARIABLE COMMENTED OUT DETECTED         ║${NC}"
+        echo -e "${BOLD}${YELLOW}╚════════════════════════════════════════════════════════════╝${NC}\n"
+        
+        print_warning "OMB_THEME variable is commented out at line $line_number"
+        print_info "Line found: ${commented_line}"
+        echo ""
+        print_color "$CYAN" "⚠  REQUIRED ACTION:"
+        echo -e "  ${WHITE}1. Edit file: ${GREEN}$BASHRC_FILE${NC}"
+        echo -e "  ${WHITE}2. Locate line ${YELLOW}$line_number${NC}"
+        echo -e "  ${WHITE}3. Remove the '${RED}#${WHITE}' character from the beginning of the line${NC}"
+        echo -e "  ${WHITE}4. Save the file and run the script again${NC}\n"
+        
+        print_info "Quick command: ${GREEN}nano +$line_number $BASHRC_FILE${NC}"
+        return 1
+    fi
+    return 0
+}
+
+check_omb_theme_spacing() {
+    local malformed_line
+    malformed_line=$(grep -n "^[[:space:]]*$OMB_THEME_VAR[[:space:]]\+=" "$BASHRC_FILE" | head -n1)
+    
+    if [[ -n "$malformed_line" ]]; then
+        local line_number
+        line_number=$(echo "$malformed_line" | cut -d: -f1)
+        local line_content
+        line_content=$(echo "$malformed_line" | cut -d: -f2-)
+        
+        echo -e "\n${BOLD}${YELLOW}╔════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${BOLD}${YELLOW}║       INCORRECT SPACING IN OMB_THEME VARIABLE             ║${NC}"
+        echo -e "${BOLD}${YELLOW}╚════════════════════════════════════════════════════════════╝${NC}\n"
+        
+        print_warning "Spaces detected around the '=' sign at line $line_number"
+        print_info "Current line: ${line_content}"
+        print_info "Correct format: ${GREEN}OMB_THEME=\"theme_name\"${NC}"
+        echo ""
+        print_color "$CYAN" "⚠  REQUIRED ACTION:"
+        echo -e "  ${WHITE}1. Edit file: ${GREEN}$BASHRC_FILE${NC}"
+        echo -e "  ${WHITE}2. Locate line ${YELLOW}$line_number${NC}"
+        echo -e "  ${WHITE}3. Remove spaces between OMB_THEME and the '=' sign${NC}"
+        echo -e "  ${WHITE}4. Correct format: ${GREEN}OMB_THEME=\"theme\"${NC} (no spaces)${NC}"
+        echo -e "  ${WHITE}5. Save the file and run the script again${NC}\n"
+        
+        print_info "Quick command: ${GREEN}nano +$line_number $BASHRC_FILE${NC}"
+        return 1
+    fi
+    return 0
+}
+
+get_current_theme() {
+    local current_theme
+    current_theme=$(grep "^[[:space:]]*$OMB_THEME_VAR=" "$BASHRC_FILE" | head -n1 | sed "s/.*$OMB_THEME_VAR=\"\?\([^\"]*\)\"\?.*/\1/")
+    
+    if [[ -z "$current_theme" ]]; then
+        current_theme="Not defined"
+    fi
+    
+    echo "$current_theme"
+}
+
+#===============================================================================
+# Theme management functions
+#===============================================================================
+
+list_themes() {
+    echo -e "\n${BOLD}${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}${CYAN}║                   AVAILABLE THEMES                        ║${NC}"
+    echo -e "${BOLD}${CYAN}╚════════════════════════════════════════════════════════════╝${NC}\n"
+    
+    local current_theme
+    current_theme=$(get_current_theme)
+    
+    local count=0
+    for theme in "${AVAILABLE_THEMES[@]}"; do
+        if [[ "$theme" == "$current_theme" ]]; then
+            print_color "$GREEN" "  ★ $theme (CURRENT)"
+        else
+            echo -e "    ${WHITE}$theme${NC}"
+        fi
+        ((count++))
+    done
+    
+    echo -e "\n${CYAN}Total: $count available themes${NC}"
+    echo -e "${GREEN}Current theme: $current_theme${NC}\n"
+}
+
+select_theme_with_whiptail() {
+    local current_theme
+    current_theme=$(get_current_theme)
+    
+    # Build the menu options array for whiptail
+    local menu_options=()
+    local default_item=0
+    local i=0
+    
+    for theme in "${AVAILABLE_THEMES[@]}"; do
+        local description=""
+        if [[ "$theme" == "$current_theme" ]]; then
+            description="[CURRENT]"
+            default_item=$i
+        fi
+        menu_options+=("$theme" "$description")
+        ((i++))
+    done
+    
+    # Calculate optimal height
+    local menu_height=$(( ${#AVAILABLE_THEMES[@]} + 8 ))
+    if [[ $menu_height -gt 30 ]]; then
+        menu_height=30
+    fi
+    
+    # Display the theme selection menu
+    local selected_theme
+    selected_theme=$(whiptail --title "Oh-My-Bash Theme Manager" \
+        --menu "Select the desired theme\n\nCurrent theme: ${current_theme}\nUse ↑↓ to navigate, ENTER to select" \
+        $menu_height 60 20 \
+        "${menu_options[@]}" \
+        --default-item "$current_theme" \
+        3>&1 1>&2 2>&3)
+    
+    local exit_status=$?
+    
+    if [[ $exit_status -eq 0 ]]; then
+        apply_theme "$selected_theme"
+    elif [[ $exit_status -eq 1 ]]; then
+        whiptail --title "Operation Cancelled" \
+            --msgbox "No theme was changed.\nCurrent theme remains: ${current_theme}" \
+            10 50
+    fi
+}
+
+apply_theme() {
+    local new_theme="$1"
+    local current_theme
+    current_theme=$(get_current_theme)
+    
+    if [[ "$new_theme" == "$current_theme" ]]; then
+        whiptail --title "Theme Already in Use" \
+            --msgbox "The theme '${new_theme}' is already in use.\nNo changes needed." \
+            10 50
+        return 0
+    fi
+    
+    # Confirm the change
+    if whiptail --title "Confirm Change" \
+        --yesno "Do you really want to change the theme?\n\nFrom: ${current_theme}\nTo: ${new_theme}\n\nThe change will be applied to:\n${BASHRC_FILE}" \
+        12 60; then
+        
+        # Create backup
+        local backup_file="${BASHRC_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$BASHRC_FILE" "$backup_file"
+        
+        # Apply the new theme
+        if sed -i "s/^\([[:space:]]*$OMB_THEME_VAR=\"\?\)[^\"]*\(\"\?\)/\1${new_theme}\2/" "$BASHRC_FILE"; then
+            whiptail --title "Success!" \
+                --msgbox "Theme changed successfully!\n\nFrom: ${current_theme}\nTo: ${new_theme}\n\nBackup created at:\n${backup_file}\n\n⚠ Run 'source ~/.bashrc' to apply changes." \
+                15 70
+        else
+            whiptail --title "Error!" \
+                --msgbox "Failed to change theme.\nBackup saved at:\n${backup_file}" \
+                10 70
+            return 1
+        fi
+    else
+        whiptail --title "Operation Cancelled" \
+            --msgbox "No changes were made.\nCurrent theme remains: ${current_theme}" \
+            10 50
+    fi
+}
+
+check_only_mode() {
+    echo -e "\n${BOLD}${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}${CYAN}║         OMB_THEME CONFIGURATION CHECK                     ║${NC}"
+    echo -e "${BOLD}${CYAN}╚════════════════════════════════════════════════════════════╝${NC}\n"
+    
+    local all_checks_passed=true
+    
+    print_info "Checking if .bashrc file exists..."
+    if ! check_bashrc_exists; then
+        all_checks_passed=false
+    else
+        print_success ".bashrc file found"
+    fi
+    
+    echo ""
+    print_info "Checking if OMB_THEME is commented out..."
+    if ! check_omb_theme_commented; then
+        all_checks_passed=false
+    else
+        print_success "OMB_THEME is not commented out"
+    fi
+    
+    echo ""
+    print_info "Checking OMB_THEME variable spacing..."
+    if ! check_omb_theme_spacing; then
+        all_checks_passed=false
+    else
+        print_success "OMB_THEME has correct formatting"
+    fi
+    
+    echo ""
+    if [[ "$all_checks_passed" == true ]]; then
+        print_success "All checks passed!"
+        local current_theme
+        current_theme=$(get_current_theme)
+        print_info "Current theme: ${GREEN}$current_theme${NC}"
+    else
+        print_error "Some checks failed. Please fix the issues above."
+    fi
+    echo ""
+}
+
+#===============================================================================
+# Main execution
+#===============================================================================
+
+main() {
+    # Parse command line arguments
+    if [[ $# -gt 0 ]]; then
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -l|--list)
+                list_themes
+                exit 0
+                ;;
+            -c|--check)
+                check_only_mode
+                exit $?
+                ;;
+            -s|--set)
+                if [[ -z "${2:-}" ]]; then
+                    print_error "Theme not specified. Use: $0 --set <theme>"
+                    exit 1
+                fi
+                # Validate theme exists
+                local valid_theme=false
+                for theme in "${AVAILABLE_THEMES[@]}"; do
+                    if [[ "$theme" == "$2" ]]; then
+                        valid_theme=true
+                        break
+                    fi
+                done
+                if [[ "$valid_theme" == false ]]; then
+                    print_error "Theme '$2' not found. Use --list to see available themes."
+                    exit 1
+                fi
+                # Quick apply without whiptail
+                if check_bashrc_exists && check_omb_theme_commented && check_omb_theme_spacing; then
+                    local current_theme
+                    current_theme=$(get_current_theme)
+                    local backup_file="${BASHRC_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+                    cp "$BASHRC_FILE" "$backup_file"
+                    if sed -i "s/^\([[:space:]]*$OMB_THEME_VAR=\"\?\)[^\"]*\(\"\?\)/\1$2\2/" "$BASHRC_FILE"; then
+                        print_success "Theme changed from '$current_theme' to '$2'"
+                        print_info "Backup saved at: $backup_file"
+                        print_warning "Run 'source ~/.bashrc' to apply changes"
+                    else
+                        print_error "Failed to change theme"
+                        exit 1
+                    fi
+                else
+                    print_error "Initial checks failed. Please fix the issues first."
+                    exit 1
+                fi
+                exit 0
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                echo "Use --help to see available options."
+                exit 1
+                ;;
+        esac
+    fi
+    
+    # Interactive mode (default)
+    echo -e "\n${BOLD}${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}${CYAN}║         OH-MY-BASH THEME MANAGER - INTERACTIVE MODE        ║${NC}"
+    echo -e "${BOLD}${CYAN}╚════════════════════════════════════════════════════════════╝${NC}\n"
+    
+    # Check whiptail installation
+    if ! check_whiptail_installed; then
+        exit 1
+    fi
+    
+    # Perform pre-checks with echo/printf (before whiptail)
+    print_info "Running initial checks..."
+    echo ""
+    
+    local checks_passed=true
+    
+    # Check 1: bashrc exists
+    print_info "[1/3] Checking .bashrc file..."
+    if ! check_bashrc_exists; then
+        checks_passed=false
+    else
+        print_success ".bashrc file found"
+    fi
+    
+    # Check 2: OMB_THEME not commented
+    print_info "[2/3] Checking if OMB_THEME is commented out..."
+    if ! check_omb_theme_commented; then
+        checks_passed=false
+    else
+        print_success "OMB_THEME is uncommented"
+    fi
+    
+    # Check 3: No spacing issues
+    print_info "[3/3] Checking OMB_THEME spacing..."
+    if ! check_omb_theme_spacing; then
+        checks_passed=false
+    else
+        print_success "OMB_THEME formatting is correct"
+    fi
+    
+    echo ""
+    
+    # If all checks passed, proceed with whiptail
+    if [[ "$checks_passed" == true ]]; then
+        print_success "All checks passed! Launching whiptail interface..."
+        # sleep 2
+        
+        # Now use whiptail for everything
+        # whiptail --title "Checks Completed" \
+        #     --msgbox "✓ All initial checks passed!\n\n• .bashrc file found\n• OMB_THEME is uncommented\n• Correct formatting\n\nLaunching theme selector..." \
+        #     12 60
+        
+        select_theme_with_whiptail
+    else
+        print_error "Initial checks failed."
+        print_warning "Fix the issues manually and run the script again."
+        
+        # Show summary in whiptail if available
+        if command -v whiptail &>/dev/null; then
+            whiptail --title "Check Errors" \
+                --msgbox "❌ Initial checks failed!\n\nPlease fix the issues indicated in the terminal and run the script again.\n\nUse --check option to only verify the configuration." \
+                12 60
+        fi
+        exit 1
+    fi
+}
+
+# Run main function
+main "$@"

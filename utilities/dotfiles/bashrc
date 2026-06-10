@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
 #################################
 ###### Xterm Transparency #######
-[[ "$XTERM_VERSION" ]] && command -v transset-df >/dev/null 2>&1 && transset-df -x 0.7 -m 0.7 --id "$WINDOWID" >/dev/null
+{ [[ -n "$XTERM_VERSION" ]] && command -v transset-df >/dev/null 2>&1 && transset-df -x 0.7 -m 0.7 --id "$WINDOWID"; } &>/dev/null
 # Using bash’s shopt builtin to manage Linux shell behavior
 # The shopt builtin offers 53 settings that can alter how bash behaves. 
 # Read this post and then refer to bash's man page to follow up on how these settings might work for you.
@@ -115,7 +118,7 @@ fi
 #"agnoster" #"pure" #"rr" #"mairan" #"rjorgenson" #"brainy" #"iterate" #"standard" #"demula" #"powerline-naked" #"powerline-multiline" #"90210" #"clean" #"dulcie" 
 #"brunton" #"binaryanomaly" #"random" #"font" #"powerline" #"duru" #"vscode" #"candy" #"hawaii50" #"emperor" #"tylenol" #"morris" #"pzq" #"zitron" #"kitsune"
 if [[ "$BLE_BASH_ENABLED" != 2 ]]; then 
-    OMB_THEME=tylenol
+    OMB_THEME=powerbash10k
 
     # shellcheck source=/dev/null
     OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$OMBC" && unset OMBC
@@ -170,9 +173,6 @@ if ! declare -f _filedir_xspec &>/dev/null; then
 fi
 
 # shellcheck source=/dev/null
-# if [[ "$BLE_BASH_ENABLED" == 0 ]] && [[ "$OMB_THEME" == "demula" ]]; then
-#     source ~/.shell_utils/scripts/bash-ghost-text2
-# elif
 if [[ "$BLE_BASH_ENABLED" == 0 ]]; then
     echo
     source ~/.shell_utils/scripts/bash-ghost-text
@@ -295,13 +295,15 @@ fix_bash_history() {
 }
 
 # Configure navigation keys
-bind '"\t":complete'
-#bind '"\t":menu-complete'            # TAB
-bind '"\e[Z":menu-complete-backward' # Shift + TAB
+bind '"\t":complete'                  # TAB
+# bind '"\t":menu-complete'           # TAB
+bind '"\e[Z":menu-complete-backward'  # Shift + TAB
 
 # jump to next/previous word in a commandline by pressing SHIFT+RIGHT and SHIFT+LEFT
-bind '"\e[1;2C":menu-complete'          # Shift + Right
-bind '"\e[1;2D":menu-complete-backward' # Shift + Left
+# bind '"\e[1;2C":menu-complete'          # Shift + Right
+bind '"\e[1;2A":menu-complete'            # Shift + Up
+# bind '"\e[1;2D":menu-complete-backward' # Shift + Left
+bind '"\e[1;2B":menu-complete-backward'   # Shift + Donw
 
 bind '"\e[1;5A":forward-word'   # Ctrl + Up
 bind '"\e[1;5B":backward-word'  # Ctrl + Down
@@ -599,4 +601,4 @@ if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
     echo
     # shellcheck source=/dev/null
     source ~/.shell_utils/scripts/ble-simple
-fi
+fi 

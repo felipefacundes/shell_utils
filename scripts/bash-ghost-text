@@ -2,10 +2,12 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+_ghost_path_cache_file="$HOME/.cache/ghost_path.cache"
+_ghost_state_file="$HOME/.cache/ghost_mode"
 _ghost_history_data=""
 _ghost_suggestion=""
+_ghost_path_cache=()
 _ghost_prompt_len=0
-_ghost_state_file="$HOME/.cache/ghost_mode"
 _ghost_mode="clean"
 _ghost_last_ps1=""
 
@@ -51,15 +53,83 @@ _ghost_refresh() {
     fi
 }
 
+ghost_path_cache() {
+    IFS=':' read -ra paths <<< "$PATH"
+    mapfile -t _ghost_path_cache < <(
+        find "${paths[@]}" -maxdepth 1 -type f -executable 2>/dev/null | 
+        sed 's|.*/||' | 
+        sort -u
+    )
+    
+    # Salva no arquivo de cache
+    mkdir -p "$(dirname "$_ghost_path_cache_file")" 2>/dev/null
+    [[ -f "$_ghost_path_cache_file" ]] && rm -f "$_ghost_path_cache_file"
+    printf '%s\n' "${_ghost_path_cache[@]}" > "$_ghost_path_cache_file"
+}
+
+_ghost_load_path_cache() {
+    # Verifica se precisa regenerar o cache
+    local regenerate=false
+    
+    if [[ ! -f "$_ghost_path_cache_file" ]]; then
+        regenerate=true
+    else
+        # Verifica se tem mais de 24 horas
+        local file_time; file_time=$(stat -c %Y "$_ghost_path_cache_file" 2>/dev/null || stat -f %m "$_ghost_path_cache_file" 2>/dev/null)
+        local now; now=$(date +%s)
+        local age=$(( now - file_time ))
+        
+        if [[ $age -gt 86400 ]]; then  # 86400 segundos = 24 horas
+            regenerate=true
+        fi
+    fi
+    
+    if $regenerate; then
+        ghost_path_cache
+    else
+        # Carrega do arquivo
+        mapfile -t _ghost_path_cache < "$_ghost_path_cache_file"
+    fi
+}
+
 _ghost_get_suggestion() {
     _ghost_suggestion=""
     [[ -z "$READLINE_LINE" ]] && return
+    
+    local prefix="$READLINE_LINE"
+    
+    # 1. PRIMEIRO: Histórico (mantido exatamente como está)
     while IFS= read -r line; do
-        if [[ "$line" == "$READLINE_LINE"* && "$line" != "$READLINE_LINE" ]]; then
-            _ghost_suggestion="${line#$READLINE_LINE}"
+        if [[ "$line" == "$prefix"* && "$line" != "$prefix" ]]; then
+            _ghost_suggestion="${line#$prefix}"
             return
         fi
     done <<< "$_ghost_history_data"
+    
+    # 2. SEGUNDO: Comandos do PATH
+    for cmd in "${_ghost_path_cache[@]}"; do
+        if [[ "$cmd" == "$prefix"* && "$cmd" != "$prefix" ]]; then
+            _ghost_suggestion="${cmd#$prefix}"
+            return
+        fi
+    done
+    
+    # 3. TERCEIRO: Diretórios locais
+    # Usa compgen para ser mais rápido que find
+    # local dirs; dirs=$(compgen -d -S '/' -- "$prefix" 2>/dev/null | head -1)
+    local dirs; dirs=$(find . -maxdepth 1 -type d -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
+    if [[ -n "$dirs" ]]; then
+        _ghost_suggestion="${dirs#$prefix}"
+        return
+    fi
+    
+    # 4. QUARTO: Arquivos locais
+    # local files; files=$(compgen -f -- "$prefix" 2>/dev/null | grep -v '/$' | head -1)
+    local files; files=$(find . -maxdepth 1 -type f -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
+    if [[ -n "$files" ]]; then
+        _ghost_suggestion="${files#$prefix}"
+        return
+    fi
 }
 
 _ghost_render_ghost() {
@@ -200,11 +270,6 @@ _ghost_backward_kill_word_ghost() {
     _ghost_render_ghost
 }
 
-_ghost_left_ghost() {
-    READLINE_POINT=$(( READLINE_POINT > 0 ? READLINE_POINT - 1 : 0 ))
-    _ghost_render_ghost
-}
-
 # Configura binds para modo ghost
 _ghost_setup_ghost_binds() {
     # Limpa binds anteriores
@@ -212,10 +277,13 @@ _ghost_setup_ghost_binds() {
         oct=$(printf '\\%03o' "$i")
         bind -r "$oct" 2>/dev/null
     done
+    bind -r '\e[1;2C' 2>/dev/null
+    bind -r '\e[1;2D' 2>/dev/null
     bind -r '\e[C' 2>/dev/null
-    bind -r '\e[D' 2>/dev/null
     bind -r '\ea' 2>/dev/null
+    bind -r '\e,' 2>/dev/null
     bind -r '\ed' 2>/dev/null
+    bind -r '\e.' 2>/dev/null
     bind -r '\ew' 2>/dev/null
     bind -r '\C-?' 2>/dev/null
     bind -r '\C-h' 2>/dev/null
@@ -239,9 +307,10 @@ _ghost_setup_ghost_binds() {
     
     # Teclas controle modo ghost
     bind -x '"\e[C": _ghost_accept_all'                   # Seta direita: completa ghost INTEIRO
+    bind -x '"\e[1;2C": _ghost_accept_word'               # Shift+Right: completa 1 PALAVRA
+    bind -x '"\e[1;2D": _ghost_backward_kill_word_ghost'  # Shift+Left: completa 1 PALAVRA
     bind -x '"\ew": _ghost_accept_word'                   # Alt+W: completa 1 PALAVRA
-    bind -x '"\ef": _ghost_accept_word2'                  # Alt+F: completa 1 PALAVRA
-    bind -x '"\e[D": _ghost_left_ghost'                   # Seta esquerda (com ghost render)
+    bind -x '"\ef": _ghost_accept_word2'                  # Alt+F: completa 1 FRASE
     bind -x '"\C-?": _ghost_backspace_ghost'              # Backspace
     bind -x '"\C-h": _ghost_backward_kill_word_ghost'     # Ctrl+Backspace: apaga 1 PALAVRA
     
@@ -311,7 +380,7 @@ _ghost_setup_clean_binds() {
     bind '"\C-l": clear-screen'
 }
 
-# Toggle Ctrl+F
+# Toggle Ctrl+G
 _ghost_toggle() {
     _ghost_update_prompt_len
     
@@ -341,6 +410,7 @@ _ghost_pre_accept_line() {
 # Inicialização
 _ghost_load_state
 _ghost_init_history
+_ghost_load_path_cache
 _ghost_update_prompt_len
 
 bind 'set show-mode-in-prompt off'
@@ -351,7 +421,8 @@ else
     _ghost_setup_clean_binds
 fi
 
-bind -x '"\C-f": _ghost_toggle'
+bind -r '\C-g'
+bind -x '"\C-g": _ghost_toggle'
 
 bind -x '"\C-x\C-m": _ghost_pre_accept_line'
 bind '"\C-m": "\C-x\C-m\C-j"'
