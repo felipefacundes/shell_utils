@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+
+SMARTFILE - Intelligent File Opening
+===================================
+
+OVERVIEW:
+smartfile is a smart file opener that intercepts command-not-found errors
+and tries to open files with xdg-open using fuzzy search.
+
+FEATURES:
+• Intercepts command-not-found and tries to open as file
+• Fuzzy search through file history and filesystem
+• Interactive selection with fzf + preview
+• Opens files with xdg-open
+• Maintains history database with size limit
+
+USAGE:
+  Just type any filename as a command - smartfile will intercept it
+  Or use explicitly: smartfile [FILE]
+  Alt+f - Interactive mode
+
+EXAMPLES:
+  documento.pdf      # Opens with xdg-open (if file exists or fuzzy match)
+  relatorio         # Fuzzy finds and opens relatorio_final.pdf
+  smartfile --       # Interactive mode
+
+DOCUMENTATION
+
+# Smartfile configuration
+export SMARTFILE_LOG=~/.smartfile.log
+export SMARTFILE_HIST_SIZE=${SMARTFILE_HIST_SIZE:-"100"}
+export SMARTFILE_HIST_IGNORE=${SMARTFILE_HIST_IGNORE:-".git|*.tmp|*.log|*.swp"}
+export SMARTFILE_CONFIG_FOLDER=${SMARTFILE_CONFIG_FOLDER:-"$HOME/.shell_utils_configs/smartfile"}
+export SMARTFILE_CONFIG="$SMARTFILE_CONFIG_FOLDER/smartfile.conf"
+export SMARTFILE_HIST_FILE=${SMARTFILE_HIST_FILE:-"file_history.db"}
+
+[[ ! -d "$SMARTFILE_CONFIG_FOLDER" ]] && mkdir -p "$SMARTFILE_CONFIG_FOLDER" >/dev/null 2>&1
+
+if [[ ! -f "$SMARTFILE_CONFIG" ]]; then
+cat <<'EOF' | tee "$SMARTFILE_CONFIG" &>/dev/null
+# 0 = disable smartfile, 1 = enable smartfile without fuzzy search, 2 = enable with fuzzy search
+export SMARTFILE=2
+EOF
+fi
+
+# shellcheck source=/dev/null
+[[ -f "$SMARTFILE_CONFIG" ]] && source "$SMARTFILE_CONFIG"
+
+# Check dependencies
+if ! command -v fzf &> /dev/null; then
+    echo "Can't use smartfile : missing fzf" | tee "$SMARTFILE_LOG" >/dev/null
+    return 2>/dev/null
+fi
+
+# Smartfile functions
+function __smartfile_open() {
+    local lookUpPath="${1}"
+    local selectedEntry=""
+
+    [[ ! -f "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" ]] && __smartfile_database_reset
+
+    # Remove surrounding quotes if present
+    lookUpPath=$(echo "$lookUpPath" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+
+    # If it's a valid file, open it directly
+    if [[ -f "${lookUpPath}" ]] && [[ -r "${lookUpPath}" ]]; then
+        __smartfile_open_path "${lookUpPath}"
+        return $?
+    fi
+
+    # Fuzzy search mode
+    if [[ "${lookUpPath}" = "--" ]]; then
+        selectedEntry=$(__smartfile_database_search 2>/dev/null | __smartfile_choose_file)
+    else
+        local combined_results
+        
+        local db_results
+        db_results=$(__smartfile_database_search "${lookUpPath}" 2>/dev/null)
+        
+        local fs_results
+        fs_results=$(__smartfile_filesystem_search "${lookUpPath}" 2>/dev/null)
+        
+        combined_results=$(printf "%s\n%s" "$db_results" "$fs_results" | awk '!seen[$0]++ && $0 != ""')
+        
+        if [[ -n "$combined_results" ]]; then
+            local line_count; line_count=$(echo "$combined_results" | wc -l)
+            local fzfSelect1=""
+            [[ $line_count -eq 1 ]] && fzfSelect1="--select-1"
+            
+            selectedEntry=$(echo "$combined_results" | __smartfile_choose_file "$fzfSelect1")
+        else
+            echo "smartfile: no file found matching '${lookUpPath}'" >&2
+            return 1
+        fi
+    fi
+    
+    if [[ -n "${selectedEntry}" ]]; then
+        __smartfile_open_path "${selectedEntry}"
+    fi
+}
+
+function __smartfile_choose_file() {
+    local fzfSelect1="${1}"
+    local fzfPreview=""
+    local cmdPreview; cmdPreview=$(command -v bat batcat cat 2>/dev/null | awk 'NR==1 {print}')
+    
+    local errMessage="no such file [ {} ]'\n\n'hint: run '\033[1m'smartfile --cleanup'\033[22m'"
+    
+    case "${cmdPreview}" in
+        */bat|*/batcat)
+            fzfPreview='[ -f {} ] && '${cmdPreview}' --color=always --line-range :50 {} || echo '"${errMessage}"''
+            ;;
+        *)
+            fzfPreview='[ -f {} ] && echo "=== File: {} ===" ; '${cmdPreview}' {} || echo '"${errMessage}"''
+            ;;
+    esac
+    
+    if [[ -n "$TERMUX_VERSION" ]]; then
+        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" 2>/dev/tty
+    else
+        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
+            --preview="${fzfPreview}" 2>/dev/tty
+    fi
+}
+
+function __smartfile_open_path() {
+    local file="${1}"
+
+    if [[ -f "${file}" ]] && [[ -r "${file}" ]]; then
+        { xdg-open "${file}" 2>/dev/null & disown; } &>/dev/null
+        if [[ $? -eq 0 ]]; then
+            __smartfile_database_save_path "${file}"
+            return 0
+        else
+            __smartfile_database_delete_path "${file}"
+            return 1
+        fi
+    else
+        echo "smartfile: file '${file}' does not exist or is not readable" >&2
+        __smartfile_database_delete_path "${file}"
+        return 1
+    fi
+}
+
+function __smartfile_filesystem_search() {
+    local searchPath; searchPath=$(dirname -- "${1}" 2>/dev/null || echo ".")
+    local searchString; searchString=$(basename -- "${1}")
+    local cmdFinder; cmdFinder=$(command -v fdfind fd find 2>/dev/null | awk 'NR==1 {print}')
+
+    [[ -z "${searchPath}" || "${searchPath}" = "." ]] && searchPath="."
+    
+    # Don't search if searchString is empty or just dots
+    if [[ -z "${searchString}" || "${searchString}" =~ ^\.+$ ]]; then
+        return 0
+    fi
+    
+    case "${cmdFinder}" in
+        */fd*)
+            "${cmdFinder}" --hidden --no-ignore-vcs "${searchString}" --color=never --follow --min-depth=0 --max-depth=3 --type=file --exclude ".git/" "${searchPath}" --exec realpath --no-symlinks 2>/dev/null
+            ;;
+        *)
+            find "${searchPath}" -follow -mindepth 0 -maxdepth 3 -type f ! -path '*\.git/*' -iname '*'"${searchString}"'*' -exec realpath --no-symlinks {} + 2>/dev/null
+            ;;
+    esac
+}
+
+function __smartfile_database_search() {
+    local searchString="${1}"
+    
+    # If search string is empty, return all history
+    if [[ -z "${searchString}" ]]; then
+        cat "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
+        return 0
+    fi
+    
+    # Escape special regex characters, but handle empty patterns gracefully
+    local escaped_string
+    escaped_string=$(echo "${searchString}" | sed -e 's/\./\\./g' -e 's/\//\\//g')
+    
+    # Only create pattern if escaped_string is not empty
+    if [[ -n "${escaped_string}" ]]; then
+        grep -i "${escaped_string}" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
+    else
+        cat "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
+    fi
+}
+
+function __smartfile_database_save_path() {
+    local file="${1}"
+    local iCounter=0
+    local ignoreItem=""
+    local ignoreItemFound=""
+
+    [[ ! -f "${file}" ]] && return
+
+    # Check ignore list
+    while true; do
+        ((iCounter++))
+        ignoreItem=$(echo "${SMARTFILE_HIST_IGNORE}|" | cut -d'|' -f${iCounter})
+        [[ -z "${ignoreItem}" ]] && break
+
+        ignoreItemFound=$(echo "${file}" | grep -E "${ignoreItem}" 2>/dev/null)
+        if [[ -n "${ignoreItemFound}" ]]; then
+            __smartfile_database_delete_path "${file}"
+            return
+        fi
+    done
+
+    __smartfile_database_delete_path "${file}"
+    sed -i "1 s:^:${file}\n:" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+    sed -i $((SMARTFILE_HIST_SIZE + 1))',$ d' "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+}
+
+function __smartfile_database_delete_path() {
+    local file="${1}"
+    sed -i "\:^${file}$:d" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
+}
+
+function __smartfile_database_cleanup() {
+    local fTmp; fTmp=$(mktemp 2>/dev/null)
+    local line=""
+    local iCounter=0
+    local bIgnore="false"
+    local ignoreItem=""
+    local ignoreItemFound=""
+
+    [[ ! -f "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" ]] && __smartfile_database_reset
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        if [[ -f "${line}" ]]; then
+            iCounter=0
+            bIgnore="false"
+
+            while true; do
+                ((iCounter++))
+                ignoreItem=$(echo "${SMARTFILE_HIST_IGNORE}|" | cut -d'|' -f${iCounter})
+                [[ -z "${ignoreItem}" ]] && break
+
+                ignoreItemFound=$(echo "${line}" | grep -E "${ignoreItem}" 2>/dev/null)
+                if [[ -n "${ignoreItemFound}" ]]; then
+                    bIgnore="true"
+                    break
+                fi
+            done
+
+            [[ "${bIgnore}" = "false" ]] && echo "${line}" >> "${fTmp}"
+        fi
+    done < "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+
+    awk '!seen[$0]++' "${fTmp}" > "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+    sed -i '/^[[:blank:]]*$/ d' "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+    [[ $(wc -l < "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}") -eq 0 ]] && __smartfile_database_reset
+    rm -f "${fTmp}"
+}
+
+function __smartfile_database_reset() {
+    mkdir -p "${SMARTFILE_CONFIG_FOLDER}" >/dev/null 2>&1
+    echo "" > "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+}
+
+# Main smartfile function
+function smartfile() {
+    case "$1" in
+        --help|-h)
+            echo "Usage: smartfile [FILE]"
+            echo "       smartfile --     (interactive mode)"
+            echo "       smartfile --cleanup (cleanup database)"
+            echo "       smartfile --reset (reset database)"
+            ;;
+        --cleanup)
+            __smartfile_database_cleanup
+            ;;
+        --reset)
+            __smartfile_database_reset
+            ;;
+        --)
+            __smartfile_open "--"
+            ;;
+        *)
+            __smartfile_open "$*"
+            ;;
+    esac
+}
+
+# Command not found hook for bash
+if [[ -n "$BASH_VERSION" ]]; then
+    command_not_found_handle() {
+        smartfile "$*"
+        return $?
+    }
+    
+    # Key binding for Alt+f
+    bind -r '\ef' 2>/dev/null || true
+    bind '"\ef":"smartfile --\n"' 2>/dev/null || true
+fi
+
+# Command not found hook for zsh
+if [[ -n "$ZSH_VERSION" ]]; then
+    command_not_found_handler() {
+        smartfile "$*"
+        return $?
+    }
+    
+    # Key binding for Alt+f
+    bindkey -s '^[f' 'smartfile --\n' 2>/dev/null || true
+fi
+
+# Bash completion
+if [[ -n "$BASH_VERSION" ]]; then
+    _smartfile_completion() {
+        local cur="${COMP_WORDS[COMP_CWORD]}"
+        COMPREPLY=( $(compgen -f -- "$cur") )
+    }
+    complete -o filenames -o nospace -F _smartfile_completion smartfile 2>/dev/null || true
+fi
+
+# Zsh completion
+if [[ -n "$ZSH_VERSION" ]]; then
+    compdef _files smartfile 2>/dev/null || true
+fi

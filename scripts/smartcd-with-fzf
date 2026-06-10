@@ -35,7 +35,7 @@ EXAMPLES:
   smartcd dow         # Fuzzy search "dow" in history/filesystem
   smartcd /usr/sha    # Complete to /usr/share
   smartcd --          # Choose from all visited directories
-  Ctrl+g              # Interactive mode (bash/zsh binding)
+  Ctrl+f              # Interactive mode (bash/zsh binding)
 
 CONFIGURATION:
   SMARTCD_HIST_SIZE=100          # History entries to keep
@@ -356,7 +356,7 @@ function __smartcd::autoexecRun() {
 	fi
 }
 
-# Key binding for Ctrl+g
+# Key binding for Ctrl+f
 [[ -n "$BASH_VERSION" ]] && bind -r '\C-f'
 [[ -n "$BASH_VERSION" ]] && bind '"\C-f":"smartcd --\n"'
 [[ -n "$ZSH_VERSION" ]] && bindkey -s '^f' 'smartcd --\n'

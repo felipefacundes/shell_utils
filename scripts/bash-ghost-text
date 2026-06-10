@@ -114,7 +114,18 @@ _ghost_get_suggestion() {
         fi
     done
     
-    # 3. TERCEIRO: Diretórios locais
+    # 3. TERCEIRO: Variáveis de ambiente (case-sensitive, sem cache)
+    if [[ "$prefix" == '$'* ]]; then
+        local var_prefix="${prefix#$}"  # Remove o $
+        while IFS= read -r var_name; do
+            if [[ "$var_name" == "$var_prefix"* && "$var_name" != "$var_prefix" ]]; then
+                _ghost_suggestion="${var_name#$var_prefix}"
+                return
+            fi
+        done < <(compgen -v | sort)
+    fi
+
+    # 4. TERCEIRO: Diretórios locais
     # Usa compgen para ser mais rápido que find
     # local dirs; dirs=$(compgen -d -S '/' -- "$prefix" 2>/dev/null | head -1)
     local dirs; dirs=$(find . -maxdepth 1 -type d -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
@@ -123,7 +134,7 @@ _ghost_get_suggestion() {
         return
     fi
     
-    # 4. QUARTO: Arquivos locais
+    # 5. QUARTO: Arquivos locais
     # local files; files=$(compgen -f -- "$prefix" 2>/dev/null | grep -v '/$' | head -1)
     local files; files=$(find . -maxdepth 1 -type f -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
     if [[ -n "$files" ]]; then
@@ -170,7 +181,7 @@ _ghost_is_delimiter() {
     [[ "$1" =~ [\ =/\;.,|\\:_-] ]]
 }
 
-# Alt+F: completa UMA PALAVRA do ghost
+# Alt+X: completa UMA FRASE do ghost
 _ghost_accept_word2() {
     if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
         # Navegação por palavra no texto existente
@@ -309,8 +320,8 @@ _ghost_setup_ghost_binds() {
     bind -x '"\e[C": _ghost_accept_all'                   # Seta direita: completa ghost INTEIRO
     bind -x '"\e[1;2C": _ghost_accept_word'               # Shift+Right: completa 1 PALAVRA
     bind -x '"\e[1;2D": _ghost_backward_kill_word_ghost'  # Shift+Left: completa 1 PALAVRA
-    bind -x '"\ew": _ghost_accept_word'                   # Alt+W: completa 1 PALAVRA
-    bind -x '"\ef": _ghost_accept_word2'                  # Alt+F: completa 1 FRASE
+    bind -x '"\ew": _ghost_accept_word'                   # Alt+W: completa 1 PALAVRA | Ctrl+F é destinado ao smartcd
+    bind -x '"\ex": _ghost_accept_word2'                  # Alt+X: completa 1 FRASE | Alt+F é destinado ao smartfile
     bind -x '"\C-?": _ghost_backspace_ghost'              # Backspace
     bind -x '"\C-h": _ghost_backward_kill_word_ghost'     # Ctrl+Backspace: apaga 1 PALAVRA
     
