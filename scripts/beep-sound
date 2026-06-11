@@ -12,6 +12,7 @@ making it both user-friendly and maintainable.
 DOCUMENTATION
 
 # Associative array for bilingual support
+BEEP_VOLUME=${BEEP_VOLUME:-76767}
 declare -A MESSAGES
 
 if [[ "${LANG,,}" =~ pt_ ]]; then
@@ -58,7 +59,7 @@ play_ogg_sound_with_paplay() {
         return 1
     fi
 
-    paplay "$beep" --volume=76767
+    paplay "$beep" --volume="$BEEP_VOLUME"
 }
 
 # Function: Plays the default sound

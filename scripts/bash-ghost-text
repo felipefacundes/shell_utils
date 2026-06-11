@@ -28,6 +28,13 @@ _ghost_notify() {
     -h string:bgcolor:#45475a \
     -h string:fgcolor:#f38ba8 \
     "$a" "$b" >/dev/null 2>&1
+    if type beep_sound >/dev/null 2>&1; then
+        export BEEP_VOLUME=40000; beep_sound
+    elif type beep >/dev/null 2>&1; then
+        beep -f 440 -l 200
+    else
+        echo -e "\a"
+    fi
 }
 
 # Validate if the first word (command) exists as a builtin, function, alias, PATH command, or local file
