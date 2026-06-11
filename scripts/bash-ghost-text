@@ -2,16 +2,110 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-_ghost_path_cache_file="$HOME/.cache/ghost_path.cache"
+_ghost_space_mode_file="$HOME/.cache/ghost_space_mode"
+_ghost_cmd_cache_file="$HOME/.cache/ghost_path.cache"
 _ghost_state_file="$HOME/.cache/ghost_mode"
+_ghost_lock_first_level=true
+_ghost_space_mode="native"  # "native" or "unlock"
+_ghost_regenerate=false
 _ghost_history_data=""
 _ghost_suggestion=""
-_ghost_path_cache=()
+_ghost_cmd_cache=()
 _ghost_prompt_len=0
 _ghost_mode="clean"
 _ghost_last_ps1=""
-_ghost_regenerate=false
-_ghost_lock_first_level=true
+
+_ghost_notify() {
+    local icon="xterm-color_48x48"
+    local a="$1"
+    local b="$2"
+    command -v notify-send >/dev/null && \
+    notify-send \
+    --app-name "Bash-Ghost-Text" \
+    --icon "$icon" \
+    --expire-time 1400 \
+    --urgency low \
+    -h string:bgcolor:#45475a \
+    -h string:fgcolor:#f38ba8 \
+    "$a" "$b" >/dev/null 2>&1
+}
+
+# Validate if the first word (command) exists as a builtin, function, alias, PATH command, or local file
+# Returns 0 if valid, 1 if invalid
+_ghost_validate_command() {
+    local cmd_line="$1"
+    
+    # Extract the first word (command) - handle quoted strings
+    local first_word
+    first_word="${cmd_line%% *}"
+    
+    # Remove surrounding quotes if present
+    first_word="${first_word#\"}"
+    first_word="${first_word%\"}"
+    first_word="${first_word#\'}"
+    first_word="${first_word%\'}"
+    
+    # Skip validation if empty or starts with variable assignment
+    [[ -z "$first_word" ]] && return 0
+    [[ "$first_word" == *"="* ]] && return 0
+    
+    # 1. Check bash builtins
+    if compgen -b "$first_word" 2>/dev/null | grep -qx "$first_word"; then
+        return 0
+    fi
+    
+    # 2. Check bash functions
+    if declare -F "$first_word" >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # 3. Check aliases
+    if alias "$first_word" >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # 4. Check PATH commands (cached)
+    for cmd in "${_ghost_cmd_cache[@]}"; do
+        if [[ "$cmd" == "$first_word" ]]; then
+            return 0
+        fi
+    done
+    
+    # 5. Check if it's an executable file (absolute or relative path)
+    if [[ "$first_word" == *"/"* ]]; then
+        if command -v "$first_word" >/dev/null 2>&1 || test -e "$first_word" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    
+    # 6. Check if it's a local executable in current directory
+    if test -e "$first_word" 2>/dev/null && test -x "$first_word" 2>/dev/null; then
+        return 0
+    fi
+    
+    # 7. Check if it's a keyword/special builtin
+    case "$first_word" in
+        if|then|else|elif|fi|case|esac|for|while|until|do|done|in|function|select|time|coproc|declare|typeset|local|export|readonly|unset) return 0 ;;
+    esac
+    
+    # Invalid command
+    return 1
+}
+
+# Notify if the accepted line contains an invalid command
+_ghost_validate_and_notify() {
+    local full_line="$1"
+    
+    # Only validate if there's something to validate
+    [[ -z "$full_line" ]] && return
+    
+    if ! _ghost_validate_command "$full_line"; then
+        local first_word="${full_line%% *}"
+        first_word="${first_word#\"}"; first_word="${first_word%\"}"
+        first_word="${first_word#\'}"; first_word="${first_word%\'}"
+        _ghost_notify "Invalid command:" "$first_word"
+    fi
+}
 
 _ghost_load_state() {
     if [[ -f "$_ghost_state_file" ]]; then
@@ -19,11 +113,23 @@ _ghost_load_state() {
     else
         _ghost_mode="clean"
     fi
+    
+    # Load space mode
+    if [[ -f "$_ghost_space_mode_file" ]]; then
+        _ghost_space_mode=$(cat "$_ghost_space_mode_file" 2>/dev/null || echo "native")
+    else
+        _ghost_space_mode="native"
+    fi
 }
 
 _ghost_save_state() {
     mkdir -p "$(dirname "$_ghost_state_file")" 2>/dev/null
     echo "$_ghost_mode" | tee "$_ghost_state_file" > /dev/null
+}
+
+_ghost_save_space_mode() {
+    mkdir -p "$(dirname "$_ghost_space_mode_file")" 2>/dev/null
+    echo "$_ghost_space_mode" | tee "$_ghost_space_mode_file" > /dev/null
 }
 
 _ghost_init_history() {
@@ -55,29 +161,29 @@ _ghost_refresh() {
     fi
 }
 
-ghost_path_cache() {
+ghost_cmd_cache() {
     IFS=':' read -ra paths <<< "$PATH"
-    mapfile -t _ghost_path_cache < <(
+    mapfile -t _ghost_cmd_cache < <(
         find "${paths[@]}" -maxdepth 1 -type f -executable 2>/dev/null | 
         sed 's|.*/||' | 
         sort -u
     )
     
     # Save to cache file
-    mkdir -p "$(dirname "$_ghost_path_cache_file")" 2>/dev/null
-    [[ -f "$_ghost_path_cache_file" ]] && rm -f "$_ghost_path_cache_file"
-    printf '%s\n' "${_ghost_path_cache[@]}" > "$_ghost_path_cache_file"
+    mkdir -p "$(dirname "$_ghost_cmd_cache_file")" 2>/dev/null
+    [[ -f "$_ghost_cmd_cache_file" ]] && rm -f "$_ghost_cmd_cache_file"
+    printf '%s\n' "${_ghost_cmd_cache[@]}" > "$_ghost_cmd_cache_file"
 }
 
 _ghost_load_path_cache() {
     # Check if cache needs to be regenerated
     _ghost_regenerate=false
     
-    if [[ ! -f "$_ghost_path_cache_file" ]]; then
+    if [[ ! -f "$_ghost_cmd_cache_file" ]]; then
         _ghost_regenerate=true
     else
         # Check if older than 24 hours
-        local file_time; file_time=$(stat -c %Y "$_ghost_path_cache_file" 2>/dev/null || stat -f %m "$_ghost_path_cache_file" 2>/dev/null)
+        local file_time; file_time=$(stat -c %Y "$_ghost_cmd_cache_file" 2>/dev/null || stat -f %m "$_ghost_cmd_cache_file" 2>/dev/null)
         local now; now=$(date +%s)
         local age=$(( now - file_time ))
         
@@ -87,10 +193,10 @@ _ghost_load_path_cache() {
     fi
     
     if $_ghost_regenerate; then
-        ghost_path_cache
+        ghost_cmd_cache
     else
         # Load from file
-        mapfile -t _ghost_path_cache < "$_ghost_path_cache_file"
+        mapfile -t _ghost_cmd_cache < "$_ghost_cmd_cache_file"
     fi
 }
 
@@ -343,7 +449,7 @@ _ghost_get_suggestion() {
     done <<< "$_ghost_history_data"
     
     # 2. PATH commands
-    for cmd in "${_ghost_path_cache[@]}"; do
+    for cmd in "${_ghost_cmd_cache[@]}"; do
         if [[ "$cmd" == "$search_prefix"* && "$cmd" != "$search_prefix" ]]; then
             _ghost_suggestion="${cmd#$search_prefix}"
             return
@@ -406,13 +512,30 @@ _ghost_self_insert() {
     _ghost_render_ghost
 }
 
-# Space key - unlocks first level, allowing second level predictions
+# Space key - validates command, inserts space, and optionally unlocks second level
 _ghost_space_insert() {
-    _ghost_lock_first_level=false
+    # Validate the command before inserting space
+    _ghost_validate_and_notify "$READLINE_LINE"
+    
+    # Unlock first level only if space mode is "unlock"
+    [[ "$_ghost_space_mode" == "unlock" ]] && _ghost_lock_first_level=false
+    
     READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT} ${READLINE_LINE:$READLINE_POINT}"
     READLINE_POINT=$(( READLINE_POINT + 1 ))
     _ghost_suggestion=""
     _ghost_render_ghost
+}
+
+# Toggle space bar behavior between native and unlock (Alt+\)
+_ghost_toggle_space_mode() {
+    if [[ "$_ghost_space_mode" == "native" ]]; then
+        _ghost_space_mode="unlock"
+        _ghost_notify "Space:" "unlock"
+    else
+        _ghost_space_mode="native"
+        _ghost_notify "Space:" "native"
+    fi
+    _ghost_save_space_mode
 }
 
 # Right arrow: accepts entire ghost suggestion
@@ -424,6 +547,8 @@ _ghost_accept_all() {
         READLINE_POINT=${#READLINE_LINE}
         _ghost_suggestion=""
         _ghost_lock_first_level=true
+        # Validate the full line after accepting
+        _ghost_validate_and_notify "$READLINE_LINE"
     fi
     _ghost_render_ghost
 }
@@ -452,6 +577,10 @@ _ghost_accept_word2() {
         READLINE_POINT=${#READLINE_LINE}
         _ghost_suggestion="${_ghost_suggestion#"$word"}"
         _ghost_lock_first_level=true
+        # Validate if this completes the first command word
+        if [[ "$READLINE_LINE" != *' '* ]]; then
+            _ghost_validate_and_notify "$READLINE_LINE"
+        fi
     fi
     _ghost_render_ghost
 }
@@ -499,6 +628,10 @@ _ghost_accept_word() {
         READLINE_POINT=${#READLINE_LINE}
         _ghost_suggestion="${_ghost_suggestion#"$word"}"
         _ghost_lock_first_level=true
+        # Validate if this completes the first command word
+        if [[ "$READLINE_LINE" != *' '* ]]; then
+            _ghost_validate_and_notify "$READLINE_LINE"
+        fi
     fi
     _ghost_render_ghost
 }
@@ -578,15 +711,17 @@ _ghost_setup_ghost_binds() {
     bind -r '\C-a' 2>/dev/null
     bind -r '\C-e' 2>/dev/null
     bind -r '\C-l' 2>/dev/null
-    bind -r '\e ' 2>/dev/null  # Alt+Space
+    bind -r '\e ' 2>/dev/null   # Alt+Space
+    bind -r '\e\' 2>/dev/null   # Alt+Backslash
     
-    # Printable characters with bind -x (INCLUDING space - 32)
+    # Printable characters with bind -x (space always uses _ghost_space_insert)
     for i in {32..126}; do
         oct=$(printf '\\%03o' "$i")
         if [[ $i -eq 32 ]]; then
-            # Space bar - native self-insert
-            bind "\" \": self-insert"
+            # Space bar - always uses _ghost_space_insert (validates + optionally unlocks)
+            bind -x '" ": _ghost_space_insert'
         elif [[ $i -eq 92 ]]; then
+            # Backslash needs special handling
             bind -x "\"$oct\": _ghost_char='\\\\'; _ghost_self_insert"
         elif [[ $i -eq 39 ]]; then
             bind -x "\"$oct\": _ghost_char=\"'\"; _ghost_self_insert"
@@ -596,8 +731,11 @@ _ghost_setup_ghost_binds() {
         fi
     done
     
-    # Alt+Space - unlocks second level
+    # Alt+Space - always unlocks second level + inserts space
     bind -x '"\e ": _ghost_space_insert'
+    
+    # Alt+\ - toggle space bar behavior
+    bind -x '"\e\\": _ghost_toggle_space_mode'
     
     # Ghost mode control keys
     bind -x '"\e[3;5~": _ghost_kill_word_ghost'           # Ctrl+Delete: forward kill word
@@ -640,6 +778,9 @@ _ghost_setup_clean_binds() {
     bind -r '\C-e' 2>/dev/null
     bind -r '\C-l' 2>/dev/null
     
+    # Clear any bind -x for space
+    bind -r '" "' 2>/dev/null
+    
     for i in {33..126}; do
         if [[ $i -eq 92 ]]; then
             bind '"\\\\": self-insert'
@@ -674,12 +815,14 @@ _ghost_toggle() {
     
     if [[ "$_ghost_mode" == "clean" ]]; then
         _ghost_mode="ghost"
+        _ghost_notify "Ghost Mode:" "enabled"
         _ghost_save_state
         _ghost_setup_ghost_binds
         printf '\e[?2026h' >/dev/tty
         _ghost_render_ghost
     else
         _ghost_mode="clean"
+        _ghost_notify "Ghost Mode:" "disabled"
         _ghost_save_state
         _ghost_suggestion=""
         printf '\e[?2026l' >/dev/tty
@@ -688,6 +831,9 @@ _ghost_toggle() {
 }
 
 _ghost_pre_accept_line() {
+    # Validate command before execution
+    _ghost_validate_and_notify "$READLINE_LINE"
+    
     printf '\e[K' >/dev/tty
     _ghost_suggestion=""
     _ghost_lock_first_level=true
