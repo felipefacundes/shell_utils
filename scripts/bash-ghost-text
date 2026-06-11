@@ -10,6 +10,8 @@ _ghost_path_cache=()
 _ghost_prompt_len=0
 _ghost_mode="clean"
 _ghost_last_ps1=""
+_ghost_regenerate=false
+_ghost_lock_first_level=true
 
 _ghost_load_state() {
     if [[ -f "$_ghost_state_file" ]]; then
@@ -69,10 +71,10 @@ ghost_path_cache() {
 
 _ghost_load_path_cache() {
     # Check if cache needs to be regenerated
-    local regenerate=false
+    _ghost_regenerate=false
     
     if [[ ! -f "$_ghost_path_cache_file" ]]; then
-        regenerate=true
+        _ghost_regenerate=true
     else
         # Check if older than 24 hours
         local file_time; file_time=$(stat -c %Y "$_ghost_path_cache_file" 2>/dev/null || stat -f %m "$_ghost_path_cache_file" 2>/dev/null)
@@ -80,11 +82,11 @@ _ghost_load_path_cache() {
         local age=$(( now - file_time ))
         
         if [[ $age -gt 86400 ]]; then  # 86400 seconds = 24 hours
-            regenerate=true
+            _ghost_regenerate=true
         fi
     fi
     
-    if $regenerate; then
+    if $_ghost_regenerate; then
         ghost_path_cache
     else
         # Load from file
@@ -92,31 +94,205 @@ _ghost_load_path_cache() {
     fi
 }
 
-# Second level suggestion for any argument position (after space)
+# Check if the command line has a real space outside quotes (argument position)
+_ghost_is_argument_position() {
+    local line="$1"
+    local in_single_quote=false
+    local in_double_quote=false
+    local escaped=false
+    local found_real_space=false
+    
+    for (( i=0; i<${#line}; i++ )); do
+        local char="${line:$i:1}"
+        
+        if $escaped; then
+            escaped=false
+            continue
+        fi
+        
+        if [[ "$char" == '\' ]]; then
+            escaped=true
+            continue
+        fi
+        
+        if [[ "$char" == '"' && $in_single_quote == false ]]; then
+            if $in_double_quote; then
+                in_double_quote=false
+            else
+                in_double_quote=true
+            fi
+            continue
+        fi
+        
+        if [[ "$char" == "'" && $in_double_quote == false ]]; then
+            if $in_single_quote; then
+                in_single_quote=false
+            else
+                in_single_quote=true
+            fi
+            continue
+        fi
+        
+        # Only count space if NOT inside quotes
+        if [[ "$char" == ' ' ]]; then
+            if [[ $in_single_quote == false && $in_double_quote == false ]]; then
+                found_real_space=true
+            fi
+        fi
+    done
+    
+    # Return true only if found a real space AND not currently inside quotes
+    if [[ $found_real_space == true && $in_single_quote == false && $in_double_quote == false ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Extract the last argument after the last real space (respecting quotes and escapes)
+_ghost_get_last_arg() {
+    local line="$1"
+    local in_single_quote=false
+    local in_double_quote=false
+    local escaped=false
+    local last_space=-1
+    
+    for (( i=0; i<${#line}; i++ )); do
+        local char="${line:$i:1}"
+        
+        if $escaped; then
+            escaped=false
+            continue
+        fi
+        
+        if [[ "$char" == '\' ]]; then
+            escaped=true
+            continue
+        fi
+        
+        if [[ "$char" == '"' && $in_single_quote == false ]]; then
+            if $in_double_quote; then
+                in_double_quote=false
+            else
+                in_double_quote=true
+            fi
+            continue
+        fi
+        
+        if [[ "$char" == "'" && $in_double_quote == false ]]; then
+            if $in_single_quote; then
+                in_single_quote=false
+            else
+                in_single_quote=true
+            fi
+            continue
+        fi
+        
+        # Track the last real space position
+        if [[ "$char" == ' ' ]]; then
+            if [[ $in_single_quote == false && $in_double_quote == false ]]; then
+                last_space=$i
+            fi
+        fi
+    done
+    
+    if [[ $last_space -ge 0 ]]; then
+        echo "${line:$((last_space + 1))}"
+    else
+        echo "$line"
+    fi
+}
+
+# Extract the content inside quotes from a line
+_ghost_extract_quoted_content() {
+    local line="$1"
+    local result=""
+    local in_quote=false
+    local quote_char=""
+    local content=""
+    
+    for (( i=0; i<${#line}; i++ )); do
+        local char="${line:$i:1}"
+        
+        if ! $in_quote; then
+            if [[ "$char" == '"' || "$char" == "'" ]]; then
+                in_quote=true
+                quote_char="$char"
+                content=""
+            fi
+        else
+            if [[ "$char" == "$quote_char" ]]; then
+                in_quote=false
+                quote_char=""
+                result="$content"
+            else
+                content+="$char"
+            fi
+        fi
+    done
+    
+    # If still in quote, return the partial content
+    if $in_quote; then
+        echo "$content"
+    else
+        echo "$result"
+    fi
+}
+
+# Second level suggestion for argument positions (after space)
 # Only predicts local files/directories/symlinks, built-ins and variables
 _ghost_get_suggestion_second_level_inline() {
     local arg_prefix="$1"
     _ghost_suggestion=""
-    [[ -z "$arg_prefix" ]] && return
     
-    # 1. FIRST: Local files, directories and symlinks (generic search)
-    local generic; generic=$(find . -maxdepth 1 -name "${arg_prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
+    # Show first available file when prefix is empty
+    if [[ -z "$arg_prefix" ]]; then
+        local generic; generic=$(find . -maxdepth 1 ! -name '.*' 2>/dev/null | head -1 | sed 's|^\./||')
+        if [[ -n "$generic" ]]; then
+            _ghost_suggestion="$generic"
+            return
+        fi
+        return
+    fi
+    
+    # Handle quoted arguments - remove opening quote for matching
+    local search_prefix="$arg_prefix"
+    local quote_char=""
+    
+    if [[ "$arg_prefix" == '"'* ]]; then
+        quote_char='"'
+        search_prefix="${arg_prefix#\"}"
+    elif [[ "$arg_prefix" == "'"* ]]; then
+        quote_char="'"
+        search_prefix="${arg_prefix#\'}"
+    fi
+    
+    # 1. Local files, directories and symlinks
+    local generic; generic=$(find . -maxdepth 1 -name "${search_prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
     if [[ -n "$generic" ]]; then
-        _ghost_suggestion="${generic#$arg_prefix}"
+        if [[ -n "$quote_char" ]]; then
+            _ghost_suggestion="${generic#$search_prefix}"
+        else
+            _ghost_suggestion="${generic#$arg_prefix}"
+        fi
         return
     fi
 
-    # 2. SECOND: Bash builtins
+    # 2. Bash builtins
     while IFS= read -r builtin_cmd; do
-        if [[ "$builtin_cmd" == "$arg_prefix"* && "$builtin_cmd" != "$arg_prefix" ]]; then
-            _ghost_suggestion="${builtin_cmd#$arg_prefix}"
+        if [[ "$builtin_cmd" == "$search_prefix"* && "$builtin_cmd" != "$search_prefix" ]]; then
+            if [[ -n "$quote_char" ]]; then
+                _ghost_suggestion="${builtin_cmd#$search_prefix}"
+            else
+                _ghost_suggestion="${builtin_cmd#$arg_prefix}"
+            fi
             return
         fi
     done < <(compgen -b | sort)
 
-    # 3. THIRD: Environment variables
-    if [[ "$arg_prefix" == '$'* ]]; then
-        local var_prefix="${arg_prefix#$}"  # Remove the $
+    # 3. Environment variables
+    if [[ "$search_prefix" == '$'* ]]; then
+        local var_prefix="${search_prefix#$}"
         while IFS= read -r var_name; do
             if [[ "$var_name" == "$var_prefix"* && "$var_name" != "$var_prefix" ]]; then
                 _ghost_suggestion="${var_name#$var_prefix}"
@@ -132,58 +308,67 @@ _ghost_get_suggestion() {
     
     local prefix="$READLINE_LINE"
     
-    # Check if we are in an argument position (after a space)
-    # If there's a space in the line, use second level prediction
-    if [[ "$prefix" == *' '* ]]; then
-        # Get only the last argument after the last space
-        local last_arg="${prefix##* }"
-        _ghost_get_suggestion_second_level_inline "$last_arg"
-        return
+    # Only check argument position if first level is unlocked (space was pressed)
+    if ! $_ghost_lock_first_level && _ghost_is_argument_position "$prefix"; then
+        local last_arg
+        last_arg=$(_ghost_get_last_arg "$prefix")
+        
+        if [[ "$prefix" == *' ' && $READLINE_POINT -eq ${#READLINE_LINE} ]]; then
+            _ghost_get_suggestion_second_level_inline ""
+            return
+        elif [[ -n "$last_arg" && "$last_arg" != "$prefix" ]]; then
+            _ghost_get_suggestion_second_level_inline "$last_arg"
+            return
+        fi
     fi
     
-    # 1. FIRST: History (kept exactly as is)
+    # First level prediction
+    local search_prefix="$prefix"
+    
+    # Extract quoted content for better matching
+    if [[ "$prefix" == *'"'* || "$prefix" == *"'"* ]]; then
+        local extracted
+        extracted=$(_ghost_extract_quoted_content "$prefix")
+        if [[ -n "$extracted" ]]; then
+            search_prefix="$extracted"
+        fi
+    fi
+    
+    # 1. History
     while IFS= read -r line; do
-        if [[ "$line" == "$prefix"* && "$line" != "$prefix" ]]; then
-            _ghost_suggestion="${line#$prefix}"
+        if [[ "$line" == "$search_prefix"* && "$line" != "$search_prefix" ]]; then
+            _ghost_suggestion="${line#$search_prefix}"
             return
         fi
     done <<< "$_ghost_history_data"
     
-    # 2. SECOND: PATH commands
+    # 2. PATH commands
     for cmd in "${_ghost_path_cache[@]}"; do
-        if [[ "$cmd" == "$prefix"* && "$cmd" != "$prefix" ]]; then
-            _ghost_suggestion="${cmd#$prefix}"
+        if [[ "$cmd" == "$search_prefix"* && "$cmd" != "$search_prefix" ]]; then
+            _ghost_suggestion="${cmd#$search_prefix}"
             return
         fi
     done
 
-    # 3. THIRD: Bash functions (NEW)
+    # 3. Bash functions
     while IFS= read -r func_name; do
-        if [[ "$func_name" == "$prefix"* && "$func_name" != "$prefix" ]]; then
-            _ghost_suggestion="${func_name#$prefix}"
+        if [[ "$func_name" == "$search_prefix"* && "$func_name" != "$search_prefix" ]]; then
+            _ghost_suggestion="${func_name#$search_prefix}"
             return
         fi
     done < <(declare -F | cut -d' ' -f3 | sort)
 
-    # 4. FOURTH: Bash builtins
-    # while IFS= read -r builtin_cmd; do
-    #     if [[ "$builtin_cmd" == "$prefix"* && "$builtin_cmd" != "$prefix" ]]; then
-    #         _ghost_suggestion="${builtin_cmd#$prefix}"
-    #         return
-    #     fi
-    # done < <(compgen -b | sort)
-
-    # 4. FOURTH: Builtins + aliases
+    # 4. Builtins + aliases
     while IFS= read -r cmd; do
-        if [[ "$cmd" == "$prefix"* && "$cmd" != "$prefix" ]]; then
-            _ghost_suggestion="${cmd#$prefix}"
+        if [[ "$cmd" == "$search_prefix"* && "$cmd" != "$search_prefix" ]]; then
+            _ghost_suggestion="${cmd#$search_prefix}"
             return
         fi
     done < <({ compgen -b; alias -p | cut -d' ' -f2 | cut -d'=' -f1; } | sort)
     
-    # 5. FIFTH: Environment variables (case-sensitive, without cache)
-    if [[ "$prefix" == '$'* ]]; then
-        local var_prefix="${prefix#$}"  # Remove the $
+    # 5. Environment variables
+    if [[ "$search_prefix" == '$'* ]]; then
+        local var_prefix="${search_prefix#$}"
         while IFS= read -r var_name; do
             if [[ "$var_name" == "$var_prefix"* && "$var_name" != "$var_prefix" ]]; then
                 _ghost_suggestion="${var_name#$var_prefix}"
@@ -192,36 +377,12 @@ _ghost_get_suggestion() {
         done < <(compgen -v | sort)
     fi
 
-    # 6. SIXTH: Generic Search
-    local generic; generic=$(find . -maxdepth 1 -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
+    # 6. Generic Search (local files)
+    local generic; generic=$(find . -maxdepth 1 -name "${search_prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
     if [[ -n "$generic" ]]; then
-        _ghost_suggestion="${generic#$prefix}"
+        _ghost_suggestion="${generic#$search_prefix}"
         return
     fi
-
-    # # 6. SIXTH: Local directories
-    # # Uses compgen to be faster than find
-    # # local dirs; dirs=$(compgen -d -S '/' -- "$prefix" 2>/dev/null | head -1)
-    # local dirs; dirs=$(find . -maxdepth 1 -type d -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
-    # if [[ -n "$dirs" ]]; then
-    #     _ghost_suggestion="${dirs#$prefix}"
-    #     return
-    # fi
-
-    # # 7. SEVENTH: Symbolic links in current directory
-    # local symlinks; symlinks=$(find . -maxdepth 1 -type l -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
-    # if [[ -n "$symlinks" ]]; then
-    #     _ghost_suggestion="${symlinks#$prefix}"
-    #     return
-    # fi
-    
-    # # 8. EIGHTH: Local files
-    # # local files; files=$(compgen -f -- "$prefix" 2>/dev/null | grep -v '/$' | head -1)
-    # local files; files=$(find . -maxdepth 1 -type f -name "${prefix}*" 2>/dev/null | head -1 | sed 's|^\./||')
-    # if [[ -n "$files" ]]; then
-    #     _ghost_suggestion="${files#$prefix}"
-    #     return
-    # fi
 }
 
 _ghost_render_ghost() {
@@ -245,7 +406,16 @@ _ghost_self_insert() {
     _ghost_render_ghost
 }
 
-# Right arrow: accepts ENTIRE ghost
+# Space key - unlocks first level, allowing second level predictions
+_ghost_space_insert() {
+    _ghost_lock_first_level=false
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT} ${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=$(( READLINE_POINT + 1 ))
+    _ghost_suggestion=""
+    _ghost_render_ghost
+}
+
+# Right arrow: accepts entire ghost suggestion
 _ghost_accept_all() {
     if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
         READLINE_POINT=$(( READLINE_POINT + 1 ))
@@ -253,6 +423,7 @@ _ghost_accept_all() {
         READLINE_LINE+="$_ghost_suggestion"
         READLINE_POINT=${#READLINE_LINE}
         _ghost_suggestion=""
+        _ghost_lock_first_level=true
     fi
     _ghost_render_ghost
 }
@@ -262,10 +433,9 @@ _ghost_is_delimiter() {
     [[ "$1" =~ [\ =/\;.,|\\:_-] ]]
 }
 
-# Alt+X: completes ONE PHRASE of the ghost
+# Alt+X: completes one phrase of the ghost suggestion
 _ghost_accept_word2() {
     if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
-        # Word navigation in existing text
         local after="${READLINE_LINE:$READLINE_POINT}"
         while [[ "${after:0:1}" == " " ]]; do
             READLINE_POINT=$(( READLINE_POINT + 1 ))
@@ -276,20 +446,19 @@ _ghost_accept_word2() {
             after="${READLINE_LINE:$READLINE_POINT}"
         done
     elif [[ -n "$_ghost_suggestion" ]]; then
-        # Completes ONE word of the ghost
         local word="${_ghost_suggestion%% *}"
         [[ "$_ghost_suggestion" == *' '* ]] && word+=' '
         READLINE_LINE+="$word"
         READLINE_POINT=${#READLINE_LINE}
         _ghost_suggestion="${_ghost_suggestion#"$word"}"
+        _ghost_lock_first_level=true
     fi
     _ghost_render_ghost
 }
 
-# Alt+W: completes ONE WORD of the ghost (with delimiters)
+# Alt+W: completes one word of the ghost suggestion (with delimiters)
 _ghost_accept_word() {
     if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
-        # Word navigation in existing text
         local after="${READLINE_LINE:$READLINE_POINT}"
         while [[ -n "$after" ]] && _ghost_is_delimiter "${after:0:1}"; do
             READLINE_POINT=$(( READLINE_POINT + 1 ))
@@ -329,6 +498,7 @@ _ghost_accept_word() {
         READLINE_LINE+="$word"
         READLINE_POINT=${#READLINE_LINE}
         _ghost_suggestion="${_ghost_suggestion#"$word"}"
+        _ghost_lock_first_level=true
     fi
     _ghost_render_ghost
 }
@@ -337,6 +507,30 @@ _ghost_backspace_ghost() {
     if [[ $READLINE_POINT -gt 0 ]]; then
         READLINE_LINE="${READLINE_LINE:0:$((READLINE_POINT - 1))}${READLINE_LINE:$READLINE_POINT}"
         READLINE_POINT=$(( READLINE_POINT - 1 ))
+    fi
+    _ghost_render_ghost
+}
+
+# Ctrl+Delete: forward kill word
+_ghost_kill_word_ghost() {
+    if [[ $READLINE_POINT -lt ${#READLINE_LINE} ]]; then
+        local before="${READLINE_LINE:0:$READLINE_POINT}"
+        local after="${READLINE_LINE:$READLINE_POINT}"
+        local new_point=$READLINE_POINT
+        
+        # Skip initial spaces/delimiters
+        while [[ $new_point -lt ${#READLINE_LINE} ]] && _ghost_is_delimiter "${after:0:1}"; do
+            new_point=$((new_point + 1))
+            after="${READLINE_LINE:$new_point}"
+        done
+        
+        # Skip word characters
+        while [[ $new_point -lt ${#READLINE_LINE} ]] && ! _ghost_is_delimiter "${after:0:1}"; do
+            new_point=$((new_point + 1))
+            after="${READLINE_LINE:$new_point}"
+        done
+        
+        READLINE_LINE="${before}${after}"
     fi
     _ghost_render_ghost
 }
@@ -369,6 +563,7 @@ _ghost_setup_ghost_binds() {
         oct=$(printf '\\%03o' "$i")
         bind -r "$oct" 2>/dev/null
     done
+    bind -r '\e[3;5~' 2>/dev/null
     bind -r '\e[1;2C' 2>/dev/null
     bind -r '\e[1;2D' 2>/dev/null
     bind -r '\e[C' 2>/dev/null
@@ -384,8 +579,8 @@ _ghost_setup_ghost_binds() {
     bind -r '\C-e' 2>/dev/null
     bind -r '\C-l' 2>/dev/null
     
-    # Printable characters with bind -x
-    for i in {32..126}; do
+    # Printable characters with bind -x (EXCEPT space - 32)
+    for i in {33..126}; do
         oct=$(printf '\\%03o' "$i")
         if [[ $i -eq 92 ]]; then
             bind -x "\"$oct\": _ghost_char='\\\\'; _ghost_self_insert"
@@ -397,20 +592,27 @@ _ghost_setup_ghost_binds() {
         fi
     done
     
-    # Ghost mode control keys
-    bind -x '"\e[C": _ghost_accept_all'                   # Right arrow: accepts ENTIRE ghost
-    bind -x '"\e[1;2C": _ghost_accept_word'               # Shift+Right: completes 1 WORD
-    bind -x '"\e[1;2D": _ghost_backward_kill_word_ghost'  # Shift+Left: completes 1 WORD
-    bind -x '"\ew": _ghost_accept_word'                   # Alt+W: completes 1 WORD | Ctrl+F is destined for smartcd
-    bind -x '"\ex": _ghost_accept_word2'                  # Alt+X: completes 1 PHRASE | Alt+F is destined for smartfile
-    bind -x '"\C-?": _ghost_backspace_ghost'              # Backspace
-    bind -x '"\C-h": _ghost_backward_kill_word_ghost'     # Ctrl+Backspace: deletes 1 WORD
+    # Space key - unlocks second level
+    bind -x '" ": _ghost_space_insert'
     
-    # Alt+A and Alt+D: native navigation WITHOUT redrawing (even in ghost mode!)
-    bind '"\ea": backward-char'                           # Alt+A: native left
-    bind '"\e,": backward-char'                           # Alt+A: native left
-    bind '"\ed": forward-char'                            # Alt+D: native right
-    bind '"\e.": forward-char'                            # Alt+D: native right
+    # Alt+Space - also unlocks second level
+    bind -x '"\e ": _ghost_space_insert'
+    
+    # Ghost mode control keys
+    bind -x '"\e[3;5~": _ghost_kill_word_ghost'           # Ctrl+Delete: forward kill word
+    bind -x '"\e[C": _ghost_accept_all'                   # Right arrow: accepts entire ghost
+    bind -x '"\e[1;2C": _ghost_accept_word'               # Shift+Right: completes 1 word
+    bind -x '"\e[1;2D": _ghost_backward_kill_word_ghost'  # Shift+Left: deletes 1 word
+    bind -x '"\ew": _ghost_accept_word'                   # Alt+W: completes 1 word
+    bind -x '"\ex": _ghost_accept_word2'                  # Alt+X: completes 1 phrase
+    bind -x '"\C-?": _ghost_backspace_ghost'              # Backspace
+    bind -x '"\C-h": _ghost_backward_kill_word_ghost'     # Ctrl+Backspace: deletes 1 word
+    
+    # Alt+A and Alt+D: native navigation
+    bind '"\ea": backward-char'
+    bind '"\e,": backward-char'
+    bind '"\ed": forward-char'
+    bind '"\e.": forward-char'
     
     bind -x '"\C-u": READLINE_LINE=""; READLINE_POINT=0; _ghost_suggestion=""; _ghost_render_ghost'
     bind -x '"\C-a": READLINE_POINT=0; _ghost_render_ghost'
@@ -420,11 +622,11 @@ _ghost_setup_ghost_binds() {
 
 # Setup binds for clean mode
 _ghost_setup_clean_binds() {
-    # Clear previous binds
     for i in {32..126}; do
         oct=$(printf '\\%03o' "$i")
         bind -r "$oct" 2>/dev/null
     done
+    bind -r '\e[3;5~' 2>/dev/null
     bind -r '\e[C' 2>/dev/null
     bind -r '\e[D' 2>/dev/null
     bind -r '\ea' 2>/dev/null
@@ -437,8 +639,7 @@ _ghost_setup_clean_binds() {
     bind -r '\C-e' 2>/dev/null
     bind -r '\C-l' 2>/dev/null
     
-    # Printable characters with native self-insert
-    for i in {32..126}; do
+    for i in {33..126}; do
         if [[ $i -eq 92 ]]; then
             bind '"\\\\": self-insert'
         elif [[ $i -eq 34 ]]; then
@@ -451,28 +652,22 @@ _ghost_setup_clean_binds() {
         fi
     done
     
-    # 100% NATIVE ARROWS
+    bind '" ": self-insert'
+    bind '"\e ": self-insert'
     bind '"\e[D": backward-char'
     bind '"\e[C": forward-char'
-    
-    # Alt+A and Alt+D: native navigation
     bind '"\ea": backward-char'
     bind '"\ed": forward-char'
-    
-    # Normal backspace (native)
     bind '"\C-?": backward-delete-char'
-    
-    # Ctrl+Backspace - delete word (native)
     bind '"\C-h": backward-kill-word'
-    
-    # Other native shortcuts
+    bind '"\e[3;5~": kill-word'
     bind '"\C-u": unix-line-discard'
     bind '"\C-a": beginning-of-line'
     bind '"\C-e": end-of-line'
     bind '"\C-l": clear-screen'
 }
 
-# Toggle Ctrl+G
+# Toggle ghost mode with Ctrl+G
 _ghost_toggle() {
     _ghost_update_prompt_len
     
