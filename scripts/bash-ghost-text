@@ -2,9 +2,10 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-_ghost_space_mode_file="$HOME/.cache/ghost_space_mode"
-_ghost_cmd_cache_file="$HOME/.cache/ghost_path.cache"
-_ghost_state_file="$HOME/.cache/ghost_mode"
+_ghost_text_cache_dir="$HOME/.cache/bash_ghost_text"
+_ghost_space_mode_file="$_ghost_text_cache_dir/ghost_space_mode"
+_ghost_cmd_cache_file="$_ghost_text_cache_dir/ghost_path.cache"
+_ghost_state_file="$_ghost_text_cache_dir/ghost_mode"
 _ghost_lock_first_level=true
 _ghost_space_mode="native"  # "native" or "unlock"
 _ghost_regenerate=false
@@ -30,7 +31,7 @@ _ghost_notify() {
     -h string:bgcolor:#45475a \
     -h string:fgcolor:#f38ba8 \
     "$a" "$b" >/dev/null 2>&1
-    if type beep_sound && command -v paplay >/dev/null; then
+    if type beep_sound >/dev/null 2>&1 && command -v paplay >/dev/null; then
         export BEEP_VOLUME="$volume"; beep_sound
     elif test -f "$audio" && command -v paplay >/dev/null; then
         { paplay --volume "$volume" "$audio" & disown; } >/dev/null 2>&1
@@ -138,12 +139,12 @@ _ghost_load_state() {
 }
 
 _ghost_save_state() {
-    mkdir -p "$(dirname "$_ghost_state_file")" 2>/dev/null
+    mkdir -p "$(dirname "$_ghost_state_file")" &>/dev/null
     echo "$_ghost_mode" | tee "$_ghost_state_file" > /dev/null
 }
 
 _ghost_save_space_mode() {
-    mkdir -p "$(dirname "$_ghost_space_mode_file")" 2>/dev/null
+    mkdir -p "$(dirname "$_ghost_space_mode_file")" &>/dev/null
     echo "$_ghost_space_mode" | tee "$_ghost_space_mode_file" > /dev/null
 }
 
@@ -185,7 +186,7 @@ ghost_cmd_cache() {
     )
     
     # Save to cache file
-    mkdir -p "$(dirname "$_ghost_cmd_cache_file")" 2>/dev/null
+    mkdir -p "$(dirname "$_ghost_cmd_cache_file")" &>/dev/null
     [[ -f "$_ghost_cmd_cache_file" ]] && rm -f "$_ghost_cmd_cache_file"
     printf '%s\n' "${_ghost_cmd_cache[@]}" > "$_ghost_cmd_cache_file"
 }
