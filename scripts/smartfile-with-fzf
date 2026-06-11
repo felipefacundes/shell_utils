@@ -13,20 +13,35 @@ and tries to open files with xdg-open using fuzzy search.
 
 FEATURES:
 • Intercepts command-not-found and tries to open as file
-• Fuzzy search through file history and filesystem
-• Interactive selection with fzf + preview
+• Fuzzy search through FILESYSTEM only (not database)
+• Interactive selection with fzf + preview (shows files from current directory)
+• Alt+f shows only files previously opened from current directory (regional database)
+• Single database file stores all directories history
+• Regional database: each directory shows only its own opened files
 • Opens files with xdg-open
 • Maintains history database with size limit
+• All searches are restricted to the current working directory
+• Handles filenames with spaces without requiring escaping
 
 USAGE:
   Just type any filename as a command - smartfile will intercept it
   Or use explicitly: smartfile [FILE]
-  Alt+f - Interactive mode
+  Alt+f - Interactive mode (shows regional files from current directory)
 
 EXAMPLES:
   documento.pdf      # Opens with xdg-open (if file exists or fuzzy match)
-  relatorio         # Fuzzy finds and opens relatorio_final.pdf
-  smartfile --       # Interactive mode
+  relatorio         # Fuzzy finds and opens relatorio_final.pdf (only in current directory)
+  Parallax 2.5D.txt # Opens file with spaces in name without escaping
+  $LS_COLORS        # Variable expansion works normally
+  smartfile --       # Interactive mode (shows regional database)
+
+DATABASE BEHAVIOR:
+  • Regional database: When pressing Alt+f, only files that were opened from
+    the current working directory are displayed
+  • Navigate to different directories to see their specific history
+  • Single database file stores all paths with absolute references
+  • History persists across sessions
+  • All file searches are restricted to the current working directory
 
 DOCUMENTATION
 
@@ -58,7 +73,7 @@ fi
 
 # Smartfile functions
 function __smartfile_open() {
-    local lookUpPath="${1}"
+    local lookUpPath="${*}"
     local selectedEntry=""
 
     [[ ! -f "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" ]] && __smartfile_database_reset
@@ -66,35 +81,35 @@ function __smartfile_open() {
     # Remove surrounding quotes if present
     lookUpPath=$(echo "$lookUpPath" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
 
-    # If it's a valid file, open it directly
+    # Try to open the exact input first (handles files with spaces)
+    # Check if the file exists relative to current directory
+    if [[ -f "${PWD}/${lookUpPath}" ]] && [[ -r "${PWD}/${lookUpPath}" ]]; then
+        __smartfile_open_path "${PWD}/${lookUpPath}"
+        return $?
+    fi
+    
+    # Check if it's an absolute path
     if [[ -f "${lookUpPath}" ]] && [[ -r "${lookUpPath}" ]]; then
         __smartfile_open_path "${lookUpPath}"
         return $?
     fi
 
-    # Fuzzy search mode
+    # Fuzzy search mode (only for interactive mode with --)
     if [[ "${lookUpPath}" = "--" ]]; then
-        selectedEntry=$(__smartfile_database_search 2>/dev/null | __smartfile_choose_file)
+        # For interactive mode, show only files from current directory (regional database)
+        local current_dir="${PWD}"
+        selectedEntry=$(__smartfile_database_search_by_dir "${current_dir}" | __smartfile_choose_file)
     else
-        local combined_results
-        
-        local db_results
-        db_results=$(__smartfile_database_search "${lookUpPath}" 2>/dev/null)
-        
+        # Only search filesystem in CURRENT DIRECTORY, NOT database
         local fs_results
         fs_results=$(__smartfile_filesystem_search "${lookUpPath}" 2>/dev/null)
         
-        combined_results=$(printf "%s\n%s" "$db_results" "$fs_results" | awk '!seen[$0]++ && $0 != ""')
-        
-        if [[ -n "$combined_results" ]]; then
-            local line_count; line_count=$(echo "$combined_results" | wc -l)
+        if [[ -n "$fs_results" ]]; then
+            local line_count; line_count=$(echo "$fs_results" | wc -l)
             local fzfSelect1=""
             [[ $line_count -eq 1 ]] && fzfSelect1="--select-1"
             
-            selectedEntry=$(echo "$combined_results" | __smartfile_choose_file "$fzfSelect1")
-        else
-            echo "smartfile: no file found matching '${lookUpPath}'" >&2
-            return 1
+            selectedEntry=$(echo "$fs_results" | __smartfile_choose_file "$fzfSelect1")
         fi
     fi
     
@@ -112,27 +127,57 @@ function __smartfile_choose_file() {
     
     case "${cmdPreview}" in
         */bat|*/batcat)
-            fzfPreview='[ -f {} ] && '${cmdPreview}' --color=always --line-range :50 {} || echo '"${errMessage}"''
+            fzfPreview='[ -f {} ] && '${cmdPreview}' --color=always --line-range :50 {} || echo -e '"${errMessage}"''
             ;;
         *)
-            fzfPreview='[ -f {} ] && echo "=== File: {} ===" ; '${cmdPreview}' {} || echo '"${errMessage}"''
+            fzfPreview='[ -f {} ] && echo "=== File: {} ===" ; '${cmdPreview}' {} || echo -e '"${errMessage}"''
             ;;
     esac
     
+    # Read all input lines
+    local input_lines=()
+    while IFS= read -r line; do
+        input_lines+=("$line")
+    done
+    
+    # Create display list with only basenames using ##*/ parameter expansion
+    local display_list=()
+    for fullpath in "${input_lines[@]}"; do
+        display_list+=("${fullpath##*/}")
+    done
+    
+    # Use fzf to select from display list
+    local selected_display
     if [[ -n "$TERMUX_VERSION" ]]; then
-        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" 2>/dev/tty
+        selected_display=$(printf '%s\n' "${display_list[@]}" | fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" 2>/dev/tty)
     else
-        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
-            --preview="${fzfPreview}" 2>/dev/tty
+        selected_display=$(printf '%s\n' "${display_list[@]}" | fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
+            --preview="${fzfPreview}" 2>/dev/tty)
+    fi
+    
+    # Find the corresponding full path
+    if [[ -n "$selected_display" ]]; then
+        for i in "${!display_list[@]}"; do
+            if [[ "${display_list[$i]}" == "$selected_display" ]]; then
+                echo "${input_lines[$i]}"
+                return 0
+            fi
+        done
     fi
 }
 
 function __smartfile_open_path() {
     local file="${1}"
 
+    # Resolve to absolute path if relative
+    if [[ ! "$file" =~ ^/ ]]; then
+        file="${PWD}/${file}"
+    fi
+    # Normalize path
+    file=$(realpath "${file}" 2>/dev/null || echo "${file}")
+
     if [[ -f "${file}" ]] && [[ -r "${file}" ]]; then
-        { xdg-open "${file}" 2>/dev/null & disown; } &>/dev/null
-        if [[ $? -eq 0 ]]; then
+        if { xdg-open "${file}" 2>/dev/null & disown; } &>/dev/null; then
             __smartfile_database_save_path "${file}"
             return 0
         else
@@ -147,23 +192,26 @@ function __smartfile_open_path() {
 }
 
 function __smartfile_filesystem_search() {
-    local searchPath; searchPath=$(dirname -- "${1}" 2>/dev/null || echo ".")
-    local searchString; searchString=$(basename -- "${1}")
+    local searchString="${1}"
     local cmdFinder; cmdFinder=$(command -v fdfind fd find 2>/dev/null | awk 'NR==1 {print}')
 
-    [[ -z "${searchPath}" || "${searchPath}" = "." ]] && searchPath="."
+    # Always search only in current directory (PWD)
+    local searchPath="${PWD}"
     
     # Don't search if searchString is empty or just dots
     if [[ -z "${searchString}" || "${searchString}" =~ ^\.+$ ]]; then
         return 0
     fi
     
+    # Remove leading path if user typed a path, we only want the filename part
+    searchString=$(basename -- "${searchString}")
+    
     case "${cmdFinder}" in
         */fd*)
-            "${cmdFinder}" --hidden --no-ignore-vcs "${searchString}" --color=never --follow --min-depth=0 --max-depth=3 --type=file --exclude ".git/" "${searchPath}" --exec realpath --no-symlinks 2>/dev/null
+            "${cmdFinder}" --hidden --no-ignore-vcs "${searchString}" --color=never --follow --max-depth=1 --type=file --exclude ".git/" "${searchPath}" --exec realpath --no-symlinks 2>/dev/null
             ;;
         *)
-            find "${searchPath}" -follow -mindepth 0 -maxdepth 3 -type f ! -path '*\.git/*' -iname '*'"${searchString}"'*' -exec realpath --no-symlinks {} + 2>/dev/null
+            find "${searchPath}" -maxdepth 1 -type f ! -path '*\.git/*' -iname '*'"${searchString}"'*' -exec realpath --no-symlinks {} + 2>/dev/null
             ;;
     esac
 }
@@ -177,7 +225,7 @@ function __smartfile_database_search() {
         return 0
     fi
     
-    # Escape special regex characters, but handle empty patterns gracefully
+    # Escape special regex characters
     local escaped_string
     escaped_string=$(echo "${searchString}" | sed -e 's/\./\\./g' -e 's/\//\\//g')
     
@@ -189,6 +237,17 @@ function __smartfile_database_search() {
     fi
 }
 
+function __smartfile_database_search_by_dir() {
+    local target_dir="${1}"
+    local escaped_dir
+    
+    # Escape special characters for grep
+    escaped_dir=$(echo "${target_dir}" | sed 's/[.[\*^$()+?{|]/\\&/g')
+    
+    # Return files that are in the specified directory (regional database)
+    grep "^${escaped_dir}/[^/]*$" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
+}
+
 function __smartfile_database_save_path() {
     local file="${1}"
     local iCounter=0
@@ -196,6 +255,11 @@ function __smartfile_database_save_path() {
     local ignoreItemFound=""
 
     [[ ! -f "${file}" ]] && return
+
+    # Ensure we have absolute path
+    if [[ ! "$file" =~ ^/ ]]; then
+        file=$(realpath "${file}" 2>/dev/null || echo "${PWD}/${file}")
+    fi
 
     # Check ignore list
     while true; do
@@ -217,7 +281,9 @@ function __smartfile_database_save_path() {
 
 function __smartfile_database_delete_path() {
     local file="${1}"
-    sed -i "\:^${file}$:d" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
+    # Escape special characters for sed
+    local escaped_file; escaped_file=$(echo "${file}" | sed 's/[.[\*^$()+?{|]/\\&/g')
+    sed -i "\:^${escaped_file}$:d" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
 }
 
 function __smartfile_database_cleanup() {
@@ -247,11 +313,11 @@ function __smartfile_database_cleanup() {
                 fi
             done
 
-            [[ "${bIgnore}" = "false" ]] && echo "${line}" >> "${fTmp}"
+            [[ "${bIgnore}" = "false" ]] && echo "${line}" | tee -a "${fTmp}" &>/dev/null
         fi
     done < "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
 
-    awk '!seen[$0]++' "${fTmp}" > "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+    awk '!seen[$0]++' "${fTmp}" | tee "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" &>/dev/null
     sed -i '/^[[:blank:]]*$/ d' "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
     [[ $(wc -l < "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}") -eq 0 ]] && __smartfile_database_reset
     rm -f "${fTmp}"
@@ -259,7 +325,7 @@ function __smartfile_database_cleanup() {
 
 function __smartfile_database_reset() {
     mkdir -p "${SMARTFILE_CONFIG_FOLDER}" >/dev/null 2>&1
-    echo "" > "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
+    echo "" | tee "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" &>/dev/null
 }
 
 # Main smartfile function
@@ -267,9 +333,14 @@ function smartfile() {
     case "$1" in
         --help|-h)
             echo "Usage: smartfile [FILE]"
-            echo "       smartfile --     (interactive mode)"
-            echo "       smartfile --cleanup (cleanup database)"
-            echo "       smartfile --reset (reset database)"
+            echo "       smartfile --         (interactive mode with regional database)"
+            echo "       smartfile --cleanup  (cleanup database)"
+            echo "       smartfile --reset    (reset database)"
+            echo ""
+            echo "Database is regional: Alt+f shows only files from current directory"
+            echo "Each directory maintains its own history within a single database file"
+            echo "All file searches are restricted to the current working directory"
+            echo "Files with spaces in names are handled automatically"
             ;;
         --cleanup)
             __smartfile_database_cleanup
@@ -281,7 +352,7 @@ function smartfile() {
             __smartfile_open "--"
             ;;
         *)
-            __smartfile_open "$*"
+            __smartfile_open "$@"
             ;;
     esac
 }
@@ -289,8 +360,15 @@ function smartfile() {
 # Command not found hook for bash
 if [[ -n "$BASH_VERSION" ]]; then
     command_not_found_handle() {
-        smartfile "$*"
-        return $?
+        # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
+        # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
+        if [[ "$*" =~ ^[a-zA-Z0-9._/\\\ -]+$ ]]; then
+            smartfile "$@" 2>/dev/null || return 127
+        else
+            # For variable expansions and other special content, show it as text
+            echo "$*"
+            return 127
+        fi
     }
     
     # Key binding for Alt+f
@@ -301,8 +379,15 @@ fi
 # Command not found hook for zsh
 if [[ -n "$ZSH_VERSION" ]]; then
     command_not_found_handler() {
-        smartfile "$*"
-        return $?
+        # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
+        # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
+        if [[ "$*" =~ ^[a-zA-Z0-9._/\\\ -]+$ ]]; then
+            smartfile "$@" 2>/dev/null || return 127
+        else
+            # For variable expansions and other special content, show it as text
+            echo "$*"
+            return 127
+        fi
     }
     
     # Key binding for Alt+f

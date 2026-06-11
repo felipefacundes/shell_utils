@@ -149,7 +149,7 @@ if whiptail --title "Restart Service" --yesno "Do you want to restart Speech Dis
         whiptail --title "Service Restarted" --msgbox "Speech Dispatcher restarted successfully!" 10 40
     else
         pkill -9 speech-dispatcher
-        speech-dispatcher &
+        speech-dispatcher & disown
         whiptail --title "Service Restarted" --msgbox "Speech Dispatcher restarted successfully!" 10 40
     fi
 fi
