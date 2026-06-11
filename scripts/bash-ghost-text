@@ -578,11 +578,15 @@ _ghost_setup_ghost_binds() {
     bind -r '\C-a' 2>/dev/null
     bind -r '\C-e' 2>/dev/null
     bind -r '\C-l' 2>/dev/null
+    bind -r '\e ' 2>/dev/null  # Alt+Space
     
-    # Printable characters with bind -x (EXCEPT space - 32)
-    for i in {33..126}; do
+    # Printable characters with bind -x (INCLUDING space - 32)
+    for i in {32..126}; do
         oct=$(printf '\\%03o' "$i")
-        if [[ $i -eq 92 ]]; then
+        if [[ $i -eq 32 ]]; then
+            # Space bar - native self-insert
+            bind "\" \": self-insert"
+        elif [[ $i -eq 92 ]]; then
             bind -x "\"$oct\": _ghost_char='\\\\'; _ghost_self_insert"
         elif [[ $i -eq 39 ]]; then
             bind -x "\"$oct\": _ghost_char=\"'\"; _ghost_self_insert"
@@ -592,10 +596,7 @@ _ghost_setup_ghost_binds() {
         fi
     done
     
-    # Space key - unlocks second level
-    bind -x '" ": _ghost_space_insert'
-    
-    # Alt+Space - also unlocks second level
+    # Alt+Space - unlocks second level
     bind -x '"\e ": _ghost_space_insert'
     
     # Ghost mode control keys
@@ -689,6 +690,7 @@ _ghost_toggle() {
 _ghost_pre_accept_line() {
     printf '\e[K' >/dev/tty
     _ghost_suggestion=""
+    _ghost_lock_first_level=true
     if [[ "$_ghost_mode" == "ghost" ]]; then
         printf '\e[?2026l' >/dev/tty
     fi
@@ -713,5 +715,11 @@ bind -x '"\C-g": _ghost_toggle'
 
 bind -x '"\C-x\C-m": _ghost_pre_accept_line'
 bind '"\C-m": "\C-x\C-m\C-j"'
+
+function f_ghost_lock_first_level() {
+    _ghost_lock_first_level=true
+}
+
+trap f_ghost_lock_first_level INT
 
 PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }_ghost_refresh"
