@@ -16,7 +16,9 @@ _ghost_mode="clean"
 _ghost_last_ps1=""
 
 _ghost_notify() {
+    local audio="/usr/share/sounds/freedesktop/stereo/suspend-error.oga"
     local icon="xterm-color_48x48"
+    local volume=40000
     local a="$1"
     local b="$2"
     command -v notify-send >/dev/null && \
@@ -28,10 +30,12 @@ _ghost_notify() {
     -h string:bgcolor:#45475a \
     -h string:fgcolor:#f38ba8 \
     "$a" "$b" >/dev/null 2>&1
-    if type beep_sound >/dev/null 2>&1; then
-        export BEEP_VOLUME=40000; beep_sound
+    if type beep_sound && command -v paplay >/dev/null; then
+        export BEEP_VOLUME="$volume"; beep_sound
+    elif test -f "$audio" && command -v paplay >/dev/null; then
+        { paplay --volume "$volume" "$audio" & disown; } >/dev/null 2>&1
     elif type beep >/dev/null 2>&1; then
-        beep -f 440 -l 200
+        { beep -f 440 -l 200 & disown; } >/dev/null 2>&1
     else
         echo -e "\a"
     fi
