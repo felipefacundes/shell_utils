@@ -559,6 +559,20 @@ _ghost_space_insert() {
     _ghost_render_ghost
 }
 
+# Allways unlock
+_ghost_space_insert_always_unlock() {
+    # Validate the command before inserting space
+    _ghost_validate_and_notify "$READLINE_LINE"
+    
+    # Unlock first level only if space mode is "unlock"
+    _ghost_lock_first_level=false
+    
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT} ${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=$(( READLINE_POINT + 1 ))
+    _ghost_suggestion=""
+    _ghost_render_ghost
+}
+
 # Toggle space bar behavior between native and unlock (Alt+\)
 _ghost_toggle_space_mode() {
     if [[ "$_ghost_space_mode" == "native" ]]; then
@@ -765,7 +779,7 @@ _ghost_setup_ghost_binds() {
     done
     
     # Alt+Space - always unlocks second level + inserts space
-    bind -x '"\e ": _ghost_space_insert'
+    bind -x '"\e ": _ghost_space_insert_always_unlock'
     
     # Alt+\ - toggle space bar behavior
     bind -x '"\e\\": _ghost_toggle_space_mode'

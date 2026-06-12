@@ -2,3 +2,4 @@
 . "/home/rfacundes/.shell_utils/functions/duplicate_lines.sh"
 . "/home/rfacundes/.shell_utils/functions/notifications.sh"
 . "/home/rfacundes/.shell_utils/functions/cd.sh"
+. "/home/rfacundes/.shell_utils/functions/functions_browser.sh"
