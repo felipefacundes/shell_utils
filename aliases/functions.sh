@@ -1,0 +1,1 @@
+[[ -n $BASH_VERSION ]] && alias functions='source ~/.shell_utils/scripts/functions'

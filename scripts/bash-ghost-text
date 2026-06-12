@@ -36,10 +36,10 @@ _ghost_notify() {
     -h string:fgcolor:#f38ba8 \
     "$a" "$b" >/dev/null 2>&1
 
-    if type beep_sound >/dev/null 2>&1 && command -v paplay >/dev/null; then
-        export BEEP_VOLUME="$volume"; beep_sound
-    elif test -f "$audio" && command -v paplay >/dev/null; then
+    if test -f "$audio" && command -v paplay >/dev/null; then
         { paplay --volume "$volume" "$audio" & disown; } >/dev/null 2>&1
+    elif type beep_sound >/dev/null 2>&1 && command -v paplay >/dev/null; then
+        export BEEP_VOLUME="$volume"; beep_sound
     elif type beep >/dev/null 2>&1; then
         { beep -f 440 -l 200 & disown; } >/dev/null 2>&1
     else
