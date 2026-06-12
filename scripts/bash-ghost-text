@@ -13,7 +13,7 @@ _ghost_history_data=""
 _ghost_suggestion=""
 _ghost_cmd_cache=()
 _ghost_prompt_len=0
-_ghost_mode="clean"
+_ghost_mode="ghost"
 _ghost_last_ps1=""
 
 _ghost_notify() {
@@ -67,40 +67,52 @@ _ghost_validate_command() {
         expanded_word="${HOME}${first_word:1}"
     fi
     
-    # 1. Check if it's a variable reference (starts with $)
+    # 1. Check if it's a keyword/special builtin (before type, as type may not catch all)
+    case "$first_word" in
+        if|then|else|elif|fi|case|esac|for|while|until|do|done|in|function|select|time|coproc|declare|typeset|local|export|readonly|unset) return 0 ;;
+    esac
+    
+    # 2. Use 'type' to validate builtins, functions, aliases, and PATH commands
+    if type "$first_word" >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # 3. Check if it's a file with path (absolute, relative, or tilde)
+    # Also handles $VAR paths (like $HOME/.cache/file)
+    if [[ "$first_word" == *"/"* || "$first_word" == "~"* || "$first_word" == '$'*"/"* ]]; then
+        # Try to expand variables in the path using eval (safe for display validation)
+        local eval_path
+        eval_path=$(eval echo "$first_word" 2>/dev/null)
+        if [[ -n "$eval_path" ]] && (test -e "$eval_path" 2>/dev/null || test -e "$first_word" 2>/dev/null || test -e "$expanded_word" 2>/dev/null); then
+            return 0
+        fi
+    fi
+    
+    # 4. Check if it's a local file in current directory (exists, regardless of permissions)
+    if test -e "$expanded_word" 2>/dev/null || test -e "$first_word" 2>/dev/null; then
+        return 0
+    fi
+    
+    # 5. Check if it's a variable reference (starts with $)
     if [[ "$first_word" == '$'* ]]; then
         local var_name="${first_word#$}"
         # Remove ${} or $() if present
         var_name="${var_name#\{}"
         var_name="${var_name%\}}"
-        # Check if the variable exists
-        if [[ -n "${!var_name+x}" ]] || compgen -v "$var_name" 2>/dev/null | grep -qx "$var_name"; then
-            return 0
-        fi
-        # Variable doesn't exist - invalid
-        return 1
-    fi
-    
-    # 2. Check if it's a keyword/special builtin (before type, as type may not catch all)
-    case "$first_word" in
-        if|then|else|elif|fi|case|esac|for|while|until|do|done|in|function|select|time|coproc|declare|typeset|local|export|readonly|unset) return 0 ;;
-    esac
-    
-    # 3. Use 'type' to validate builtins, functions, aliases, and PATH commands
-    if type "$first_word" >/dev/null 2>&1; then
-        return 0
-    fi
-    
-    # 4. Check if it's a file with path (absolute, relative, or tilde)
-    if [[ "$first_word" == *"/"* || "$first_word" == "~"* ]]; then
-        # Path with directory - just check if it exists
-        if test -e "$expanded_word" 2>/dev/null || test -e "$first_word" 2>/dev/null; then
-            return 0
+        # If the variable name contains a path separator, it was already handled above
+        if [[ "$var_name" != *"/"* ]]; then
+            # Check if the variable exists
+            if [[ -n "${!var_name+x}" ]] || compgen -v "$var_name" 2>/dev/null | grep -qx "$var_name"; then
+                return 0
+            fi
+            # Variable doesn't exist - invalid
+            return 1
         fi
     fi
     
-    # 5. Check if it's a local file in current directory (exists, regardless of permissions)
-    if test -e "$expanded_word" 2>/dev/null || test -e "$first_word" 2>/dev/null; then
+    # 6. Check if it's a variable name without $ (all caps or contains _)
+    # Only do this if compgen -v finds a match
+    if compgen -v "$first_word" 2>/dev/null | grep -qx "$first_word"; then
         return 0
     fi
     
@@ -125,9 +137,9 @@ _ghost_validate_and_notify() {
 
 _ghost_load_state() {
     if [[ -f "$_ghost_state_file" ]]; then
-        _ghost_mode=$(cat "$_ghost_state_file" 2>/dev/null || echo "clean")
+        _ghost_mode=$(cat "$_ghost_state_file" 2>/dev/null || echo "ghost")
     else
-        _ghost_mode="clean"
+        _ghost_mode="ghost"
     fi
     
     # Load space mode
