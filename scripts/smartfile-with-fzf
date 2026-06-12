@@ -115,6 +115,8 @@ function __smartfile_open() {
     
     if [[ -n "${selectedEntry}" ]]; then
         __smartfile_open_path "${selectedEntry}"
+    else
+        return 1
     fi
 }
 
@@ -363,7 +365,26 @@ if [[ -n "$BASH_VERSION" ]]; then
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
         # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
         if [[ "$*" =~ ^[a-zA-Z0-9._/\\\ -]+$ ]]; then
-            smartfile "$@" 2>/dev/null || return 127
+            # Capture the original bash error message in a variable
+            local original_error
+            original_error=$(LC_ALL=C bash -c "type $*" 2>&1 || true)
+            
+            # Try to open as file
+            smartfile "$@" 2>/dev/null
+            local smartfile_result=$?
+            
+            # If smartfile failed (not a file), print the original bash error message
+            if [[ $smartfile_result -ne 0 ]]; then
+                # Get the error message in the system language
+                if [[ -f /usr/share/bash-completion/bash_completion ]]; then
+                    # Generate the error message as bash would
+                    printf "bash: %s: command not found\n" "$*" >&2
+                else
+                    echo "$original_error" >&2
+                fi
+                return 127
+            fi
+            return 0
         else
             # For variable expansions and other special content, show it as text
             echo "$*"
@@ -382,7 +403,21 @@ if [[ -n "$ZSH_VERSION" ]]; then
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
         # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
         if [[ "$*" =~ ^[a-zA-Z0-9._/\\\ -]+$ ]]; then
-            smartfile "$@" 2>/dev/null || return 127
+            # Capture the original zsh error message in a variable
+            local original_error
+            original_error=$(LC_ALL=C zsh -c "type $*" 2>&1 || true)
+            
+            # Try to open as file
+            smartfile "$@" 2>/dev/null
+            local smartfile_result=$?
+            
+            # If smartfile failed (not a file), print the original zsh error message
+            if [[ $smartfile_result -ne 0 ]]; then
+                # Generate the error message as zsh would
+                printf "zsh: command not found: %s\n" "$*" >&2
+                return 127
+            fi
+            return 0
         else
             # For variable expansions and other special content, show it as text
             echo "$*"
