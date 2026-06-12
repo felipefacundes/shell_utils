@@ -115,7 +115,7 @@ functions_browser() {
         printf '\e[2J\e[H'
         
         printf "${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════╗${RESET}\n"
-        printf "${BOLD}${CYAN}║         Shell Function Browser (${SHELL_TYPE})             ║${RESET}\n"
+        printf "${BOLD}${CYAN}║         Shell Function Browser (${SHELL_TYPE})                        ║${RESET}\n"
         printf "${BOLD}${CYAN}╚══════════════════════════════════════════════════════════════╝${RESET}\n"
         printf "${GREEN}Type to search | ↑↓: Navigate | Enter: Full view | q: Quit"
         [[ -n "$HIGHLIGHTER" ]] && printf " | Syntax: ${HIGHLIGHTER}"
