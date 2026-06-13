@@ -915,4 +915,4 @@ function f_ghost_lock_first_level() {
 
 trap f_ghost_lock_first_level INT
 
-PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }_ghost_refresh"
+PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'} _ghost_refresh"
