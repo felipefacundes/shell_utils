@@ -196,12 +196,18 @@ _ghost_refresh() {
 
 ghost_cmd_cache() {
     IFS=':' read -ra paths <<< "$PATH"
-    mapfile -t _ghost_cmd_cache < <(
-        find "${paths[@]}" -maxdepth 1 -type f -executable 2>/dev/null | 
-        sed 's|.*/||' | 
-        sort -u
-    )
+
+    # mapfile -t _ghost_cmd_cache < <(
+    #     find -L "${paths[@]}" -maxdepth 1 -type f -executable 2>/dev/null | 
+    #     awk -F/ '{print $NF}' | 
+    #     sort -u
+    # )
     
+    mapfile -t _ghost_cmd_cache < <(
+        find -L "${paths[@]}" -maxdepth 1 -type f -perm -u+x 2>/dev/null \
+        -printf '%f\n' | sort -u
+    )
+
     # Save to cache file
     mkdir -p "$(dirname "$_ghost_cmd_cache_file")" &>/dev/null
     [[ -f "$_ghost_cmd_cache_file" ]] && rm -f "$_ghost_cmd_cache_file"

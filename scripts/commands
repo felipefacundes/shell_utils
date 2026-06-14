@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes (original), ported to fff style (no flicker)
+#
+# cmd - Fuzzy command finder (no-flicker, fff-style)
+
+CYAN=$'\033[0;36m' GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m' RED=$'\033[0;31m' BOLD=$'\033[1m' NC=$'\033[0m'
+
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [search]="Busca: "
+        [help]="↑↓:navegar | Enter:executar | q/Esc:sair"
+        [executing]="Executando: "
+    )
+else
+    MESSAGES=(
+        [search]="Search: "
+        [help]="up/down:navigate | enter:execute | q/esc:quit"
+        [executing]="Executing: "
+    )
+fi
+
+declare -a commands filtered_commands
+scroll=0 list_total=0 max_items=0 search_term=""
+LINES=0 COLUMNS=0
+HEADER_LINES=3   # fixed lines at the top (title+help+search)
+
+get_term_size() {
+    read -r LINES COLUMNS < <(stty size)
+    ((max_items=LINES-HEADER_LINES-1))
+}
+
+setup_terminal() {
+    # Alternative screen, no wrap, no cursor, clear, fixed scroll region.
+    printf '\e[?1049h\e[?7l\e[?25l\e[2J\e[%d;%dr' "$((HEADER_LINES+1))" "$LINES"
+    stty -echo
+}
+
+reset_terminal() {
+    printf '\e[?7h\e[?25h\e[2J\e[;r\e[?1049l'
+    stty echo
+}
+
+cleanup() { reset_terminal; exit 0; }
+trap 'cleanup' SIGINT SIGTERM
+
+get_all_commands() {
+
+    IFS=':' read -ra paths <<< "$PATH"
+    
+    # mapfile -t commands < <(
+    #     find -L "${paths[@]}" -maxdepth 1 -type f -executable 2>/dev/null | 
+    #     awk -F/ '{print $NF}' | 
+    #     sort -u
+    # )
+
+    mapfile -t commands < <(
+        find -L "${paths[@]}" -maxdepth 1 -type f -perm -u+x 2>/dev/null \
+        -printf '%f\n' | sort -u
+    )
+
+}
+
+filter_commands() {
+    if [[ -z "$search_term" ]]; then
+        filtered_commands=("${commands[@]}")
+    else
+        filtered_commands=(); local cmd pl="${search_term,,}" cl
+        for cmd in "${commands[@]}"; do
+            cl="${cmd,,}"
+            [[ "$cl" == *"$pl"* ]] && filtered_commands+=("$cmd")
+        done
+    fi
+    ((list_total=${#filtered_commands[@]}-1))
+    scroll=0
+}
+
+# Print the header (fixed title) - only called once, on full redraw
+draw_header() {
+    printf '\e[H'
+    printf "${CYAN}${MESSAGES[help]}${NC}\e[K\n"
+    printf "  ${GREEN}[%d commands]${NC}\e[K\n" "$((list_total+1))"
+    draw_search_line
+}
+
+# Update only the search line (without clearing the screen)
+draw_search_line() {
+    printf '\e[3H\e[K'
+    printf "${YELLOW}${MESSAGES[search]}${BOLD}%s${NC}" "$search_term"
+}
+
+# Format an item line (with match highlight and cursor)
+format_item() {
+    local idx=$1
+    local cmd="${filtered_commands[$1]}"
+    local display="$cmd"
+
+    if [[ -n "$search_term" && -n "$cmd" ]]; then
+        local pl="${search_term,,}"
+        local cl="${cmd,,}"
+        local pos="${cl%%$pl*}"
+        local plen=${#pos}
+        if [[ "$cl" == *"$pl"* ]]; then
+            local before="${cmd:0:$plen}"
+            local match="${cmd:$plen:${#search_term}}"
+            local after="${cmd:$((plen + ${#search_term}))}"
+            display="${before}${BOLD}${GREEN}${match}${NC}${after}"
+        fi
+    fi
+
+    if ((idx == scroll)); then
+        printf "${BOLD}${RED}> ${NC}\e[7m%s\e[m" "$display"
+    else
+        printf "  %s" "$display"
+    fi
+}
+
+# Print line $1 (0-based within the scroll window) at the correct position
+# on the screen, clearing the rest of the line.
+print_line() {
+    local idx=$1
+    printf '\r\e[K%s' "$(format_item "$idx")"
+}
+
+# Draw the items window (only the scroll area), once.
+draw_list() {
+    local scroll_start scroll_end i
+
+    if ((list_total < max_items || scroll < max_items/2)); then
+        scroll_start=0
+        scroll_end=$max_items
+    elif ((list_total - scroll < max_items/2)); then
+        scroll_start=$((list_total-max_items+1))
+        ((scroll_start<0)) && scroll_start=0
+        scroll_end=$((list_total+1))
+    else
+        scroll_start=$((scroll-max_items/2))
+        scroll_end=$((scroll_start+max_items))
+    fi
+
+    # Position at the beginning of the scroll area.
+    printf '\e[%dH' "$((HEADER_LINES+1))"
+
+    for ((i=scroll_start;i<scroll_end;i++)); {
+        ((i > scroll_start)) && printf '\n'
+        if ((i <= list_total)); then
+            print_line "$i"
+        else
+            printf '\e[K'
+        fi
+    }
+
+    scroll_window_start=$scroll_start
+}
+
+# Redraw everything (used only on initialization or after filter/resize)
+redraw() {
+    printf '\e[2J'
+    draw_header
+    draw_list
+    status_line
+}
+
+status_line() {
+    local exec_hint=""
+    [[ $list_total -ge 0 ]] && exec_hint="${filtered_commands[$scroll]}"
+    printf '\e7\e[%dH\e[7m\e[K %d/%d  %s\e[m\e8' \
+        "$LINES" "$((scroll+1))" "$((list_total+1))" "$exec_hint"
+}
+
+main() {
+    [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { echo "Usage: cmd [search_term]"; exit 0; }
+    [[ "${1:-}" == "--list" || "${1:-}" == "-l" ]] && {
+        get_all_commands; search_term="${2:-}"; filter_commands
+        printf "%s\n" "${filtered_commands[@]}" | head -35; exit 0
+    }
+
+    get_all_commands
+    search_term="${1:-}"
+    filter_commands
+
+    get_term_size
+    setup_terminal
+    trap 'get_term_size; redraw' WINCH
+    redraw
+
+    local read_flags=(-rsn 1)
+    ((BASH_VERSINFO[0] > 3)) && read_flags=(-t 0.05 -rsn 1)
+
+    for ((;;)); {
+        read "${read_flags[@]}" key
+
+        [[ -z $key && $? -ne 0 ]] && continue
+
+        case "$key" in
+            $'\e')
+                read -rsn 1 -t 0.01 k2
+                if [[ $k2 == '[' ]]; then
+                    read -rsn 1 -t 0.01 k3
+                    case "$k3" in
+                        A) # up arrow
+                            ((scroll > 0)) && {
+                                ((scroll--))
+                                draw_list
+                                status_line
+                            }
+                        ;;
+                        B) # down arrow
+                            ((scroll < list_total)) && {
+                                ((scroll++))
+                                draw_list
+                                status_line
+                            }
+                        ;;
+                    esac
+                else
+                    # Pure Esc: exit
+                    break
+                fi
+            ;;
+
+            $'\177'|$'\b')
+                [[ -n "$search_term" ]] && {
+                    search_term="${search_term%?}"
+                    filter_commands
+                    draw_search_line
+                    draw_list
+                    status_line
+                }
+            ;;
+
+            "")
+                ((list_total >= 0)) && {
+                    cmd="${filtered_commands[$scroll]}"
+                    reset_terminal
+                    printf "%s\n" "$cmd" | tee "${TMPDIR:-/tmp}/cmd_selected"
+                    printf "${GREEN}${MESSAGES[executing]}${BOLD}%s${NC}\n" "$cmd"
+                    exec "$cmd"
+                }
+            ;;
+
+            q|Q|$'\x03')
+                break
+            ;;
+
+            *)
+                [[ $key =~ [[:print:]] ]] && {
+                    search_term+="$key"
+                    filter_commands
+                    draw_search_line
+                    draw_list
+                    status_line
+                }
+            ;;
+        esac
+
+        [[ -t 1 ]] || exit 1
+    }
+
+    reset_terminal
+}
+
+main "$@"

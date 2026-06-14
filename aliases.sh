@@ -46,3 +46,4 @@
 . "/home/rfacundes/.shell_utils/aliases/system/sensors.sh"
 . "/home/rfacundes/.shell_utils/aliases/system/user.sh"
 . "/home/rfacundes/.shell_utils/aliases/aliases.sh"
+. "/home/rfacundes/.shell_utils/aliases/functions.sh"

@@ -48,6 +48,7 @@ alias mounting_qcow2_help='qemu_mounting_help'
 alias nouveau_nvk_zink_help='helps nouveau_nvk_zink'
 
 alias godot_restore_editor_theme='helps godot_restore_editor_theme'
+alias godot_instantiate_methods='helps godot_instantiate_methods'
 alias godot_comment_markers='helps godot_comment_markers'
 
 alias trap_signals='helps trap_signals'

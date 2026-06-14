@@ -1,5 +1,3 @@
-alias commands='~/.shell_utils/scripts/cmd'
-
 alias doc2pdf='~/.shell_utils/scripts/utils/odt2pdf'
 alias docx2pdf='~/.shell_utils/scripts/utils/odt2pdf'
 

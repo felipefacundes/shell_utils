@@ -118,7 +118,7 @@ fi
 #"agnoster" #"pure" #"rr" #"mairan" #"rjorgenson" #"brainy" #"iterate" #"standard" #"demula" #"powerline-naked" #"powerline-multiline" #"90210" #"clean" #"dulcie" 
 #"brunton" #"binaryanomaly" #"random" #"font" #"powerline" #"duru" #"vscode" #"candy" #"hawaii50" #"emperor" #"tylenol" #"morris" #"pzq" #"zitron" #"kitsune"
 if [[ "$BLE_BASH_ENABLED" != 2 ]]; then 
-    OMB_THEME=powerbash10k
+    OMB_THEME=purity
 
     # shellcheck source=/dev/null
     OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$OMBC" && unset OMBC
@@ -661,9 +661,9 @@ _complete_env_var_bind() {
     READLINE_POINT=$(( word_start + ${#selected} ))
 }
 
-# Bind to shortcut → and z
-bind -x '"\xe2\x86\x92": _complete_env_var_bind'
-bind -x '"\ez": _complete_env_var_bind'
+# Bind to shortcut → and v
+bind -x '"°": _complete_env_var_bind'
+bind -x '"\ev": _complete_env_var_bind'
 
 #complete -o default -o bashdefault -F _filedir_xspec -E code
 complete -o default -o bashdefault -F _filedir_xspec -E 

@@ -3,3 +3,4 @@
 . "/home/rfacundes/.shell_utils/functions/notifications.sh"
 . "/home/rfacundes/.shell_utils/functions/cd.sh"
 . "/home/rfacundes/.shell_utils/functions/functions_browser.sh"
+. "/home/rfacundes/.shell_utils/functions/cmd.sh"
