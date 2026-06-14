@@ -112,6 +112,8 @@ fi
 
 ZSH_AUTOSUGGEST_STRATEGY=smart
 
+bindkey -s '\ex' 'commands\n'
+
 if [ -d ~/.local/share/zsh/site-functions/ ]; then
     for completion in ~/.local/share/zsh/site-functions/*.zsh; do
         [ -f "$completion" ] && source "$completion"

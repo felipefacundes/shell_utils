@@ -664,6 +664,7 @@ _complete_env_var_bind() {
 # Bind to shortcut → and v
 bind -x '"°": _complete_env_var_bind'
 bind -x '"\ev": _complete_env_var_bind'
+bind -x '"\ex": commands'
 
 #complete -o default -o bashdefault -F _filedir_xspec -E code
 complete -o default -o bashdefault -F _filedir_xspec -E 

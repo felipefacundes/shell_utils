@@ -170,6 +170,8 @@ set -e source_path
 # Clean up functions
 functions -e sourced
 
+bind \ex 'commands; commandline -f execute'
+
 if set -q TERMUX_VERSION
     cd /sdcard; or true
 end
