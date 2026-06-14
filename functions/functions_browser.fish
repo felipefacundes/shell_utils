@@ -2,7 +2,7 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-function fzf_functions_browser
+function functions_browser
 
     function __cleanup
         printf '\e[?7h\e[?25h\e[2J\e[;r\e[?1049l'
@@ -230,4 +230,77 @@ function fzf_functions_browser
     end
     
     __cleanup
+end
+
+##################################################################################################################################
+##################################################################################################################################
+##################################################################################################################################
+
+# Function selector for Fish shell
+# Usage: fsel [-e|--exec] [-h|--help]
+
+function fsel
+    set -l exec_mode false
+    
+    switch "$argv[1]"
+        case -h --help
+            echo "Usage: fsel [-e|--exec] [-h|--help]"
+            echo ""
+            echo "Select and show/execute shell functions interactively."
+            echo ""
+            echo "Options:"
+            echo "  -e, --exec    Execute selected function"
+            echo "  -h, --help    Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  fsel          Select and show function code"
+            echo "  fsel -e       Select and execute function"
+            return 0
+        case -e --exec
+            set exec_mode true
+    end
+    
+    # Check if fzf is installed
+    if not command -v fzf &>/dev/null
+        echo "fzf is not installed. Install it with:" >&2
+        echo "  apt install fzf    # Debian/Ubuntu" >&2
+        echo "  brew install fzf   # macOS" >&2
+        return 1
+    end
+    
+    # Create temp file with function definitions
+    set -l tmpfile (mktemp /tmp/fsel_functions_XXXXXX)
+    
+    # Get all function names and dump definitions
+    set -l funcs (functions --all | string match -r '^[^_,].*' | sort)
+    
+    for func in $funcs
+        echo "###FUNC:$func"
+        functions "$func"
+        echo "###END:$func"
+    end | tee "$tmpfile" >/dev/null
+    
+    # Extract function names for fzf (one per line)
+    set -l func_names (grep -a "^###FUNC:" "$tmpfile" | sed 's/^###FUNC://')
+    
+    # Build preview command with expanded tmpfile path
+    set -l preview_cmd "sed -n '/^###FUNC:{}\$/,/^###END:{}\$/p' $tmpfile | sed '1d;\$d'"
+    
+    # Select with fzf using the temp file for preview
+    set -l selected (printf "%s\n" $func_names | fzf \
+        --preview="$preview_cmd" \
+        --preview-window=right:60%:wrap)
+    
+    rm -f "$tmpfile"
+    
+    if test -z "$selected"
+        return 1
+    end
+    
+    # Show or execute
+    if $exec_mode
+        eval "$selected"
+    else
+        functions "$selected"
+    end
 end

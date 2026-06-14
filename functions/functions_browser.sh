@@ -268,6 +268,12 @@ functions_browser() {
 # EOF
 # }
 
+
+##################################################################################################################################
+##################################################################################################################################
+##################################################################################################################################
+
+
 if [[ -n $BASH_VERSION ]]; then
     functions() {
         local func_name
@@ -331,3 +337,91 @@ if [[ -n $BASH_VERSION ]]; then
         done | less -R
     }
 fi
+
+
+##################################################################################################################################
+##################################################################################################################################
+##################################################################################################################################
+
+# Function selector with Bash and Zsh support
+# Usage: fsel [-e|--exec] [-h|--help]
+
+fsel() {
+    local exec_mode=false
+    
+    case "$1" in
+        -h|--help)
+            echo "Usage: fsel [-e|--exec] [-h|--help]"
+            echo ""
+            echo "Select and show/execute shell functions interactively."
+            echo ""
+            echo "Options:"
+            echo "  -e, --exec    Execute selected function"
+            echo "  -h, --help    Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  fsel          Select and show function code"
+            echo "  fsel -e       Select and execute function"
+            return 0
+            ;;
+        -e|--exec)
+            exec_mode=true
+            ;;
+    esac
+    
+    # Check if fzf is installed
+    if ! command -v fzf &>/dev/null; then
+        echo "fzf is not installed. Install it with:" >&2
+        echo "  apt install fzf    # Debian/Ubuntu" >&2
+        echo "  brew install fzf   # macOS" >&2
+        return 1
+    fi
+    
+    # Create temp file with function definitions
+    local tmpfile
+    tmpfile=$(mktemp /tmp/fsel_functions_XXXXXX)
+    
+    # Detect shell and dump functions
+    if [[ -n "$ZSH_VERSION" ]]; then
+        for func in ${(ok)functions}; do
+            echo "###FUNC:$func"
+            print -r -- "$functions[$func]"
+            echo "###END:$func"
+        done | tee "$tmpfile" >/dev/null
+    elif [[ -n "$BASH_VERSION" ]]; then
+        declare -F | awk '{print $3}' | sort | while IFS= read -r func; do
+            echo "###FUNC:$func"
+            declare -f "$func" | tail -n +2
+            echo "###END:$func"
+        done | tee "$tmpfile" >/dev/null
+    else
+        echo "Unsupported shell" >&2
+        rm -f "$tmpfile"
+        return 1
+    fi
+    
+    # Extract function names for fzf
+    local func_names
+    func_names=$(grep -a "^###FUNC:" "$tmpfile" | sed 's/^###FUNC://')
+    
+    # Select with fzf using the temp file for preview
+    local selected
+    selected=$(echo "$func_names" | fzf \
+        --preview="sed -n '/^###FUNC:{}$/,/^###END:{}$/p' \"$tmpfile\" | sed '1d;\$d'" \
+        --preview-window=right:60%:wrap)
+    
+    rm -f "$tmpfile"
+    
+    [[ -z "$selected" ]] && return 1
+    
+    # Show or execute
+    if $exec_mode; then
+        eval "$selected"
+    else
+        if [[ -n "$ZSH_VERSION" ]]; then
+            print -r -- "$functions[$selected]"
+        else
+            declare -f "$selected"
+        fi
+    fi
+}
