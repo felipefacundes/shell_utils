@@ -54,13 +54,25 @@ _ghost_validate_command() {
     
     # Extract the first word (command) - handle quoted strings
     local first_word
-    first_word="${cmd_line%% *}"
+    
+    # If the line has no spaces but cursor is not at the end,
+    # the user is editing in the middle - extract only what's before the cursor
+    if [[ "$cmd_line" != *' '* && $READLINE_POINT -lt ${#cmd_line} ]]; then
+        # User is typing at the beginning/middle of existing text
+        # Extract only the text before the cursor as the command
+        first_word="${cmd_line:0:$READLINE_POINT}"
+    else
+        first_word="${cmd_line%% *}"
+    fi
     
     # Remove surrounding quotes if present
     first_word="${first_word#\"}"
     first_word="${first_word%\"}"
     first_word="${first_word#\'}"
     first_word="${first_word%\'}"
+    
+    # Remove trailing semicolon (;) - common in "cmd1; cmd2" sequences
+    first_word="${first_word%;}"
     
     # Skip validation if empty or starts with variable assignment
     [[ -z "$first_word" ]] && return 0
@@ -83,9 +95,7 @@ _ghost_validate_command() {
     fi
     
     # 3. Check if it's a file with path (absolute, relative, or tilde)
-    # Also handles $VAR paths (like $HOME/.cache/file)
     if [[ "$first_word" == *"/"* || "$first_word" == "~"* || "$first_word" == '$'*"/"* ]]; then
-        # Try to expand variables in the path using eval (safe for display validation)
         local eval_path
         eval_path=$(eval echo "$first_word" 2>/dev/null)
         if [[ -n "$eval_path" ]] && (test -e "$eval_path" 2>/dev/null || test -e "$first_word" 2>/dev/null || test -e "$expanded_word" 2>/dev/null); then
@@ -93,7 +103,7 @@ _ghost_validate_command() {
         fi
     fi
     
-    # 4. Check if it's a local file in current directory (exists, regardless of permissions)
+    # 4. Check if it's a local file in current directory
     if test -e "$expanded_word" 2>/dev/null || test -e "$first_word" 2>/dev/null; then
         return 0
     fi
@@ -101,22 +111,18 @@ _ghost_validate_command() {
     # 5. Check if it's a variable reference (starts with $)
     if [[ "$first_word" == '$'* ]]; then
         local var_name="${first_word#$}"
-        # Remove ${} or $() if present
         var_name="${var_name#\{}"
         var_name="${var_name%\}}"
-        # If the variable name contains a path separator, it was already handled above
+        var_name="${var_name%;}"
         if [[ "$var_name" != *"/"* ]]; then
-            # Check if the variable exists
             if [[ -n "${!var_name+x}" ]] || compgen -v "$var_name" 2>/dev/null | grep -qx "$var_name"; then
                 return 0
             fi
-            # Variable doesn't exist - invalid
             return 1
         fi
     fi
     
-    # 6. Check if it's a variable name without $ (all caps or contains _)
-    # Only do this if compgen -v finds a match
+    # 6. Check if it's a variable name without $
     if compgen -v "$first_word" 2>/dev/null | grep -qx "$first_word"; then
         return 0
     fi
