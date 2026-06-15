@@ -58,21 +58,19 @@ _ghost_validate_command() {
     # If the line has no spaces but cursor is not at the end,
     # the user is editing in the middle - extract only what's before the cursor
     if [[ "$cmd_line" != *' '* && $READLINE_POINT -lt ${#cmd_line} ]]; then
-        # User is typing at the beginning/middle of existing text
-        # Extract only the text before the cursor as the command
         first_word="${cmd_line:0:$READLINE_POINT}"
     else
         first_word="${cmd_line%% *}"
     fi
+    
+    # Remove trailing semicolon (;) FIRST - before removing quotes
+    first_word="${first_word%;}"
     
     # Remove surrounding quotes if present
     first_word="${first_word#\"}"
     first_word="${first_word%\"}"
     first_word="${first_word#\'}"
     first_word="${first_word%\'}"
-    
-    # Remove trailing semicolon (;) - common in "cmd1; cmd2" sequences
-    first_word="${first_word%;}"
     
     # Skip validation if empty or starts with variable assignment
     [[ -z "$first_word" ]] && return 0
@@ -84,7 +82,7 @@ _ghost_validate_command() {
         expanded_word="${HOME}${first_word:1}"
     fi
     
-    # 1. Check if it's a keyword/special builtin (before type, as type may not catch all)
+    # 1. Check if it's a keyword/special builtin
     case "$first_word" in
         if|then|else|elif|fi|case|esac|for|while|until|do|done|in|function|select|time|coproc|declare|typeset|local|export|readonly|unset) return 0 ;;
     esac
@@ -130,7 +128,6 @@ _ghost_validate_command() {
     # Invalid command
     return 1
 }
-
 # Notify if the accepted line contains an invalid command
 _ghost_validate_and_notify() {
     local full_line="$1"
