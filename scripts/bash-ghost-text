@@ -170,7 +170,9 @@ _ghost_save_space_mode() {
 
 _ghost_init_history() {
     _ghost_history_data=$(
-        fc -ln -10000 2>/dev/null | sed 's/^[[:space:]]*//' | tac | awk '!seen[$0]++'
+        #fc -ln -10000 2>/dev/null | sed 's/^[[:space:]]*//' | tac | awk '!seen[$0]++'
+        #cat "$HISTFILE" 2>/dev/null | grep -v '^#[0-9]' | sed 's/^[[:space:]]*//' | tac | awk '!seen[$0]++'
+        history | sed 's/^[[:space:]]*[0-9]*[[:space:]]*//' | tac | awk '!seen[$0]++'  # Best option
     )
 }
 
