@@ -11,13 +11,13 @@ declare -A MESSAGES
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
         [search]="Busca: "
-        [help]="↑↓:navegar | Enter:executar | q/Esc:sair"
+        [help]="↑↓:navegar | Enter:executar | Esc:sair"
         [executing]="Executando: "
     )
 else
     MESSAGES=(
         [search]="Search: "
-        [help]="up/down:navigate | enter:execute | q/esc:quit"
+        [help]="up/down:navigate | enter:execute | esc:quit"
         [executing]="Executing: "
     )
 fi
@@ -44,7 +44,7 @@ reset_terminal() {
 }
 
 cleanup() { reset_terminal; exit 0; }
-trap 'cleanup' SIGINT SIGTERM
+trap 'break; cleanup' SIGINT SIGTERM
 
 get_all_commands() {
 
@@ -241,7 +241,7 @@ main() {
                 }
             ;;
 
-            q|Q|$'\x03')
+            $'\x03')
                 break
             ;;
 
@@ -260,6 +260,7 @@ main() {
     }
 
     reset_terminal
+    trap - SIGINT SIGTERM
 }
 
 main "$@"
