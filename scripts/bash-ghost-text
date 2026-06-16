@@ -26,15 +26,20 @@ _ghost_notify() {
 
     [[ ! -f "$icon" ]] && icon="$icon_fallback"
 
-    command -v notify-send >/dev/null && \
-    notify-send \
-    --app-name "Bash-Ghost-Text" \
-    --icon "$icon" \
-    --expire-time 1400 \
-    --urgency low \
-    -h string:bgcolor:#45475a \
-    -h string:fgcolor:#f38ba8 \
-    "$a" "$b" >/dev/null 2>&1
+    if [[ -n "$TERMUX_VERSION" ]]; then
+        command -v termux-notification >/dev/null && \
+        { termux-notification --title "$a" -c "$b" --priority high & disown; } >/dev/null 2>&1
+    else
+        command -v notify-send >/dev/null && \
+        notify-send \
+        --app-name "Bash-Ghost-Text" \
+        --icon "$icon" \
+        --expire-time 1400 \
+        --urgency low \
+        -h string:bgcolor:#45475a \
+        -h string:fgcolor:#f38ba8 \
+        "$a" "$b" >/dev/null 2>&1
+    fi
 
     if test -f "$audio" && command -v paplay >/dev/null; then
         { paplay --volume "$volume" "$audio" & disown; } >/dev/null 2>&1
@@ -558,14 +563,16 @@ _ghost_self_insert() {
 
 # Space key - validates command, inserts space, and optionally unlocks second level
 _ghost_space_insert() {
-    # Validate the command before inserting space
+    # Insert the space character FIRST
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT} ${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=$(( READLINE_POINT + 1 ))
+    
+    # NOW validate - after space is inserted, words are properly separated
     _ghost_validate_and_notify "$READLINE_LINE"
     
     # Unlock first level only if space mode is "unlock"
     [[ "$_ghost_space_mode" == "unlock" ]] && _ghost_lock_first_level=false
     
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT} ${READLINE_LINE:$READLINE_POINT}"
-    READLINE_POINT=$(( READLINE_POINT + 1 ))
     _ghost_suggestion=""
     _ghost_render_ghost
 }
