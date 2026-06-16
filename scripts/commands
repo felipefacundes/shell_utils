@@ -41,11 +41,10 @@ setup_terminal() {
 reset_terminal() {
     printf '\e[?7h\e[?25h\e[2J\e[;r\e[?1049l'
     stty echo
-    stty sane
 }
 
 cleanup() { reset_terminal; exit 0; }
-trap 'break; cleanup' SIGINT SIGTERM
+trap 'cleanup' SIGINT SIGTERM
 
 get_all_commands() {
 
