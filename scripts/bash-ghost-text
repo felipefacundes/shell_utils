@@ -81,6 +81,12 @@ _ghost_validate_command() {
     [[ -z "$first_word" ]] && return 0
     [[ "$first_word" == *"="* ]] && return 0
     
+    # Skip validation if it's a function declaration (word followed by parentheses)
+    # Examples: test(), my_func(), func_name()
+    if [[ "$first_word" =~ ^[a-zA-Z_][a-zA-Z0-9_]*\(\)$ ]]; then
+        return 0
+    fi
+    
     # Expand tilde (~) to $HOME for path validation
     local expanded_word="$first_word"
     if [[ "$first_word" == "~"* ]]; then
@@ -133,6 +139,7 @@ _ghost_validate_command() {
     # Invalid command
     return 1
 }
+
 # Notify if the accepted line contains an invalid command
 _ghost_validate_and_notify() {
     local full_line="$1"
