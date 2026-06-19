@@ -57,7 +57,7 @@ _ghost_notify() {
 _ghost_validate_command() {
     local cmd_line="$1"
     
-    # Extract the first word (command) - handle quoted strings
+    # Extract the first word (command) - handling escaped spaces
     local first_word
     
     # If the line has no spaces but cursor is not at the end,
@@ -65,7 +65,31 @@ _ghost_validate_command() {
     if [[ "$cmd_line" != *' '* && $READLINE_POINT -lt ${#cmd_line} ]]; then
         first_word="${cmd_line:0:$READLINE_POINT}"
     else
-        first_word="${cmd_line%% *}"
+        # Extract first word respecting escaped spaces
+        first_word=""
+        local escaped=false
+        local i
+        for (( i=0; i<${#cmd_line}; i++ )); do
+            local char="${cmd_line:$i:1}"
+            
+            if $escaped; then
+                first_word+="$char"
+                escaped=false
+                continue
+            fi
+            
+            if [[ "$char" == '\' ]]; then
+                first_word+="$char"
+                escaped=true
+                continue
+            fi
+            
+            if [[ "$char" == ' ' ]]; then
+                break
+            fi
+            
+            first_word+="$char"
+        done
     fi
     
     # Remove trailing semicolon (;) FIRST - before removing quotes
@@ -81,16 +105,31 @@ _ghost_validate_command() {
     [[ -z "$first_word" ]] && return 0
     [[ "$first_word" == *"="* ]] && return 0
     
-    # Skip validation if it's a function declaration (word followed by parentheses)
-    # Examples: test(), my_func(), func_name()
+    # Skip validation if it's a function declaration
     if [[ "$first_word" =~ ^[a-zA-Z_][a-zA-Z0-9_]*\(\)$ ]]; then
         return 0
     fi
+    
+    # Check if the word contains escaped spaces or backslashes (file paths)
+    local has_escapes=false
+    [[ "$first_word" == *'\ '* || "$first_word" == *'\'* ]] && has_escapes=true
     
     # Expand tilde (~) to $HOME for path validation
     local expanded_word="$first_word"
     if [[ "$first_word" == "~"* ]]; then
         expanded_word="${HOME}${first_word:1}"
+    fi
+    
+    # If the word has escapes, it's a file path - skip type/compgen validations
+    if $has_escapes; then
+        # Try to validate as a file path directly
+        local eval_path
+        eval_path=$(eval echo "$first_word" 2>/dev/null)
+        if [[ -n "$eval_path" ]] && (test -e "$eval_path" 2>/dev/null || test -e "$expanded_word" 2>/dev/null); then
+            return 0
+        fi
+        # If the file doesn't exist, it's invalid (don't check type/compgen)
+        return 1
     fi
     
     # 1. Check if it's a keyword/special builtin
