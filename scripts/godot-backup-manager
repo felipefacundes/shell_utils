@@ -133,9 +133,9 @@ optirun=$(command -v optirun)
 if  [[ "$args" = no || "$args" = nouveau ]] && [[ "$optirun" ]]; then
     optirun glxinfo -B
     export NOUVEAU_USE_ZINK=1
-    NOUVEAU_USE_ZINK=1 optirun run_godot --verbose "$@"
+    NOUVEAU_USE_ZINK=1 optirun run_godot "$@"
 else
-    run_godot --verbose "$@"
+    run_godot "$@"
 fi
 
 declare godot_window

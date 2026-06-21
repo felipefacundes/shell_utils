@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Check if the portal is already running
+if ! systemctl --user is-active --quiet xdg-desktop-portal; then
+    echo "Portal is not active. Configuring..."
+    
+    # Create the override directory (if it doesn't exist)
+    mkdir -p ~/.config/systemd/user/xdg-desktop-portal.service.d
+    
+    if [ ! -f ~/.config/systemd/user/xdg-desktop-portal.service.d/override.conf ]; then
+        cat > ~/.config/systemd/user/xdg-desktop-portal.service.d/override.conf << EOF
+[Unit]
+After=graphical-session.target
+Requires=graphical-session.target
+EOF
+    fi
+    
+    # Reload and try to start
+    systemctl --user daemon-reload
+    
+    if ! systemctl --user start xdg-desktop-portal; then
+        echo "ERROR: Failed to start xdg-desktop-portal" >&2
+        
+        # More aggressive fallback only if necessary
+        cat > ~/.config/systemd/user/xdg-desktop-portal.service.d/override.conf << EOF
+[Unit]
+After=default.target
+Requires=default.target
+EOF
+        systemctl --user daemon-reload
+        systemctl --user restart xdg-desktop-portal || {
+            echo "CRITICAL ERROR: Portal failed to start" >&2
+            exit 1
+        }
+    fi
+fi
+
+# Import environment variables for X11
+if [[ ${XDG_SESSION_TYPE,,} == x11 ]]; then
+    systemctl --user import-environment DISPLAY XAUTHORITY 2>/dev/null
+    dbus-update-activation-environment --systemd DISPLAY XAUTHORITY 2>/dev/null
+fi
+
+# Show status
+echo "=== Portals Status ==="
+systemctl --user status xdg-desktop-portal --no-pager -l
+systemctl --user status xdg-desktop-portal-gtk --no-pager -l
+
+# Monitor logs
+echo -e "\n=== Monitoring logs (Ctrl+C to exit) ==="
+journalctl --user -u xdg-desktop-portal -f

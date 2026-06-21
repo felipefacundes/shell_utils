@@ -1,0 +1,356 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# reset-godot.sh - Complete Godot Engine Reset Script
+#
+# Description:
+#   This script performs a thorough cleanup of Godot Engine's local data,
+#   including cache, configuration, and user data directories. It is designed
+#   to reset Godot to a fresh installation state, which can be useful for
+#   troubleshooting, clearing corrupted data, or preparing for a clean setup.
+#
+# Author: Generated Script
+# Version: 1.0.0
+# License: MIT
+#
+# Usage:
+#   ./reset-godot.sh [options]
+#
+# Options:
+#   -h, --help      Display this help message and exit
+#   -f, --force     Skip confirmation prompt and force cleanup
+#   -v, --verbose   Enable verbose output showing detailed actions
+#   -d, --dry-run   Simulate the cleanup without actually removing anything
+#   --no-backup     Skip creating a backup of the directories before removal
+#
+# Examples:
+#   ./reset-godot.sh              # Interactive mode with confirmation
+#   ./reset-godot.sh --force      # Force cleanup without prompts
+#   ./reset-godot.sh --dry-run    # Preview what would be removed
+#
+
+set -euo pipefail
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_VERSION="1.0.0"
+readonly TIMESTAMP="$(date +"%Y%m%d_%H%M%S")"
+
+# Godot-related directories (XDG Base Directory Specification compliant)
+readonly GODOT_PATHS=(
+    "${HOME}/.cache/godot"
+    "${HOME}/.config/godot"
+    "${HOME}/.local/share/godot"
+)
+
+# -----------------------------------------------------------------------------
+# Color Definitions for Output
+# -----------------------------------------------------------------------------
+
+if [[ -t 1 ]]; then
+    readonly COLOR_RESET='\033[0m'
+    readonly COLOR_RED='\033[0;31m'
+    readonly COLOR_GREEN='\033[0;32m'
+    readonly COLOR_YELLOW='\033[0;33m'
+    readonly COLOR_BLUE='\033[0;34m'
+    readonly COLOR_BOLD='\033[1m'
+else
+    readonly COLOR_RESET=''
+    readonly COLOR_RED=''
+    readonly COLOR_GREEN=''
+    readonly COLOR_YELLOW=''
+    readonly COLOR_BLUE=''
+    readonly COLOR_BOLD=''
+fi
+
+# -----------------------------------------------------------------------------
+# Default Flags
+# -----------------------------------------------------------------------------
+
+FLAG_FORCE=false
+FLAG_VERBOSE=false
+FLAG_DRY_RUN=false
+FLAG_NO_BACKUP=false
+
+# -----------------------------------------------------------------------------
+# Utility Functions
+# -----------------------------------------------------------------------------
+
+print_header() {
+    echo -e "${COLOR_BOLD}${COLOR_BLUE}=== ${1} ===${COLOR_RESET}"
+}
+
+print_success() {
+    echo -e "${COLOR_GREEN}[SUCCESS]${COLOR_RESET} ${1}"
+}
+
+print_warning() {
+    echo -e "${COLOR_YELLOW}[WARNING]${COLOR_RESET} ${1}"
+}
+
+print_error() {
+    echo -e "${COLOR_RED}[ERROR]${COLOR_RESET} ${1}" >&2
+}
+
+print_info() {
+    echo -e "${COLOR_BLUE}[INFO]${COLOR_RESET} ${1}"
+}
+
+print_verbose() {
+    if [[ "${FLAG_VERBOSE}" == true ]]; then
+        echo -e "${COLOR_BLUE}[VERBOSE]${COLOR_RESET} ${1}"
+    fi
+}
+
+display_banner() {
+    cat << EOF
+╔══════════════════════════════════════════════════╗
+║        Godot Engine - Complete Reset Script      ║
+║                   Version ${SCRIPT_VERSION}                  ║
+╚══════════════════════════════════════════════════╝
+EOF
+}
+
+display_help() {
+    cat << EOF
+Usage: ${SCRIPT_NAME} [OPTIONS]
+
+A professional script to completely reset Godot Engine's local data.
+
+Options:
+  -h, --help      Display this help message and exit
+  -f, --force     Skip confirmation prompt and force cleanup
+  -v, --verbose   Enable verbose output showing detailed actions
+  -d, --dry-run   Simulate the cleanup without actually removing anything
+  --no-backup     Skip creating a backup of the directories before removal
+
+Directories affected:
+  ~/.cache/godot        - Cache files
+  ~/.config/godot       - Configuration files
+  ~/.local/share/godot  - User data and project templates
+
+Examples:
+  ${SCRIPT_NAME}              # Interactive mode with confirmation
+  ${SCRIPT_NAME} --force      # Force cleanup without prompts
+  ${SCRIPT_NAME} --dry-run    # Preview what would be removed
+EOF
+}
+
+confirm_action() {
+    local prompt="${1:-Are you sure you want to continue?}"
+    local response
+
+    if [[ "${FLAG_FORCE}" == true ]]; then
+        return 0
+    fi
+
+    read -r -p "$(echo -e "${COLOR_YELLOW}${prompt} [y/N]: ${COLOR_RESET}")" response
+    case "${response}" in
+        [yY][eE][sS]|[yY])
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+create_backup() {
+    local backup_dir="/tmp/godot_backup_${TIMESTAMP}"
+    
+    print_info "Creating backup of Godot directories..."
+    mkdir -p "${backup_dir}" || {
+        print_error "Failed to create backup directory: ${backup_dir}"
+        return 1
+    }
+
+    for path in "${GODOT_PATHS[@]}"; do
+        if [[ -d "${path}" ]]; then
+            local dir_name
+            dir_name="$(basename "${path}")_${TIMESTAMP}"
+            print_verbose "Backing up: ${path} -> ${backup_dir}/${dir_name}"
+            cp -r "${path}" "${backup_dir}/${dir_name}" 2>/dev/null || {
+                print_warning "Could not fully backup: ${path}"
+            }
+        fi
+    done
+
+    print_success "Backup created at: ${backup_dir}"
+    echo "${backup_dir}"
+}
+
+remove_directory() {
+    local path="${1}"
+
+    if [[ ! -e "${path}" ]]; then
+        print_verbose "Directory does not exist, skipping: ${path}"
+        return 0
+    fi
+
+    if [[ ! -d "${path}" ]]; then
+        print_warning "Path is not a directory, skipping: ${path}"
+        return 0
+    fi
+
+    print_info "Removing: ${path}"
+
+    if [[ "${FLAG_DRY_RUN}" == true ]]; then
+        print_warning "[DRY-RUN] Would remove: ${path}"
+        return 0
+    fi
+
+    rm -rf "${path}" || {
+        print_error "Failed to remove: ${path}"
+        return 1
+    }
+
+    print_success "Removed: ${path}"
+}
+
+check_existing_directories() {
+    local found_any=false
+
+    for path in "${GODOT_PATHS[@]}"; do
+        if [[ -d "${path}" ]]; then
+            local dir_size
+            dir_size="$(du -sh "${path}" 2>/dev/null | cut -f1)"
+            echo -e "  ${COLOR_YELLOW}•${COLOR_RESET} ${path} ${COLOR_BLUE}(${dir_size})${COLOR_RESET}"
+            found_any=true
+        fi
+    done
+
+    if [[ "${found_any}" == false ]]; then
+        print_info "No Godot directories found. Nothing to clean up."
+        return 1
+    fi
+
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# Argument Parsing
+# -----------------------------------------------------------------------------
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case "${1}" in
+            -h|--help)
+                display_help
+                exit 0
+                ;;
+            -f|--force)
+                FLAG_FORCE=true
+                shift
+                ;;
+            -v|--verbose)
+                FLAG_VERBOSE=true
+                shift
+                ;;
+            -d|--dry-run)
+                FLAG_DRY_RUN=true
+                shift
+                ;;
+            --no-backup)
+                FLAG_NO_BACKUP=true
+                shift
+                ;;
+            *)
+                print_error "Unknown option: ${1}"
+                echo ""
+                display_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# -----------------------------------------------------------------------------
+# Main Execution
+# -----------------------------------------------------------------------------
+
+main() {
+    parse_arguments "$@"
+
+    display_banner
+    echo ""
+
+    # Display execution mode
+    if [[ "${FLAG_DRY_RUN}" == true ]]; then
+        print_warning "RUNNING IN DRY-RUN MODE - No files will be actually removed"
+        echo ""
+    fi
+
+    if [[ "${FLAG_FORCE}" == true ]]; then
+        print_warning "FORCE MODE ENABLED - Skipping confirmation prompts"
+        echo ""
+    fi
+
+    # Check for existing directories
+    print_header "Scanning for Godot Directories"
+    if ! check_existing_directories; then
+        exit 0
+    fi
+    echo ""
+
+    # Confirmation prompt
+    if ! confirm_action "This will permanently remove all Godot local data. Continue?"; then
+        print_info "Operation cancelled by user."
+        exit 0
+    fi
+    echo ""
+
+    # Create backup if not disabled
+    if [[ "${FLAG_NO_BACKUP}" == false && "${FLAG_DRY_RUN}" == false ]]; then
+        if confirm_action "Would you like to create a backup before removal?"; then
+            create_backup
+            echo ""
+        fi
+    fi
+
+    # Final confirmation before deletion
+    if [[ "${FLAG_DRY_RUN}" == false ]]; then
+        print_warning "FINAL WARNING: This action is irreversible!"
+        if ! confirm_action "Proceed with deletion of all Godot directories?"; then
+            print_info "Operation cancelled by user."
+            exit 0
+        fi
+        echo ""
+    fi
+
+    # Remove directories
+    print_header "Removing Godot Directories"
+    local error_count=0
+
+    for path in "${GODOT_PATHS[@]}"; do
+        if ! remove_directory "${path}"; then
+            ((error_count++))
+        fi
+    done
+    echo ""
+
+    # Summary
+    print_header "Summary"
+    if [[ "${FLAG_DRY_RUN}" == true ]]; then
+        print_info "Dry-run completed. No files were actually removed."
+        print_info "Run without --dry-run to perform the actual cleanup."
+    elif [[ ${error_count} -eq 0 ]]; then
+        print_success "Godot has been completely reset successfully!"
+        print_info "All cache, configuration, and user data have been removed."
+        echo ""
+        print_info "Next time you launch Godot, it will create fresh configuration files."
+    else
+        print_error "Reset completed with ${error_count} error(s)."
+        print_info "Please check the output above for details."
+        exit 1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Script Entry Point
+# -----------------------------------------------------------------------------
+
+main "$@"
