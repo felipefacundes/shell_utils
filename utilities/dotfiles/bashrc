@@ -180,7 +180,7 @@ fi
 
 # Bash-it
 # shellcheck source=/dev/null
-[[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
+#[[ -f /usr/lib/bash-it-git/bash_it.sh ]] && . /usr/lib/bash-it-git/bash_it.sh
 
 ##### STARTUP
 ##### INPUTRC
@@ -198,6 +198,9 @@ set mark-symlinked-directories On
 set visible-stats On
 set completion-query-items 50
 set history-preserve-point On
+# Forces the cursor to go to the end of the line when navigating through history
+# (improves usability and avoids confusion with 'history-preserve-point')
+#set history-preserve-point off
 EOF
 fi
 
@@ -206,14 +209,16 @@ fi
 shopt -s histappend
 shopt -s checkwinsize
 
-# Undocumented feature which sets the size to "unlimited".
-# http://stackoverflow.com/questions/9457233/unlimited-bash-history
-###export HISTFILESIZE === 100000
-###export HISTSIZE === 100000
 # ---------------------
 # Eternal bash history.
 export HISTFILESIZE=
 export HISTSIZE=
+# ---------------------
+# Undocumented feature which sets the size to "unlimited".
+# http://stackoverflow.com/questions/9457233/unlimited-bash-history
+export HISTFILESIZE=1000000
+export HISTSIZE=1000000
+# ---------------------
 #export HISTIGNORE="&:?:*:ERR"
 # Remove leading and trailing whitespace from history entries.
 export HISTIGNORE=' *'
@@ -237,81 +242,14 @@ EOF
     return 0
 }
 
-remove_timestamp_in_single_line_format_from_bash_history() {
-    [[ ! -f "$HISTFILE" ]] && touch "$HISTFILE"
-    [[ -f "$HISTFILE" ]] && sed -i 's/^:[[:space:]][0-9]\{10\}:0;//g' "$HISTFILE" >/dev/null 2>&1
-    return 0
-}
-
-# https://www.baeldung.com/linux/history-remove-avoid-duplicates
-remove_duplicate_commands_from_bash_history() {
-    [[ ! -f "$HISTFILE" ]] && touch "$HISTFILE"
-    local history_file="${HISTFILE}"
-    local temp_file="${HISTFILE}.tmp"
-    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
-
-    # Filter duplicate commads
-    awk '!a[$0]++' "$history_file" > "$temp_file"
-
-    # Replace history
-    mv -f "$temp_file" "$history_file" >/dev/null 2>&1
-    return 0
-}
-
-remove_unused_timestamps_from_bash_history() {
-    [[ ! -f "$HISTFILE" ]] && touch "$HISTFILE"
-    local history_file="${HISTFILE}"
-    local temp_file="${HISTFILE}.tmp"
-    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
-
-    # Filter history lines with timestamps and associated commands
-    awk '/^#[0-9]+$/ { if (getline c && c !~ /^#[0-9]+$/) { print $0 ORS c } } !/^#[0-9]+$/ { print }' "$history_file" > "$temp_file"
-
-    # Replace history
-    mv -f "$temp_file" "$history_file" >/dev/null 2>&1
-    return 0
-}
-
-include_timestamp_in_bash_history() {
-    [[ ! -f "$HISTFILE" ]] && touch "$HISTFILE"
-    local history_file="${HISTFILE}"
-    local temp_file="${HISTFILE}.tmp"
-    [[ -f "${temp_file}" ]] && rm -f "${temp_file}"
-
-    # Filter history lines with timestamps and associated commands
-    awk '/^#[0-9]+$/ { if (getline c && c !~ /^#[0-9]+$/) { print $0 ORS c } } !/^#[0-9]+$/ { print strftime("#%s") ORS $0 }' "$history_file" > "$temp_file"
-
-    # Replace history
-    mv -f "$temp_file" "$history_file" >/dev/null 2>&1
-    return 0
-}
-
 # Fix several known issues of bash history, and amazingly, it is able to convert .zsh_history to standard .bash_history structure
-fix_bash_history() {
-    remove_timestamp_in_single_line_format_from_bash_history
-    remove_unused_timestamps_from_bash_history
-    include_timestamp_in_bash_history
+# These functions are located in: ~/.shell_utils/utilities/completions/bash/
+_fix_bash_history() {
+    _remove_timestamp_in_single_line_format_from_bash_history
+    _remove_unused_timestamps_from_bash_history
+    _include_timestamp_in_bash_history
     return 0
 }
-
-# Configure navigation keys
-bind '"\t":complete'                  # TAB
-# bind '"\t":menu-complete'           # TAB
-bind '"\e[Z":menu-complete-backward'  # Shift + TAB
-
-# jump to next/previous word in a commandline by pressing SHIFT+RIGHT and SHIFT+LEFT
-# bind '"\e[1;2C":menu-complete'          # Shift + Right
-bind '"\e[1;2A":menu-complete'            # Shift + Up
-# bind '"\e[1;2D":menu-complete-backward' # Shift + Left
-bind '"\e[1;2B":menu-complete-backward'   # Shift + Donw
-
-bind '"\e[1;5A":forward-word'   # Ctrl + Up
-bind '"\e[1;5B":backward-word'  # Ctrl + Down
-
-complete -abcdefgjksuv sudo
-complete -abcdefgjksuv doas
-
-# Configure command prompt
 
 notifications() {
 	local exit_status=$?
@@ -319,27 +257,17 @@ notifications() {
 	[[ "$NOTIFY" == 1 ]] && notify-send "Command finished" "Status: $exit_status"
 }
 
+# Configure command prompt
 _prompt_command() {
     notifications
     "$@"
-    fix_bash_history
+    _fix_bash_history
 }
+
+complete -abcdefgjksuv sudo
+complete -abcdefgjksuv doas
 
 PROMPT_COMMAND="_prompt_command $PROMPT_COMMAND"
-
-############################################################################
-
-fzf_bash() {
-    file=~/.fzf.bash
-    if ! test -f "$file" && command -v fzf &>/dev/null; then
-        fzf --bash | tee "$file" &>/dev/null
-    fi
-    # shellcheck source=/dev/null
-    test -f "$file" && source "$file"
-    return 0
-}
-
-fzf_bash
 
 # >>> mamba initialize >>>
 # !! Contents within this block are managed by 'mamba init' !!
@@ -595,75 +523,48 @@ shopt -s no_empty_cmd_completion
 #shopt -u no_empty_cmd_completion
 #shopt -s bash_source_fullpath
 
-# Complete var without echo or print
-_complete_env_var_bind() {
-    local line="$READLINE_LINE"
-    local point="$READLINE_POINT"
-    local before="${line:0:$point}"
-    local _ENV_COLOR_HIGHLIGHT='\e[1;35m'
-    local _ENV_COLOR_RESET='\e[0m'
-    
-    # Extract the word before the cursor
-    local current_word="${before##*[^a-zA-Z0-9_]}"
-    local word_start=$(( point - ${#current_word} ))
-    local after="${line:$point}"
-    
-    # If it's a new word, rebuild
-    if [[ -z "$_ENV_ORIGINAL_WORD" ]] || [[ "$current_word" != "$_ENV_ORIGINAL_WORD"* && "$_ENV_ORIGINAL_WORD" != "$current_word"* ]]; then
-        _ENV_ORIGINAL_WORD="$current_word"
-        _ENV_MATCHES=()
-        _ENV_INDEX=-1
-        
-        # Search for matches
-        while IFS= read -r var; do
-            _ENV_MATCHES+=("$var")
-        done < <(compgen -v -- "$current_word")
-        
-        # Case-insensitive fallback
-        if [[ ${#_ENV_MATCHES[@]} -eq 0 && -n "$current_word" ]]; then
-            while IFS= read -r var; do
-                if [[ "${var,,}" == "${current_word,,}"* ]]; then
-                    _ENV_MATCHES+=("$var")
-                fi
-            done < <(compgen -v)
-        fi
-        
-        if [[ ${#_ENV_MATCHES[@]} -eq 0 ]]; then
-            _ENV_ORIGINAL_WORD=""
-            return 1
-        fi
-        
-        # Show options with colored highlighting
-        echo
-        local match
-        for match in "${_ENV_MATCHES[@]}"; do
-            # Separate the matching part from the rest
-            local prefix="${match:0:${#_ENV_ORIGINAL_WORD}}"
-            local suffix="${match:${#_ENV_ORIGINAL_WORD}}"
-            
-            # If case-insensitive, highlight the matching part
-            if [[ "${match,,}" == "${_ENV_ORIGINAL_WORD,,}"* ]]; then
-                # Get the actual prefix (preserving original case)
-                printf "${_ENV_COLOR_HIGHLIGHT}%s${_ENV_COLOR_RESET}%s  " "$prefix" "$suffix"
-            else
-                printf '%s  ' "$match"
-            fi
-        done
-        echo
-    fi
-    
-    # Advance to the next match (cycles through)
-    _ENV_INDEX=$(( (_ENV_INDEX + 1) % ${#_ENV_MATCHES[@]} ))
-    
-    # Apply the match
-    local selected="${_ENV_MATCHES[$_ENV_INDEX]}"
-    READLINE_LINE="${line:0:$word_start}${selected}${after}"
-    READLINE_POINT=$(( word_start + ${#selected} ))
-}
+# Configure navigation keys
+bind '"\t":complete'                  # TAB
+# bind '"\t":menu-complete'           # TAB
+bind '"\e[Z":menu-complete-backward'  # Shift + TAB
 
-# Bind to shortcut → and v
+# jump to next/previous word in a commandline by pressing SHIFT+RIGHT and SHIFT+LEFT
+# bind '"\e[1;2C":menu-complete'          # Shift + Right
+bind '"\e[1;2A":menu-complete'            # Shift + Up
+# bind '"\e[1;2D":menu-complete-backward' # Shift + Left
+bind '"\e[1;2B":menu-complete-backward'   # Shift + Donw
+
+bind '"\e[1;5A":forward-word'   # Ctrl + Up
+bind '"\e[1;5B":backward-word'  # Ctrl + Down
+
+# Ensures the up arrow navigates through the entire history (default behavior)
+bind '"\e,": previous-history'
+bind '"\e[A": history-search-backward'
+# Ensures the down arrow navigates through the entire history (default behavior)
+bind '"\e.": next-history'
+bind '"\e[B": history-search-forward'
+
+# Optional: Disables incremental search if it is enabled elsewhere
+bind '"\C-e": reverse-search-history'
+
+# These functions are located in: ~/.shell_utils/utilities/completions/bash/
+# Ctrl+A: Complete anything with fzf (FZF dominates, uses native completions as data source)
+# Bind Ctrl+A to the completion function
+if command -v fzf &>/dev/null; then
+    # Native fzf binds
+    _fzf_bash
+    # All complete with fzf
+    bind -x '"\C-a": _fzf_complete_all'
+    bind -x '"\ea": _fzf_complete_all'
+    bind -x $'"\e\'": _fzf_complete_all_all'
+fi
+
+# Complete var without echo or print
+# Bind to shortcut º or alt-v
 bind -x '"°": _complete_env_var_bind'
 bind -x '"\ev": _complete_env_var_bind'
+
+# Bind to commands with alt-x
 bind -x '"\ex": commands'
 
 #complete -o default -o bashdefault -F _filedir_xspec -E code
