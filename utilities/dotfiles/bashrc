@@ -537,6 +537,7 @@ if command -v fzf &>/dev/null; then
     bind -x '"\t": _fzf_complete_all'       # TAB
 else
     bind '"\t":complete'                    # TAB
+    bind '"\e[Z":menu-complete-backward'    # Shift + TAB
 fi
 # Complete var without echo or print
 # Bind to shortcut º or alt-v
@@ -549,15 +550,11 @@ bind -x '"\ex": commands'
 ############################################################################################
 # Configure navigation keys ################################################################
 
-# bind '"\t":menu-complete'             # TAB
-bind '"\e[Z":menu-complete-backward'    # Shift + TAB
 bind '"\C-a":complete'
 bind '"\ea":menu-complete-backward'
 
 # jump to next/previous word in a commandline by pressing SHIFT+RIGHT and SHIFT+LEFT
-# bind '"\e[1;2C":menu-complete'          # Shift + Right
 bind '"\e[1;2A":menu-complete'            # Shift + Up
-# bind '"\e[1;2D":menu-complete-backward' # Shift + Left
 bind '"\e[1;2B":menu-complete-backward'   # Shift + Donw
 
 bind '"\e[1;5A":forward-word'   # Ctrl + Up
