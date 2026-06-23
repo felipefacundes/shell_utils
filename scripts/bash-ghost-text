@@ -8,6 +8,7 @@ _ghost_cmd_cache_file="$_ghost_text_cache_dir/ghost_path.cache"
 _ghost_state_file="$_ghost_text_cache_dir/ghost_mode"
 _ghost_lock_first_level=true
 _ghost_space_mode="native"  # "native" or "unlock"
+_ghost_notify_volume=40000
 _ghost_regenerate=false
 _ghost_history_data=""
 _ghost_suggestion=""
@@ -20,7 +21,6 @@ _ghost_notify() {
     local audio="/usr/share/sounds/freedesktop/stereo/suspend-error.oga"
     local icon="$HOME/.shell_utils/icons/Ghost-Text.png"
     local icon_fallback="xterm-color_48x48"
-    export _ghost_notify_volume=40000
     local a="$1"
     local b="$2"
 
