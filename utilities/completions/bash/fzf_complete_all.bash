@@ -1,4 +1,7 @@
 ############################################################################
+if ! command -v fzf &>/dev/null; then
+    return
+fi
 
 _fzf_bash() {
     file=~/.fzf.bash
