@@ -17,6 +17,7 @@ _fzf_bash() {
     return 0
 }
 
+# Ctrl+A: Complete anything with fzf (FZF dominates, uses native completions as data source)
 _fzf_complete_all_dbg() {
     echo "[$(date +%H:%M:%S.%3N)] $*" | tee -a /tmp/fzf_complete_debug.log &>/dev/null
 }
@@ -201,34 +202,29 @@ _fzf_complete_all() {
     #    OR: word has path AND the full path is NOT a valid directory (substring in parent dir)
     local is_file_cmd=false
     local is_path_substring=false
-    
+
     if [[ "$clean_word" != -* ]]; then
         if [[ "$prefix" != *"|"* ]]; then
             case "$clean_cmd" in
                 ls|cat|rm|cp|mv|less|more|head|tail|file|stat|du|xdg-open|open|vim|nvim|vi|nano|emacs|code|gedit|evince|okular|zathura|mupdf|gimp|inkscape|eog|feh|mpv|vlc|totem|bat|exa|eza|fd|rg)
                     is_file_cmd=true
-                    
-                    # Check if this is a path with invalid final component (substring search in subdir)
+
                     if [[ "$clean_word" == */* || "$clean_word" == ~* ]]; then
-                        # Expand the full path
                         local expanded_full
                         expanded_full=$(eval echo "$clean_word" 2>/dev/null)
-                        
-                        # If the full path doesn't exist as a file or directory,
-                        # walk up until we find a valid directory
+
+                        # Only activate path substring if the full path does NOT exist
                         if [[ ! -e "$expanded_full" && ! -d "$expanded_full" ]]; then
                             local valid_dir="$expanded_full"
                             local search_term=""
-                            
-                            # Walk up until we find a valid directory
+
                             while [[ -n "$valid_dir" && ! -d "$valid_dir" ]]; do
                                 search_term="$(basename "$valid_dir")/$search_term"
                                 valid_dir=$(dirname "$valid_dir")
                             done
-                            
-                            # Remove trailing slash from search term
+
                             search_term="${search_term%/}"
-                            
+
                             if [[ -d "$valid_dir" && -n "$search_term" ]]; then
                                 is_path_substring=true
                             fi
@@ -241,7 +237,6 @@ _fzf_complete_all() {
 
     # Only load native completions for NON-file commands
     if ! $is_file_cmd || $is_path_substring; then
-        # Skip native completions for path substring search
         if ! $is_path_substring; then
             if type _completion_loader &>/dev/null; then
                 _completion_loader "$clean_cmd" 2>/dev/null
@@ -265,7 +260,6 @@ _fzf_complete_all() {
 
     local native_candidates=""
 
-    # Only use native completions for NON-file commands
     if ! $is_file_cmd && ! $want_dir_content && ! $is_path_substring; then
         local comp_spec
         comp_spec=$(complete -p "$clean_cmd" 2>/dev/null)
@@ -278,11 +272,13 @@ _fzf_complete_all() {
                 local prev_word="${COMP_WORDS[$((COMP_CWORD - 1))]:-}"
                 "$comp_func" "$clean_cmd" "$last_word" "$prev_word" 2>/dev/null
                 if [[ ${#COMPREPLY[@]} -gt 0 ]]; then
-                    # Native completion functions receive the raw word (e.g. ~/Doc) but
-                    # may return expanded paths (e.g. /home/user/Documents). Restore ~
-                    # so the fzf query (which still has ~) matches the candidates.
-                    native_candidates=$(printf '%s\n' "${COMPREPLY[@]}" \
-                        | sed "s|^$HOME/|~/|; s|^$HOME\$|~|")
+                    # Convert HOME paths to ~ ONLY if the original query starts with ~
+                    if [[ "$last_word" == ~* ]]; then
+                        native_candidates=$(printf '%s\n' "${COMPREPLY[@]}" \
+                            | sed "s|^$HOME/|~/|; s|^$HOME\$|~|")
+                    else
+                        native_candidates=$(printf '%s\n' "${COMPREPLY[@]}")
+                    fi
                 fi
             fi
         fi
@@ -304,36 +300,32 @@ _fzf_complete_all() {
                         echo "${clean_word}${item}"
                     done
                 elif $is_path_substring; then
-                    # Path substring search: find valid directory and search term
                     local expanded_full
                     expanded_full=$(eval echo "$clean_word" 2>/dev/null)
-                    
+
                     local valid_dir="$expanded_full"
                     local search_term=""
-                    
-                    # Walk up until we find a valid directory
+
                     while [[ -n "$valid_dir" && ! -d "$valid_dir" ]]; do
                         search_term="$(basename "$valid_dir")/$search_term"
                         valid_dir=$(dirname "$valid_dir")
                     done
-                    
-                    # Remove trailing slash from search term
+
                     search_term="${search_term%/}"
-                    
+
                     if [[ -d "$valid_dir" && -n "$search_term" ]]; then
-                        # Get the prefix for output paths (preserving tilde if used)
                         local output_prefix
-                        if [[ "$clean_word" == ~* ]]; then
+                        if [[ "$valid_dir" == "/" ]]; then
+                            output_prefix="/"
+                        elif [[ "$clean_word" == ~* ]]; then
                             output_prefix="$(echo "$valid_dir" | sed "s|^$HOME|~|")/"
                         else
                             output_prefix="$valid_dir/"
                         fi
-                        
-                        # Escape for grep
+
                         local grep_pattern
                         grep_pattern=$(printf '%s' "$search_term" | sed 's/[.[\*^$()+?{|]/\\&/g')
-                        
-                        # List files in the valid directory matching the search term
+
                         ls -1A "$valid_dir" 2>/dev/null | grep -i "$grep_pattern" | while read -r item; do
                             echo "${output_prefix}${item}"
                         done
@@ -347,8 +339,12 @@ _fzf_complete_all() {
                     # Use expanded_word so that tilde paths like ~/Doc are resolved
                     # correctly by compgen, then restore ~ in results to preserve
                     # what the user typed.
-                    compgen -f -- "$expanded_word" 2>/dev/null \
-                        | sed "s|^$HOME/|~/|; s|^$HOME\$|~|"
+                    if [[ "$clean_word" == ~* ]]; then
+                        compgen -f -- "$expanded_word" 2>/dev/null \
+                            | sed "s|^$HOME/|~/|; s|^$HOME\$|~|"
+                    else
+                        compgen -f -- "$expanded_word" 2>/dev/null
+                    fi
                 fi
 
                 # Only add commands/variables for non-file commands
