@@ -10,6 +10,11 @@ _fzf_bash() {
     return 0
 }
 
+# Debug log helper — writes to /tmp/fzf_complete_debug.log
+_fzf_complete_all_dbg() {
+    echo "[$(date +%H:%M:%S.%3N)] $*" | tee -a /tmp/fzf_complete_debug.log &>/dev/null
+}
+
 # Ctrl+A: Complete anything with fzf (FZF dominates, uses native completions as data source)
 _fzf_complete_all() {
     local selected
@@ -213,7 +218,11 @@ _fzf_complete_all() {
                 local prev_word="${COMP_WORDS[$((COMP_CWORD - 1))]:-}"
                 "$comp_func" "$clean_cmd" "$last_word" "$prev_word" 2>/dev/null
                 if [[ ${#COMPREPLY[@]} -gt 0 ]]; then
-                    native_candidates=$(printf '%s\n' "${COMPREPLY[@]}")
+                    # Native completion functions receive the raw word (e.g. ~/Doc) but
+                    # may return expanded paths (e.g. /home/user/Documents). Restore ~
+                    # so the fzf query (which still has ~) matches the candidates.
+                    native_candidates=$(printf '%s\n' "${COMPREPLY[@]}" \
+                        | sed "s|^$HOME/|~/|; s|^$HOME\$|~|")
                 fi
             fi
         fi
@@ -235,7 +244,11 @@ _fzf_complete_all() {
                         echo "${clean_word}${item}"
                     done
                 else
-                    compgen -f -- "$clean_word" 2>/dev/null
+                    # Use expanded_word so that tilde paths like ~/Doc are resolved
+                    # correctly by compgen, then restore ~ in results to preserve
+                    # what the user typed.
+                    compgen -f -- "$expanded_word" 2>/dev/null \
+                        | sed "s|^$HOME/|~/|; s|^$HOME\$|~|"
                 fi
 
                 if [[ "$clean_word" != */* && "$clean_word" != ~* ]]; then
