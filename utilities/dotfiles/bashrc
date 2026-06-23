@@ -551,8 +551,6 @@ bind -x '"\ex": commands'
 
 # bind '"\t":menu-complete'             # TAB
 bind '"\e[Z":menu-complete-backward'    # Shift + TAB
-bind '"\e[1;5C":complete'               # Ctrl + Right
-bind '"\e[1;5D":menu-complete-backward' # Ctrl + Left
 bind '"\C-a":complete'
 bind '"\ea":menu-complete-backward'
 
