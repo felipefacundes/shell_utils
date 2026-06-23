@@ -135,7 +135,7 @@ else
 fi
 
 # Remove all existing completions
-complete -r
+#complete -r
 
 # shellcheck source=/dev/null
 [[ -f "${PREFIX:-/usr}/share/bash-completion/bash_completion" ]] && source "${PREFIX:-/usr}/share/bash-completion/bash_completion"
@@ -523,10 +523,38 @@ shopt -s no_empty_cmd_completion
 #shopt -u no_empty_cmd_completion
 #shopt -s bash_source_fullpath
 
-# Configure navigation keys
-bind '"\t":complete'                  # TAB
-# bind '"\t":menu-complete'           # TAB
-bind '"\e[Z":menu-complete-backward'  # Shift + TAB
+############################################################################################
+######################################## B I N D S #########################################
+
+# These functions are located in: ~/.shell_utils/utilities/completions/bash/
+# Ctrl+A: Complete anything with fzf (FZF dominates, uses native completions as data source)
+# Bind Ctrl+A to the completion function
+if command -v fzf &>/dev/null; then
+    # Native fzf binds
+    _fzf_bash  # "\C-r"
+    # All complete with fzf
+    bind -x $'"\e\'": _fzf_complete_all'
+    bind -x '"\t": _fzf_complete_all'       # TAB
+else
+    bind '"\t":complete'                    # TAB
+fi
+# Complete var without echo or print
+# Bind to shortcut º or alt-v
+bind -x '"°": _complete_env_var_bind'
+bind -x '"\ev": _complete_env_var_bind'
+
+# Bind to commands with alt-x
+bind -x '"\ex": commands'
+
+############################################################################################
+# Configure navigation keys ################################################################
+
+# bind '"\t":menu-complete'             # TAB
+bind '"\e[Z":menu-complete-backward'    # Shift + TAB
+bind '"\e[1;5C":complete'               # Ctrl + Right
+bind '"\e[1;5D":menu-complete-backward' # Ctrl + Left
+bind '"\C-a":complete'
+bind '"\ea":menu-complete-backward'
 
 # jump to next/previous word in a commandline by pressing SHIFT+RIGHT and SHIFT+LEFT
 # bind '"\e[1;2C":menu-complete'          # Shift + Right
@@ -547,29 +575,8 @@ bind '"\e[B": history-search-forward'
 # Optional: Disables incremental search if it is enabled elsewhere
 bind '"\C-e": reverse-search-history'
 
-# These functions are located in: ~/.shell_utils/utilities/completions/bash/
-# Ctrl+A: Complete anything with fzf (FZF dominates, uses native completions as data source)
-# Bind Ctrl+A to the completion function
-if command -v fzf &>/dev/null; then
-    # Native fzf binds
-    _fzf_bash
-    # All complete with fzf
-    bind -x '"\C-a": _fzf_complete_all'
-    bind -x '"\ea": _fzf_complete_all'
-    bind -x $'"\e\'": _fzf_complete_all_all'
-fi
-
-# Complete var without echo or print
-# Bind to shortcut º or alt-v
-bind -x '"°": _complete_env_var_bind'
-bind -x '"\ev": _complete_env_var_bind'
-
-# Bind to commands with alt-x
-bind -x '"\ex": commands'
-
-#complete -o default -o bashdefault -F _filedir_xspec -E code
-complete -o default -o bashdefault -F _filedir_xspec -E 
-complete -o default -o filenames codium
+# complete -o default -o bashdefault -F _filedir_xspec -E 
+# complete -o default -o filenames codium
 
 if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
     echo
