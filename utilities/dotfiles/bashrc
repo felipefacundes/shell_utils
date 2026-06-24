@@ -531,7 +531,7 @@ shopt -s no_empty_cmd_completion
 # Bind Ctrl+A to the completion function
 if command -v fzf &>/dev/null; then
     # Native fzf binds
-    _fzf_bash  # "\C-r"
+    #_fzf_bash  # "\C-r"
     # All complete with fzf
     bind -x $'"\e\'": _fzf_complete_all'
     bind -x '"\t": _fzf_complete_all'       # TAB

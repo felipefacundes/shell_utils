@@ -7,15 +7,15 @@ if ! command -v fzf &>/dev/null; then
     return
 fi
 
-_fzf_bash() {
-    file=~/.fzf.bash
-    if ! test -f "$file" && command -v fzf &>/dev/null; then
-        fzf --bash | tee "$file" &>/dev/null
-    fi
-    # shellcheck source=/dev/null
-    test -f "$file" && source "$file"
-    return 0
-}
+# _fzf_bash() {
+#     file=~/.fzf.bash
+#     if ! test -f "$file" && command -v fzf &>/dev/null; then
+#         fzf --bash | tee "$file" &>/dev/null
+#     fi
+#     # shellcheck source=/dev/null
+#     test -f "$file" && source "$file"
+#     return 0
+# }
 
 # Ctrl+A: Complete anything with fzf (FZF dominates, uses native completions as data source)
 _fzf_complete_all_dbg() {
