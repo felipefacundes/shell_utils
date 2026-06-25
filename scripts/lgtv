@@ -11,6 +11,8 @@ The script provides a comprehensive help function that lists various commands av
 and it executes the 'lgtv' command with any provided arguments.
 DOCUMENTATION
 
+PYTHON_VERSION="3.11.10"
+py_version="${HOME}/.pyenv/versions/${PYTHON_VERSION}/bin/python"
 py_venv="${HOME}/.python/lgtv-venv"
 activate="${py_venv}/bin/activate"
 
@@ -24,12 +26,25 @@ if [[ "${1,,}" == "--clean" || "${1,,}" == "-c" ]]; then
     exit 0
 fi
 
-if [[ ! -d "${py_venv}" ]]; then
-    python -m venv "${py_venv}"
+if ! command -v pyenv >/dev/null 2>&1; then
+    echo "Error: pyenv is not installed. Install it with: sudo pacman -S pyenv"
+    exit 1
+elif [[ ! -f "${py_version}" ]] && ! pyenv versions | grep -q "${PYTHON_VERSION}"; then
+    echo "Installing Python ${PYTHON_VERSION}..."
+    pyenv install "${PYTHON_VERSION}"
+fi
+
+if [[ ! -d "${py_venv}" && -f "${py_version}" ]]; then
+    echo "Creating virtual environment with Python ${PYTHON_VERSION}..."
+    "${py_version}" -m venv "${py_venv}"
+    
     #shellcheck source=/dev/null
     source "$activate"
     export VIRTUAL_ENV="$py_venv"
+    
+    echo "Installing LGWebOSRemote package..."
     pip install git+https://github.com/klattimer/LGWebOSRemote
+    echo "Installation complete!"
 fi
 
 if [[ -z "$VIRTUAL_ENV" ]]; then
@@ -102,7 +117,7 @@ if [[ -z "$1" ]]; then
     complete_help
 fi
 
-case $1 in
+case ${1,,} in
     '-h'|'--help'|'--complete-help')
         complete_help
     ;;
