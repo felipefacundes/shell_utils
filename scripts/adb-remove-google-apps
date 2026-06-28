@@ -76,28 +76,31 @@ apps=(
     com.opera.max.oem
 )
 
-
 apps_warning=(
-        com.google.android.marvin.talkback
-        com.android.htmlviewer
-        com.google.android.tts
-        com.google.android.talk
-        com.google.android.calendar
-        com.android.bookmarkprovider
-        com.google.android.apps.googleassistant
-        # com.android.egg
-        # com.android.bips
-        # de.telekom.tsc
-        # com.motorola.demo
-        # com.motorola.help
-        # com.motorola.genie
-        # com.motorola.brapps
-        # com.motorola.ccc.ota
-        # com.motorola.demo.env
-        # com.motorola.ccc.notification
-        # com.motorola.timeweatherwidget
-        # com.google.android.apps.nbu.files
-        # com.motorola.motosignature.app
+    com.google.android.marvin.talkback
+    com.google.android.tts
+    com.google.android.talk
+    com.google.android.calendar
+    com.android.bookmarkprovider
+    com.android.htmlviewer
+    # ==========================================
+    # IMPORTANT FOR XIAOMI / POCO
+    # ==========================================
+    com.google.android.apps.googleassistant
+    #######################################
+    # com.android.egg
+    # com.android.bips
+    # de.telekom.tsc
+    # com.motorola.demo
+    # com.motorola.help
+    # com.motorola.genie
+    # com.motorola.brapps
+    # com.motorola.ccc.ota
+    # com.motorola.demo.env
+    # com.motorola.ccc.notification
+    # com.motorola.timeweatherwidget
+    # com.google.android.apps.nbu.files
+    # com.motorola.motosignature.app
 )
 
 # Check the list of connected devices
@@ -114,7 +117,7 @@ for i in "${apps[@]}"; do
 done
 
 
-echo -e "\n\e[1;31mDo not remove these apps:\n\n${apps_warning[*]}\n\nif you want to remove them use: WARNING=WARNING ${0##*/}\e[0m"
+echo -e "\n\e[1;31mDo not remove these apps:\n\n${apps_warning[*]}\n\nif you want to remove them use:\n                                 WARNING=WARNING ${0##*/}\e[0m"
 if [[ "${WARNING}" == "WARNING" ]]; then
     for i in "${apps_warning[@]}"; do
         echo -e "\nIt has been removed ${i}?:"
