@@ -11,75 +11,94 @@ DOCUMENTATION
 
 # com.asus.ia.asusapp (MyAsus) | com.asus.dm (FotaService)
 
-# com.miui.player
-# com.miui.videoplayer
-# com.xiaomi.glgm
-# com.xiaomi.mipicks
-# com.mi.globalbrowser
-# com.google.android.apps.youtube.music
-# com.google.android.apps.tachyon
-# com.google.android.apps.docs
-# com.google.android.apps.maps
-# com.google.android.videos
-# com.mi.globalminusscreen
+product_brand=$(adb shell getprop ro.product.brand)
+
+echo -e "Your product is: ${product_brand}\n"
 
 apps=(
-    com.netflix.mediaclient
-    com.netflix.partner.activation
-    com.asus.dm
-    com.asus.ia.asusapp
-    com.asus.weathertime
-    com.asus.filemanager
-	com.opera.max.oem
-	com.samsung.android.scloud
-	com.sec.android.app.samsungapps
+    # Xiaomi Optional
+    com.mi.global.shop
+    com.miui.player
+    com.miui.videoplayer
+    com.xiaomi.glgm
+    com.xiaomi.mipicks
+    com.mi.globalbrowser
+    com.mi.android.globalFileexplorer
+    com.mi.globalminusscreen
+    # Ads:
+    com.miui.msa.global
+    com.google.android.adservices.api
+    # Google Optional
+    com.google.android.apps.youtube.music
+    com.google.android.apps.tachyon
+    com.google.android.apps.books
+    com.google.android.apps.docs
+    com.google.android.apps.maps
+    com.google.android.youtube
+    com.google.android.videos
+    com.google.android.music
+    com.android.chrome
+    com.google.android.apps.subscriptions.red
+    com.google.android.apps.wellbeing
+    com.google.android.apps.turbo
+    com.google.android.apps.plus
+    com.google.android.play.games
+    # Android Optional
+    com.google.ar.lens
+    com.google.android.gm
+    com.google.android.apps.photos
+    com.google.android.apps.magazines
+    com.google.android.apps.walletnfcrel
+    com.google.android.projection.gearhead
+    # IA:
+    com.google.android.apps.bard
+    com.google.android.gms.supervision
+    com.android.hotwordenrollment.xgoogle
+    com.android.hotwordenrollment.okgoogle
+    com.google.android.googlequicksearchbox
+    # Trash:
+    com.tiktok.manager
     com.facebook.orca
     com.facebook.katana
     com.facebook.system
     com.facebook.services
     com.facebook.appmanager
-    com.google.ar.lens
-    com.android.chrome
-    com.google.android.gm
-    com.android.htmlviewer
-    com.google.android.tts
-    com.google.android.talk
-    com.google.android.music
-    com.google.android.videos
-    com.google.android.youtube
-    com.google.android.calendar
-    com.android.bookmarkprovider
-    com.google.android.apps.docs
-    com.google.android.apps.maps
-    com.google.android.apps.plus
-    com.google.android.apps.turbo
-    com.google.android.play.games
-    com.google.android.apps.books
-    com.google.android.apps.photos
-    com.google.android.apps.tachyon
-    com.google.android.apps.magazines
-    com.google.android.apps.wellbeing
-    com.google.android.marvin.talkback
-    com.google.android.apps.walletnfcrel
-    com.google.android.apps.youtube.music
-    com.google.android.projection.gearhead
-    com.google.android.googlequicksearchbox
-    com.google.android.apps.googleassistant
+    com.netflix.mediaclient
+    com.netflix.partner.activation
+    # Asus Optional
+    com.asus.dm
+    com.asus.ia.asusapp
+    com.asus.weathertime
+    com.asus.filemanager
+    # Samsung Optional
+    com.samsung.android.scloud
+    com.sec.android.app.samsungapps
+    com.opera.max.oem
 )
 
-    # com.android.egg
-    # com.android.bips
-    # de.telekom.tsc
-    # com.motorola.demo
-    # com.motorola.help
-    # com.motorola.genie
-    # com.motorola.brapps
-    # com.motorola.ccc.ota
-    # com.motorola.demo.env
-    # com.motorola.ccc.notification
-    # com.motorola.timeweatherwidget
-    # com.google.android.apps.nbu.files
-    # com.motorola.motosignature.app
+
+apps_warning=(
+        com.google.android.marvin.talkback
+        com.android.htmlviewer
+        com.google.android.tts
+        com.google.android.talk
+        com.google.android.calendar
+        com.android.bookmarkprovider
+        com.google.android.apps.googleassistant
+        # com.android.egg
+        # com.android.bips
+        # de.telekom.tsc
+        # com.motorola.demo
+        # com.motorola.help
+        # com.motorola.genie
+        # com.motorola.brapps
+        # com.motorola.ccc.ota
+        # com.motorola.demo.env
+        # com.motorola.ccc.notification
+        # com.motorola.timeweatherwidget
+        # com.google.android.apps.nbu.files
+        # com.motorola.motosignature.app
+)
 
 # Check the list of connected devices
 if ! adb devices | grep -w "device"; then
@@ -93,3 +112,14 @@ for i in "${apps[@]}"; do
     uninstall_pid=$!
     wait $uninstall_pid
 done
+
+
+echo -e "\n\e[1;31mDo not remove these apps:\n\n${apps_warning[*]}\n\nif you want to remove them use: WARNING=WARNING ${0##*/}\e[0m"
+if [[ "${WARNING}" == "WARNING" ]]; then
+    for i in "${apps_warning[@]}"; do
+        echo -e "\nIt has been removed ${i}?:"
+        adb shell pm uninstall --user 0 "$i"
+        uninstall_pid=$!
+        wait $uninstall_pid
+    done
+fi
