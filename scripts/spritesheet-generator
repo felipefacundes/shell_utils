@@ -3,111 +3,434 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-This is a script that generates spritesheet using imagemagick.
+Professional Sprite Sheet Generator Script
+
+This script generates sprite sheets from multiple animation folders using ImageMagick.
+It processes each subdirectory containing individual frames and combines them into
+a single sprite sheet file per animation.
+
+Features:
+- Optional source directory argument
+- Optional frame size (uses original image size if not specified)
+- Flexible resize (maintains aspect ratio) or fixed resize options
+- Customizable number of tiles per row
+- Multiple output format support (PNG, JPG)
+- Automatic image validation
+- Recursive directory processing
+- Supports all image formats recognized by ImageMagick
 DOCUMENTATION
 
 # Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill $(jobs -p)' SIGTERM #SIGINT #SIGHUP #SIGQUIT #SIGABRT #SIGKILL #SIGALRM
+trap 'kill $(jobs -p) 2>/dev/null; exit 1' SIGINT SIGTERM
 
+# Default configuration
 tile=${tile:-2}
 format=${format:-png}
+output_name=""
+size=""
+resize_mode=""  # Can be "fixed" or "flexible"
 
+# Display documentation header
 doc() {
     less -FX "$0" | head -n6 | tail -n1
 }
 
+# Display help information
 help() {
-    cat <<EOF #| less -i -R
+    cat <<EOF
 
     $(doc)
 
-    Usage: ${0##*/} [args]
+    Usage: ${0##*/} [OPTIONS] [SOURCE_DIRECTORY]
 
     Options:
-      -s, -size    Define the size of the sprites (e.g., 512x512)
-      -t, -tile    Define the number of tiles per row in the spritesheet (default: 2)
-      -f, -format  Define the format of the spritesheet (default: png)
+      -s, --size SIZE      Define individual frame dimensions [OPTIONAL]
+                           WIDTHxHEIGHT format: Fixed resize (e.g., 512x512) - no aspect ratio preservation
+                           Single number: Flexible resize by width (e.g., 512) - maintains aspect ratio
+                           If not specified, original image dimensions will be used
+      -t, --tile NUMBER    Define number of tiles per row in sprite sheet (default: 2)
+      -f, --format FORMAT  Define output format: png or jpg (default: png)
+      -o, --output NAME    Define output filename without extension (default: directory name)
+      -h, --help           Display this help message
 
-    Example:
-      ${0##*/} -s 512x512 -t 4 -f png
+    Arguments:
+      SOURCE_DIRECTORY     Path to directory containing animation folders (optional)
+                           If not provided, current directory will be used
 
-    Note: Make sure the images are in PNG or JPG format.
+    Examples:
+      ${0##*/} -s 512x512 -t 4 -f png ./sprites/
+      ${0##*/} -s 256 -t 8  (flexible resize by width, maintains aspect ratio)
+      ${0##*/} -s 512x512 -o character_sheet  (fixed size, exact dimensions)
+      ${0##*/} -t 8  (uses original image sizes)
+      cd ./animations && ${0##*/} -s 128x128 -t 8
+
+    Resize Modes:
+      WIDTHxHEIGHT (e.g., 512x512): Fixed resize - exactly WIDTHxHEIGHT, may distort images
+      Single number (e.g., 512): Flexible resize - resize to WIDTH maintaining aspect ratio
+    
+    Note: Each subdirectory should contain individual frame images.
+          All image formats supported by ImageMagick are recognized.
 EOF
     exit 0
 }
 
-fail() {
-    [[ -z "$1" ]] && help
-}
-
-analyze_images() {
-    for image in **/*.[PpJj][NnPp][Gg]; do
-        # Check if the file is a regular file and if it is an image file
-        if [ ! -f "$image" ] && ! file -b --mime-type "$image" | grep -q "^image/"; 
-            then
-            echo 'There are no images in the directory or subdirectories. Nothing to be done!'
+# Validate image dimensions format
+validate_size() {
+    if [[ -n "$1" ]]; then
+        if [[ "$1" =~ ^[0-9]+x[0-9]+$ ]]; then
+            # Fixed resize mode: WIDTHxHEIGHT
+            resize_mode="fixed"
+            return 0
+        elif [[ "$1" =~ ^[0-9]+$ ]]; then
+            # Flexible resize mode: WIDTH only
+            resize_mode="flexible"
+            return 0
+        else
+            echo "Error: Invalid dimension format."
+            echo "Use WIDTHxHEIGHT for fixed resize (e.g., 512x512)"
+            echo "Or a single number for flexible resize (e.g., 512)"
             exit 1
         fi
-    done
+    fi
 }
 
-spritesheet_gen() {
-    for dir in *; do
-        if [ -d "$dir" ]; then
-            montage "$dir"/*.png -background none -tile x"${tile}" -geometry "${size}"+0+0 "$dir"."$format"
+# Validate tile number
+validate_tile() {
+    if ! [[ "$1" =~ ^[0-9]+$ ]] || [[ "$1" -lt 1 ]]; then
+        echo "Error: Tile number must be a positive integer."
+        exit 1
+    fi
+}
+
+# Validate output format
+validate_format() {
+    if [[ "$1" != "png" && "$1" != "jpg" ]]; then
+        echo "Error: Invalid format. Use 'png' or 'jpg'."
+        exit 1
+    fi
+}
+
+# Check if ImageMagick is installed
+check_dependencies() {
+    if ! command -v montage &> /dev/null; then
+        echo "Error: ImageMagick 'montage' command not found."
+        echo "Please install ImageMagick: sudo apt-get install imagemagick"
+        exit 1
+    fi
+    
+    if ! command -v identify &> /dev/null; then
+        echo "Error: ImageMagick 'identify' command not found."
+        echo "Please install ImageMagick: sudo apt-get install imagemagick"
+        exit 1
+    fi
+    
+    if ! command -v convert &> /dev/null; then
+        echo "Error: ImageMagick 'convert' command not found."
+        echo "Please install ImageMagick: sudo apt-get install imagemagick"
+        exit 1
+    fi
+}
+
+# Analyze source directory for images
+analyze_images() {
+    local source_dir="$1"
+    
+    # Search for any image files using find
+    local all_files=()
+    while IFS= read -r -d '' file; do
+        all_files+=("$file")
+    done < <(find "$source_dir" -type f -print0 2>/dev/null)
+    
+    if [[ ${#all_files[@]} -eq 0 ]]; then
+        echo "Error: No files found in '$source_dir' or its subdirectories."
+        exit 1
+    fi
+    
+    # Check which files are valid images
+    local image_count=0
+    for file in "${all_files[@]}"; do
+        if identify -quiet "$file" &>/dev/null; then
+            ((image_count++))
+        fi
+    done
+    
+    if [[ $image_count -eq 0 ]]; then
+        echo "Error: No valid images found in '$source_dir'."
+        echo "Make sure ImageMagick can recognize your image formats."
+        exit 1
+    fi
+}
+
+# Get all image files from a specific directory
+get_images_from_dir() {
+    local dir="$1"
+    local -n result_array=$2
+    
+    # Clear the array
+    result_array=()
+    
+    # Find all files in this directory (not recursive for frames)
+    local temp_files=()
+    while IFS= read -r -d '' file; do
+        temp_files+=("$file")
+    done < <(find "$dir" -maxdepth 1 -type f -print0 2>/dev/null | sort -z)
+    
+    # Filter to only valid images
+    for file in "${temp_files[@]}"; do
+        if identify -quiet "$file" &>/dev/null; then
+            result_array+=("$file")
         fi
     done
 }
 
-if [[ -z "$1" ]]; then
-    help
-fi
+# Resize images according to the specified mode
+resize_images() {
+    local -n images_array=$1
+    local temp_dir="$2"
+    local resized_images=()
+    
+    mkdir -p "$temp_dir"
+    
+    for img in "${images_array[@]}"; do
+        local filename=$(basename "$img")
+        local resized_path="$temp_dir/$filename"
+        
+        if [[ "$resize_mode" == "fixed" ]]; then
+            # Fixed resize: exact dimensions with possible distortion (! flag)
+            convert "$img" -resize "${size}!" -quality 100 "$resized_path" 2>/dev/null
+        elif [[ "$resize_mode" == "flexible" ]]; then
+            # Flexible resize: maintain aspect ratio, resize by width
+            convert "$img" -resize "${size}" -quality 100 "$resized_path" 2>/dev/null
+        fi
+        
+        if [[ -f "$resized_path" ]]; then
+            resized_images+=("$resized_path")
+        fi
+    done
+    
+    # Return the resized images array
+    images_array=("${resized_images[@]}")
+}
+
+# Generate sprite sheets from animation folders
+spritesheet_gen() {
+    local source_dir="$1"
+    local generated_count=0
+    local geometry_param=""
+    local temp_work_dir=""
+    
+    # Create temporary directory for resized images if needed
+    if [[ -n "$size" ]]; then
+        temp_work_dir=$(mktemp -d)
+        trap "rm -rf '$temp_work_dir'" EXIT
+    fi
+    
+    # Set geometry parameter based on whether size was specified
+    if [[ -n "$size" ]]; then
+        if [[ "$resize_mode" == "fixed" ]]; then
+            geometry_param="${size}+0+0"
+        else
+            # For flexible mode, we don't set geometry as images are already resized
+            geometry_param="+0+0"
+        fi
+    else
+        geometry_param="+0+0"
+    fi
+    
+    echo "Starting sprite sheet generation..."
+    echo "Source directory: $(realpath "$source_dir")"
+    
+    if [[ -n "$size" ]]; then
+        if [[ "$resize_mode" == "fixed" ]]; then
+            echo "Frame size: $size (fixed - exact dimensions, may distort)"
+        else
+            echo "Frame size: $size px width (flexible - maintains aspect ratio)"
+        fi
+    else
+        echo "Frame size: Original image dimensions"
+    fi
+    
+    echo "Tiles per row: $tile"
+    echo "Output format: $format"
+    echo "-----------------------------------"
+    
+    # Check if there are subdirectories
+    local dirs_found=0
+    for dir in "$source_dir"/*/; do
+        [[ ! -d "$dir" ]] && continue
+        ((dirs_found++))
+    done
+    
+    if [[ $dirs_found -eq 0 ]]; then
+        echo "No subdirectories found. Checking for images in current directory..."
+        
+        # Check for images directly in source directory
+        local direct_images=()
+        get_images_from_dir "$source_dir" direct_images
+        
+        if [[ ${#direct_images[@]} -gt 0 ]]; then
+            echo "Found ${#direct_images[@]} images directly in source directory."
+            
+            # Resize images if size is specified
+            if [[ -n "$size" ]]; then
+                echo "Resizing images (${resize_mode} mode)..."
+                resize_images direct_images "$temp_work_dir"
+                echo "Resized ${#direct_images[@]} images"
+            fi
+            
+            # Determine output filename
+            if [[ -n "$output_name" ]]; then
+                output_file="$source_dir/${output_name}.${format}"
+            else
+                output_file="$source_dir/sprite_sheet.${format}"
+            fi
+            
+            echo "Creating sprite sheet from ${#direct_images[@]} images..."
+            
+            if montage "${direct_images[@]}" \
+                -background none \
+                -tile "${tile}x" \
+                -geometry "$geometry_param" \
+                -quality 100 \
+                "$output_file" 2>/dev/null; then
+                
+                echo "✓ Created: $(basename "$output_file")"
+                ((generated_count++))
+            else
+                echo "✗ Failed to create sprite sheet"
+            fi
+        fi
+    else
+        # Process each subdirectory
+        for dir in "$source_dir"/*/; do
+            # Skip if not a directory
+            [[ ! -d "$dir" ]] && continue
+            
+            # Remove trailing slash
+            dir="${dir%/}"
+            dir_name=$(basename "$dir")
+            
+            # Get all image files in this directory
+            local image_files=()
+            get_images_from_dir "$dir" image_files
+            
+            if [[ ${#image_files[@]} -eq 0 ]]; then
+                echo "⚠ No images found in '$dir_name', skipping..."
+                continue
+            fi
+            
+            # Resize images if size is specified
+            if [[ -n "$size" ]]; then
+                local temp_subdir="$temp_work_dir/$dir_name"
+                mkdir -p "$temp_subdir"
+                
+                # Copy images to temp directory for resizing
+                local resized_images=()
+                for img in "${image_files[@]}"; do
+                    local filename=$(basename "$img")
+                    local resized_path="$temp_subdir/$filename"
+                    
+                    if [[ "$resize_mode" == "fixed" ]]; then
+                        # Fixed resize: exact dimensions with possible distortion (! flag)
+                        convert "$img" -resize "${size}!" -quality 100 "$resized_path" 2>/dev/null
+                    elif [[ "$resize_mode" == "flexible" ]]; then
+                        # Flexible resize: maintain aspect ratio, resize by width
+                        convert "$img" -resize "${size}" -quality 100 "$resized_path" 2>/dev/null
+                    fi
+                    
+                    if [[ -f "$resized_path" ]]; then
+                        resized_images+=("$resized_path")
+                    fi
+                done
+                image_files=("${resized_images[@]}")
+            fi
+            
+            # Determine output filename
+            if [[ -n "$output_name" ]]; then
+                output_file="$source_dir/${output_name}.${format}"
+            else
+                output_file="$source_dir/${dir_name}.${format}"
+            fi
+            
+            echo "Processing: $dir_name (${#image_files[@]} images found)"
+            
+            # Generate sprite sheet using ImageMagick montage
+            if montage "${image_files[@]}" \
+                -background none \
+                -tile "${tile}x" \
+                -geometry "$geometry_param" \
+                -quality 100 \
+                "$output_file" 2>/dev/null; then
+                
+                echo "  ✓ Created: $(basename "$output_file")"
+                ((generated_count++))
+            else
+                echo "  ✗ Failed to create sprite sheet for: $dir_name"
+            fi
+        done
+    fi
+    
+    echo "-----------------------------------"
+    echo "Completed! Generated $generated_count sprite sheet(s)."
+    
+    if [[ $generated_count -eq 0 ]]; then
+        echo "Warning: No sprite sheets were generated."
+        echo "Tips:"
+        echo "  - Make sure you have image files in subdirectories"
+        echo "  - Check if ImageMagick supports your image formats"
+        exit 1
+    fi
+}
+
+# Parse command line arguments
+SOURCE_DIR="."
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -s|-size)
+        -s|--size)
             size="$2"
+            validate_size "$size"
             shift 2
-            fail "$size"
-            if ! [[ "$size" =~ ^[0-9]+x[0-9]+$ ]]; then
-                echo 'Invalid dimension. Usage example: 512x512.'
-                exit 1
-            fi
-            continue
             ;;
-        -t|-tile)
+        -t|--tile)
             tile="$2"
+            validate_tile "$tile"
             shift 2
-            fail "$tile"
-            if ! [[ "$tile" =~ ^[0-9]+$ ]]; then
-                echo 'Only numbers are allowed'
-                exit 1
-            fi
-            continue
             ;;
-        -f|-format)
+        -f|--format)
             format="$2"
+            validate_format "$format"
             shift 2
-            fail "$format"
-            if [[ "$format" != [pj][np][g] ]]; then
-                echo 'Invalid format. Use png or jpg'
-                exit 1
-            fi
-            continue
+            ;;
+        -o|--output)
+            output_name="$2"
+            shift 2
+            ;;
+        -h|--help)
+            help
+            ;;
+        -*)
+            echo "Error: Unknown option '$1'"
+            echo "Use -h or --help for usage information."
+            exit 1
             ;;
         *)
-            help
+            # Assume it's the source directory
+            if [[ -d "$1" ]]; then
+                SOURCE_DIR="$(realpath "$1")"
+                shift
+            else
+                echo "Error: Directory '$1' does not exist."
+                exit 1
+            fi
             ;;
     esac
 done
 
-if [[ -z "$size" ]]; then
-    echo "Dimensions not defined, example: ${0##*/} -s 512x512"
-    exit 1
-fi
-
-analyze_images
-spritesheet_gen
+# Main execution
+check_dependencies
+analyze_images "$SOURCE_DIR"
+spritesheet_gen "$SOURCE_DIR"
 
 # Wait for all child processes to finish
 wait
