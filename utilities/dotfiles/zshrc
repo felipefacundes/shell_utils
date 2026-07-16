@@ -81,18 +81,22 @@ fzf_zsh
 _zsh_autosuggest_strategy_smart() {
     local prefix="$1"
     local suggestion=""
+    local escaped_prefix
+    
+    # Escapa o prefixo para uso seguro em regex
+    escaped_prefix=$(printf "%s" "$prefix" | sed 's/[.[\*^$()+?{|]/\\&/g')
     
     # 1. Histórico - pega apenas comandos, ignora timestamps e números
-    suggestion=$(fc -ln -50 2>/dev/null | grep -E "^[[:space:]]*${prefix}" | sed 's/^[[:space:]]*[0-9]*[[:space:]]*//' | head -1)
+    suggestion=$(fc -ln -50 2>/dev/null | grep -E "^[[:space:]]*${escaped_prefix}" | sed 's/^[[:space:]]*[0-9]*[[:space:]]*//' | head -1)
     # Garante que é uma linha única sem caracteres especiais
-    suggestion=$(printf "%s""$suggestion" | head -1 | xargs)
-    [[ -n "$suggestion" ]] && printf "%s""$suggestion" && return
+    suggestion=$(printf "%s" "$suggestion" | head -1 | xargs)
+    [[ -n "$suggestion" ]] && printf "%s" "$suggestion" && return
     
     # 2. Comandos do PATH (com cache)
     if [[ -z "$_cached_commands" ]]; then
         _cached_commands=$(compgen -c 2>/dev/null)
     fi
-    suggestion=$(printf "%s""$_cached_commands" | grep "^${prefix}" | head -1)
+    suggestion=$(printf "%s" "$_cached_commands" | grep "^${escaped_prefix}" | head -1)
     [[ -n "$suggestion" ]] && printf "%s" "$suggestion" && return
     
     # 3. Diretórios locais
