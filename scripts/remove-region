@@ -1,0 +1,385 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+#===============================================================================
+# remove-region - Remove regions from images using a mask/brush
+# Author: Generated Script
+# Description: Remove regions from single images or batch of images using
+#              ImageMagick. Supports custom masks, positions, and sizes.
+# Usage: remove-region [options] <input> [output]
+#===============================================================================
+
+# set -euo pipefail
+
+# Default values
+MASK=""
+MASK_SIZE="5x5"
+POSITION=""
+INPUT=""
+OUTPUT=""
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+#===============================================================================
+# Function: show_help
+# Description: Display usage information
+#===============================================================================
+show_help() {
+    cat << EOF
+Usage: remove-region [OPTIONS] <input> [output]
+
+Remove regions from images using a mask/brush.
+
+Options:
+    -m, --mask FILE         Image mask/brush file (without background)
+    -ms, --mask-size SIZE   Mask/brush dimensions (default: 5x5)
+                            Examples: 10x5, 128x128, 1x1, 5x15
+    -p, --position POS      Position to apply the mask (REQUIRED)
+                            Pixel format: WIDTHxHEIGHT (e.g., 1000x500)
+                            Text format: left-top, right-top, center-top,
+                                        left-down, right-down, center-down
+    -h, --help              Show this help message
+
+Arguments:
+    input                   Input directory or single image file
+    output                  Output directory (for batch) or output image file
+                            If not specified, auto-generates output name
+
+Examples:
+    # Batch processing
+    remove-region -p 100x200 input_dir/ output_dir/
+    
+    # Single image with custom mask
+    remove-region -m circle.png -ms 50x50 -p left-top image.jpg
+    
+    # Single image with auto output name
+    remove-region -p center-down -ms 10x10 photo.png
+    
+    # Batch with text position
+    remove-region -m brush.png -p right-top -ms 30x30 images/ processed/
+EOF
+    exit "$1"
+}
+
+#===============================================================================
+# Function: print_error
+# Description: Print error message
+#===============================================================================
+print_error() {
+    echo -e "${RED}ERROR: $1${NC}" >&2
+}
+
+#===============================================================================
+# Function: print_success
+# Description: Print success message
+#===============================================================================
+print_success() {
+    echo -e "${GREEN}SUCCESS: $1${NC}"
+}
+
+#===============================================================================
+# Function: print_info
+# Description: Print info message
+#===============================================================================
+print_info() {
+    echo -e "${YELLOW}INFO: $1${NC}"
+}
+
+#===============================================================================
+# Function: parse_position
+# Description: Convert text position to pixel coordinates
+#===============================================================================
+parse_position() {
+    local pos="$1"
+    local img_width="$2"
+    local img_height="$3"
+    local mask_w="$4"
+    local mask_h="$5"
+    
+    case "$pos" in
+        "left-top")
+            echo "0,0"
+            ;;
+        "center-top")
+            echo "$(( (img_width - mask_w) / 2 )),0"
+            ;;
+        "right-top")
+            echo "$(( img_width - mask_w )),0"
+            ;;
+        "left-down")
+            echo "0,$(( img_height - mask_h ))"
+            ;;
+        "center-down")
+            echo "$(( (img_width - mask_w) / 2 )),$(( img_height - mask_h ))"
+            ;;
+        "right-down")
+            echo "$(( img_width - mask_w )),$(( img_height - mask_h ))"
+            ;;
+        *)
+            # If position contains 'x', treat as pixel coordinates
+            if [[ "$pos" =~ x ]]; then
+                echo "$pos" | sed 's/x/,/'
+            else
+                print_error "Invalid position format: $pos"
+                exit 1
+            fi
+            ;;
+    esac
+}
+
+#===============================================================================
+# Function: create_default_mask
+# Description: Create a default square/rectangle mask if no mask provided
+#===============================================================================
+create_default_mask() {
+    local size="$1"
+    local mask_file="/tmp/remove-region-mask-$$.png"
+    
+    # Parse mask size
+    local mask_w mask_h
+    mask_w=$(echo "$size" | cut -d'x' -f1)
+    mask_h=$(echo "$size" | cut -d'x' -f2)
+    
+    # Create a solid white rectangle (will be used for removal)
+    magick -size "${mask_w}x${mask_h}" xc:white "$mask_file"
+    
+    echo "$mask_file"
+}
+
+#===============================================================================
+# Function: remove_region
+# Description: Remove region from a single image
+#===============================================================================
+remove_region() {
+    local input_file="$1"
+    local output_file="$2"
+    local position="$3"
+    local mask_file="$4"
+    local mask_size="$5"
+    
+    # Get image dimensions
+    local img_width img_height
+    img_width=$(magick identify -format "%w" "$input_file")
+    img_height=$(magick identify -format "%h" "$input_file")
+    
+    # Get mask dimensions
+    local mask_w mask_h
+    if [ -n "$mask_file" ]; then
+        mask_w=$(magick identify -format "%w" "$mask_file")
+        mask_h=$(magick identify -format "%h" "$mask_file")
+    else
+        mask_w=$(echo "$mask_size" | cut -d'x' -f1)
+        mask_h=$(echo "$mask_size" | cut -d'x' -f2)
+    fi
+    
+    # Convert position to coordinates
+    local coords
+    coords=$(parse_position "$position" "$img_width" "$img_height" "$mask_w" "$mask_h")
+    local pos_x pos_y
+    pos_x=$(echo "$coords" | cut -d',' -f1)
+    pos_y=$(echo "$coords" | cut -d',' -f2)
+    
+    # Validate coordinates
+    if [ "$pos_x" -lt 0 ] || [ "$pos_y" -lt 0 ] || \
+       [ "$pos_x" -ge "$img_width" ] || [ "$pos_y" -ge "$img_height" ]; then
+        print_error "Position ($pos_x,$pos_y) is outside image dimensions (${img_width}x${img_height})"
+        return 1
+    fi
+    
+    # Check if mask file needs to be created
+    local temp_mask=""
+    local final_mask="$mask_file"
+    
+    if [ -z "$final_mask" ]; then
+        temp_mask=$(create_default_mask "$mask_size")
+        final_mask="$temp_mask"
+    fi
+    
+    # Apply mask to remove region using ImageMagick
+    # Create a composition: apply mask as eraser
+    magick "$input_file" \
+        \( "$final_mask" -negate \) \
+        -geometry "+${pos_x}+${pos_y}" \
+        -compose copy_opacity -composite \
+        "$output_file"
+    
+    # Clean up temporary files
+    [ -n "$temp_mask" ] && rm -f "$temp_mask"
+    
+    return 0
+}
+
+#===============================================================================
+# Function: process_single_image
+# Description: Process a single image file
+#===============================================================================
+process_single_image() {
+    local input_file="$1"
+    local output_file="$2"
+    local mask_file="$3"
+    local mask_size="$4"
+    local position="$5"
+    
+    print_info "Processing: $input_file"
+    
+    # Generate output filename if not specified
+    if [ -z "$output_file" ]; then
+        local filename_ext
+        filename_ext=$(basename "$input_file")
+        local filename="${filename_ext%.*}"
+        local ext="${filename_ext##*.}"
+        output_file="${filename}_processed.${ext}"
+    fi
+    
+    if remove_region "$input_file" "$output_file" "$position" "$mask_file" "$mask_size"; then
+        print_success "Saved to: $output_file"
+    else
+        print_error "Failed to process: $input_file"
+        return 1
+    fi
+}
+
+#===============================================================================
+# Function: process_batch
+# Description: Process all images in a directory
+#===============================================================================
+process_batch() {
+    local input_dir="$1"
+    local output_dir="$2"
+    local mask_file="$3"
+    local mask_size="$4"
+    local position="$5"
+    
+    # Create output directory if it doesn't exist
+    if [ ! -d "$output_dir" ]; then
+        mkdir -p "$output_dir"
+        print_info "Created output directory: $output_dir"
+    fi
+    
+    # Find all image files
+    local files
+    mapfile -t files < <(find "$input_dir" -maxdepth 1 -type f \( \
+        -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \
+        -o -iname "*.svg" -o -iname "*.webp" -o -iname "*.bmp" \
+        -o -iname "*.avif" \) -print0 | sort -z | xargs -0 -n1)
+    
+    if [ ${#files[@]} -eq 0 ]; then
+        print_error "No image files found in: $input_dir"
+        exit 1
+    fi
+    
+    local total=${#files[@]}
+    local current=0
+    local failed=0
+    
+    print_info "Found $total image(s) to process"
+    
+    for file in "${files[@]}"; do
+        ((current++))
+        local filename
+        filename=$(basename "$file")
+        local output_file="${output_dir}/${filename}"
+        
+        echo "[$current/$total] Processing: $filename"
+        
+        if ! remove_region "$file" "$output_file" "$position" "$mask_file" "$mask_size"; then
+            ((failed++))
+        fi
+    done
+    
+    if [ $failed -eq 0 ]; then
+        print_success "All $total images processed successfully!"
+    else
+        print_error "$failed out of $total images failed to process"
+    fi
+}
+
+#===============================================================================
+# Main Script
+#===============================================================================
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -m|--mask)
+            MASK="$2"
+            shift 2
+            ;;
+        -ms|--mask-size)
+            MASK_SIZE="$2"
+            shift 2
+            ;;
+        -p|--position)
+            POSITION="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help 0
+            ;;
+        -*)
+            print_error "Unknown option: $1"
+            show_help 1
+            ;;
+        *)
+            if [ -z "$INPUT" ]; then
+                INPUT="$1"
+            elif [ -z "$OUTPUT" ]; then
+                OUTPUT="$1"
+            else
+                print_error "Too many arguments"
+                show_help 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Validate required arguments
+if [ -z "$INPUT" ]; then
+    print_error "Input file/directory is required"
+    show_help 1
+fi
+
+if [ -z "$POSITION" ]; then
+    print_error "Position (-p) is required"
+    show_help 1
+fi
+
+# Validate input exists
+if [ ! -e "$INPUT" ]; then
+    print_error "Input does not exist: $INPUT"
+    exit 1
+fi
+
+# Validate mask file if specified
+if [ -n "$MASK" ] && [ ! -f "$MASK" ]; then
+    print_error "Mask file not found: $MASK"
+    exit 1
+fi
+
+# Validate mask size format
+if ! [[ "$MASK_SIZE" =~ ^[0-9]+x[0-9]+$ ]]; then
+    print_error "Invalid mask size format: $MASK_SIZE (expected format: WIDTHxHEIGHT)"
+    exit 1
+fi
+
+# Main logic
+if [ -d "$INPUT" ]; then
+    # Batch processing
+    if [ -z "$OUTPUT" ]; then
+        print_error "Output directory is required for batch processing"
+        exit 1
+    fi
+    process_batch "$INPUT" "$OUTPUT" "$MASK" "$MASK_SIZE" "$POSITION"
+elif [ -f "$INPUT" ]; then
+    # Single image processing
+    process_single_image "$INPUT" "$OUTPUT" "$MASK" "$MASK_SIZE" "$POSITION"
+else
+    print_error "Input must be a file or directory"
+    exit 1
+fi
