@@ -14,7 +14,7 @@ _ghost_history_data=""
 _ghost_suggestion=""
 _ghost_cmd_cache=()
 _ghost_prompt_len=0
-_ghost_mode="ghost"
+_ghost_mode="clean"
 _ghost_last_ps1=""
 
 _ghost_notify() {
@@ -196,9 +196,9 @@ _ghost_validate_and_notify() {
 
 _ghost_load_state() {
     if [[ -f "$_ghost_state_file" ]]; then
-        _ghost_mode=$(cat "$_ghost_state_file" 2>/dev/null || echo "ghost")
+        _ghost_mode=$(cat "$_ghost_state_file" 2>/dev/null || echo "clean")
     else
-        _ghost_mode="ghost"
+        _ghost_mode="clean"
     fi
     
     # Load space mode
