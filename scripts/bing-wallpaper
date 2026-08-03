@@ -16,7 +16,7 @@ either once or at specified intervals.
 1. Supports multiple display resolutions (1280x720, 1366x768, 1920x1080)
 2. Compatible with both Wayland and X11 display servers
 3. Provides special integration for GNOME desktop environment
-4. Includes support for alternative window managers through swww and feh
+4. Includes support for alternative window managers through awww and feh
 5. Implements random selection from Bing's recent images (last 9 days)
 6. Offers flexible scheduling options for wallpaper updates
 7. Maintains temporary storage management for downloaded images
@@ -85,10 +85,10 @@ set_wallpaper() {
         if [[ "${XDG_CURRENT_DESKTOP}" = [Gg][Nn][Oo][Mm][Ee] ]]; then
             gsettings set org.gnome.desktop.background picture-uri file://"$WP_FILE"
         else
-            if [ ! "$(pidof swww-daemon)" ]; then 
-                swww init & swww img "$WP_FILE"
+            if [ ! "$(pidof awww-daemon)" ]; then 
+                awww init & awww img "$WP_FILE"
             else
-                swww img "$WP_FILE"
+                awww img "$WP_FILE"
             fi
         fi
         

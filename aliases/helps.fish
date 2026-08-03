@@ -14,6 +14,9 @@ alias docker_help='helps docker_basic'
 
 alias screen_help='helps screen_help'
 
+alias printer_share_help='helps printer_share'
+alias samba_share_help='helps printer_share'
+
 alias tmux_help='helps tmux_help'
 
 alias fix_lib_help='helps fix_lib'

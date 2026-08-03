@@ -71,7 +71,7 @@ help() {
     Note: Each subdirectory should contain individual frame images.
           All image formats supported by ImageMagick are recognized.
 EOF
-    exit 0
+    exit $1
 }
 
 # Validate image dimensions format
@@ -385,6 +385,8 @@ spritesheet_gen() {
 # Parse command line arguments
 SOURCE_DIR="."
 
+[[ -z $1 ]] && echo -e "\033[1;31mUse one of the following arguments:\033[0m" && help 1
+
 while [[ $# -gt 0 ]]; do
     case $1 in
         -s|--size)
@@ -407,7 +409,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            help
+            help 0
             ;;
         -*)
             echo "Error: Unknown option '$1'"
