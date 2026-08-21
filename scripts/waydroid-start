@@ -45,16 +45,16 @@ waydroid_process=$(pidof waydroid)
 #sudo modprobe binder || { ! [[ "$kernel" =~ "zen" ]] && echo "Start the system with the linux-zen kernel or install binder_linux-dkms" && exit 1; }
 
 # Try to load the main binder module
-if sudo modprobe binder; then
+if sudo modprobe rust_binder devices=binder,hwbinder,vndbinder; then
     echo "Binder module loaded successfully."
 else
     echo "Error: Failed to load 'binder' module." >&2
 
     # Check if the DKMS module (binder_linux) is available
-    if modinfo binder_linux &>/dev/null; then
+    if modinfo rust_binder &>/dev/null; then
         echo "The 'binder_linux' (DKMS) module was found."
         echo "Attempting to load 'binder_linux'..."
-        if sudo modprobe binder_linux; then
+        if sudo modprobe rust_binder devices=binder,hwbinder,vndbinder; then
             echo "Binder_linux module loaded successfully."
             exit 0
         fi

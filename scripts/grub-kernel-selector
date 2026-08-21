@@ -100,7 +100,7 @@ ${COLOR_BOLD}OPTIONS${COLOR_RESET}
 
 ${COLOR_BOLD}EXAMPLES${COLOR_RESET}
     ${COLOR_DIM}# Run the interactive kernel selector${COLOR_RESET}
-    ${COLOR_GREEN}\$${COLOR_RESET} sudo ${SCRIPT_NAME}
+    ${COLOR_GREEN}\$${COLOR_RESET} ${SCRIPT_NAME}
 
     ${COLOR_DIM}# Display help${COLOR_RESET}
     ${COLOR_GREEN}\$${COLOR_RESET} ${SCRIPT_NAME} --help
@@ -121,7 +121,7 @@ ${COLOR_BOLD}EXIT STATUS${COLOR_RESET}
     ${COLOR_RED}1${COLOR_RESET}   Error (permissions, no kernels found, user cancelled, etc.)
 
 ${COLOR_BOLD}NOTES${COLOR_RESET}
-    ${COLOR_YELLOW}⚠${COLOR_RESET}  This script requires ${COLOR_BOLD}sudo${COLOR_RESET} privileges to modify GRUB configuration
+    ${COLOR_YELLOW}⚠${COLOR_RESET}  This script automatically uses ${COLOR_BOLD}sudo${COLOR_RESET} when needed
     ${COLOR_YELLOW}⚠${COLOR_RESET}  A backup of ${COLOR_DIM}${GRUB_CONFIG}${COLOR_RESET} is created before modification
     ${COLOR_YELLOW}⚠${COLOR_RESET}  Kernel images smaller than 1MB are considered invalid
 
@@ -144,14 +144,6 @@ show_version() {
     echo -e "${COLOR_DIM}Interactive GRUB default kernel selection tool${COLOR_RESET}"
 }
 
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        print_error "This script requires root privileges"
-        print_info "Please run with: ${COLOR_BOLD}sudo ${SCRIPT_NAME}${COLOR_RESET}"
-        exit 1
-    fi
-}
-
 check_requirements() {
     local missing_tools=()
     
@@ -171,12 +163,19 @@ check_requirements() {
     fi
 }
 
+check_sudo() {
+    if ! command -v sudo &> /dev/null; then
+        print_error "sudo command not found. This script requires sudo privileges."
+        exit 1
+    fi
+}
+
 backup_grub_config() {
     local backup_file="${GRUB_CONFIG}.backup.$(date +%Y%m%d_%H%M%S)"
     
     if [[ -f "$GRUB_CONFIG" ]]; then
         print_step "Creating backup of GRUB configuration..."
-        cp "$GRUB_CONFIG" "$backup_file"
+        sudo cp "$GRUB_CONFIG" "$backup_file"
         print_success "Backup created: ${COLOR_DIM}$backup_file${COLOR_RESET}"
     fi
 }
@@ -265,15 +264,15 @@ update_grub_config() {
     
     print_step "Updating GRUB configuration..."
     
-    # Check if GRUB_TOP_LEVEL exists (commented or uncommented)
+    # Read the current config without sudo (reading doesn't need sudo if file is readable)
     if grep -q "^#*GRUB_TOP_LEVEL=" "$GRUB_CONFIG" 2>/dev/null; then
-        # Exists - uncomment and update
+        # Exists - uncomment and update (needs sudo)
         print_info "GRUB_TOP_LEVEL found, updating value..."
-        sed -i "s|^#*GRUB_TOP_LEVEL=.*|GRUB_TOP_LEVEL=\"${BOOT_DIR}/${kernel_name}\"|" "$GRUB_CONFIG"
+        sudo sed -i "s|^#*GRUB_TOP_LEVEL=.*|GRUB_TOP_LEVEL=\"${BOOT_DIR}/${kernel_name}\"|" "$GRUB_CONFIG"
     else
-        # Doesn't exist - add it
+        # Doesn't exist - add it (needs sudo)
         print_info "Adding GRUB_TOP_LEVEL to configuration..."
-        echo "GRUB_TOP_LEVEL=\"${BOOT_DIR}/${kernel_name}\"" >> "$GRUB_CONFIG"
+        echo "GRUB_TOP_LEVEL=\"${BOOT_DIR}/${kernel_name}\"" | sudo tee -a "$GRUB_CONFIG" > /dev/null
     fi
     
     print_success "GRUB_TOP_LEVEL set to: ${COLOR_BOLD}${BOOT_DIR}/${kernel_name}${COLOR_RESET}"
@@ -282,7 +281,7 @@ update_grub_config() {
 regenerate_grub() {
     print_step "Regenerating GRUB configuration..."
     
-    if grub-mkconfig -o "$GRUB_MKCONFIG" 2>&1; then
+    if sudo grub-mkconfig -o "$GRUB_MKCONFIG" 2>&1; then
         print_success "GRUB configuration regenerated successfully!"
     else
         print_error "Failed to regenerate GRUB configuration"
@@ -333,8 +332,8 @@ main() {
     print_header "GRUB Kernel Selector v${SCRIPT_VERSION}"
     echo ""
     
-    check_root
     check_requirements
+    check_sudo
     
     # Find valid kernel images
     local -a kernels=()
