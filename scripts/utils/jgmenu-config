@@ -3,8 +3,8 @@
 # Credits: Felipe Facundes
 
 config_dir="${HOME}/.config"
-config_dir_rofi="${config_dir}/rofi"
-config_base="${HOME}/.shell_utils/utilities/dotfiles/rofi"
+config_dir_jgmenu="${config_dir}/jgmenu"
+config_base="${HOME}/.shell_utils/utilities/dotfiles/jgmenu"
 
 # Initialize associative array for internationalization (i18n)
 declare -A MESSAGES
@@ -13,7 +13,7 @@ declare -A MESSAGES
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES[error_src]="Erro: Diretório de origem não encontrado em"
     MESSAGES[created]="Diretório de configuração criado com sucesso!"
-    MESSAGES[ready]="Agora o Rofi está configurado e pronto para uso!"
+    MESSAGES[ready]="Agora o Jgmenu está configurado e pronto para uso!"
     MESSAGES[overwrite]="O diretório de configuração já existe, mas é diferente. Deseja substituí-lo? (y/n): "
     MESSAGES[replaced]="Diretório substituído com sucesso."
     MESSAGES[no_change]="Nenhuma alteração foi feita."
@@ -21,7 +21,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
 else
     MESSAGES[error_src]="Error: Source directory not found at"
     MESSAGES[created]="Configuration directory successfully created!"
-    MESSAGES[ready]="Rofi is now configured and ready for use!"
+    MESSAGES[ready]="Jgmenu is now configured and ready for use!"
     MESSAGES[overwrite]="The configuration directory already exists but is different. Do you want to overwrite it? (y/n): "
     MESSAGES[replaced]="Directory successfully replaced."
     MESSAGES[no_change]="No changes were made."
@@ -42,16 +42,16 @@ get_checksum() {
     find "$1" -type f -exec md5sum {} + | awk '{print $1}' | LC_ALL=C sort | md5sum | awk '{print $1}'
 }
 
-if [[ ! -d "$config_dir_rofi" ]]; then
+if [[ ! -d "$config_dir_jgmenu" ]]; then
     # Scenario 1: Configuration file doesn't exist
     cp -rf "$config_base" "${config_dir}/"
     clear
     echo "${MESSAGES[created]}"
     echo "${MESSAGES[ready]}"
-elif [[ -d "$config_dir_rofi" ]]; then
+elif [[ -d "$config_dir_jgmenu" ]]; then
     # Scenario 2: Configuration file exists
     base_checksum=$(get_checksum "$config_base")
-    file_checksum=$(get_checksum "$config_dir_rofi")
+    file_checksum=$(get_checksum "$config_dir_jgmenu")
     
     if [[ "$base_checksum" == "$file_checksum" ]]; then
         # Files are identical
