@@ -11,25 +11,25 @@ declare -A MESSAGES
 
 # Translation Logic (Defaults to English)
 if [[ "${LANG,,}" =~ pt_ ]]; then
-    MESSAGES[error_src]="Erro: Arquivo de origem não encontrado em"
-    MESSAGES[created]="Arquivo de configuração criado com sucesso!"
+    MESSAGES[error_src]="Erro: Diretório de origem não encontrado em"
+    MESSAGES[created]="Diretório de configuração criado com sucesso!"
     MESSAGES[ready]="Agora o Rofi está configurado e pronto para uso!"
-    MESSAGES[overwrite]="O arquivo de configuração já existe, mas é diferente. Deseja substituí-lo? (y/n): "
-    MESSAGES[replaced]="Arquivo substituído com sucesso."
+    MESSAGES[overwrite]="O diretório de configuração já existe, mas é diferente. Deseja substituí-lo? (y/n): "
+    MESSAGES[replaced]="Diretório substituído com sucesso."
     MESSAGES[no_change]="Nenhuma alteração foi feita."
-    MESSAGES[equal]="Os arquivos são idênticos. Nenhuma ação necessária."
+    MESSAGES[equal]="Os diretórios são idênticos. Nenhuma ação necessária."
 else
-    MESSAGES[error_src]="Error: Source file not found at"
-    MESSAGES[created]="Configuration file successfully created!"
+    MESSAGES[error_src]="Error: Source directory not found at"
+    MESSAGES[created]="Configuration directory successfully created!"
     MESSAGES[ready]="Rofi is now configured and ready for use!"
-    MESSAGES[overwrite]="The configuration file already exists but is different. Do you want to overwrite it? (y/n): "
-    MESSAGES[replaced]="File successfully replaced."
+    MESSAGES[overwrite]="The configuration directory already exists but is different. Do you want to overwrite it? (y/n): "
+    MESSAGES[replaced]="Directory successfully replaced."
     MESSAGES[no_change]="No changes were made."
-    MESSAGES[equal]="Files are identical. No action needed."
+    MESSAGES[equal]="Directories are identical. No action needed."
 fi
 
 # Check if the source file exists
-if [[ ! -f "$config_base" ]]; then
+if [[ ! -d "$config_base" ]]; then
     echo "${MESSAGES[error_src]} $config_base"
     exit 1
 fi
