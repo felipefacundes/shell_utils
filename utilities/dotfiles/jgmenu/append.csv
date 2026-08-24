@@ -3,7 +3,7 @@ Bloquear,i3lock-fancy -p,system-lock-screen
 Sair,^checkout(exit),system-shutdown
 
 exit,^tag(exit)
-Openbox Refresh,openbox --exit,system-log-out
+WM Refresh,bash -c 'pkill -9 -u $USER',system-log-out
 Suspender,systemctl suspend,system-log-out
 Hibernar,systemctl hibernate,system-hibernate
 Reiniciar,systemctl reboot,system-reboot

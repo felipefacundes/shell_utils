@@ -1,151 +1,517 @@
 #!/usr/bin/env bash
 # License: GPLv3
 # Credits: Felipe Facundes
-# This is a simple script that automatically creates backups for your Godot projects and avoids accidents
+# This script automates backups for Godot projects and provides restore functionality
 
 : <<'DOCUMENTATION'
 This script is designed to automate the backup process for Godot projects, ensuring that users can 
-easily manage their project files and avoid accidental data loss. 
+easily manage their project files and avoid accidental data loss.
 
 Key Features:
-1. Automatic Backup Creation: The script creates backups of Godot projects in a specified directory, timestamped for easy identification.
-2. Signal Handling: It captures termination signals to ensure that backup processes are properly managed and terminated.
-3. Directory Management: It checks for the existence of necessary directories and creates them if they do not exist, ensuring a smooth backup process.
-4. Size Management: The script monitors the size of the backup directory and automatically deletes the oldest backups when a specified size limit is reached.
-5. Compatibility Checks: It includes checks for NVIDIA graphics drivers and Vulkan support, optimizing the environment for running Godot.
+1. Automatic Backup Creation: Creates timestamped backups of Godot projects in ~/.cache/scriptname/
+2. Restore Functionality: Allows restoring projects from selected backups using dialog/whiptail
+3. Signal Handling: Properly manages process termination signals
+4. Size Management: Monitors backup directory size and auto-deletes oldest backups when limit reached
+5. Bilingual Support: Automatically detects system language (Portuguese/English) for user messages
+6. Godot Binary Selection: Can use latest binary in ~/.local/bin or specify a permanent version
+7. First-run Setup: Uses zenity to select the projects directory on first execution
+8. Cache Directory Management: Stores backups in ~/.cache/scriptname/ with configurable size limit
 
-Overall, this script enhances the user experience by providing a reliable and efficient way to manage backups for Godot projects.
 DOCUMENTATION
 
-# Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill $(jobs -p)' SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGINT
+# Define signal handler
+trap 'kill $(jobs -p)' SIGTERM
 
-godot_file=~/.godot_dir.default
+# Internationalization - Bilingual Support
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [backup_created]="Backup criado"
+        [backup_failed]="Falha ao criar backup"
+        [restore_complete]="Restauração concluída"
+        [restore_failed]="Falha na restauração"
+        [select_project_dir]="Selecione o diretório onde estão seus projetos Godot"
+        [project_dir_not_found]="Diretório de projetos não encontrado"
+        [backup_limit_reached]="Limite de backup atingido, removendo o mais antigo"
+        [removed_file]="arquivo removido"
+        [starting_godot]="Iniciando Godot"
+        [wait_backup]="Backup sendo criado. Aguarde!"
+        [godot_not_found]="Godot não encontrado em ~/.local/bin. Por favor, baixe uma versão em https://godotengine.org/ e coloque em ~/.local/bin"
+        [choose_godot]="Escolha a versão do Godot que deseja usar permanentemente"
+        [restore_prompt]="Escolha o backup que deseja restaurar"
+        [cache_size_prompt]="Defina o tamanho máximo da pasta de cache (ex: 30G, 500M)"
+        [invalid_size]="Tamanho inválido. Use formato como 30G, 500M, 10T"
+        [operation_cancelled]="Operação cancelada pelo usuário"
+    )
+else
+    MESSAGES=(
+        [backup_created]="Backup created"
+        [backup_failed]="Backup failed"
+        [restore_complete]="Restore completed"
+        [restore_failed]="Restore failed"
+        [select_project_dir]="Select the directory where your Godot projects are located"
+        [project_dir_not_found]="Project directory not found"
+        [backup_limit_reached]="Backup limit reached, deleting the oldest"
+        [removed_file]="file removed"
+        [starting_godot]="Starting Godot"
+        [wait_backup]="Backup being created. Wait!"
+        [godot_not_found]="Godot not found in ~/.local/bin. Please download a version from https://godotengine.org/ and place it in ~/.local/bin"
+        [choose_godot]="Choose the Godot version you want to use permanently"
+        [restore_prompt]="Choose the backup you want to restore"
+        [cache_size_prompt]="Set the maximum cache folder size (ex: 30G, 500M)"
+        [invalid_size]="Invalid size. Use format like 30G, 500M, 10T"
+        [operation_cancelled]="Operation cancelled by user"
+    )
+fi
 
-# Extract values from the configuration file
-#default_dir="$(cat ${godot_file} | sed '/^$/d' | head -1 | tail -1 | cut -f2 -d'=' | sed 's#^[[:space:]]##g')"
-#godot_dir="$(cat ${godot_file} | sed '/^$/d' | head -2 | tail -1 | cut -f2 -d'=' | sed 's#^[[:space:]]##g')"
-read -r default_dir < <(awk -F '=' '/godot_subdir/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' "$godot_file")
-read -r godot_dir < <(awk -F '=' '/godot_projects_dir/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}' "$godot_file")
+# Script variables
+SCRIPT_NAME="${0##*/}"
+CACHE_DIR="${HOME}/.cache/${SCRIPT_NAME}"
+CONFIG_FILE="${HOME}/.config/${SCRIPT_NAME}.conf"
+GODOT_BIN_DIR="${HOME}/.local/bin"
+DEFAULT_CACHE_SIZE="30G"
 
-default_dir="$(eval echo "${default_dir}")"
-godot_dir="$(eval echo "${godot_dir}")"
+# Color definitions for help
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# Set default values if not present
-dir="${dir:-$default_dir}"
-bkp_tars="BKP_tars"
-bkp="${godot_dir}_$(date +'%d-%m-%Y_%H-%M-%S').tar"
-path_bin=~/.local/bin/
-godot_latest_binary=$(ls -v "$path_bin"/Godot* | tail -n1)
-
-# vsync
-export vblank_mode=0
-export __GL_SYNC_TO_VBLANK=0
-
-run_godot() { 
-    setsid "$godot_latest_binary" "$@" &
-    godot_pid="$(echo $!)"; export godot_pid
+# Function to convert human-readable size to bytes
+human_to_bytes() {
+    local size="$1"
+    local num="${size%[A-Za-z]*}"
+    local unit="${size##*[0-9]}"
+    case "$unit" in
+        G|g) echo "$((num * 1024 * 1024 * 1024))" ;;
+        M|m) echo "$((num * 1024 * 1024))" ;;
+        T|t) echo "$((num * 1024 * 1024 * 1024 * 1024))" ;;
+        K|k) echo "$((num * 1024))" ;;
+        *) echo "$num" ;;
+    esac
 }
 
-if [[ ! -f "$godot_file" ]]; then
-    echo 'godot_subdir = ' | tee "$godot_file"
-    echo 'godot_projects_dir = ' | tee -a "$godot_file"
-fi
+# Function to bytes to human-readable
+bytes_to_human() {
+    local bytes="$1"
+    if [[ "$bytes" -gt 1073741824 ]]; then
+        echo "$((bytes / 1073741824))G"
+    elif [[ "$bytes" -gt 1048576 ]]; then
+        echo "$((bytes / 1048576))M"
+    elif [[ "$bytes" -gt 1024 ]]; then
+        echo "$((bytes / 1024))K"
+    else
+        echo "${bytes}B"
+    fi
+}
 
-if [[ -z "$dir" ]] || [[ -z "$godot_dir" ]]; then
-    cat <<EOF
+# Function to display help
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${GREEN}${SCRIPT_NAME} - Godot Project Backup and Restore Tool${NC}
 
-In the ~/.godot_dir.default file, enter the subdirectory, the main directory where your projects directory is located, example:
+${YELLOW}USAGE:${NC}
+    ${SCRIPT_NAME} [OPTIONS] [godot arguments]
 
-godot_subdir = ~/Documents
+${YELLOW}DESCRIPTION:${NC}
+    Automates backup creation for Godot projects with restore functionality.
+    Backups are stored in ${BLUE}~/.cache/${SCRIPT_NAME}/${NC}
 
-Then inform which directory will actually be subject to backups, example:
+${YELLOW}OPTIONS:${NC}
+    ${GREEN}-h, --help${NC}        Show this help message
+    ${GREEN}-r, --restore${NC}     Restore projects from a backup
+    ${GREEN}-c, --cache${NC}       Set cache size limit (ex: 30G, 500M) [default: 30G]
+    ${GREEN}-g, --godot${NC}       Set permanent Godot binary version
+    ${GREEN}-l, --list${NC}        List all available backups
+    ${GREEN}-p, --purge${NC}       Purge all backups (confirmation required)
 
-godot_projects_dir = My_Godot4_projects
+${YELLOW}FIRST RUN:${NC}
+    On first execution, zenity will prompt to select the projects directory.
+    The selected directory will be the one backed up.
+
+${YELLOW}BACKUP DIRECTORY:${NC}
+    All projects inside the selected directory will be included in the backup.
+    Backup format: ${BLUE}projectdir_YYYY-MM-DD_HH-MM-SS.tar${NC}
+
+${YELLOW}GODOT BINARY:${NC}
+    Default: Uses the latest version in ${BLUE}~/.local/bin/${NC}
+    Permanent: Use -g to set a specific version to always use
+
+${YELLOW}AUTOMATIC CLEANUP:${NC}
+    When cache limit is reached, the oldest backup is automatically removed.
+
+${YELLOW}EXAMPLES:${NC}
+    ${GREEN}${SCRIPT_NAME}${NC}                    # Create backup and launch Godot
+    ${GREEN}${SCRIPT_NAME} -r${NC}                  # Restore from a backup
+    ${GREEN}${SCRIPT_NAME} -c 50G${NC}              # Set cache limit to 50GB
+    ${GREEN}${SCRIPT_NAME} -g Godot_v4.2-stable${NC} # Use specific Godot version
+    ${GREEN}${SCRIPT_NAME} --project /path/to/proj${NC} # Pass arguments to Godot
+
 EOF
-    exit 1
-fi
+}
 
-if [[ ! -d "${dir}/${godot_dir}" ]]; then
-    echo 'Project directory not found'
-    exit 1
-fi
-
-if [[ ! -d "${dir}/${godot_dir}" ]]; then
-    mkdir -p "$bkp_tars"
-    echo 'Backup directory created, restart the script, which will make backups of your projects, before starting Godot'
-    exit 1
-fi
-
-declare -i max_size=31457280  # Maximum size allowed for backups
-
-clear
-declare -l args="$1"
-
-if [[ -z "$args" ]] || [[ "$args" == nvidia ]] || [[ "$args" == n ]]; then
-    if lspci | grep -i "VGA" | grep -qi "NVIDIA"; then
-        if lsmod | grep -i nvidia >/dev/null 2>&1; then
-
-            export __NV_PRIME_RENDER_OFFLOAD=1
-            export __VK_LAYER_NV_optimus=NVIDIA_only
-            export __GLX_VENDOR_LIBRARY_NAME=nvidia
-            
-            if ! glxinfo -B >/dev/null 2>&1; then 
-                echo -e "Your computer does not run Vulkan at the moment,\nperhaps because it has been updated.\nRestart the system, to fix it!"
+# Function to setup configuration
+setup_config() {
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        # Use zenity to select projects directory
+        if command -v zenity >/dev/null 2>&1; then
+            local project_dir
+            project_dir=$(zenity --file-selection --directory --title="${MESSAGES[select_project_dir]}" 2>/dev/null)
+            if [[ -n "$project_dir" ]]; then
+                echo "PROJECTS_DIR=\"$project_dir\"" > "$CONFIG_FILE"
+                echo "CACHE_SIZE=\"$DEFAULT_CACHE_SIZE\"" >> "$CONFIG_FILE"
+                echo "GODOT_VERSION=\"\"" >> "$CONFIG_FILE"
+                echo "${MESSAGES[backup_created]}: $project_dir"
+            else
+                echo "${MESSAGES[operation_cancelled]}"
                 exit 1
             fi
-
+        else
+            echo "zenity not found. Please install zenity or manually create $CONFIG_FILE"
+            echo "Example content:"
+            echo 'PROJECTS_DIR="/path/to/your/godot/projects"'
+            echo "CACHE_SIZE=\"$DEFAULT_CACHE_SIZE\""
+            echo 'GODOT_VERSION=""'
+            exit 1
         fi
     fi
-fi
+    
+    # Source configuration
+    source "$CONFIG_FILE"
+    
+    # Create cache directory if it doesn't exist
+    mkdir -p "$CACHE_DIR"
+}
 
-if [[ ! -d "$default_dir" && ! -d "$godot_dir"  ]]; then
-    echo "Define your projects directory and backup folder"
-    exit 1
-fi
-
-cd "$dir" || exit
-
-while true; do
-    declare -i size_bkp_tars=$(du -s "$bkp_tars" | awk '{print $1}')
-    if [ "${size_bkp_tars}" -gt "${max_size}" ]; then
-        echo "Backup limit reached, deleting the oldest"
+# Function to manage cache size
+manage_cache_size() {
+    local max_size_bytes
+    max_size_bytes=$(human_to_bytes "$CACHE_SIZE")
+    
+    while true; do
+        local size_bkp_tars
+        size_bkp_tars=$(du -sb "$CACHE_DIR" 2>/dev/null | awk '{print $1}')
+        [[ -z "$size_bkp_tars" ]] && size_bkp_tars=0
         
-        # Remove the oldest tar file inside the backup folder
-        oldest_tar=$(ls -t "${bkp_tars}"/*.tar | tail -n 1)  # ls -Art
-        rm -f "$oldest_tar" > /dev/null 2>&1 &
-        echo -e "\nremoved $oldest_tar file\n"
+        if [[ "$size_bkp_tars" -gt "$max_size_bytes" ]]; then
+            echo "${MESSAGES[backup_limit_reached]}"
+            
+            # Remove the oldest tar file
+            local oldest_tar
+            oldest_tar=$(ls -t "$CACHE_DIR"/*.tar 2>/dev/null | tail -n 1)
+            if [[ -n "$oldest_tar" ]]; then
+                rm -f "$oldest_tar" 2>/dev/null
+                echo -e "\n${MESSAGES[removed_file]}: $oldest_tar\n"
+            else
+                break
+            fi
+        else
+            break
+        fi
+    done
+}
+
+# Function to create backup
+create_backup() {
+    local projects_dir="$1"
+    local backup_name
+    backup_name="${projects_dir##*/}_$(date +'%d-%m-%Y_%H-%M-%S').tar"
+    
+    echo "${MESSAGES[wait_backup]}"
+    
+    # Create backup
+    if tar -cf "$CACHE_DIR/$backup_name" -C "$(dirname "$projects_dir")" "${projects_dir##*/}" 2>/dev/null; then
+        echo -e "\n${MESSAGES[backup_created]}: $backup_name"
+        return 0
     else
-        break
+        echo "${MESSAGES[backup_failed]}"
+        return 1
     fi
-done
+}
 
-echo "Backup being created. Wait!"
-tar -cf "${godot_dir}".tar "${godot_dir}"/
-mv "${godot_dir}".tar "$bkp"
-mv *.tar "$bkp_tars"/
-du -hs "$bkp_tars"
+# Function to list backups
+list_backups() {
+    echo -e "\n${YELLOW}Available backups:${NC}"
+    echo "----------------------------------------"
+    ls -lh "$CACHE_DIR"/*.tar 2>/dev/null | awk '{print $9 " (" $5 ")"}' | sed "s|$CACHE_DIR/||"
+    echo "----------------------------------------"
+    echo "Total size: $(du -sh "$CACHE_DIR" 2>/dev/null | awk '{print $1}')"
+}
 
-echo -e "\nBackup $bkp created"
-echo -e "Starting Godot\n"
+# Function to restore backup
+restore_backup() {
+    local backup_file
+    
+    # Get list of backups
+    local backups=($(ls -t "$CACHE_DIR"/*.tar 2>/dev/null))
+    
+    if [[ ${#backups[@]} -eq 0 ]]; then
+        echo "No backups found in $CACHE_DIR"
+        return 1
+    fi
+    
+    # Display backup list and get user selection
+    if command -v whiptail >/dev/null 2>&1; then
+        local options=()
+        for i in "${!backups[@]}"; do
+            options+=("$i" "$(basename "${backups[$i]}")")
+        done
+        
+        local choice
+        choice=$(whiptail --title "${MESSAGES[restore_prompt]}" \
+            --menu "${MESSAGES[restore_prompt]}" 20 60 10 \
+            "${options[@]}" 3>&1 1>&2 2>&3)
+        
+        if [[ $? -ne 0 ]]; then
+            echo "${MESSAGES[operation_cancelled]}"
+            return 1
+        fi
+        
+        backup_file="${backups[$choice]}"
+        
+    elif command -v dialog >/dev/null 2>&1; then
+        local options=()
+        for i in "${!backups[@]}"; do
+            options+=("$i" "$(basename "${backups[$i]}")")
+        done
+        
+        local choice
+        choice=$(dialog --title "${MESSAGES[restore_prompt]}" \
+            --menu "${MESSAGES[restore_prompt]}" 20 60 10 \
+            "${options[@]}" 3>&1 1>&2 2>&3)
+        
+        if [[ $? -ne 0 ]]; then
+            echo "${MESSAGES[operation_cancelled]}"
+            return 1
+        fi
+        
+        backup_file="${backups[$choice]}"
+        
+    else
+        # Fallback to simple list
+        echo "${MESSAGES[restore_prompt]}:"
+        for i in "${!backups[@]}"; do
+            echo "$i) $(basename "${backups[$i]}")"
+        done
+        read -p "Enter number: " choice
+        
+        if [[ ! "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -ge "${#backups[@]}" ]]; then
+            echo "${MESSAGES[restore_failed]} - Invalid selection"
+            return 1
+        fi
+        
+        backup_file="${backups[$choice]}"
+    fi
+    
+    # Extract backup to project directory
+    echo "Restoring: $(basename "$backup_file")"
+    local project_name
+    project_name=$(basename "$backup_file" | sed 's/_[0-9]\{2\}-[0-9]\{2\}-[0-9]\{4\}_.*\.tar$//')
+    
+    # Extract to parent directory of projects
+    local extract_dir
+    extract_dir="$(dirname "$PROJECTS_DIR")"
+    
+    if [[ -d "$PROJECTS_DIR" ]]; then
+        if whiptail --yesno "The directory $PROJECTS_DIR already exists. Overwrite?" 10 60 2>/dev/null || \
+           dialog --yesno "The directory $PROJECTS_DIR already exists. Overwrite?" 10 60 2>/dev/null || \
+           read -p "Directory exists. Overwrite? (y/n): " confirm; then
+            if [[ "$confirm" =~ ^[Yy]$ ]] || [[ $? -eq 0 ]]; then
+                rm -rf "$PROJECTS_DIR"
+            else
+                echo "${MESSAGES[operation_cancelled]}"
+                return 1
+            fi
+        fi
+    fi
+    
+    if tar -xf "$backup_file" -C "$extract_dir" 2>/dev/null; then
+        echo "${MESSAGES[restore_complete]}"
+        return 0
+    else
+        echo "${MESSAGES[restore_failed]}"
+        return 1
+    fi
+}
 
-optirun=$(command -v optirun)
-if  [[ "$args" = no || "$args" = nouveau ]] && [[ "$optirun" ]]; then
-    optirun glxinfo -B
-    export NOUVEAU_USE_ZINK=1
-    NOUVEAU_USE_ZINK=1 optirun run_godot "$@"
-else
-    run_godot "$@"
-fi
+# Function to get Godot binary
+get_godot_binary() {
+    local godot_bin
+    
+    # If permanent version is set, use it
+    if [[ -n "$GODOT_VERSION" ]] && [[ -f "$GODOT_BIN_DIR/$GODOT_VERSION" ]]; then
+        echo "$GODOT_BIN_DIR/$GODOT_VERSION"
+        return 0
+    fi
+    
+    # Otherwise use latest version
+    godot_bin=$(ls -v "$GODOT_BIN_DIR"/Godot* 2>/dev/null | tail -n1)
+    
+    if [[ -n "$godot_bin" ]] && [[ -f "$godot_bin" ]]; then
+        echo "$godot_bin"
+        return 0
+    fi
+    
+    # Check if godot is in PATH
+    if command -v godot >/dev/null 2>&1; then
+        echo "godot"
+        return 0
+    fi
+    
+    echo "${MESSAGES[godot_not_found]}" >&2
+    return 1
+}
 
-declare godot_window
+# Function to set permanent godot version
+set_godot_version() {
+    local version="$1"
+    
+    if [[ -f "$GODOT_BIN_DIR/$version" ]]; then
+        # Update config
+        sed -i "s/^GODOT_VERSION=.*/GODOT_VERSION=\"$version\"/" "$CONFIG_FILE"
+        echo "Permanent Godot version set to: $version"
+    else
+        echo "Error: $version not found in $GODOT_BIN_DIR"
+        echo "Available versions:"
+        ls -1 "$GODOT_BIN_DIR"/Godot* 2>/dev/null || echo "No Godot binaries found"
+        return 1
+    fi
+}
 
-while [ -z "$godot_window" ]; do
-    godot_window=$(wmctrl -l | awk "/Godot Engine/ {print \$1}" | head -n1); export godot_window
-    sleep 1
-done
+# Function to purge all backups
+purge_backups() {
+    if whiptail --yesno "Are you sure you want to delete ALL backups?" 10 60 2>/dev/null || \
+       dialog --yesno "Are you sure you want to delete ALL backups?" 10 60 2>/dev/null || \
+       read -p "Delete ALL backups? (y/n): " confirm; then
+        if [[ "$confirm" =~ ^[Yy]$ ]] || [[ $? -eq 0 ]]; then
+            rm -rf "$CACHE_DIR"/*.tar
+            echo "All backups purged."
+        else
+            echo "${MESSAGES[operation_cancelled]}"
+        fi
+    fi
+}
 
-echo "PID: $godot_pid"
-echo "On X11, how to use: wmctrl -ic $godot_window"
-trap 'kill "$godot_pid"; sleep 15 && kill -9 "$godot_pid"; exit 1' SIGINT # Kill process with control+c
-wait "$godot_pid"               
+# Main execution
+main() {
+    # Parse command line arguments
+    local restore_mode=false
+    local list_mode=false
+    local purge_mode=false
+    
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            -r|--restore)
+                restore_mode=true
+                shift
+                ;;
+            -c|--cache)
+                if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+[GgMmTtKk]?$ ]]; then
+                    sed -i "s/^CACHE_SIZE=.*/CACHE_SIZE=\"$2\"/" "$CONFIG_FILE"
+                    echo "Cache size set to: $2"
+                    exit 0
+                else
+                    echo "${MESSAGES[invalid_size]}"
+                    exit 1
+                fi
+                shift 2
+                ;;
+            -g|--godot)
+                if [[ -n "$2" ]]; then
+                    set_godot_version "$2"
+                    exit 0
+                else
+                    echo "Please specify the Godot binary name"
+                    exit 1
+                fi
+                shift 2
+                ;;
+            -l|--list)
+                list_mode=true
+                shift
+                ;;
+            -p|--purge)
+                purge_mode=true
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+    
+    # Setup configuration
+    setup_config
+    
+    # Handle list mode
+    if [[ "$list_mode" == true ]]; then
+        list_backups
+        exit 0
+    fi
+    
+    # Handle purge mode
+    if [[ "$purge_mode" == true ]]; then
+        purge_backups
+        exit 0
+    fi
+    
+    # Handle restore mode
+    if [[ "$restore_mode" == true ]]; then
+        restore_backup
+        exit $?
+    fi
+    
+    # Verify projects directory exists
+    if [[ ! -d "$PROJECTS_DIR" ]]; then
+        echo "${MESSAGES[project_dir_not_found]}: $PROJECTS_DIR"
+        echo "Please update the configuration or create the directory."
+        exit 1
+    fi
+    
+    # Manage cache size
+    manage_cache_size
+    
+    # Create backup
+    create_backup "$PROJECTS_DIR"
+    if [[ $? -ne 0 ]]; then
+        exit 1
+    fi
+    
+    # Get Godot binary
+    local godot_bin
+    godot_bin=$(get_godot_binary)
+    if [[ $? -ne 0 ]]; then
+        exit 1
+    fi
+    
+    # Set graphics environment
+    export vblank_mode=0
+    export __GL_SYNC_TO_VBLANK=0
+    
+    # NVIDIA handling
+    if lspci | grep -i "VGA" | grep -qi "NVIDIA"; then
+        if lsmod | grep -i nvidia >/dev/null 2>&1; then
+            export __NV_PRIME_RENDER_OFFLOAD=1
+            export __VK_LAYER_NV_OPTIMUS=NVIDIA_only
+            export __GLX_VENDOR_LIBRARY_NAME=nvidia
+        fi
+    fi
+    
+    # Launch Godot
+    echo "${MESSAGES[starting_godot]}"
+    setsid "$godot_bin" "$@" &
+    local godot_pid=$!
+    
+    # Handle SIGINT
+    trap 'kill "$godot_pid" 2>/dev/null; exit' SIGINT
+    
+    wait "$godot_pid"
+}
+
+# Run main function
+main "$@"
