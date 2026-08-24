@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Directory where scripts are located
+SCRIPT_DIR="$HOME/.shell_utils/scripts/utils"
+
+# Check if directory exists
+if [[ ! -d "$SCRIPT_DIR" ]]; then
+    echo "Error: Directory $SCRIPT_DIR not found!"
+    exit 1
+fi
+
+# Check if fzf is installed
+if ! command -v fzf &> /dev/null; then
+    echo "Error: fzf is not installed. Install with: sudo apt install fzf (or equivalent)"
+    exit 1
+fi
+
+# Find all scripts ending with -config
+scripts=($(find "$SCRIPT_DIR" -maxdepth 1 -type f -name "*-config" | sort))
+
+# Check if any scripts were found
+if [[ ${#scripts[@]} -eq 0 ]]; then
+    echo "No *-config scripts found in $SCRIPT_DIR"
+    exit 1
+fi
+
+# Extract base names (without -config and without path)
+mapfile -t display_names < <(
+    for script in "${scripts[@]}"; do
+        basename "$script" | sed 's/-config$//'
+    done
+)
+
+# Use fzf for selection
+selected_display=$(printf '%s\n' "${display_names[@]}" | fzf --prompt="Select a script: " --height=10 --border)
+
+# Check if user selected something
+if [[ -z "$selected_display" ]]; then
+    echo "No script selected."
+    exit 0
+fi
+
+# Find the script corresponding to the selected name
+selected_script=""
+for script in "${scripts[@]}"; do
+    base_name=$(basename "$script" | sed 's/-config$//')
+    if [[ "$base_name" == "$selected_display" ]]; then
+        selected_script="$script"
+        break
+    fi
+done
+
+# Check if the script was found
+if [[ -z "$selected_script" ]]; then
+    echo "Error: Script not found for '$selected_display'"
+    exit 1
+fi
+
+# Execute the selected script
+echo "Executing: ${selected_script##*/}"
+exec "$selected_script"
