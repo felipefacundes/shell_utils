@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+jglf="${HOME}/.jgmenu-lockfile"
+
+if pidof jgmenu && test -f "$jglf"; then
+    pkill -9 jgmenu && rm -f "$jglf"
+elif ! pidof jgmenu && test -f "$jglf"; then
+    rm -f "$jglf" && jgmenu
+elif ! pidof jgmenu; then
+    jgmenu
+elif pidof jgmenu; then
+    pkill -9 jgmenu
+else
+    rm -f "$jglf"
+fi

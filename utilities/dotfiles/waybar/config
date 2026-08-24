@@ -87,8 +87,8 @@
     "idle_inhibitor": {
         "format": "{icon}",
         "format-icons": {
-            "activated": "零",   //""
-            "deactivated": "鈴"  //""
+            "activated": "",
+            "deactivated": ""
         }
     },
 
@@ -154,8 +154,8 @@
             "critical": 15
         },
         "format": "{capacity}% {icon}",
-        "format-charging": "{capacity}%  ",
-        "format-plugged": "{capacity}%  ",
+        "format-charging": "{capacity}% 󱊦 ",
+        "format-plugged": "{capacity}% 󱊦 ",
         "format-alt": "{time} {icon}",
         // "format-good": "", // An empty format will hide the module
         // "format-full": "",
@@ -169,8 +169,8 @@
     "bluetooth": {
         "format": "{icon}",
         "format-icons": {
-            "enabled": "",
-            "disabled": ""
+            "enabled": "",
+            "disabled": "󰂲"
         },
         "on-click": "bash -c ${HOME}/.config/waybar/scripts/rofi-bluetooth 2> /dev/null" ,
         "tooltip-format": "{}"
@@ -179,10 +179,10 @@
     "network": {
         // "interface": "wlp2*", // (Optional) To force the use of this interface
         "format-wifi": "{essid} ({signalStrength}%) ",
-        "format-ethernet": "{ipaddr}/{cidr} ", //
-        "tooltip-format": "{ifname} via {gwaddr} ",
-        "format-linked": "{ifname} (No IP) ",
-        "format-disconnected": "Disconnected 睊", //⚠
+        "format-ethernet": "{ipaddr}/{cidr} ",
+        "tooltip-format": "{ifname} via {gwaddr} 󰛶",
+        "format-linked": "{ifname} (No IP) 󰅛",
+        "format-disconnected": "Disconnected 󰲛",
         "format-alt": "{ifname}: {ipaddr}/{cidr}",
         "on-click-right": "terminator -e nmtui"
     },
@@ -191,14 +191,14 @@
         // "scroll-step": 1, // %, can be a float
         "format": "{volume}% {icon} {format_source}",
         "format-bluetooth": "{volume}% {icon} {format_source}",
-        "format-bluetooth-muted": " {icon} {format_source}",
-        "format-muted": " {format_source}",
+        "format-bluetooth-muted": "󰗿 {icon} {format_source}",
+        "format-muted": "󰝟 {format_source}",
         "format-source": "{volume}% ",
         "format-source-muted": "",
         "format-icons": {
             "headphone": "",
-            "hands-free": "",
-            "headset": "",
+            "hands-free": "󱆏",
+            "headset": "",
             "phone": "",
             "portable": "",
             "car": "",
@@ -209,7 +209,7 @@
 
     "disk": {
         "interval": 30,
-        "format": "",
+        "format": "󰋊",
         "format-alt": "Free: {}%",
         "tooltip-format": "{used} used\n{free} free\n{total} total",
         "on-click-right": "pcmanfm",
@@ -301,7 +301,7 @@
 		// ⚫🔵⚪💙🩸💧🛟 💎  ⚽🏀🏈⚾🥎🎾🏐🏉🥏🎱🪀  🧡💛💚💙💜🖤🤎🤍💔❣️💝❤️‍🩹❤️‍🔥 
         //🛑💠🌀Ⓜ️🆗🆖⏺️⚪⚫🔴🔵🟤🟣🟢🟡🟠🔺🔻🔶🔷🔳🔲⬛⬜🟧🟦🟥🟫🟪🟩🟨 🔎👁️👽🤖👾☠️👇👆🤙☝️🎲🧊🎖️🚦🎗️ 🎲
 		"format": ".",
-        "on-click": "nwg-drawer",
+        "on-click": "bash -c '~/.shell_utils/scripts/utils/jgmenu-toggle'",
         "on-click-right": "rofi -no-lazy-grab -show drun -modi drun -theme ~/.config/rofi/launchers/misc/appdrawer.rasi",
         "on-click-middle": "pkill -9 rofi"
     },
@@ -320,7 +320,7 @@
         "interval": 1,
         "signal": 8,
         "tooltip-format": "<big>{}</big></tt>",
-        "format":"ﴻ {}" , //"{} ﴻ" 🔝
+        "format":"󰶣 {}" , //"{} ﴻ" 🔝
         "exec": "uptime | awk '{print $3}' | tr -d ','",
         "exec-if": "exit 0",
         "on-click": "swaynag -t warning -m 'Power Options:' -b 'Exit' 'loginctl terminate-session self' -b 'LockScreen' 'swaylock' -b 'Suspend' 'systemctl suspend; swaylock' -b 'Reboot' 'systemctl -i reboot' -b 'Poweroff' 'openrc-shutdown -p now && systemctl shutdown -h now'"
@@ -329,7 +329,7 @@
     "custom/poweroff": {
         //"format": "" 📴,
         "format": ".",
-        "format-alt": "ﴻ {}",
+        "format-alt": "󰶣 {}",
         "tooltip": false,
         "exec": "uptime | awk '{print $3}' | tr -d ','",
         "exec-if": "exit 0",
