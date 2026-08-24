@@ -42,6 +42,52 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [cache_size_prompt]="Defina o tamanho máximo da pasta de cache (ex: 30G, 500M)"
         [invalid_size]="Tamanho inválido. Use formato como 30G, 500M, 10T"
         [operation_cancelled]="Operação cancelada pelo usuário"
+        [dir_moved]="Diretório movido para"
+        [dir_exists]="O diretório já existe. Movendo para"
+        [overwrite_warning]="AVISO: A pasta de projetos será movida para um backup antes da restauração"
+        [help_title]="${SCRIPT_NAME} - Ferramenta de Backup e Restauração de Projetos Godot"
+        [help_usage]="USO:"
+        [help_description]="DESCRIÇÃO:"
+        [help_options]="OPÇÕES:"
+        [help_first_run]="PRIMEIRA EXECUÇÃO:"
+        [help_backup_dir]="DIRETÓRIO DE BACKUP:"
+        [help_restore]="PROCESSO DE RESTAURAÇÃO:"
+        [help_godot]="BINÁRIO GODOT:"
+        [help_cleanup]="LIMPEZA AUTOMÁTICA:"
+        [help_examples]="EXEMPLOS:"
+        [help_show]="Mostrar esta mensagem de ajuda"
+        [help_restore_opt]="Restaurar projetos a partir de um backup"
+        [help_cache_opt]="Definir limite de tamanho do cache (ex: 30G, 500M) [padrão: 30G]"
+        [help_godot_opt]="Definir versão permanente do binário Godot"
+        [help_list_opt]="Listar todos os backups disponíveis"
+        [help_purge_opt]="Eliminar todos os backups (requer confirmação)"
+        [help_first_run_text]="Na primeira execução, o zenity solicitará que você selecione o diretório de projetos. O diretório selecionado será o que será copiado em backup."
+        [help_backup_dir_text]="Todos os projetos dentro do diretório selecionado serão incluídos no backup. Formato do backup: projectdir_AAAA-MM-DD_HH-MM-SS.tar"
+        [help_restore_text]="Ao restaurar, o diretório do projeto existente será movido para: projectdir_backup_AAAA-MM-DD_HH-MM-SS Isso evita perda de dados e evita erros de sobrescrita."
+        [help_godot_default]="Padrão: Usa a versão mais recente em ~/.local/bin/"
+        [help_godot_permanent]="Permanente: Use -g para definir uma versão específica para sempre usar"
+        [help_cleanup_text]="Quando o limite de cache é atingido, o backup mais antigo é removido automaticamente."
+        [help_example1]="Criar backup e iniciar Godot"
+        [help_example2]="Restaurar a partir de um backup"
+        [help_example3]="Definir limite de cache para 50GB"
+        [help_example4]="Usar versão específica do Godot"
+        [help_example5]="Passar argumentos para o Godot"
+        [available_backups]="Backups disponíveis:"
+        [total_size]="Tamanho total:"
+        [no_backups]="Nenhum backup encontrado em"
+        [enter_number]="Digite o número:"
+        [invalid_selection]="Seleção inválida"
+        [available_versions]="Versões disponíveis:"
+        [no_godot_found]="Nenhum binário Godot encontrado"
+        [error_specify_binary]="Por favor, especifique o nome do binário Godot"
+        [error_not_found_in]="não encontrado em"
+        [set_permanent_version]="Versão permanente do Godot definida para:"
+        [purge_confirm]="Tem certeza que deseja DELETAR TODOS os backups?"
+        [purge_all]="Todos os backups eliminados."
+        [delete_manually]="Você pode deletá-lo manualmente após confirmar que a restauração está correta."
+        [error_could_not_move]="Não foi possível mover o diretório existente"
+        [error_invalid_choice]="Falha na restauração - Seleção inválida"
+        [update_config]="Por favor, atualize a configuração ou crie o diretório."
     )
 else
     MESSAGES=(
@@ -61,6 +107,52 @@ else
         [cache_size_prompt]="Set the maximum cache folder size (ex: 30G, 500M)"
         [invalid_size]="Invalid size. Use format like 30G, 500M, 10T"
         [operation_cancelled]="Operation cancelled by user"
+        [dir_moved]="Directory moved to"
+        [dir_exists]="Directory already exists. Moving to"
+        [overwrite_warning]="WARNING: The project folder will be moved to a backup before restoration"
+        [help_title]="${SCRIPT_NAME} - Godot Project Backup and Restore Tool"
+        [help_usage]="USAGE:"
+        [help_description]="DESCRIPTION:"
+        [help_options]="OPTIONS:"
+        [help_first_run]="FIRST RUN:"
+        [help_backup_dir]="BACKUP DIRECTORY:"
+        [help_restore]="RESTORE PROCESS:"
+        [help_godot]="GODOT BINARY:"
+        [help_cleanup]="AUTOMATIC CLEANUP:"
+        [help_examples]="EXAMPLES:"
+        [help_show]="Show this help message"
+        [help_restore_opt]="Restore projects from a backup"
+        [help_cache_opt]="Set cache size limit (ex: 30G, 500M) [default: 30G]"
+        [help_godot_opt]="Set permanent Godot binary version"
+        [help_list_opt]="List all available backups"
+        [help_purge_opt]="Purge all backups (confirmation required)"
+        [help_first_run_text]="On first execution, zenity will prompt to select the projects directory. The selected directory will be the one backed up."
+        [help_backup_dir_text]="All projects inside the selected directory will be included in the backup. Backup format: projectdir_YYYY-MM-DD_HH-MM-SS.tar"
+        [help_restore_text]="When restoring, the existing project directory will be moved to: projectdir_backup_YYYY-MM-DD_HH-MM-SS This prevents data loss and avoids overwrite errors."
+        [help_godot_default]="Default: Uses the latest version in ~/.local/bin/"
+        [help_godot_permanent]="Permanent: Use -g to set a specific version to always use"
+        [help_cleanup_text]="When cache limit is reached, the oldest backup is automatically removed."
+        [help_example1]="Create backup and launch Godot"
+        [help_example2]="Restore from a backup"
+        [help_example3]="Set cache limit to 50GB"
+        [help_example4]="Use specific Godot version"
+        [help_example5]="Pass arguments to Godot"
+        [available_backups]="Available backups:"
+        [total_size]="Total size:"
+        [no_backups]="No backups found in"
+        [enter_number]="Enter number:"
+        [invalid_selection]="Invalid selection"
+        [available_versions]="Available versions:"
+        [no_godot_found]="No Godot binaries found"
+        [error_specify_binary]="Please specify the Godot binary name"
+        [error_not_found_in]="not found in"
+        [set_permanent_version]="Permanent Godot version set to:"
+        [purge_confirm]="Are you sure you want to delete ALL backups?"
+        [purge_all]="All backups purged."
+        [delete_manually]="You can delete it manually after confirming the restoration is correct."
+        [error_could_not_move]="Could not move existing directory"
+        [error_invalid_choice]="Restore failed - Invalid selection"
+        [update_config]="Please update the configuration or create the directory."
     )
 fi
 
@@ -71,7 +163,7 @@ CONFIG_FILE="${HOME}/.config/${SCRIPT_NAME}.conf"
 GODOT_BIN_DIR="${HOME}/.local/bin"
 DEFAULT_CACHE_SIZE="30G"
 
-# Color definitions for help
+# Color definitions for help (now actually used in show_help)
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -109,44 +201,45 @@ bytes_to_human() {
 # Function to display help
 show_help() {
     cat << EOF | { echo -e "$(cat)"; }
-${GREEN}${SCRIPT_NAME} - Godot Project Backup and Restore Tool${NC}
+${GREEN}${MESSAGES[help_title]}${NC}
 
-${YELLOW}USAGE:${NC}
+${YELLOW}${MESSAGES[help_usage]}${NC}
     ${SCRIPT_NAME} [OPTIONS] [godot arguments]
 
-${YELLOW}DESCRIPTION:${NC}
+${YELLOW}${MESSAGES[help_description]}${NC}
     Automates backup creation for Godot projects with restore functionality.
     Backups are stored in ${BLUE}~/.cache/${SCRIPT_NAME}/${NC}
 
-${YELLOW}OPTIONS:${NC}
-    ${GREEN}-h, --help${NC}        Show this help message
-    ${GREEN}-r, --restore${NC}     Restore projects from a backup
-    ${GREEN}-c, --cache${NC}       Set cache size limit (ex: 30G, 500M) [default: 30G]
-    ${GREEN}-g, --godot${NC}       Set permanent Godot binary version
-    ${GREEN}-l, --list${NC}        List all available backups
-    ${GREEN}-p, --purge${NC}       Purge all backups (confirmation required)
+${YELLOW}${MESSAGES[help_options]}${NC}
+    ${GREEN}-h, --help${NC}        ${MESSAGES[help_show]}
+    ${GREEN}-r, --restore${NC}     ${MESSAGES[help_restore_opt]}
+    ${GREEN}-c, --cache${NC}       ${MESSAGES[help_cache_opt]}
+    ${GREEN}-g, --godot${NC}       ${MESSAGES[help_godot_opt]}
+    ${GREEN}-l, --list${NC}        ${MESSAGES[help_list_opt]}
+    ${GREEN}-p, --purge${NC}       ${MESSAGES[help_purge_opt]}
 
-${YELLOW}FIRST RUN:${NC}
-    On first execution, zenity will prompt to select the projects directory.
-    The selected directory will be the one backed up.
+${YELLOW}${MESSAGES[help_first_run]}${NC}
+    ${MESSAGES[help_first_run_text]}
 
-${YELLOW}BACKUP DIRECTORY:${NC}
-    All projects inside the selected directory will be included in the backup.
-    Backup format: ${BLUE}projectdir_YYYY-MM-DD_HH-MM-SS.tar${NC}
+${YELLOW}${MESSAGES[help_backup_dir]}${NC}
+    ${MESSAGES[help_backup_dir_text]}
 
-${YELLOW}GODOT BINARY:${NC}
-    Default: Uses the latest version in ${BLUE}~/.local/bin/${NC}
-    Permanent: Use -g to set a specific version to always use
+${YELLOW}${MESSAGES[help_restore]}${NC}
+    ${MESSAGES[help_restore_text]}
 
-${YELLOW}AUTOMATIC CLEANUP:${NC}
-    When cache limit is reached, the oldest backup is automatically removed.
+${YELLOW}${MESSAGES[help_godot]}${NC}
+    ${MESSAGES[help_godot_default]}
+    ${MESSAGES[help_godot_permanent]}
 
-${YELLOW}EXAMPLES:${NC}
-    ${GREEN}${SCRIPT_NAME}${NC}                    # Create backup and launch Godot
-    ${GREEN}${SCRIPT_NAME} -r${NC}                  # Restore from a backup
-    ${GREEN}${SCRIPT_NAME} -c 50G${NC}              # Set cache limit to 50GB
-    ${GREEN}${SCRIPT_NAME} -g Godot_v4.2-stable${NC} # Use specific Godot version
-    ${GREEN}${SCRIPT_NAME} --project /path/to/proj${NC} # Pass arguments to Godot
+${YELLOW}${MESSAGES[help_cleanup]}${NC}
+    ${MESSAGES[help_cleanup_text]}
+
+${YELLOW}${MESSAGES[help_examples]}${NC}
+    ${GREEN}${SCRIPT_NAME}${NC}                    # ${MESSAGES[help_example1]}
+    ${GREEN}${SCRIPT_NAME} -r${NC}                  # ${MESSAGES[help_example2]}
+    ${GREEN}${SCRIPT_NAME} -c 50G${NC}              # ${MESSAGES[help_example3]}
+    ${GREEN}${SCRIPT_NAME} -g Godot_v4.2-stable${NC} # ${MESSAGES[help_example4]}
+    ${GREEN}${SCRIPT_NAME} --project /path/to/proj${NC} # ${MESSAGES[help_example5]}
 
 EOF
 }
@@ -232,11 +325,11 @@ create_backup() {
 
 # Function to list backups
 list_backups() {
-    echo -e "\n${YELLOW}Available backups:${NC}"
+    echo -e "\n${YELLOW}${MESSAGES[available_backups]}${NC}"
     echo "----------------------------------------"
     ls -lh "$CACHE_DIR"/*.tar 2>/dev/null | awk '{print $9 " (" $5 ")"}' | sed "s|$CACHE_DIR/||"
     echo "----------------------------------------"
-    echo "Total size: $(du -sh "$CACHE_DIR" 2>/dev/null | awk '{print $1}')"
+    echo "${MESSAGES[total_size]}: $(du -sh "$CACHE_DIR" 2>/dev/null | awk '{print $1}')"
 }
 
 # Function to restore backup
@@ -247,7 +340,7 @@ restore_backup() {
     local backups=($(ls -t "$CACHE_DIR"/*.tar 2>/dev/null))
     
     if [[ ${#backups[@]} -eq 0 ]]; then
-        echo "No backups found in $CACHE_DIR"
+        echo "${MESSAGES[no_backups]} $CACHE_DIR"
         return 1
     fi
     
@@ -294,40 +387,57 @@ restore_backup() {
         for i in "${!backups[@]}"; do
             echo "$i) $(basename "${backups[$i]}")"
         done
-        read -p "Enter number: " choice
+        read -p "${MESSAGES[enter_number]} " choice
         
         if [[ ! "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -ge "${#backups[@]}" ]]; then
-            echo "${MESSAGES[restore_failed]} - Invalid selection"
+            echo "${MESSAGES[restore_failed]} - ${MESSAGES[invalid_selection]}"
             return 1
         fi
         
         backup_file="${backups[$choice]}"
     fi
     
-    # Extract backup to project directory
-    echo "Restoring: $(basename "$backup_file")"
+    # Extract project name from backup file
     local project_name
     project_name=$(basename "$backup_file" | sed 's/_[0-9]\{2\}-[0-9]\{2\}-[0-9]\{4\}_.*\.tar$//')
     
-    # Extract to parent directory of projects
+    # Get parent directory
     local extract_dir
     extract_dir="$(dirname "$PROJECTS_DIR")"
+    local project_path="${extract_dir}/${project_name}"
     
-    if [[ -d "$PROJECTS_DIR" ]]; then
-        if whiptail --yesno "The directory $PROJECTS_DIR already exists. Overwrite?" 10 60 2>/dev/null || \
-           dialog --yesno "The directory $PROJECTS_DIR already exists. Overwrite?" 10 60 2>/dev/null || \
-           read -p "Directory exists. Overwrite? (y/n): " confirm; then
-            if [[ "$confirm" =~ ^[Yy]$ ]] || [[ $? -eq 0 ]]; then
-                rm -rf "$PROJECTS_DIR"
-            else
-                echo "${MESSAGES[operation_cancelled]}"
-                return 1
-            fi
+    echo "${MESSAGES[overwrite_warning]}"
+    
+    # Check if project directory exists
+    if [[ -d "$project_path" ]]; then
+        # Generate timestamp for backup
+        local new_date
+        new_date="$(date +'%d-%m-%Y_%H-%M-%S')"
+        local backup_dir_name="${project_name}_backup_${new_date}"
+        local backup_dir_path="${extract_dir}/${backup_dir_name}"
+        
+        echo "${MESSAGES[dir_exists]}: ${backup_dir_path}"
+        
+        # Move existing directory to backup
+        if mv "$project_path" "$backup_dir_path"; then
+            echo "${MESSAGES[dir_moved]}: ${backup_dir_path}"
+        else
+            echo "${MESSAGES[restore_failed]} - ${MESSAGES[error_could_not_move]}"
+            return 1
         fi
     fi
     
+    # Extract backup
+    echo "Restoring: $(basename "$backup_file")"
     if tar -xf "$backup_file" -C "$extract_dir" 2>/dev/null; then
         echo "${MESSAGES[restore_complete]}"
+        
+        # Show info about moved directory if it was moved
+        if [[ -n "$backup_dir_path" ]] && [[ -d "$backup_dir_path" ]]; then
+            echo -e "\n${YELLOW}${MESSAGES[dir_moved]}:${NC} $backup_dir_path"
+            echo "${MESSAGES[delete_manually]}"
+        fi
+        
         return 0
     else
         echo "${MESSAGES[restore_failed]}"
@@ -370,23 +480,23 @@ set_godot_version() {
     if [[ -f "$GODOT_BIN_DIR/$version" ]]; then
         # Update config
         sed -i "s/^GODOT_VERSION=.*/GODOT_VERSION=\"$version\"/" "$CONFIG_FILE"
-        echo "Permanent Godot version set to: $version"
+        echo "${MESSAGES[set_permanent_version]} $version"
     else
-        echo "Error: $version not found in $GODOT_BIN_DIR"
-        echo "Available versions:"
-        ls -1 "$GODOT_BIN_DIR"/Godot* 2>/dev/null || echo "No Godot binaries found"
+        echo "Error: $version ${MESSAGES[error_not_found_in]} $GODOT_BIN_DIR"
+        echo "${MESSAGES[available_versions]}:"
+        ls -1 "$GODOT_BIN_DIR"/Godot* 2>/dev/null || echo "${MESSAGES[no_godot_found]}"
         return 1
     fi
 }
 
 # Function to purge all backups
 purge_backups() {
-    if whiptail --yesno "Are you sure you want to delete ALL backups?" 10 60 2>/dev/null || \
-       dialog --yesno "Are you sure you want to delete ALL backups?" 10 60 2>/dev/null || \
-       read -p "Delete ALL backups? (y/n): " confirm; then
+    if whiptail --yesno "${MESSAGES[purge_confirm]}" 10 60 2>/dev/null || \
+       dialog --yesno "${MESSAGES[purge_confirm]}" 10 60 2>/dev/null || \
+       read -p "${MESSAGES[purge_confirm]} (y/n): " confirm; then
         if [[ "$confirm" =~ ^[Yy]$ ]] || [[ $? -eq 0 ]]; then
             rm -rf "$CACHE_DIR"/*.tar
-            echo "All backups purged."
+            echo "${MESSAGES[purge_all]}"
         else
             echo "${MESSAGES[operation_cancelled]}"
         fi
@@ -426,7 +536,7 @@ main() {
                     set_godot_version "$2"
                     exit 0
                 else
-                    echo "Please specify the Godot binary name"
+                    echo "${MESSAGES[error_specify_binary]}"
                     exit 1
                 fi
                 shift 2
@@ -469,7 +579,7 @@ main() {
     # Verify projects directory exists
     if [[ ! -d "$PROJECTS_DIR" ]]; then
         echo "${MESSAGES[project_dir_not_found]}: $PROJECTS_DIR"
-        echo "Please update the configuration or create the directory."
+        echo "${MESSAGES[update_config]}"
         exit 1
     fi
     
