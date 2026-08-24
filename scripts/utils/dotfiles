@@ -2,6 +2,11 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+: <<'DOCUMENTATION'
+dotfiles is a shell script that intelligently identifies and executes the appropriate configuration script for the selected program on your system, 
+leveraging a proven, elegantly architected, and fully operational configuration base.
+DOCUMENTATION
+
 # Directory where scripts are located
 SCRIPT_DIR="$HOME/.shell_utils/scripts/utils"
 

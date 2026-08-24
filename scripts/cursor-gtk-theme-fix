@@ -27,13 +27,20 @@ XRESOURCES=~/.Xresources
 TMPDIR="${TMPDIR:-/tmp}"
 TMP_DIR="${TMPDIR}/${SCRIPT%.*}"
 XSETTINGSD=~/.config/xsettingsd/xsettingsd.conf
+BASE_DIR="${HOME}/.shell_utils/utilities/dotfiles"
 GTK3_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/settings.ini"
 GTK4_RC_FILES="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0/settings.ini"
 GTK2_RC_FILES="${HOME}/.gtkrc-2.0" #"${HOME}/.gtkrc-2.0:${XDG_CONFIG_HOME}/gtk-2.0/gtkrc:/etc/gtk-2.0/gtkrc"
 GTK_RC_BASE="$GTK2_RC_FILES"
 
+# Setup configs: dir and files
 [[ -d "$TMP_DIR" ]] && rm -rf "$TMP_DIR"
 [[ ! -d "$TMP_DIR" ]] && mkdir -p "$TMP_DIR"
+[[ ! -f "$GTK3_RC_FILES" ]] && cp -rf "${BASE_DIR}/gtk-3.0" ~/.config/gtk-3.0
+[[ ! -f "$GTK4_RC_FILES" ]] && cp -rf "${BASE_DIR}/gtk-4.0" ~/.config/gtk-4.0
+[[ ! -f "$XSETTINGSD" ]] && cp -rf "${BASE_DIR}/xsettingsd" ~/.config/xsettingsd
+[[ ! -f "$GTK2_RC_FILES" ]] && cp -f "${BASE_DIR}/gtkrc-2.0" "${HOME}/.gtkrc-2.0"
+
 lock_file="${TMP_DIR}/lock"
 start_file="${TMP_DIR}/start"
 { date | tee "$start_file"; } >/dev/null
