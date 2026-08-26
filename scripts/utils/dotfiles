@@ -39,7 +39,7 @@ mapfile -t display_names < <(
 )
 
 # Use fzf for selection
-selected_display=$(printf '%s\n' "${display_names[@]}" | fzf --prompt="Select a script: " --height=10 --border)
+selected_display=$(printf '%s\n' "${display_names[@]}" | fzf --prompt="Select a script: " --height=15 --border)
 
 # Check if user selected something
 if [[ -z "$selected_display" ]]; then
