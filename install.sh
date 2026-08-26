@@ -117,25 +117,26 @@ cd "${shell_utils_dir}/scripts/faqs" || exit
 enable_permissions
 cd "$my_dir" || exit
 
-if [[ "$parent_shell" =~ "zsh" ]]; then
+if [[ "$parent_shell" =~ "zsh" ]] || [[ "$shell" == "zsh" ]]; then
         echo "The script was called from ZSH."
         oh_my_zsh_defaults &
         pid=$!
         wait $pid
         zsh_install
         exit 0
-elif [[ "$parent_shell" =~ "bash" ]]; then
+elif [[ "$parent_shell" =~ "bash" ]] || [[ "$shell" == "bash" ]]; then
         echo "The script was called from BASH."
         oh_my_bash_defaults &
         pid=$!
         wait $pid
         bash_install
         exit 0
-elif [[ "$parent_shell" =~ "fish" ]]; then
+elif [[ "$parent_shell" =~ "fish" ]] || [[ "$shell" == "fish" ]]; then
         echo "The script was called from FISH."
         fish_install
         exit 0
 else
         echo "The script was called from an unknown shell: $parent_shell"
+        echo -e "You can force the installation to target a particular shell by exporting the desired shell name to the shell variable.\nExample: export shell=zsh"
         exit 1
 fi

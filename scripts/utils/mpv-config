@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+config_dir="${HOME}/.config"
+config_dir_mpv="${config_dir}/mpv"
+config_base="${HOME}/.shell_utils/utilities/dotfiles/mpv"
+
+# Initialize associative array for internationalization (i18n)
+declare -A MESSAGES
+
+# Translation Logic (Defaults to English)
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES[error_src]="Erro: Diretório de origem não encontrado em"
+    MESSAGES[created]="Diretório de configuração criado com sucesso!"
+    MESSAGES[ready]="Agora o MPV está configurado e pronto para uso!"
+    MESSAGES[overwrite]="O diretório de configuração já existe, mas é diferente. Deseja substituí-lo? (y/n): "
+    MESSAGES[replaced]="Diretório substituído com sucesso."
+    MESSAGES[no_change]="Nenhuma alteração foi feita."
+    MESSAGES[equal]="Os diretórios são idênticos. Nenhuma ação necessária."
+else
+    MESSAGES[error_src]="Error: Source directory not found at"
+    MESSAGES[created]="Configuration directory successfully created!"
+    MESSAGES[ready]="MPV is now configured and ready for use!"
+    MESSAGES[overwrite]="The configuration directory already exists but is different. Do you want to overwrite it? (y/n): "
+    MESSAGES[replaced]="Directory successfully replaced."
+    MESSAGES[no_change]="No changes were made."
+    MESSAGES[equal]="Directories are identical. No action needed."
+fi
+
+# Check if the source file exists
+if [[ ! -d "$config_base" ]]; then
+    echo "${MESSAGES[error_src]} $config_base"
+    exit 1
+fi
+
+# Create directory if it doesn't exist
+[[ ! -d "$config_dir" ]] && mkdir -p "$config_dir"
+
+# Function to get file checksum
+get_checksum() {
+    find "$1" -type f -exec md5sum {} + | awk '{print $1}' | LC_ALL=C sort | md5sum | awk '{print $1}'
+}
+
+if [[ ! -d "$config_dir_mpv" ]]; then
+    # Scenario 1: Configuration file doesn't exist
+    cp -rf "$config_base" "${config_dir}/"
+    clear
+    echo "${MESSAGES[created]}"
+    echo "${MESSAGES[ready]}"
+elif [[ -d "$config_dir_mpv" ]]; then
+    # Scenario 2: Configuration file exists
+    base_checksum=$(get_checksum "$config_base")
+    file_checksum=$(get_checksum "$config_dir_mpv")
+    
+    if [[ "$base_checksum" == "$file_checksum" ]]; then
+        # Files are identical
+        echo "${MESSAGES[equal]}"
+    else
+        # Files are different, ask for overwrite
+        read -r -p "${MESSAGES[overwrite]}" option
+        
+        # Accept y, yes, s, sim (case insensitive)
+        if [[ "${option,,}" =~ ^(y|yes|s|sim)$ ]]; then
+            cp -rf "$config_base" "${config_dir}/"
+            echo "${MESSAGES[replaced]}"
+        else
+            echo "${MESSAGES[no_change]}"
+        fi
+    fi
+fi
