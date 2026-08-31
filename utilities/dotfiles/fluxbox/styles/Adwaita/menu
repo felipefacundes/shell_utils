@@ -1,0 +1,44 @@
+# My fluxbox menu
+[begin] (Menu)
+[encoding] {UTF-8}
+        [exec] (Terminal)                                {lxterminal}        
+		[exec] (PCManFM)                         {pcmanfm}
+
+
+[submenu] (Internet)
+        [exec]         (Firefox)                         {firefox}
+        [exec]         (Irssi)                                {urxvt -e irssi}
+        [exec]         (Skype)                                {sh $HOME/scripts/skype.sh}
+        [exec]         (Google Earth)                 {googleearth}
+        [exec]         (Transmission)                 {transmission-gtk}
+        [exec]         (Pidgin)                         {pidgin}
+[end]
+
+[submenu] (Tools)
+        [exec]         (Vim)                                {urxvt -e vim}
+        [exec]        (GVim)                                {gvim}
+        [exec]        (Virtual Box)                {VirtualBox}
+[end]
+
+
+[submenu] (Multimedia)
+        [exec]         (Alsamixer)         {urxvt -e alsamixer}
+        [exec]        (Media Player)                                {gnome-mplayer}
+        [exec]        (gUVCview)                        {guvcview}
+[end]
+
+[submenu] (Games)
+        [exec]        (Minecraft)                        {sh ~/scripts/minecraft_git.sh}
+[end]
+
+
+# Add the function to shutdown using PolicyKit
+# This depends on consolekit package to work
+# More info on : https://wiki.archlinux.org/index.php/Allow_Users_to_Shutdown
+[submenu] (System)
+        [exec]        (Shutdown)                        {dbus-send --system --print-reply --dest="org.freedesktop.ConsoleKit" /org/freedesktop/ConsoleKit/Manager org.freedesktop.ConsoleKit.Manager.Stop}
+        [exec] (Restart)                        {dbus-send --system --print-reply --dest="org.freedesktop.ConsoleKit" /org/freedesktop/ConsoleKit/Manager org.freedesktop.ConsoleKit.Manager.Restart}
+[end]
+
+[endencoding]
+[end]

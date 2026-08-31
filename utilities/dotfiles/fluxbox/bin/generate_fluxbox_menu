@@ -1,0 +1,180 @@
+#!/bin/bash
+
+AWK=`which awk`
+
+################################################################################
+##
+##           Fluxbox Menu
+##
+##  Accessories:	Utility;
+##  Graphics:		Graphics;
+##  Internet:		Network;
+##  Office:		Office;
+##  Sound & Video:	AudioVideo;
+##  ________________
+##  System Tools:	System;
+##  Preferences:	Settings;
+##  ________________
+##  Fluxbox
+##  ________________
+##  Run
+##  Logout
+##
+##  [begin] (Fluxbox)
+##    [submenu] (Applications) {} <>
+##      [exec] (app_name) {command} <icon_file>
+##    [end]
+##  [end]
+##
+##  [begin] (Fluxbox Menu)
+##    [config] (Configuration)
+##    [submenu] (Styles) {}
+##      [stylesdir] (/usr/share/fluxbox/styles)
+##      [stylesdir] (~/.fluxbox/styles)
+##    [end]
+##    [workspaces] (Workspaces)
+##    [reconfig] (Reconfigure)
+##    [restart] (Restart)
+##    [exit] (Exit)
+##  [end]
+## 
+################################################################################
+
+MENU_FILE=~/.fluxbox/menu
+FAVORITES_MENU=~/.fluxbox/favoritesmenu
+ALLAPPS_MENU=~/.fluxbox/allappsmenu
+EXIT_MENU=~/.fluxbox/exitmenu
+
+SEARCH_REGEX=/usr/share/applications/*.desktop
+SYSTEM_ICON_DIR=/usr/share/icons
+SYSTEM_PIXMAP_DIR=/usr/share/pixmaps
+SYSTEM_STYLES_DIR=/usr/share/fluxbox/styles
+SYSTEM_BIN_DIR=/usr/bin
+
+USER_STYLES_DIR=~/.fluxbox/styles
+USER_ICON_DIR=~/.fluxbox/icons
+USER_BIN_DIR=~/.fluxbox/bin
+
+TEMP1=/tmp/fluxbox_menu_0
+TEMP2=/tmp/fluxbox_menu_1
+> $TEMP1
+> $TEMP2
+
+function generate_list_of_apps() {
+  for FILE in $SEARCH_REGEX
+  do
+    NAME=` cat $FILE | grep ^Name= | $AWK -F'=' '{print $2}' | head -1`
+    EXEC=` cat $FILE | grep ^Exec= | $AWK -F'=' '{print $2}' | awk '{print $1}' | head -1`
+    ICON=` cat $FILE | grep ^Icon= | $AWK -F'=' '{print $2}' | head -1`
+    if [ -z "$ICON" ]; then
+      ICON=$FILE
+    fi
+    if [ -f "$ICON" ]; then
+      ICON_FILE=$ICON
+    else
+      ICON_FILE=`find $USER_ICON_DIR -name "${ICON}.*" | head -1 2>/dev/null`
+    fi
+    if [ -z "$ICON_FILE" ]; then
+      ICON_FILE=`find $SYSTEM_PIXMAP_DIR | egrep "${ICON}.png|${ICON}.xpm" | head -1 2>/dev/null`
+    fi
+    if [ -z "$ICON_FILE" ]; then
+      ICON_FILE=`find $SYSTEM_ICON_DIR | egrep "${ICON}.png|${ICON}.xpm" | head -1 2>/dev/null`
+    fi
+    CATG=` cat $FILE | grep ^Categories= | $AWK -F'=' '{print $2}' | head -1`
+    [ `echo "$CATG" | grep -c "Office;"` -ge 1 ] && CATG=Office
+    [ `echo "$CATG" | grep -c "Graphics;"` -ge 1 ] && CATG=Graphics
+    [ `echo "$CATG" | grep -c "Game;"` -ge 1 ] && CATG=Games
+    [ `echo "$CATG" | grep -c "Network;"` -ge 1 ] && CATG=Internet
+    [ `echo "$CATG" | grep -c "AudioVideo;"` -ge 1 ] && CATG="Sound & Video"
+    [ `echo "$CATG" | grep -c "Settings;"` -ge 1 ] && CATG=Preferences
+    [ `echo "$CATG" | grep -c "System;"` -ge 1 ] && CATG="System Tools"
+    [ `echo "$CATG" | grep -c "Utility;"` -ge 1 ] && CATG=Accessories
+    [ `echo "$CATG" | grep -c "Development;"` -ge 1 ] && CATG="Development"
+    echo "$NAME|$EXEC|$ICON_FILE|$CATG" >> $TEMP1
+  done
+
+  cat $TEMP1 | sort -u > $TEMP2;cp $TEMP2 $TEMP1
+}
+
+function generate_allapps_menu() {
+  echo "[begin] (All Apps)"
+  cat $TEMP1 | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "[end]"
+}
+
+function generate_menu() {
+  echo "[begin] (Fluxbox)"
+  echo "  [submenu] (Favorites) {} <>"
+  echo "  [include] ($FAVORITES_MENU)"
+  echo "  [end]"
+#  echo "  [submenu] (All Apps) {} <>"
+#  echo "  [include] ($ALLAPPS_MENU)"
+#  echo "  [end]"
+  echo "[separator]"
+  echo "  [submenu] (Accessories) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Accessories/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "  [submenu] (Development) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Development/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "  [submenu] (Games) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Games/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "  [submenu] (Graphics) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Graphics/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "  [submenu] (Internet) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Internet/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "  [submenu] (Office) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Office/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "  [submenu] (Sound & Video) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Sound & Video/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "[separator]"
+  echo "  [submenu] (All Apps) {} <>"
+  echo "  [include] ($ALLAPPS_MENU)"
+  echo "  [end]"
+  echo "[separator]"
+  echo "  [submenu] (System Tools) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /System Tools/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "  [submenu] (Preferences) {} <>"
+  cat $TEMP1 | $AWK '$0 ~ /Preferences/ { print }' | $AWK 'BEGIN{FS="|"}{print "    [exec] (" $1 ") {" $2 "} <" $3 ">" }'
+  echo "  [end]"
+  echo "
+  [submenu] (Fluxbox Menu)
+    [submenu] (User Styles) {Choose a style...}
+      [stylesdir] ($USER_STYLES_DIR)
+    [end]
+    [submenu] (Styles) {}
+      [stylesdir] ($SYSTEM_STYLES_DIR)
+      [stylesdir] ($USER_STYLES_DIR)
+    [end]
+    [submenu] (Backgrounds)
+      [wallpapers] (/usr/share/backgrounds)
+      [wallpapers] (~/Pictures/wallpapers)
+      [wallpapers] (~/Pictures)
+    [end]
+    [workspaces] (Workspaces)
+    [config] (Configuration)
+    [reconfig] (Reconfigure)
+    [restart] (Restart)
+    [exit] (Exit)
+  [end]
+  [separator]
+  "
+  echo "  [submenu] (Exit) {} <>"
+  echo "  [include] ($EXIT_MENU)"
+  echo "  [end]"
+
+  echo "
+[end]
+"
+}
+
+generate_list_of_apps
+generate_allapps_menu > $ALLAPPS_MENU
+generate_menu > $MENU_FILE
+

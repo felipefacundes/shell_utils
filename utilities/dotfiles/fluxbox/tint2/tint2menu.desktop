@@ -1,0 +1,11 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=Tint2 FLuxbox Menu
+Comment=xdotool launcher
+Exec=/usr/bin/xdotool key Super_L+space
+Icon=start-here
+Terminal=false
+Type=Application
+Categories=Utilities;Fluxbox;
+StartupNotify=true
+

@@ -1,0 +1,28 @@
+i: /usr/share/pixmaps/wbar/dock.png
+c: wbar --bpress --above-desk --pos bottom --noreload --isize 48 --idist 1 --nanim 1 --zoomf 1.000000 --jumpf 1.000000
+t: /usr/share/fonts/TTF/Ubuntu-R/10
+
+i: /usr/share/pixmaps/utilities-terminal.png
+c: urxvt
+t: Terminal
+
+i: /usr/share/icons/hicolor/48x48/apps/chromium.png
+c: chromium
+t: Chromium
+
+i: /usr/share/icons/hicolor/48x48/apps/firefox.png
+c: firefox
+t: Firefox
+
+i: /usr/share/pixmaps/leafpad.png
+c: leafpad
+t: Leafpad
+
+i: /usr/share/pixmaps/rox.png
+c: rox
+t: Rox Filer
+
+i: /usr/share/pixmaps/Thunar/Thunar-about-logo.png
+c: thunar
+t: Thunar File Manager
+

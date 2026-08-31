@@ -1,0 +1,35 @@
+/* XPM */
+static char *menu_pressed[] = {
+/* columns rows colors chars-per-pixel */
+"24 25 4 1 ",
+"  c #222D32",
+". c #29353B",
+"X c #00BCD4",
+"o c #CFD8DC",
+/* pixels */
+"........................",
+"                        ",
+"                        ",
+"                        ",
+"                        ",
+"                        ",
+"                        ",
+"                        ",
+"                        ",
+"        oooooooo        ",
+"        oooooooo        ",
+"                        ",
+"        oooooooo        ",
+"        oooooooo        ",
+"                        ",
+"        oooooooo        ",
+"        oooooooo        ",
+"                        ",
+"                        ",
+"                        ",
+"                        ",
+"  XXXXXXXXXXXXXXXXXXXX  ",
+"  XXXXXXXXXXXXXXXXXXXX  ",
+"                        ",
+"                        "
+};

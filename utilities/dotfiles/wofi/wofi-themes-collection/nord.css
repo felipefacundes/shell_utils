@@ -1,0 +1,51 @@
+window {
+margin: 0px;
+border: 1px solid #88c0d0;
+background-color: #2e3440;
+}
+
+#input {
+margin: 5px;
+border: none;
+color: #d8dee9;
+background-color: #3b4252;
+
+/* Adicionando propriedades de fonte */
+font-family: 'Arial', sans-serif; /* Substitua 'Arial' pelo nome da fonte desejada */
+font-size: 16px; /* Substitua 16px pelo tamanho desejado */
+}
+
+#inner-box {
+margin: 5px;
+border: none;
+background-color: #2e3440;
+
+/* Adicionando propriedades de fonte */
+font-family: 'Arial', sans-serif;
+font-size: 14px; /* Substitua 14px pelo tamanho desejado */
+}
+
+#outer-box {
+margin: 5px;
+border: none;
+background-color: #2e3440;
+}
+
+#scroll {
+margin: 0px;
+border: none;
+}
+
+#text {
+margin: 5px;
+border: none;
+color: #d8dee9;
+
+/* Adicionando propriedades de fonte */
+font-family: 'Arial', sans-serif;
+font-size: 18px; /* Substitua 18px pelo tamanho desejado */
+}
+
+#entry:selected {
+background-color: #3b4252;
+}

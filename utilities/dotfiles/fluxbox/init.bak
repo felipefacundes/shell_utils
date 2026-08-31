@@ -1,0 +1,90 @@
+session.screen0.window.focus.alpha:	255
+session.screen0.window.unfocus.alpha:	224
+session.screen0.tabs.usePixmap:	true
+session.screen0.tabs.maxOver:	false
+session.screen0.tabs.intitlebar:	true
+session.screen0.toolbar.visible:	true
+session.screen0.toolbar.onhead:	0
+session.screen0.toolbar.widthPercent:	50
+session.screen0.toolbar.height:	24
+session.screen0.toolbar.maxOver:	false
+session.screen0.toolbar.placement:	TopLeft
+session.screen0.toolbar.button.fluxbox.label:	[Fluxbox]
+session.screen0.toolbar.button.fluxbox.commands:	RootMenu
+session.screen0.toolbar.button.W1.label:	[1]
+session.screen0.toolbar.button.W1.commands:	Workspace 1
+session.screen0.toolbar.button.exit.label:	[Exit]
+session.screen0.toolbar.button.exit.commands:	CustomMenu ~/.fluxbox/exitmenu
+session.screen0.toolbar.button.minimize.label:	[ - ]
+session.screen0.toolbar.button.minimize.commands:	Minimize
+session.screen0.toolbar.button.maximize.label:	[ + ]
+session.screen0.toolbar.button.maximize.commands:	Maximize
+session.screen0.toolbar.button.close.label:	[ x ]
+session.screen0.toolbar.button.close.commands:	Close
+session.screen0.toolbar.tools:	RootMenu, button.fluxbox, button.W1, WorkspaceName, Iconbar, Systemtray, button.minimize, button.maximize, button.close, button.exit
+session.screen0.toolbar.layer:	Dock
+session.screen0.toolbar.alpha:	250
+session.screen0.toolbar.autoHide:	false
+session.screen0.titlebar.right:	Minimize Maximize Close 
+session.screen0.titlebar.left:	
+session.screen0.tab.placement:	RightTop
+session.screen0.tab.width:	64
+session.screen0.menu.alpha:	250
+session.screen0.iconbar.iconTextPadding:	24
+session.screen0.iconbar.iconWidth:	180
+session.screen0.iconbar.alignment:	Left
+session.screen0.iconbar.usePixmap:	true
+session.screen0.iconbar.mode:	{static groups} (workspace)
+session.screen0.slit.placement:	RightBottom
+session.screen0.slit.maxOver:	false
+session.screen0.slit.acceptKdeDockapps:	true
+session.screen0.slit.layer:	AboveDock
+session.screen0.slit.onhead:	1
+session.screen0.slit.alpha:	224
+session.screen0.slit.autoHide:	false
+session.screen0.clientMenu.usePixmap:	true
+session.screen0.noFocusWhileTypingDelay:	0
+session.screen0.opaqueMove:	false
+session.screen0.showwindowposition:	false
+session.screen0.edgeSnapThreshold:	25
+session.screen0.allowRemoteActions:	true
+session.screen0.menuDelay:	200
+session.screen0.maxDisableResize:	false
+session.screen0.rowPlacementDirection:	LeftToRight
+session.screen0.workspacewarping:	true
+session.screen0.workspaceNames:	Workspace [1]2 3 4 ,Workspace  1[2]3 4 ,Workspace  1 2[3]4 ,Workspace  1 2 3[4],
+session.screen0.strftimeFormat:	%d %b, %a %02k:%M
+session.screen0.workspaces:	4
+session.screen0.colPlacementDirection:	TopToBottom
+session.screen0.autoRaise:	true
+session.screen0.fullMaximization:	false
+session.screen0.windowMenu:	~/.fluxbox/windowmenu
+session.screen0.demandsAttentionTimeout:	500
+session.screen0.defaultDeco:	NORMAL
+session.screen0.maxDisableMove:	false
+session.screen0.windowPlacement:	RowMinOverlapPlacement
+session.screen0.tooltipDelay:	500
+session.screen0.focusSameHead:	false
+session.screen0.tabFocusModel:	ClickToTabFocus
+session.screen0.maxIgnoreIncrement:	true
+session.screen0.clickRaises:	true
+session.screen0.focusNewWindows:	true
+session.screen0.focusModel:	ClickFocus
+session.cacheMax:	200
+session.keyFile:	~/.fluxbox/keys
+session.menuFile:	~/.fluxbox/menu
+session.tabsAttachArea:	Window
+session.ignoreBorder:	false
+session.styleOverlay:	~/.fluxbox/overlay
+session.colorsPerChannel:	4
+session.configVersion:	13
+session.custommenuFile:	~/.fluxbox/allappsmenu
+session.forcePseudoTransparency:	true
+session.autoRaiseDelay:	250
+session.appsFile:	~/.fluxbox/apps
+session.slitlistFile:	~/.fluxbox/slitlist
+session.tabPadding:	0
+session.menuSearch:	somewhere
+session.cacheLife:	5
+session.styleFile:	/home/amol/.fluxbox/styles/Sierra-alt
+session.doubleClickInterval:	250

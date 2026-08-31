@@ -1,0 +1,38 @@
+#!/bin/sh
+
+THIS_SCRIPT=`basename $0`
+HALT=0
+REBOOT=0
+
+USAGE() {
+        echo "Usage  :  ./${THIS_SCRIPT} [-s] [-r]"
+        echo "   or  :  ./${THIS_SCRIPT} -s		# Shut Down"
+        echo "   or  :  ./${THIS_SCRIPT} -r		# Restart"
+        exit
+}
+
+[ $# -eq 0 ] && USAGE
+
+while getopts srhH arg 2>/dev/null; do
+        case "$arg" in
+                s)      HALT=1 ;;
+                r)      REBOOT=1 ;;
+                h|H)    USAGE ;;
+        esac
+done
+shift `expr $OPTIND - 1`
+
+# Bonus feature: this is kindda why I wrote this script
+
+echo "Checking permission issues in Home Dir ..."
+user=`ls -ld ~ | awk '{print $3}'`
+group=`ls -ld ~ | awk '{print $4}'`
+
+find ~ ! -user $user -exec chown $user {} \;
+find ~ ! -group $group -exec chgrp $group {} \;
+
+[ $REBOOT -eq 1 ] && sudo reboot
+
+[ $HALT -eq 1 ] && sudo halt
+
+echo "$THIS_SCRIPT completed execution."

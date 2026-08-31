@@ -1,0 +1,70 @@
+
+use_xft yes
+xftfont verdana:size=8
+alignment top_right
+xftalpha 0.8
+own_window yes
+own_window_type override
+own_window_transparent yes
+own_window_hints undecorated,below,sticky,skip_taskbar,skip_pager
+double_buffer yes
+draw_shades no
+draw_outline no
+draw_borders no
+#stippled_borders 10
+#border_margin 4
+border_width 1
+default_shade_color white
+default_outline_color black
+default_color black
+use_spacer none
+no_buffers yes
+uppercase no
+color1 white
+update_interval	1
+update_interval_on_battery 3
+#${iconv_start UTF-8 ISO_8859-1}° ${iconv_stop}
+
+TEXT
+${image ~/.fluxbox/icons/calendar.png -p 30,0 -s 160x160 -f 6000}
+
+
+$alignc${color1}${font Radio Space:size=10}${time %H:%M}${color}${font}
+$alignc${font Radio Space:size=12}${time %a, %b}${font}
+$alignc${font Radio Space:size=30}${time %d}
+${font}
+
+${font Radio Space:size=10}WORLD CLOCK${font}
+New York:$alignr${tztime US/Eastern  %a, %b %d, %H:%M}
+India:$alignr${tztime Asia/Calcutta  %a, %b %d, %H:%M}
+${hr}
+
+${font Radio Space:size=10}SOUND${font}$alignr${exec amixer sget Master | tail -1 | awk '{print $6 , $4}' }
+
+${image ~/.fluxbox/icons/laptop_battery.png -p 0,290 -s 32x32 -f 6000}
+${font Radio Space:size=10}BATTERY${font}$alignr${battery_time}
+${battery} $alignr${battery_bar 4,24}
+
+${font Radio Space:size=10}CPU${font}$alignr${cpu}% ${cpugraph 10,24}
+
+${font Radio Space:size=10}MEMORY${font}$alignr${memperc}% ${memgraph 10,24}
+
+${font Radio Space:size=10}NETWORK${font} $alignr${wireless_link_qual wlan0}% ${wireless_link_bar 4,24 wlan0}
+U ${upspeedgraph wlan0 10,24 000000 000000} $alignr D ${downspeedgraph wlan0 10,24 000000 000000}
+
+${font Radio Space:size=10}TEMPERATURE${font}$alignr${acpitemp}°C
+$hr
+
+#W E A T H E R
+#Now:$alignr${weather http://weather.noaa.gov/pub/data/observations/metar/stations/ KNYC cloud_cover 600}, ${weather http://weather.noaa.gov/pub/data/observations/metar/stations/ KNYC temperature 600}
+
+#Tomorrow:
+#${weather_forecast http://xoap.weather.com/weather/local/ KNYC 1 low }
+#${weather_forecast http://xoap.weather.com/weather/local/ KNYC 1 hi }
+#${weather_forecast http://xoap.weather.com/weather/local/ KNYC 1 precipitation }
+
+#${font weather:size=28}
+#${font PizzaDude Bullets:size=16}
+#${font StyleBats:size=16}
+#${font OpenLogos:size=45}
+#K

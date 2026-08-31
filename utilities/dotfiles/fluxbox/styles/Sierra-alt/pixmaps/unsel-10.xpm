@@ -1,0 +1,17 @@
+/* XPM */
+static char *unsel_10[] = {
+/* columns rows colors chars-per-pixel */
+"9 9 2 1 ",
+"  c #3F3F3F",
+". c gray94",
+/* pixels */
+".........",
+".       .",
+".       .",
+".       .",
+".       .",
+".       .",
+".       .",
+".       .",
+"........."
+};

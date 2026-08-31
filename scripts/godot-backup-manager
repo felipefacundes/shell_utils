@@ -16,6 +16,7 @@ Key Features:
 6. Godot Binary Selection: Can use latest binary in ~/.local/bin or specify a permanent version
 7. First-run Setup: Uses zenity to select the projects directory on first execution
 8. Cache Directory Management: Stores backups in ~/.cache/scriptname/ with configurable size limit
+9. Project Directory Selection: Use --project to temporarily override the projects directory
 
 DOCUMENTATION
 
@@ -58,9 +59,10 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [help_show]="Mostrar esta mensagem de ajuda"
         [help_restore_opt]="Restaurar projetos a partir de um backup"
         [help_cache_opt]="Definir limite de tamanho do cache (ex: 30G, 500M) [padrão: 30G]"
-        [help_godot_opt]="Definir versão permanente do binário Godot"
+        [help_godot_opt]="Definir versão permanente do binário Godot. Sem argumentos, lista interativamente as versões disponíveis"
         [help_list_opt]="Listar todos os backups disponíveis"
         [help_purge_opt]="Eliminar todos os backups (requer confirmação)"
+        [help_project_opt]="Selecionar diretório de projetos. Sem argumentos, abre seletor gráfico. Com argumento, usa o caminho especificado"
         [help_first_run_text]="Na primeira execução, o zenity solicitará que você selecione o diretório de projetos. O diretório selecionado será o que será copiado em backup."
         [help_backup_dir_text]="Todos os projetos dentro do diretório selecionado serão incluídos no backup. Formato do backup: projectdir_AAAA-MM-DD_HH-MM-SS.tar"
         [help_restore_text]="Ao restaurar, o diretório do projeto existente será movido para: projectdir_backup_AAAA-MM-DD_HH-MM-SS Isso evita perda de dados e evita erros de sobrescrita."
@@ -71,7 +73,10 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [help_example2]="Restaurar a partir de um backup"
         [help_example3]="Definir limite de cache para 50GB"
         [help_example4]="Usar versão específica do Godot"
-        [help_example5]="Passar argumentos para o Godot"
+        [help_example5]="Listar interativamente versões do Godot disponíveis"
+        [help_example6]="Selecionar diretório de projetos interativamente"
+        [help_example7]="Usar diretório de projetos específico"
+        [help_example8]="Passar argumentos para o Godot"
         [available_backups]="Backups disponíveis:"
         [total_size]="Tamanho total:"
         [no_backups]="Nenhum backup encontrado em"
@@ -79,7 +84,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [invalid_selection]="Seleção inválida"
         [available_versions]="Versões disponíveis:"
         [no_godot_found]="Nenhum binário Godot encontrado"
-        [error_specify_binary]="Por favor, especifique o nome do binário Godot"
+        [error_specify_binary]="Por favor, especifique o nome do binário Godot ou execute sem argumentos para listar"
         [error_not_found_in]="não encontrado em"
         [set_permanent_version]="Versão permanente do Godot definida para:"
         [purge_confirm]="Tem certeza que deseja DELETAR TODOS os backups?"
@@ -88,6 +93,16 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [error_could_not_move]="Não foi possível mover o diretório existente"
         [error_invalid_choice]="Falha na restauração - Seleção inválida"
         [update_config]="Por favor, atualize a configuração ou crie o diretório."
+        [cache_size_set]="Tamanho do cache definido para:"
+        [example_content]="Exemplo de conteúdo:"
+        [install_zenity]="zenity não encontrado. Por favor, instale zenity ou crie manualmente"
+        [select_godot_version]="Selecione a versão do Godot para usar permanentemente"
+        [native_version]="Versão nativa do sistema"
+        [godot_binaries_found]="Binários Godot encontrados:"
+        [no_godot_binaries]="Nenhum binário Godot encontrado em ~/.local/bin ou como nativo"
+        [using_temporary_project_dir]="Usando diretório de projetos temporário:"
+        [project_dir_selected]="Diretório de projetos selecionado:"
+        [select_project_directory]="Selecione o diretório de projetos"
     )
 else
     MESSAGES=(
@@ -123,9 +138,10 @@ else
         [help_show]="Show this help message"
         [help_restore_opt]="Restore projects from a backup"
         [help_cache_opt]="Set cache size limit (ex: 30G, 500M) [default: 30G]"
-        [help_godot_opt]="Set permanent Godot binary version"
+        [help_godot_opt]="Set permanent Godot binary version. Without arguments, interactively lists available versions"
         [help_list_opt]="List all available backups"
         [help_purge_opt]="Purge all backups (confirmation required)"
+        [help_project_opt]="Select project directory. Without arguments, opens graphical picker. With argument, uses the specified path"
         [help_first_run_text]="On first execution, zenity will prompt to select the projects directory. The selected directory will be the one backed up."
         [help_backup_dir_text]="All projects inside the selected directory will be included in the backup. Backup format: projectdir_YYYY-MM-DD_HH-MM-SS.tar"
         [help_restore_text]="When restoring, the existing project directory will be moved to: projectdir_backup_YYYY-MM-DD_HH-MM-SS This prevents data loss and avoids overwrite errors."
@@ -136,7 +152,10 @@ else
         [help_example2]="Restore from a backup"
         [help_example3]="Set cache limit to 50GB"
         [help_example4]="Use specific Godot version"
-        [help_example5]="Pass arguments to Godot"
+        [help_example5]="Interactively list available Godot versions"
+        [help_example6]="Select project directory interactively"
+        [help_example7]="Use specific project directory"
+        [help_example8]="Pass arguments to Godot"
         [available_backups]="Available backups:"
         [total_size]="Total size:"
         [no_backups]="No backups found in"
@@ -144,7 +163,7 @@ else
         [invalid_selection]="Invalid selection"
         [available_versions]="Available versions:"
         [no_godot_found]="No Godot binaries found"
-        [error_specify_binary]="Please specify the Godot binary name"
+        [error_specify_binary]="Please specify the Godot binary name or run without arguments to list"
         [error_not_found_in]="not found in"
         [set_permanent_version]="Permanent Godot version set to:"
         [purge_confirm]="Are you sure you want to delete ALL backups?"
@@ -153,6 +172,16 @@ else
         [error_could_not_move]="Could not move existing directory"
         [error_invalid_choice]="Restore failed - Invalid selection"
         [update_config]="Please update the configuration or create the directory."
+        [cache_size_set]="Cache size set to:"
+        [example_content]="Example content:"
+        [install_zenity]="zenity not found. Please install zenity or manually create"
+        [select_godot_version]="Select the Godot version to use permanently"
+        [native_version]="System native version"
+        [godot_binaries_found]="Godot binaries found:"
+        [no_godot_binaries]="No Godot binaries found in ~/.local/bin or as native"
+        [using_temporary_project_dir]="Using temporary project directory:"
+        [project_dir_selected]="Project directory selected:"
+        [select_project_directory]="Select the project directory"
     )
 fi
 
@@ -162,6 +191,7 @@ CACHE_DIR="${HOME}/.cache/${SCRIPT_NAME}"
 CONFIG_FILE="${HOME}/.config/${SCRIPT_NAME}.conf"
 GODOT_BIN_DIR="${HOME}/.local/bin"
 DEFAULT_CACHE_SIZE="30G"
+TEMP_PROJECT_DIR=""  # Temporary override for project directory
 
 # Color definitions for help (now actually used in show_help)
 RED='\033[0;31m'
@@ -198,6 +228,13 @@ bytes_to_human() {
     fi
 }
 
+# Function to get human-readable size with ls (for precision with decimals)
+get_human_size() {
+    local file="$1"
+    # Use ls -lh and extract the size field
+    ls -lh "$file" 2>/dev/null | awk '{print $5}'
+}
+
 # Function to display help
 show_help() {
     cat << EOF | { echo -e "$(cat)"; }
@@ -217,6 +254,7 @@ ${YELLOW}${MESSAGES[help_options]}${NC}
     ${GREEN}-g, --godot${NC}       ${MESSAGES[help_godot_opt]}
     ${GREEN}-l, --list${NC}        ${MESSAGES[help_list_opt]}
     ${GREEN}-p, --purge${NC}       ${MESSAGES[help_purge_opt]}
+    ${GREEN}--project${NC}         ${MESSAGES[help_project_opt]}
 
 ${YELLOW}${MESSAGES[help_first_run]}${NC}
     ${MESSAGES[help_first_run_text]}
@@ -239,7 +277,10 @@ ${YELLOW}${MESSAGES[help_examples]}${NC}
     ${GREEN}${SCRIPT_NAME} -r${NC}                  # ${MESSAGES[help_example2]}
     ${GREEN}${SCRIPT_NAME} -c 50G${NC}              # ${MESSAGES[help_example3]}
     ${GREEN}${SCRIPT_NAME} -g Godot_v4.2-stable${NC} # ${MESSAGES[help_example4]}
-    ${GREEN}${SCRIPT_NAME} --project /path/to/proj${NC} # ${MESSAGES[help_example5]}
+    ${GREEN}${SCRIPT_NAME} -g${NC}                  # ${MESSAGES[help_example5]}
+    ${GREEN}${SCRIPT_NAME} --project${NC}           # ${MESSAGES[help_example6]}
+    ${GREEN}${SCRIPT_NAME} --project /path/to/proj${NC} # ${MESSAGES[help_example7]}
+    ${GREEN}${SCRIPT_NAME} --project /path/to/proj -- --rendering-driver vulkan${NC} # ${MESSAGES[help_example8]}
 
 EOF
 }
@@ -261,8 +302,8 @@ setup_config() {
                 exit 1
             fi
         else
-            echo "zenity not found. Please install zenity or manually create $CONFIG_FILE"
-            echo "Example content:"
+            echo "${MESSAGES[install_zenity]} $CONFIG_FILE"
+            echo "${MESSAGES[example_content]}:"
             echo 'PROJECTS_DIR="/path/to/your/godot/projects"'
             echo "CACHE_SIZE=\"$DEFAULT_CACHE_SIZE\""
             echo 'GODOT_VERSION=""'
@@ -272,6 +313,12 @@ setup_config() {
     
     # Source configuration
     source "$CONFIG_FILE"
+    
+    # Override with temporary project directory if set
+    if [[ -n "$TEMP_PROJECT_DIR" ]]; then
+        PROJECTS_DIR="$TEMP_PROJECT_DIR"
+        echo "${MESSAGES[using_temporary_project_dir]} $PROJECTS_DIR"
+    fi
     
     # Create cache directory if it doesn't exist
     mkdir -p "$CACHE_DIR"
@@ -323,21 +370,40 @@ create_backup() {
     fi
 }
 
-# Function to list backups
+# Function to list backups with human-readable sizes (using ls -lh for precision)
 list_backups() {
     echo -e "\n${YELLOW}${MESSAGES[available_backups]}${NC}"
     echo "----------------------------------------"
-    ls -lh "$CACHE_DIR"/*.tar 2>/dev/null | awk '{print $9 " (" $5 ")"}' | sed "s|$CACHE_DIR/||"
+    
+    # Use find to get files (handles spaces), then use ls -lh for each file
+    while IFS= read -r -d '' file; do
+        local filename=$(basename "$file")
+        local size_human=$(get_human_size "$file")
+        printf "%-60s (%s)\n" "$filename" "$size_human"
+    done < <(find "$CACHE_DIR" -maxdepth 1 -name "*.tar" -print0 2>/dev/null | sort -rz)
+    
     echo "----------------------------------------"
     echo "${MESSAGES[total_size]}: $(du -sh "$CACHE_DIR" 2>/dev/null | awk '{print $1}')"
+}
+
+# Function to get array of backups with proper handling of spaces
+get_backup_list() {
+    local backups=()
+    while IFS= read -r -d '' file; do
+        backups+=("$file")
+    done < <(find "$CACHE_DIR" -maxdepth 1 -name "*.tar" -print0 2>/dev/null | sort -rz)
+    printf '%s\n' "${backups[@]}"
 }
 
 # Function to restore backup
 restore_backup() {
     local backup_file
+    local backups=()
     
-    # Get list of backups
-    local backups=($(ls -t "$CACHE_DIR"/*.tar 2>/dev/null))
+    # Get list of backups using null-delimited handling
+    while IFS= read -r -d '' file; do
+        backups+=("$file")
+    done < <(find "$CACHE_DIR" -maxdepth 1 -name "*.tar" -print0 2>/dev/null | sort -rz)
     
     if [[ ${#backups[@]} -eq 0 ]]; then
         echo "${MESSAGES[no_backups]} $CACHE_DIR"
@@ -348,12 +414,16 @@ restore_backup() {
     if command -v whiptail >/dev/null 2>&1; then
         local options=()
         for i in "${!backups[@]}"; do
-            options+=("$i" "$(basename "${backups[$i]}")")
+            # Get just the filename without path
+            local filename=$(basename "${backups[$i]}")
+            # Get size using ls -lh for precision
+            local size_human=$(get_human_size "${backups[$i]}")
+            options+=("$i" "$filename ($size_human)")
         done
         
         local choice
         choice=$(whiptail --title "${MESSAGES[restore_prompt]}" \
-            --menu "${MESSAGES[restore_prompt]}" 20 60 10 \
+            --menu "${MESSAGES[restore_prompt]}" 20 80 10 \
             "${options[@]}" 3>&1 1>&2 2>&3)
         
         if [[ $? -ne 0 ]]; then
@@ -366,12 +436,14 @@ restore_backup() {
     elif command -v dialog >/dev/null 2>&1; then
         local options=()
         for i in "${!backups[@]}"; do
-            options+=("$i" "$(basename "${backups[$i]}")")
+            local filename=$(basename "${backups[$i]}")
+            local size_human=$(get_human_size "${backups[$i]}")
+            options+=("$i" "$filename ($size_human)")
         done
         
         local choice
         choice=$(dialog --title "${MESSAGES[restore_prompt]}" \
-            --menu "${MESSAGES[restore_prompt]}" 20 60 10 \
+            --menu "${MESSAGES[restore_prompt]}" 20 80 10 \
             "${options[@]}" 3>&1 1>&2 2>&3)
         
         if [[ $? -ne 0 ]]; then
@@ -385,7 +457,8 @@ restore_backup() {
         # Fallback to simple list
         echo "${MESSAGES[restore_prompt]}:"
         for i in "${!backups[@]}"; do
-            echo "$i) $(basename "${backups[$i]}")"
+            local size_human=$(get_human_size "${backups[$i]}")
+            echo "$i) $(basename "${backups[$i]}") ($size_human)"
         done
         read -p "${MESSAGES[enter_number]} " choice
         
@@ -398,8 +471,9 @@ restore_backup() {
     fi
     
     # Extract project name from backup file
+    local backup_basename=$(basename "$backup_file")
     local project_name
-    project_name=$(basename "$backup_file" | sed 's/_[0-9]\{2\}-[0-9]\{2\}-[0-9]\{4\}_.*\.tar$//')
+    project_name=$(echo "$backup_basename" | sed 's/_[0-9]\{2\}-[0-9]\{2\}-[0-9]\{4\}_.*\.tar$//')
     
     # Get parent directory
     local extract_dir
@@ -445,9 +519,195 @@ restore_backup() {
     fi
 }
 
+# Function to get list of available Godot binaries
+get_godot_binaries() {
+    local binaries=()
+    local display_names=()
+    
+    # Check for binaries in GODOT_BIN_DIR
+    while IFS= read -r -d '' file; do
+        if [[ -x "$file" ]]; then
+            binaries+=("$file")
+            display_names+=("$(basename "$file")")
+        fi
+    done < <(find "$GODOT_BIN_DIR" -maxdepth 1 -name "Godot*" -print0 2>/dev/null | sort -z)
+    
+    # Check for native godot in /usr/bin
+    if [[ -x "/usr/bin/godot" ]]; then
+        binaries+=("/usr/bin/godot")
+        display_names+=("${MESSAGES[native_version]} (/usr/bin/godot)")
+    fi
+    
+    # Return both arrays
+    printf '%s\n' "${binaries[@]}" > /tmp/godot_binaries_$$.tmp
+    printf '%s\n' "${display_names[@]}" > /tmp/godot_display_$$.tmp
+    echo "${#binaries[@]}"
+}
+
+# Function to set permanent godot version with interactive selection
+set_godot_version_interactive() {
+    local binaries=()
+    local display_names=()
+    local count=0
+    
+    # Read binaries
+    while IFS= read -r line; do
+        binaries+=("$line")
+    done < <(find "$GODOT_BIN_DIR" -maxdepth 1 -name "Godot*" -print0 2>/dev/null | sort -z | xargs -0 -n1 2>/dev/null)
+    
+    # Check for native godot
+    if [[ -x "/usr/bin/godot" ]]; then
+        binaries+=("/usr/bin/godot")
+    fi
+    
+    if [[ ${#binaries[@]} -eq 0 ]]; then
+        echo "${MESSAGES[no_godot_binaries]}"
+        return 1
+    fi
+    
+    # Build display names
+    for binary in "${binaries[@]}"; do
+        if [[ "$binary" == "/usr/bin/godot" ]]; then
+            display_names+=("${MESSAGES[native_version]} (/usr/bin/godot)")
+        else
+            display_names+=("$(basename "$binary")")
+        fi
+    done
+    
+    # Display selection menu
+    if command -v whiptail >/dev/null 2>&1; then
+        local options=()
+        for i in "${!display_names[@]}"; do
+            options+=("$i" "${display_names[$i]}")
+        done
+        
+        local choice
+        choice=$(whiptail --title "${MESSAGES[select_godot_version]}" \
+            --menu "${MESSAGES[godot_binaries_found]}" 20 80 10 \
+            "${options[@]}" 3>&1 1>&2 2>&3)
+        
+        if [[ $? -ne 0 ]]; then
+            echo "${MESSAGES[operation_cancelled]}"
+            return 1
+        fi
+        
+        local selected_binary="${binaries[$choice]}"
+        local selected_name="${display_names[$choice]}"
+        
+        # If native version, store as "native" special marker
+        if [[ "$selected_binary" == "/usr/bin/godot" ]]; then
+            # Remove GODOT_VERSION from config to use native
+            sed -i "/^GODOT_VERSION=/d" "$CONFIG_FILE"
+            echo "# Using native system Godot" >> "$CONFIG_FILE"
+            echo "GODOT_VERSION=\"native\"" >> "$CONFIG_FILE"
+            echo "${MESSAGES[set_permanent_version]} ${MESSAGES[native_version]}"
+        else
+            local version_name=$(basename "$selected_binary")
+            sed -i "s/^GODOT_VERSION=.*/GODOT_VERSION=\"$version_name\"/" "$CONFIG_FILE"
+            echo "${MESSAGES[set_permanent_version]} $version_name"
+        fi
+        
+    elif command -v dialog >/dev/null 2>&1; then
+        local options=()
+        for i in "${!display_names[@]}"; do
+            options+=("$i" "${display_names[$i]}")
+        done
+        
+        local choice
+        choice=$(dialog --title "${MESSAGES[select_godot_version]}" \
+            --menu "${MESSAGES[godot_binaries_found]}" 20 80 10 \
+            "${options[@]}" 3>&1 1>&2 2>&3)
+        
+        if [[ $? -ne 0 ]]; then
+            echo "${MESSAGES[operation_cancelled]}"
+            return 1
+        fi
+        
+        local selected_binary="${binaries[$choice]}"
+        
+        if [[ "$selected_binary" == "/usr/bin/godot" ]]; then
+            sed -i "/^GODOT_VERSION=/d" "$CONFIG_FILE"
+            echo "# Using native system Godot" >> "$CONFIG_FILE"
+            echo "GODOT_VERSION=\"native\"" >> "$CONFIG_FILE"
+            echo "${MESSAGES[set_permanent_version]} ${MESSAGES[native_version]}"
+        else
+            local version_name=$(basename "$selected_binary")
+            sed -i "s/^GODOT_VERSION=.*/GODOT_VERSION=\"$version_name\"/" "$CONFIG_FILE"
+            echo "${MESSAGES[set_permanent_version]} $version_name"
+        fi
+        
+    else
+        # Fallback to simple list
+        echo "${MESSAGES[select_godot_version]}:"
+        for i in "${!display_names[@]}"; do
+            echo "$i) ${display_names[$i]}"
+        done
+        read -p "${MESSAGES[enter_number]} " choice
+        
+        if [[ ! "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -ge "${#binaries[@]}" ]]; then
+            echo "${MESSAGES[invalid_selection]}"
+            return 1
+        fi
+        
+        local selected_binary="${binaries[$choice]}"
+        
+        if [[ "$selected_binary" == "/usr/bin/godot" ]]; then
+            sed -i "/^GODOT_VERSION=/d" "$CONFIG_FILE"
+            echo "# Using native system Godot" >> "$CONFIG_FILE"
+            echo "GODOT_VERSION=\"native\"" >> "$CONFIG_FILE"
+            echo "${MESSAGES[set_permanent_version]} ${MESSAGES[native_version]}"
+        else
+            local version_name=$(basename "$selected_binary")
+            sed -i "s/^GODOT_VERSION=.*/GODOT_VERSION=\"$version_name\"/" "$CONFIG_FILE"
+            echo "${MESSAGES[set_permanent_version]} $version_name"
+        fi
+    fi
+    
+    # Cleanup temp files
+    rm -f /tmp/godot_binaries_$$.tmp /tmp/godot_display_$$.tmp 2>/dev/null
+    
+    return 0
+}
+
+# Function to set permanent godot version (legacy - direct set)
+set_godot_version() {
+    local version="$1"
+    
+    # Check if it's a file in GODOT_BIN_DIR
+    if [[ -f "$GODOT_BIN_DIR/$version" ]]; then
+        # Update config
+        sed -i "s/^GODOT_VERSION=.*/GODOT_VERSION=\"$version\"/" "$CONFIG_FILE"
+        echo "${MESSAGES[set_permanent_version]} $version"
+        return 0
+    fi
+    
+    # Check if it's the native version
+    if [[ "$version" == "native" ]] && [[ -x "/usr/bin/godot" ]]; then
+        sed -i "/^GODOT_VERSION=/d" "$CONFIG_FILE"
+        echo "# Using native system Godot" >> "$CONFIG_FILE"
+        echo "GODOT_VERSION=\"native\"" >> "$CONFIG_FILE"
+        echo "${MESSAGES[set_permanent_version]} ${MESSAGES[native_version]}"
+        return 0
+    fi
+    
+    echo "Error: $version ${MESSAGES[error_not_found_in]} $GODOT_BIN_DIR"
+    echo "${MESSAGES[available_versions]}:"
+    ls -1 "$GODOT_BIN_DIR"/Godot* 2>/dev/null || echo "${MESSAGES[no_godot_found]}"
+    if [[ -x "/usr/bin/godot" ]]; then
+        echo "${MESSAGES[native_version]} (/usr/bin/godot)"
+    fi
+    return 1
+}
+
 # Function to get Godot binary
 get_godot_binary() {
     local godot_bin
+    
+    # If permanent version is set to "native", use system godot
+    if [[ "$GODOT_VERSION" == "native" ]] && command -v godot >/dev/null 2>&1; then
+        echo "godot"
+        return 0
+    fi
     
     # If permanent version is set, use it
     if [[ -n "$GODOT_VERSION" ]] && [[ -f "$GODOT_BIN_DIR/$GODOT_VERSION" ]]; then
@@ -473,22 +733,6 @@ get_godot_binary() {
     return 1
 }
 
-# Function to set permanent godot version
-set_godot_version() {
-    local version="$1"
-    
-    if [[ -f "$GODOT_BIN_DIR/$version" ]]; then
-        # Update config
-        sed -i "s/^GODOT_VERSION=.*/GODOT_VERSION=\"$version\"/" "$CONFIG_FILE"
-        echo "${MESSAGES[set_permanent_version]} $version"
-    else
-        echo "Error: $version ${MESSAGES[error_not_found_in]} $GODOT_BIN_DIR"
-        echo "${MESSAGES[available_versions]}:"
-        ls -1 "$GODOT_BIN_DIR"/Godot* 2>/dev/null || echo "${MESSAGES[no_godot_found]}"
-        return 1
-    fi
-}
-
 # Function to purge all backups
 purge_backups() {
     if whiptail --yesno "${MESSAGES[purge_confirm]}" 10 60 2>/dev/null || \
@@ -509,6 +753,7 @@ main() {
     local restore_mode=false
     local list_mode=false
     local purge_mode=false
+    local project_dir_arg=""
     
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -523,7 +768,7 @@ main() {
             -c|--cache)
                 if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+[GgMmTtKk]?$ ]]; then
                     sed -i "s/^CACHE_SIZE=.*/CACHE_SIZE=\"$2\"/" "$CONFIG_FILE"
-                    echo "Cache size set to: $2"
+                    echo "${MESSAGES[cache_size_set]} $2"
                     exit 0
                 else
                     echo "${MESSAGES[invalid_size]}"
@@ -532,14 +777,45 @@ main() {
                 shift 2
                 ;;
             -g|--godot)
-                if [[ -n "$2" ]]; then
+                if [[ -n "$2" ]] && [[ ! "$2" =~ ^- ]]; then
+                    # Has argument - set specific version
                     set_godot_version "$2"
-                    exit 0
+                    exit $?
                 else
-                    echo "${MESSAGES[error_specify_binary]}"
-                    exit 1
+                    # No argument - interactive selection
+                    setup_config
+                    set_godot_version_interactive
+                    exit $?
                 fi
                 shift 2
+                ;;
+            --project)
+                if [[ -n "$2" ]] && [[ ! "$2" =~ ^- ]]; then
+                    # Has argument - use specified directory
+                    project_dir_arg="$2"
+                    shift 2
+                else
+                    # No argument - interactive selection
+                    if command -v zenity >/dev/null 2>&1; then
+                        project_dir_arg=$(zenity --file-selection --directory --title="${MESSAGES[select_project_directory]}" 2>/dev/null)
+                        if [[ -z "$project_dir_arg" ]]; then
+                            echo "${MESSAGES[operation_cancelled]}"
+                            exit 1
+                        fi
+                    else
+                        echo "${MESSAGES[install_zenity]}"
+                        echo "${MESSAGES[select_project_dir]}:"
+                        read -r project_dir_arg
+                        if [[ -z "$project_dir_arg" ]] || [[ ! -d "$project_dir_arg" ]]; then
+                            echo "${MESSAGES[operation_cancelled]}"
+                            exit 1
+                        fi
+                    fi
+                    shift
+                fi
+                # Set temporary project directory
+                TEMP_PROJECT_DIR="$project_dir_arg"
+                echo "${MESSAGES[project_dir_selected]} $TEMP_PROJECT_DIR"
                 ;;
             -l|--list)
                 list_mode=true
@@ -549,13 +825,18 @@ main() {
                 purge_mode=true
                 shift
                 ;;
+            --)
+                # End of options, everything after is for Godot
+                shift
+                break
+                ;;
             *)
                 break
                 ;;
         esac
     done
     
-    # Setup configuration
+    # Setup configuration (will use TEMP_PROJECT_DIR if set)
     setup_config
     
     # Handle list mode

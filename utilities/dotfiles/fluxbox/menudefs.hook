@@ -1,0 +1,123 @@
+# Automatically generated file. Do not edit (see /usr/share/doc/menu/html/index.html)
+
+   [submenu] (Applications) {}
+      [submenu] (Accessibility) {}
+         [exec] (Xmag) {xmag} <>
+      [end]
+      [submenu] (Editors) {}
+         [exec] (Xedit) {xedit} <>
+      [end]
+      [submenu] (Emulators) {}
+         [exec] (Dos Emulator) {/usr/bin/xdosemu} <dosemu32x24.xpm>
+      [end]
+      [submenu] (File Management) {}
+         [exec] (ROX Filer) {/usr/bin/rox} <>
+         [exec] (ytree) { x-terminal-emulator -T "ytree" -e /usr/bin/ytree} <>
+      [end]
+      [submenu] (Graphics) {}
+         [exec] (AllTray) {/usr/bin/alltray} <>
+         [exec] (xcb) {/usr/bin/xcb} <>
+         [exec] (X Window Snapshot) {xwd | xwud} <>
+      [end]
+      [submenu] (Network) {}
+         [submenu] (Communication) {}
+            [exec] (Telnet) { x-terminal-emulator -T "Telnet" -e /usr/bin/telnet.netkit} <>
+            [exec] (Xbiff) {xbiff} <>
+         [end]
+         [submenu] (File Transfer) {}
+            [exec] (Transmission BitTorrent Client (GTK\)) {/usr/bin/transmission-gtk} </usr/share/pixmaps/transmission.xpm>
+         [end]
+         [submenu] (Web Browsing) {}
+            [exec] (Luakit) {luakit} </usr/share/pixmaps/luakit.png>
+            [exec] (Lynx) { x-terminal-emulator -T "Lynx" -e lynx} <>
+            [exec] (Qutebrowser) {qutebrowser} </usr/share/pixmaps/qutebrowser.xpm>
+            [exec] (w3m) { x-terminal-emulator -T "w3m" -e /usr/bin/w3m /usr/share/doc/w3m/MANUAL.html} <>
+         [end]
+      [end]
+      [submenu] (Programming) {}
+         [exec] (GDB) { x-terminal-emulator -T "GDB" -e /usr/bin/gdb} <>
+         [exec] (Tclsh8.6) { x-terminal-emulator -T "Tclsh8.6" -e /usr/bin/tclsh8.6} <>
+         [exec] (TkWish8.6) {x-terminal-emulator -e /usr/bin/wish8.6} <>
+         [exec] (xcolors) {/usr/bin/xcolors} <>
+      [end]
+      [submenu] (Science) {}
+         [submenu] (Mathematics) {}
+            [exec] (Bc) { x-terminal-emulator -T "Bc" -e /usr/bin/bc} <>
+            [exec] (Dc) { x-terminal-emulator -T "Dc" -e /usr/bin/dc} <>
+            [exec] (Xcalc) {xcalc} <>
+         [end]
+      [end]
+      [submenu] (Shells) {}
+         [exec] (Bash) { x-terminal-emulator -T "Bash" -e /bin/bash --login} <>
+         [exec] (Dash) { x-terminal-emulator -T "Dash" -e /bin/dash -i} <>
+         [exec] (fish) { x-terminal-emulator -T "fish" -e /usr/bin/fish} <>
+         [exec] (mksh) { x-terminal-emulator -T "mksh" -e /bin/mksh -l} <>
+         [exec] (Sh) { x-terminal-emulator -T "Sh" -e /bin/sh --login} <>
+         [exec] (Zsh) { x-terminal-emulator -T "Zsh" -e /bin/zsh} <>
+      [end]
+      [submenu] (Sound) {}
+         [exec] (ncmpc) { x-terminal-emulator -T "ncmpc" -e /usr/bin/ncmpc} <>
+      [end]
+      [submenu] (System) {}
+         [submenu] (Administration) {}
+            [exec] (Editres) {editres} <>
+            [exec] (Xclipboard) {xclipboard} <>
+            [exec] (Xfontsel) {xfontsel} <>
+            [exec] (Xkill) {xkill} <>
+            [exec] (Xrefresh) {xrefresh} <>
+         [end]
+         [submenu] (Hardware) {}
+            [exec] (Xvidtune) {xvidtune} <>
+         [end]
+         [submenu] (Monitoring) {}
+            [exec] (Pstree) { x-terminal-emulator -T "Pstree" -e /usr/bin/pstree.x11} </usr/share/pixmaps/pstree16.xpm>
+            [exec] (Top) { x-terminal-emulator -T "Top" -e /usr/bin/top} <>
+            [exec] (Xconsole) {xconsole -file /dev/xconsole} <>
+            [exec] (Xev) {x-terminal-emulator -e xev} <>
+            [exec] (Xload) {xload} <>
+         [end]
+      [end]
+      [submenu] (Text) {}
+         [exec] (ClipIt) {/usr/bin/clipit} <>
+      [end]
+      [submenu] (Viewers) {}
+         [exec] (qPDFview) {qpdfview} </usr/share/qpdfview/qpdfview.xpm>
+         [exec] (Xditview) {xditview} <>
+      [end]
+   [end]
+   [submenu] (Games) {}
+      [submenu] (Toys) {}
+         [exec] (Oclock) {oclock} <>
+         [exec] (tty-clock) { x-terminal-emulator -T "tty-clock" -e /usr/bin/tty-clock} <>
+         [exec] (Xclock (analog\)) {xclock -analog} <>
+         [exec] (Xclock (digital\)) {xclock -digital -update 1} <>
+         [exec] (Xeyes) {xeyes} <>
+         [exec] (Xlogo) {xlogo} <>
+      [end]
+   [end]
+   [submenu] (Help) {}
+      [exec] (Info) { x-terminal-emulator -T "Info" -e info} <>
+      [exec] (Xman) {xman} <>
+   [end]
+   [submenu] (Screen) {}
+      [submenu] (Locking) {}
+         [exec] (Lock Screen (XScreenSaver\)) {/usr/bin/xscreensaver-command -lock} <>
+      [end]
+      [submenu] (Saving) {}
+         [exec] (Activate ScreenSaver (Next\)) {/usr/bin/xscreensaver-command -next} <>
+         [exec] (Activate ScreenSaver (Previous\)) {/usr/bin/xscreensaver-command -prev} <>
+         [exec] (Activate ScreenSaver (Random\)) {/usr/bin/xscreensaver-command -activate} <>
+         [exec] (Console Matrix (Text\)) { x-terminal-emulator -T "Console Matrix (Text)" -e /usr/bin/cmatrix} <>
+         [exec] (Console Matrix (Virtual Console\)) { x-terminal-emulator -T "Console Matrix (Virtual Console)" -e /usr/bin/cmatrix -l} <>
+         [exec] (Console Matrix (X11\)) {/usr/bin/cmatrix -x} <>
+         [exec] (Demo Screen Hacks) {/usr/bin/xscreensaver-command -demo} <>
+         [exec] (Disable XScreenSaver) {/usr/bin/xscreensaver-command -exit} <>
+         [exec] (Enable XScreenSaver) {/usr/bin/xscreensaver} <>
+         [exec] (Reinitialize XScreenSaver) {/usr/bin/xscreensaver-command -restart} <>
+         [exec] (ScreenSaver Preferences) {/usr/bin/xscreensaver-command -prefs} <>
+      [end]
+   [end]
+   [submenu] (Window Managers) {}
+      [restart] (awesome)  {/usr/bin/awesome}
+      [restart] (FluxBox)  {/usr/bin/startfluxbox}
+   [end]

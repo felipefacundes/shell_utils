@@ -1,0 +1,40 @@
+alignment top_right
+background no
+border_margin 5
+border_width 5
+default_color 26211F	# grey 5f5f5f 3F3F3F 183149 3B3B3B 26211F
+double_buffer yes
+draw_borders no
+draw_outline no
+draw_shades no
+gap_x 60
+gap_y 180
+maximum_width 240
+minimum_size 175
+no_buffers yes
+override_utf8_locale yes
+own_window yes
+own_window_title conky
+own_window_hints undecorated,below,sticky,skip_taskbar,skip_pager
+own_window_transparent yes
+own_window_type desktop 	## normal /override /desktop
+text_buffer_size 8000
+total_run_times 0
+update_interval 1
+uppercase no
+use_xft yes
+xftalpha 1
+xftfont Freesans:pixelsize=9
+
+#				fonts
+#	Blue Highway
+#	Zegoe Light - U
+#	Zekton
+#	Calibri
+#	Engebrechtre
+#	Opeln2001
+#	Pricedown
+
+TEXT
+${font Pricedown:pixelsize=95}${alignc}${time %H:%M}${font}
+${voffset 10}${font Blue Highway:pixelsize=15}${alignc}${time %A} | ${time %d} ${time  %B} ${time %Y}${font}

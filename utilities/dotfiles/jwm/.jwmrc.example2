@@ -1,0 +1,165 @@
+<?xml version="1.0"?>
+<JWM>
+
+<StartupCommand>xset dpms 0 0 900</StartupCommand>
+<StartupCommand>rm -rf $HOME/.adobe $HOME/.cache $HOME/.local/share/Trash $HOME/.macromedia $HOME/.recently-used.xbel</StartupCommand>
+<ShutdownCommand>truecrypt -d</ShutdownCommand>
+
+<RootMenu height="0" onroot="8">
+<Program label="Desktop">thunar ~/Desktop</Program>
+<Program label="Documents">thunar /doc</Program>
+<Separator/>
+<Menu label="Programs">
+<Program label="W-a | XCalc">xcalc</Program>
+<Program label="W-b | Xfburn">xfburn -d</Program>
+<Program label="W-c | Chromium">chromium --block-nonsandboxed-plugins --incognito --disable-java --safe-plugins --start-maximized --user-data-dir=/tmp/.chromium</Program>
+<Program label="W-e | medit">medit</Program>
+<Program label="W-f | Firefox">chromium --block-nonsandboxed-plugins --incognito --disable-java --safe-plugins --start-maximized --user-agent=Firefox/3.6.10 --user-data-dir=/tmp/.chromium</Program>
+<Program label="W-g | GIMP">gimp -s</Program>
+<Program label="W-k | KeePassX">keepassx /media/truecrypt5/keepass-data/keepass.kdb</Program>
+<Program label="W-o | Opera">opera -newprivatetab -noargb -nolirc -nomail -nomaillinks -pd /tmp/.opera</Program>
+<Program label="W-s | OO Calc">/usr/lib/openoffice/program/scalc -nologo</Program>
+<Program label="W-t | TrueCrypt">truecrypt --auto-mount=favorites --background-task</Program>
+<Program label="W-v | GMPlayer">gnome-mplayer --single_instance</Program>
+<Program label="W-w | OO Writer">/usr/lib/openoffice/program/swriter -nologo</Program>
+<Program label="W-x | Scanner">simple-scan</Program>
+</Menu>
+<Separator/>
+<Program label="Terminal">xterm</Program>
+<Separator/>
+<Program label="Config">medit ~/.jwmrc</Program>
+<Restart label="Refresh"/>
+<Exit label="Logout" confirm="false"/>
+<Separator/>
+<Program label="Suspend">dbus-send --system --print-reply --dest=org.freedesktop.Hal /org/freedesktop/Hal/devices/computer org.freedesktop.Hal.Device.SystemPowerManagement.Suspend int32:0</Program>
+<Separator/>
+<Program label="Restart">dbus-send --system --print-reply --dest=org.freedesktop.ConsoleKit /org/freedesktop/ConsoleKit/Manager org.freedesktop.ConsoleKit.Manager.Restart</Program>
+<Program label="Poweroff">dbus-send --system --print-reply --dest=org.freedesktop.ConsoleKit /org/freedesktop/ConsoleKit/Manager org.freedesktop.ConsoleKit.Manager.Stop</Program>
+</RootMenu>
+
+<Group>
+<Class>Opera</Class>
+<Option>maximized</Option>
+<Option>noborder</Option>
+<Option>notitle</Option>
+</Group>
+
+<Group>
+<Class>Squeeze</Class>
+<Option>sticky</Option>
+</Group>
+
+<Tray x="0" y="0" height="0">
+<TaskList/>
+<TrayButton label="X">showdesktop</TrayButton>
+<TrayButton label="Explorer">root:8</TrayButton>
+<Pager/>
+<Dock/>
+<Clock format="%a %b %d %l:%M %p">xterm -hold -e pal -c 22</Clock>
+</Tray>
+
+<WindowStyle>
+<Font>-*-fixed-*-r-*-*-10-*-*-*-*-*-*-*</Font>
+<Width>3</Width>
+<Height>20</Height>
+
+<Active>
+<Text>white</Text>
+<Title>#70849d:#2e3a67</Title>
+<Outline>black</Outline>
+</Active>
+
+<Inactive>
+<Text>#aaaaaa</Text>
+<Title>#808488:#303438</Title>
+<Outline>black</Outline>
+</Inactive>
+
+</WindowStyle>
+
+<TaskListStyle>
+<Font>-*-fixed-*-r-*-*-13-*-*-*-*-*-*-*</Font>
+<Foreground>black</Foreground>
+<Background>gray70:gray90</Background>
+<ActiveForeground>white</ActiveForeground>
+<ActiveBackground>#70849d:#2e3a67</ActiveBackground>
+</TaskListStyle>
+
+<TrayStyle>
+<Font>-*-fixed-*-r-*-*-13-*-*-*-*-*-*-*</Font>
+<Background>gray90</Background>
+<Foreground>black</Foreground>
+</TrayStyle>
+
+<PagerStyle>
+<Outline>black</Outline>
+<Foreground>gray90</Foreground>
+<Background>#808488</Background>
+<ActiveForeground>#70849d</ActiveForeground>
+<ActiveBackground>#2e3a67</ActiveBackground>
+</PagerStyle>
+
+<MenuStyle>
+<Font>-*-fixed-*-r-*-*-13-*-*-*-*-*-*-*</Font>
+<Foreground>black</Foreground>
+<Background>gray90</Background>
+<ActiveForeground>white</ActiveForeground>
+<ActiveBackground>#70849d:#2e3a67</ActiveBackground>
+</MenuStyle>
+
+<PopupStyle enabled="false">
+</PopupStyle>
+
+<Desktops count="2">
+</Desktops>
+
+<DoubleClickSpeed>400</DoubleClickSpeed>
+<DoubleClickDelta>2</DoubleClickDelta>
+<FocusModel>click</FocusModel>
+<SnapMode distance="10">border</SnapMode>
+<MoveMode>opaque</MoveMode>
+<ResizeMode>opaque</ResizeMode>
+
+<Key key="Up">up</Key>
+<Key key="Down">down</Key>
+<Key key="Right">right</Key>
+<Key key="Left">left</Key>
+<Key key="Return">select</Key>
+<Key key="Escape">escape</Key>
+<Key key="F1">root:8</Key>
+
+<Key mask="A" key="space">desktop</Key>
+
+<Key mask="H" key="a">exec:xcalc</Key>
+<Key mask="H" key="b">exec:xfburn -d</Key>
+<Key mask="H" key="c">exec:chromium --block-nonsandboxed-plugins --incognito --disable-java --safe-plugins --start-maximized --user-data-dir=/tmp/.chromium</Key>
+<Key mask="H" key="e">exec:medit</Key>
+<Key mask="H" key="f">exec:chromium --block-nonsandboxed-plugins --incognito --disable-java --safe-plugins --start-maximized --user-agent=Firefox/3.6.10 --user-data-dir=/tmp/.chromium</Key>
+<Key mask="H" key="g">exec:gimp -s</Key>
+<Key mask="H" key="h">exec:rm -rf $HOME/.local/share/Trash $HOME/.recently-used.xbel</Key>
+<Key mask="H" key="k">exec:keepassx /media/truecrypt5/keepass-data/keepass.kdb</Key>
+<Key mask="H" key="o">exec:opera -newprivatetab -noargb -nolirc -nomail -nomaillinks -pd /tmp/.opera</Key>
+<Key mask="H" key="s">exec:/usr/lib/openoffice/program/scalc -nologo</Key>
+<Key mask="H" key="t">exec:truecrypt --auto-mount=favorites --background-task</Key>
+<Key mask="H" key="v">exec:gnome-mplayer --single_instance</Key>
+<Key mask="H" key="w">exec:/usr/lib/openoffice/program/swriter -nologo</Key>
+<Key mask="H" key="x">exec:simple-scan</Key>
+
+<Key mask="A" key="Tab">next</Key>
+<Key mask="A" key="x">exec:urxvtc</Key>
+<Key mask="A" key="z">exec:thunar ~/Desktop</Key>
+
+<Key mask="AH" key="c">exec:medit ~/.jwmrc</Key>
+<Key mask="AH" key="k">exec:slock</Key>
+<Key mask="AH" key="l">exec:jwm -exit</Key>
+<Key mask="AH" key="r">exec:jwm -restart</Key>
+
+<Key mask="H" key="F3">exec:sleep 1; xset dpms force off</Key>
+<Key mask="H" key="F4">exec:dbus-send --print-reply --system --dest=org.freedesktop.UPower /org/freedesktop/UPower org.freedesktop.UPower.Suspend</Key
+
+<Key mask="AH" key="b">exec:dbus-send --system --print-reply --dest=org.freedesktop.ConsoleKit /org/freedesktop/ConsoleKit/Manager org.freedesktop.ConsoleKit.Manager.Restart</Key>
+<Key mask="AH" key="p">exec:dbus-send --system --print-reply --dest=org.freedesktop.ConsoleKit /org/freedesktop/ConsoleKit/Manager org.freedesktop.ConsoleKit.Manager.Stop</Key>
+
+<Key mask="H" key="z">close</Key>
+
+</JWM>

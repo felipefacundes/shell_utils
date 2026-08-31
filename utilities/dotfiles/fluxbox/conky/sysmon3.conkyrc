@@ -1,0 +1,35 @@
+background        no
+out_to_console 	  yes
+out_to_x	  no
+update_interval	  1
+total_run_times	  0
+short_units	  yes
+pad_percents	  3
+
+override_utf8_locale yes
+
+TEXT
+,[
+#Finds out if cmus is running. If it is, it provides 1) the current artist and 2) the current track. If cmus isn't running it outputs "Not Running"
+  {"full_text": " [${exec sh .scripts/cmusconk.sh}] ", "color":"\#e4f800"},
+#Shows current user
+  {"full_text": " ☻ [${exec whoami}] ", "color":"\#ff00f3"},
+#Shows hostname (heart for lack of better symbol)
+  {"full_text": " ♥ [${exec hostname}] ", "color":"\#6F3BFF"},
+#Shows uploadspeed
+  {"full_text": " ▲ [${upspeed enp4s0}] ", "color":"\#ff0000"},
+#Shows downloadspeed
+  {"full_text": " ▼ [${downspeed enp4s0}] ", "color":"\#00fff2"},
+#Shows current memory usage with a bar
+  {"full_text": " || [$mem/$memmax - $memperc% ${membar 4}] ", "color":"\#B58900"},
+#Shows current CPU usage with a bar
+  {"full_text": " ■ [$color $cpu% ${cpubar 4} ]", "color":"\#00A9B5"},
+#Shows Battery
+  {"full_text": " ▼ [${battery_percent BAT1}] ", "color":"\#00fff2"},
+#Shows upime
+  {"full_text": " ↑ [${uptime}] ","color": "\#dc322f"},
+#Shows time
+  {"full_text": " [${time %a %d %b} ${time %H:%M:%S}] ","color": "\#2fdc57"}
+]
+
+#See

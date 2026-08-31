@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# fluxbox startup-script:
+#
+# Lines starting with a '#' are ignored.
+
+# Change your keymap:
+#xmodmap "/home/user/.Xmodmap"
+
+~/bin/setWallpaper &
+gnome-settings-daemon &
+gnome-sound-applet &
+gnome-power-manager &
+nm-applet --sm-disable &
+update-notifier &
+unclutter -idle 1 -root &
+system-config-printer-applet &
+
+#dropbox start &
+#wmcalclock -24 &
+#osdsh &
+#/usr/lib/notify-osd/notify-osd &
+##Disabled Gnome Applets
+#bluetooth-applet &
+#wicd-gtk &
+#start-pulseaudio-x11 &
+#onboard &
+#/usr/bin/gnome-keyring-daemon --start --components=secrets &
+#/usr/bin/gnome-keyring-daemon --start --components=pkcs11 &
+#/usr/lib/gnome-disk-utility/gdu-notification-daemon &
+#/usr/bin/canberra-gtk-play --id="desktop-login" --description="GNOME Login" &
+#/usr/lib/gnome-user-share/gnome-user-share &
+#/usr/lib/kde4/libexec/polkit-kde-authentication-agent-1 &
+#/usr/bin/gnome-keyring-daemon --start --components=ssh &
+#xdg-user-dirs-gtk-update &
+#gnome-at-visual -s &
+#syndaemon -i 1 -d -t &
+
+# Trackpad Settings
+#synclient VertEdgeScroll=0
+#synclient VertTwoFingerScroll=1
+#synclient HorizTwoFingerScroll=1
+#synclient EmulateTwoFingerMinW=5
+#synclient EmulateTwoFingerMinZ=48
+
+#sakura &
+~/bin/terminal &
+conky &
+chromium-browser &
+update-menus &
+parcellite &
+
+exec fluxbox
+# exec fluxbox -log "/home/user/.fluxbox/log"

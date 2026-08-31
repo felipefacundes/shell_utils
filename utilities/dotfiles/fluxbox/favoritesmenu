@@ -1,0 +1,21 @@
+
+  [exec] (Firefox Web Browser) {firefox} </usr/share/icons/Moka/256x256/apps/firefox.png>
+  [exec] (qutebrowser) {qutebrowser} </usr/share/pixmaps/qutebrowser.xpm>
+  [exec] (Luakit) {nice luakit} </usr/share/pixmaps/luakit.png>
+
+  [exec] (PCManFM File Manager) {pcmanfm} </usr/share/icons/oxygen/base/64x64/apps/system-file-manager.png>
+  [exec] (ROX Filer) {/usr/bin/rox-filer} </usr/share/pixmaps/rox.png>
+#  [exec] (Thunar File Manager) {thunar} </usr/share/icons/hicolor/16x16/apps/Thunar.png>
+#
+  [exec] (Terminal) {st -e bash -l}
+  [exec] (URxvt) {urxvt} <~/.fluxbox/icons/terminal.png>
+
+  [exec] (Text Editor) {gedit} </usr/share/icons/Moka/256x256/apps/gedit.png>
+#  [exec] (Leafpad) {/usr/bin/leafpad} <~/.fluxbox/icons/leafpad.png>
+  [separator]
+  [exec] (Cryptomator) {/usr/bin/cryptomator} </usr/share/cryptomator/Cryptomator.png>
+  [exec] (KeePassXC) {keepassxc} </usr/share/icons/hicolor/256x256/apps/keepassxc.png>
+#  [exec] (KeePassX) {keepassx} </usr/share/icons/Moka/256x256/apps/keepassx.png>
+  [exec] (Yi Home) {wine '~/.wine/drive_c/Program Files (x86)/YIHomePCClientIntl/YIHomePCClientIntl.exe'} <~/.fluxbox/icons/YI-Home.png>
+  [separator]
+  [exec] (Take Screenshot) {~/.fluxbox/bin/screenshot} </usr/share/pixmaps/gnome-windows.png>

@@ -1,0 +1,157 @@
+# set to yes if you want Conky to be forked in the background
+background yes
+
+short_units yes
+
+cpu_avg_samples 1
+diskio_avg_samples 1
+net_avg_samples 1
+
+out_to_console no
+
+# X font when Xft is disabled, you can pick one with program xfontsel
+#font 7x12
+#font 6x10
+#font 7x13
+font 8x12
+#font 7x12
+#font *mintsmild.se*
+#font -*-*-*-*-*-*-34-*-*-*-*-*-*-*
+#font -artwiz-snap-normal-r-normal-*-*-100-*-*-p-*-iso8859-1
+
+# Use Xft?
+use_xft yes
+
+# Xft font when Xft is enabled
+#xftfont gentium:size=10
+#ftfont DejaVu Sans:size=10
+#xftfont DejaVu Sans:bold:size=9
+xftfont DejaVu Sans:size=10
+#xftfont verdana:size=10
+
+# Create own window instead of using desktop (required in nautilus, pcmanfm and rox desktops)
+own_window yes
+#own_window_transparent yes
+own_window_transparent no
+own_window_argb_value 250
+own_window_hints undecorated,below,sticky,skip_taskbar,skip_pager
+
+# if own_window is yes, you may specify type normal, desktop, dock, panel or override (default: normal
+#own_window_type dock
+own_window_title conkybar
+own_window_class Conky
+
+border_outer_margin 0
+
+# Text alpha when using Xft
+xftalpha 0.5
+
+# Text alignment, other possible values are commented
+#alignment top_left
+alignment top_right
+#alignment bottom_left
+#alignment bottom_right
+#on_bottom no
+
+# Gap between borders of screen and text
+#gap_x 1
+#gap_y -18
+gap_x 6
+gap_y 3
+
+# mail spool
+#mail_spool $MAIL
+
+# Update interval in seconds
+update_interval 1
+update_interval_on_battery 10
+
+# Use double buffering (reduces flicker, may not work for everyone)
+double_buffer yes
+
+# Minimum size of text area
+minimum_size 24 24
+minimum_height 24
+#maximum_height 32
+minimum_width 1024
+maximum_width 1024
+
+default_graph_width 20
+default_graph_height 14
+
+# Draw shades?
+draw_shades no
+
+# Draw outlines?
+draw_outline no
+
+# Draw borders around text
+draw_borders yes
+
+# Stippled borders?
+stippled_borders 0
+
+# border margins
+#border_margin 0
+
+# border width
+border_width 0
+
+# Default colors and also border colors
+default_color			888888
+#default_shade_color	white
+#default_outline_color	white
+default_shade_color		2f343f
+default_outline_color	2f343f
+own_window_colour		2f343f
+
+color1 gray
+color2 888888
+color3 eeeeee
+color4 ff4444
+color5 a4bd00
+color6 ec883a
+color7 d33264
+color8 77bbff
+color9 5599cc
+
+#${iconv_start UTF-8 ISO_8859-1}° ${iconv_stop}
+
+# Add spaces to keep things from moving about?  This only affects certain objects.
+#use_spacer right
+
+# Subtract file system buffers from used memory?
+no_buffers yes
+
+# if_up_strictness link:  up | link | address
+if_up_strictness address
+
+# set to yes if you want all text to be in uppercase
+uppercase no
+
+format_human_readable yes
+
+TEXT
+    \
+    \
+    \
+${color}Desktop [${color5}${desktop}${color}]          \
+    \
+    \
+${color}Temp: ${color d33264}${acpitemp}${color}℃    \
+${color}CPU: ${color5}${cpu}${color}% \
+${color}${cpugraph cpu0 14,24 a4bd00 a4bd00 }    \
+${color}MEM: ${color6}$mem ${color} \
+${color}${memgraph 14,24 ec883a ec883a }    \
+${color}Disk Free:${color4}${fs_free /}  \
+${color}${diskiograph 14,24 ff4444 ff4444}    \
+${if_up wlp2s0} ${color}NET: up⬆${color3}\
+${color}${upspeedgraph   wlp2s0 14,24 298876 298876} \
+${color} down⬇${color3}\
+${color2}${downspeedgraph wlp2s0 14,24  5599cc 5599cc}${endif}     \
+    \
+${color}${time %b %d, %a} ${color5}${time %I:%M}${color} 
+#${color}${time %b %d, %a} ${color5}${time %02k:%M}${color} 
+#${image /home/amol/.fluxbox/icons/stock_home.png -p 0,0 -s 24x24 }
+#${color}Swap:${alignr}$swap ${color3} /${color} $swapmax
+#${execi 1000 acpi 2>/dev/null | grep -q . && echo "Batt: "}${execi 10 acpi -b 2>/dev/null | cut -d" " -f 3,4 | sed 's/,$//'}

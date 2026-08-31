@@ -1,0 +1,46 @@
+color {
+    window = "#282828"
+    border = "#3c3836"
+    text = "#ebdbb2"
+    highlight = "#3c3836"
+    scrollbar = "#3c3836"
+    separator = "#504945"
+}
+
+#inner-box {
+    margin: 5px;
+    border: none;
+
+    /* Adicionando propriedades de fonte */
+    font-family: 'Arial', sans-serif;
+    font-size: 14px; /* Substitua 14px pelo tamanho desejado */
+}
+
+window{
+    font-size:14px;
+    background-color:#1d2021;
+    border:1px solid #fe8019;
+    color:#fbf1c7;
+    font-family: monospace;
+    opacity: 0.8;
+}
+
+#entry:selected{
+    background-color:#fabd2f;
+}
+
+#text:selected{
+    color:#1d2021;
+    /* Adicionando propriedades de fonte */
+    font-family: 'Arial', sans-serif;
+    font-size: 18px; /* Substitua 18px pelo tamanho desejado */
+}
+
+#input{
+    background-color:#282828;
+    border:1px solid #fe8019;
+    color:#b8bb26;
+    /* Adicionando propriedades de fonte */
+    font-family: 'Arial', sans-serif; /* Substitua 'Arial' pelo nome da fonte desejada */
+    font-size: 16px; /* Substitua 16px pelo tamanho desejado */
+}

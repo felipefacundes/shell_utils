@@ -1,0 +1,4 @@
+keycode 232 = F5 F5 F5 F5 F5 F5 XF86Switch_VT_5
+keycode 233 = F6 F6 F6 F6 F6 F6 XF86Switch_VT_6
+keycode  71 = XF86MonBrightnessDown NoSymbol XF86MonBrightnessDown
+keycode  72 = XF86MonBrightnessUp NoSymbol XF86MonBrightnessUp

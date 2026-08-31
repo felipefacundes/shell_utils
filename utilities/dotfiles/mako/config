@@ -1,0 +1,27 @@
+background-color=#4c2154
+text-color=#d738ff
+border-color=#f48bfd
+default-timeout=5000
+ignore-timeout=1
+
+[urgency=low]
+border-color=#ff8b4d
+
+[urgency=normal]
+border-color=#f48bfd
+
+[urgency=high]
+border-color=#ff5555
+
+[category=slider]
+anchor=bottom-center
+background-color=#4c2154
+border-color=#f48bfd
+border-radius=12
+default-timeout=2000
+font=monospace 12
+history=0
+layer=overlay
+margin=128
+padding=2
+text-alignment=center

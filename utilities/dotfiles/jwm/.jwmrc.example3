@@ -1,0 +1,256 @@
+<?xml version="1.0"?>
+ 
+<JWM>
+   <!-- Tema para o JWM baseado no tema padrão >
+   <!-- e-mail leandrosansilva@gmail.com -->
+   <RootMenu height="15"  labeled="true" label="Slackware Forever " >
+      <Program  label="Xterm">xterm -bg black -fg white</Program>
+                <Program  label="Firefox">firefox</Program>
+                <Program label="ROX-Filer" >rox</Program>
+ 
+       
+      <Menu label="Pictures">
+         <Program  label="Xpdf">xpdf</Program>
+         <Program  label="Gimp">gimp</Program>
+         <Program  label="Adobe Reader">acroread</Program>
+         <Program  label="Xpaint">xpaint</Program>
+         <Program  label="Sodipodi">sodipodi</Program>
+                        <Program  label="Inkscape">inkscape</Program>
+         <Program  label="Xara Xtrene">xaralx</Program>
+                        <Program  label="ImageMagick">display</Program>
+                        <Program  label="XV">xv</Program>
+      </Menu>
+                <Menu label="Multimidia">
+         <Program label="XMMS">xmms</Program>
+         <Program label="Beep-Media-PLayer">beep-media-player</Program>
+         <Program label="BMPx">beep-media-player-2</Program>
+         <Program label="Xine-Player">xine</Program>
+         <Program label="Audacious">audacious</Program>
+         <Program label="Gxine">gxine</Program>
+         <Program label="Audacity">audacity</Program>
+         <Progran label="Mixer">aumix</Program>
+      </Menu>
+      <Menu label="Terminais">
+         <Program label="Xterm">xterm</Program>
+         <Program label="Eterm">Eterm</Program>
+         <Program label="Aterm">aterm</Program>
+         <Program label="Multi-Aterm">multi-aterm</Program>
+         <Program label="Rxvt">rxvt</Program>
+      </Menu>
+      <Menu  label="Utilidades">
+          <Menu label="Editores">
+             <Program label="Xedit">xedit</Program>
+             <Program label="GVim">gvim</Program>
+             <Program label="Emacs">emacs</Program>
+             <Program label="Adie">adie</Program>
+             <Program label="SciTE">scite</Program>
+             <Menu label="Text-mode">
+                <Program label="Nano">xterm -bg black -fg white -e nano</Program>
+                <Program label="Vim">xterm -bg black -fg white -e vim</Program>
+                <Program label="Vi">xterm -bg black -fg white -e vi</Program>
+                <Program label="Pico">xterm -bg black -fg white -e pico</Program>
+             </Menu>
+          </Menu >
+         <Program label="Calculadora">xcalc</Program>
+         <Program label="GKrellm">gkrellm</Program>
+         <Program label="Xarchiver">xarchiver</Program>
+         <Program  label="Xprop">xprop | xmessage -file -</Program>
+         <Program label="Top">xterm  -bg black -fg white -e top</Program>
+         <Program label="Alsamixer">xterm -bg black fg grey -e alsamixer</Program>
+      </Menu>
+      <Menu label="Internet">
+         <Menu label="Navegadores Web">
+            <Program label="Firefox">firefox</Program>
+            <Program label="Dillo">dillo</Program>
+            <Program label="Opera">opera</Program>
+            <Program label="Links Graphics">links -g</Program>
+            <Program label="Galeon">galeon</Program>
+            <Program label="Mozilla">mozilla -splash</Program>
+            <Program label="SeaMonkey">seamonkey -splash</Program>
+            <Menu label="Text-mode">
+               <Program label="Lynx">xterm -bg black -fg white -e lynx</Program>
+               <Program label="links">xterm -bg black -fg white -e links</Program>
+            </Menu>
+         </Menu>
+         <Menu label="P2P">
+            <Program label="Lmule">lmule</Program>
+            <Program label="Xmule">xmule</Program>
+            <Program label="Limewire">limewire</Program>
+            <Program label="aMule">amule</Program>
+            <Program label="Azereus">azereus</Program>
+         </Menu>
+         <Menu label="Mensagens">
+            <Program label="Gaim">gaim</Program>
+            <Program label="Amsn">amsn</Program>
+            <Program label="Mercury Messenger">mercury</Program>
+            <Program label="Licq">licq</Program>
+         </Menu>   
+         <Program label="gFTP">gftp</Program>
+      </Menu>
+      <Menu label="Acoes das Janelas">
+              <SendTo label="Enviar Para"/>
+                    
+                   <Maximize label="Maximizar/Restaurar" />
+                     <Minimize label="Minimizar" />
+                      <Shade label="Enrolar/Desenrolar" />
+         <Move label="Mover"/>
+                   <Resize label="Redimensionar" />
+                   <Kill label="Assassinar" />
+                   <Close label="Finalizar" />
+      </Menu>
+       
+       
+      <Menu label="JWM-Menu">
+         <Restart label="Reiniciar" />
+         <Exit label="Fechar JWM" confirm="false"/>
+      </Menu>
+       
+       
+       
+   </RootMenu>
+         
+ 
+          
+    
+ 
+   <!-- Additional tray attributes: autohide, width, border, layer, layout -->
+   <Tray  x="0" y="-1" height="25" border="1" layout="horizontal"  halign="center" layer="12">
+ 
+      <!-- Additional TrayButton attribute: label -->
+      <TrayButton label="Slackware" popup="Menu Principal"  />
+      <!-- Additional Swallow attribute: height -->
+      <Swallow name="xload" width="64">
+         xload -nolabel -bg black -fg white -hl blue
+      </Swallow>
+ 
+      <Swallow name="xeyes" width="50">
+         xeyes
+      </Swallow>
+       
+ 
+      <TrayButton label="ROX-Filer" popup="Gerenciador de Arquivos">exec:rox</TrayButton>
+      <TrayButton label="Firefox" popup="Navegador Web">exec:firefox</TrayButton>
+      <TrayButton label="Terminal" popup="Linha de Comando">exec:xterm -bg black -fg white</TrayButton>
+      <TrayButton label="Mostrar Desktop" popup="Minimiza todas as janelas">showdesktop</TrayButton>
+       
+       
+      <Dock/>
+ 
+      <Clock></Clock>   
+ 
+       
+   </Tray>
+    
+   <Tray  x="0" y="0" height="25" border="1">
+ 
+      <!-- Additional Pager attributes; width, height -->
+      <Pager popup="Desktops"/>
+ 
+      <!-- Additional TaskList attribute: maxwidth -->
+        
+      <TaskList maxwidth="200" />
+       
+ 
+      <!-- Additional Swallow attribute: height -->
+      <Swallow name="oclock" height="5" width="35" >
+         oclock
+      </Swallow>
+             
+   </Tray>
+ 
+   <!-- Visual Styles -->
+ 
+   <BorderStyle>
+      <Font>FreeSans-08</Font>
+      <Width>5</Width>
+      <Height>15</Height>
+      <Foreground>white</Foreground>
+      <Background>black</Background>
+      <ActiveForeground>white</ActiveForeground>
+      <ActiveBackground>black</ActiveBackground>
+   </BorderStyle>
+          
+   <TaskListStyle>
+      <Font>FreeSans-08</Font>
+      <ActiveForeground>black</ActiveForeground>
+      <ActiveBackground>white</ActiveBackground>
+   </TaskListStyle>
+ 
+   <!-- Additional TrayStyle attribute: insert -->
+   <TrayStyle>
+      <Font>FreeSans-08:bold</Font>
+      <Background>black</Background>
+      <Foreground>white</Foreground>
+   </TrayStyle>
+ 
+   <PagerStyle>
+      <Outline>black:bold</Outline>
+      <Foreground>white</Foreground>
+      <Background>black</Background>
+      <ActiveForeground>black</ActiveForeground>
+      <ActiveBackground>white</ActiveBackground>
+   </PagerStyle>
+ 
+   <MenuStyle>
+      <Font>FreeSans-12</Font>
+       
+      <Foreground>white</Foreground>
+      <Background>black</Background>
+      <ActiveForeground>black</ActiveForeground>
+      <ActiveBackground>white</ActiveBackground>
+   </MenuStyle>
+ 
+   <PopupStyle>
+      <Font>FreeSans-10</Font>
+      <Outline>black</Outline>
+      <Foreground>black</Foreground>
+      <Background>white</Background>
+   </PopupStyle>
+ 
+   <IconPath>/usr/share/icons/hicolor</IconPath>
+ 
+   <StartupCommand>
+      xsetbg wallpaper.jpg
+   </StartupCommand>
+ 
+   <!-- Virtual Desktops -->
+   <!-- Name tags can be contained within Desktops for desktop names. -->
+   <Desktops count="3"/>
+ 
+   <!-- Double click speed (in milliseconds) -->
+   <DoubleClickSpeed>400</DoubleClickSpeed>
+ 
+   <!-- Double click delta (in pixels) -->
+   <DoubleClickDelta>2</DoubleClickDelta>
+ 
+   <!-- The focus model (sloppy or click) -->
+   <FocusModel>click</FocusModel>
+ 
+   <!-- The snap mode (none, screen, or border) -->
+   <SnapMode distance="10">border</SnapMode>
+ 
+   <!-- The move mode (outline or opaque) -->
+   <MoveMode>opaque</MoveMode>
+ 
+   <!-- The resize mode (outline or opaque) -->
+   <ResizeMode>opaque</ResizeMode>
+ 
+   <!-- Key bindings -->
+   <Key key="Up">up</Key>
+   <Key key="Down">down</Key>
+   <Key key="Right">right</Key>
+   <Key key="Left">left</Key>
+   <Key key="h">left</Key>
+   <Key key="j">down</Key>
+   <Key key="k">up</Key>
+   <Key key="l">right</Key>
+   <Key key="Return">select</Key>
+   <Key key="Escape">escape</Key>
+ 
+   <Key mask="A" key="Tab">next</Key>
+   <Key mask="A" key="F4">close</Key>
+   <Key mask="A" key="#">desktop#</Key>
+ 
+   <Key mask="A" key="F2">window</Key>
+ 
+</JWM>

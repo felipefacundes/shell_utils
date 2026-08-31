@@ -1,0 +1,640 @@
+<?xml version="1.0"?>
+
+<JWM>
+<StartupCommand> exec setxkbmap br abnt2</StartupCommand>
+<StartupCommand> exec tint2</StartupCommand>
+<StartupCommand> exec vattery</StartupCommand>
+<StartupCommand> exec clipit</StartupCommand>
+<StartupCommand> exec #compton --config ~/.config/compton.conf</StartupCommand>
+
+<!-- The root menu, if this is undefined you will not get a menu. -->
+<!-- Additional RootMenu attributes: onroot, labeled, label -->
+<RootMenu height="15" onroot="123">
+<Program icon="kmix.png" label="alsamixer">xterm -T "alsamixer" -e sh -c "/usr/bin/alsamixer"</Program>
+<Program icon="konqueror.png" label="konqueror">konqueror applications:/</Program>
+<Program icon="kopete.png" label="kopete">kopete</Program>
+<Program label="KWrite" icon="/usr/share/icons/Faenza/apps/48/accessories-text-editor.png">kwrite</Program>
+<Program icon="fast-chromium.png" label="fast-chromium">fast-chromium.sh</Program>
+<Program label="LibreOffice Writer" icon="/usr/share/icons/Faenza/apps/48/libreoffice-writer.png">libreoffice --writer</Program>
+<Program label="LibreOffice Calc" icon="/usr/share/icons/Faenza/apps/48/libreoffice-calc.png">libreoffice --calc</Program>
+<Program label="LibreOffice Draw" icon="/usr/share/icons/Faenza/apps/48/libreoffice-draw.png">libreoffice --draw</Program>
+<Program icon="/usr/share/icons/Faenza/apps/48/system-file-manager.png" label="dolphin">dolphin</Program>
+<Program icon="fast-firefox.png" label="fast-firefox">fast-firefox.sh</Program>
+<Program icon="skype.png" label="skype">skype</Program>
+<Program icon="/usr/share/icons/Faenza/apps/48/utilities-terminal.png" label="xfce4-terminal">xfce4-terminal</Program>
+<Separator/>
+<Program icon="gmrun.xpm" label="Run Command">gmrun</Program>
+<!-- <Restart label="Restart" icon="restart.png"/> -->
+<Exit label="Exit" confirm="true" icon="exit.png"/>
+<Restart label="Restart" icon="restart.png"/>
+<Program label="Shutdown" confirm="false" icon="exit.png">/usr/lib/jwm/jwm-poweroff.sh</Program>
+<Separator/>
+<!-- Menu Applications -->
+<Menu label="Applications">
+
+    <!--Menu start-->
+    <Menu label="Settings" icon="/usr/share/icons/Faenza/categories/48/gnome-settings.png">
+        <Program label="3D Acceleration" icon="/usr/share/driconf/driconf-icon.png">driconf</Program>
+        <Program label="ARandR" icon="display">arandr</Program>
+        <Program label="About Razor" icon="/usr/share/icons/Faenza/actions/48/help-about.png">razor-about</Program>
+        <Program label="Adobe Flash Player" icon="/usr/share/icons/Faenza/apps/48/flash-player-properties.png">flash-player-properties</Program>
+        <Program label="Calibrate Touchscreen" icon="/usr/share/pixmaps/xinput_calibrator.svg">/bin/sh -c "xinput_calibrator; cat"</Program>
+        <Program label="GTK Styles and Fonts" icon="/usr/share/icons/kcmgtk.png">kcmshell4 kcmgtk4</Program>
+        <Program label="Java" icon="/usr/share/icons/hicolor/48x48/apps/sun-jcontrol-jre8.png">/usr/lib/jvm/java-8-jre/jre/bin/jcontrol</Program>
+        <Program label="Java Policy Settings" icon="/usr/share/icons/hicolor/48x48/apps/sun-java-jre8.png">/usr/lib/jvm/java-8-jre/jre/bin/policytool</Program>
+        <Program label="KDE Connect" icon="/usr/share/icons/hicolor/48x48/apps/kdeconnect.png">kcmshell4 kcm_kdeconnect</Program>
+        <Program label="KDE System Settings" icon="/usr/share/icons/Faenza/categories/48/preferences-system.png">systemsettings -caption</Program>
+        <Program label="Network Connections" icon="/usr/share/icons/Faenza/apps/48/preferences-system-network.png">nm-connection-editor</Program>
+        <Program label="Notifications" icon="/usr/share/icons/hicolor/48x48/apps/xfce4-notifyd.png">xfce4-notifyd-config</Program>
+        <Program label="Painel de Controle" icon="/usr/share/icons/Faenza/categories/48/preferences-system.png">systemsettings -caption</Program>
+        <Program label="Panel tint2" icon="/usr/share/pixmaps/tint2conf.png">tint2conf</Program>
+        <Program label="Pointing devices" icon="/usr/share/icons/Faenza/apps/48/preferences-desktop-peripherals.png">gpointing-device-settings</Program>
+        <Program label="Privilege granting" icon="/usr/share/pixmaps/gksu.png">gksu-properties</Program>
+        <Program label="Qt Configuration" icon="/usr/share/icons/Faenza/categories/48/preferences-system.png">qtconfig</Program>
+        <Program label="Razor Appearance Configuration" icon="/usr/share/icons/Faenza/apps/48/preferences-desktop-theme.png">razor-config-appearance</Program>
+        <Program label="Razor Autosuspend Configuration" icon="razor-autosuspend">razor-config-autosuspend</Program>
+        <Program label="Razor Configuration Center" icon="/usr/share/icons/Faenza/categories/48/preferences-system.png">razor-config</Program>
+        <Program label="Razor Desktop Configurator" icon="/usr/share/icons/Faenza/categories/48/preferences-desktop.png">razor-config-desktop</Program>
+        <Program label="Razor Freedesktop Notifications Configuration" icon="/usr/share/icons/Faenza/apps/48/preferences-desktop-theme.png">razor-config-notificationd</Program>
+        <Program label="Razor Mouse Configurator" icon="preferences-desktop-mouse">razor-config-mouse</Program>
+        <Program label="Razor Session Configurator" icon="preferences-system-session-services">razor-config-session</Program>
+        <Program label="Razor Shortcut Configuration" icon="/usr/share/icons/Faenza/apps/48/preferences-desktop-keyboard.png">razor-config-globalkeyshortcuts</Program>
+        <Program label="System Settings" icon="/usr/share/icons/Faenza/categories/48/preferences-system.png">systemsettings -caption</Program>
+        <Program label="TouchEgg-GCE" icon="input-tablet">/opt/Touchegg-gce/touchegg-gce</Program>
+        <Program label="Wine Applications" icon="/usr/share/icons/hicolor/48x48/apps/vineyard-preferences.svg">vineyard-preferences</Program>
+        <!--Settings end-->
+    </Menu>
+    <Menu label="Accessories" icon="/usr/share/icons/Faenza/categories/48/applications-accessories.png">
+        <Program label="7-Zip FM" icon="p7zip">7zFM</Program>
+        <Program label="About Xfce" icon="/usr/share/icons/Faenza/actions/48/help-about.png">xfce4-about</Program>
+        <Program label="Akonaditray" icon="akonaditray">akonaditray</Program>
+        <Program label="Ark" icon="/usr/share/icons/hicolor/48x48/apps/ark.png">ark -caption</Program>
+        <Program label="ClipIt" icon="clipit-trayicon">clipit</Program>
+        <Program label="Filelight" icon="/usr/share/icons/hicolor/48x48/apps/filelight.png">filelight</Program>
+        <Program label="Jovie" icon="preferences-desktop-text-to-speech">jovie</Program>
+        <Program label="KAlarm" icon="/usr/share/icons/hicolor/48x48/apps/kalarm.png">kalarm -caption</Program>
+        <Program label="KCalc" icon="/usr/share/icons/Faenza/apps/48/accessories-calculator.png">kcalc -caption</Program>
+        <Program label="KCharSelect" icon="/usr/share/icons/Faenza/apps/48/accessories-character-map.png">kcharselect -caption</Program>
+        <Program label="KFileReplace" icon="/usr/share/icons/hicolor/48x48/apps/kfilereplace.png">kfilereplace -caption</Program>
+        <Program label="KFloppy" icon="/usr/share/icons/hicolor/48x48/apps/kfloppy.png">kfloppy -caption</Program>
+        <Program label="KGpg" icon="/usr/share/icons/hicolor/48x48/apps/kgpg.png">kgpg</Program>
+        <Program label="KJots" icon="/usr/share/icons/hicolor/48x48/apps/kjots.png">kjots -caption</Program>
+        <Program label="KMag" icon="kmag">kmag -caption</Program>
+        <Program label="KMail Import Wizard" icon="kontact-import-wizard">importwizard</Program>
+        <Program label="KMouseTool" icon="/usr/share/icons/Faenza/apps/48/kmousetool.png">kmousetool -caption</Program>
+        <Program label="KMouth" icon="/usr/share/icons/hicolor/48x48/apps/kmouth.png">kmouth -caption</Program>
+        <Program label="KNotes" icon="/usr/share/icons/Faenza/apps/48/knotes.png">knotes</Program>
+        <Program label="KRename" icon="/usr/share/icons/hicolor/48x48/apps/krename.png">krename -caption "%c"</Program>
+        <Program label="KTeaTime" icon="/usr/share/icons/hicolor/48x48/apps/kteatime.png">kteatime</Program>
+        <Program label="KTimeTracker" icon="/usr/share/icons/hicolor/48x48/apps/ktimetracker.png">ktimetracker</Program>
+        <Program label="KTimer" icon="/usr/share/icons/hicolor/48x48/apps/ktimer.png">ktimer</Program>
+        <Program label="KWrite" icon="/usr/share/icons/Faenza/apps/48/accessories-text-editor.png">kwrite</Program>
+        <Program label="Kate" icon="/usr/share/icons/Faenza/apps/48/kate.png">kate -b</Program>
+        <Program label="Kleopatra" icon="/usr/share/icons/hicolor/48x48/apps/kleopatra.png">kleopatra</Program>
+        <Program label="Klipper" icon="klipper">klipper</Program>
+        <Program label="Okteta" icon="/usr/share/icons/hicolor/48x48/apps/okteta.png">okteta -caption</Program>
+        <Program label="PacmanXG" icon="pacmanxg.svg">ssx pacmanxg</Program>
+        <Program label="QStarDict" icon="/usr/share/pixmaps/qstardict.png">qstardict</Program>
+        <Program label="QSynergy" icon="/usr/share/pixmaps/qsynergy.xpm">qsynergy</Program>
+        <Program label="ROX Filer" icon="/usr/share/pixmaps/rox.png">rox</Program>
+        <Program label="Root Terminal" icon="/usr/share/icons/Faenza/apps/48/gksu-root-terminal.png">gksu -l gnome-terminal</Program>
+        <Program label="Screen Reader" icon="/usr/share/icons/Faenza/apps/48/orca.png">orca --replace</Program>
+        <Program label="SuperKaramba" icon="/usr/share/icons/hicolor/48x48/apps/superkaramba.png">superkaramba</Program>
+        <Program label="Sweeper" icon="trash-empty">sweeper</Program>
+        <Program label="Synapse" icon="/usr/share/icons/Faenza/apps/48/synapse.png">synapse</Program>
+        <Program label="Synergy" icon="/usr/share/icons/synergy.ico">synergy</Program>
+        <Program label="Tuxcards" icon="/usr/share/icons/locolor/32x32/apps/tuxcards.png">tuxcards</Program>
+        <Program label="WizNote" icon="/usr/share/icons/hicolor/48x48/apps/wiznote.png">WizNote</Program>
+        <Program label="Xournal" icon="/usr/share/icons/Faenza/apps/48/xournal.png">xournal</Program>
+        <Program label="gedit" icon="/usr/share/icons/Faenza/apps/48/accessories-text-editor.png">gedit</Program>
+        <Program label="geisview" icon="/usr/share/pixmaps/geisview32x32.xpm">geisview</Program>
+        <!--Accessories end-->
+    </Menu>
+    <Menu label="Development" icon="/usr/share/icons/Faenza/categories/48/applications-development.png">
+        <Program label="Akonadi Console" icon="/usr/share/icons/hicolor/48x48/apps/akonadiconsole.png">akonadiconsole</Program>
+        <Program label="Brackets" icon="/usr/share/icons/hicolor/48x48/apps/brackets.png">/opt/brackets/brackets</Program>
+        <Program label="Burp Suite Free Edition" icon="/usr/share/pixmaps/burpsuite.png">burpsuite</Program>
+        <Program label="CMake" icon="/usr/share/pixmaps/CMakeSetup32.png">cmake-gui</Program>
+        <Program label="Cervisia" icon="/usr/share/icons/hicolor/48x48/apps/cervisia.png">cervisia -caption</Program>
+        <Program label="FLUID" icon="/usr/share/icons/hicolor/48x48/apps/fluid.png">fluid</Program>
+        <Program label="GHex" icon="/usr/share/icons/hicolor/48x48/apps/ghex.png">ghex</Program>
+        <Program label="GRC" icon="gnuradio-grc">gnuradio-companion</Program>
+        <Program label="Genymotion" icon="/opt/genymotion/icons/icon.png">/usr/bin/genymotion</Program>
+        <Program label="JOdin3" icon="jodin">jodin</Program>
+        <Program label="KAppTemplate" icon="/usr/share/icons/hicolor/48x48/apps/kapptemplate.png">kapptemplate</Program>
+        <Program label="KCachegrind" icon="/usr/share/icons/hicolor/48x48/apps/kcachegrind.png">kcachegrind -caption</Program>
+        <Program label="KImageMapEditor" icon="/usr/share/icons/hicolor/48x48/apps/kimagemapeditor.png">kimagemapeditor -caption</Program>
+        <Program label="KLinkStatus" icon="/usr/share/icons/hicolor/48x48/apps/klinkstatus.png">klinkstatus  -caption</Program>
+        <Program label="KUIViewer" icon="/usr/share/icons/hicolor/48x48/apps/kuiviewer.png">kuiviewer -caption</Program>
+        <Program label="Kompare" icon="/usr/share/icons/hicolor/48x48/apps/kompare.png">kompare -caption -o</Program>
+        <Program label="Lokalize" icon="lokalize">lokalize -caption</Program>
+        <Program label="Qt4 Assistant" icon="assistant-qt4">assistant-qt4</Program>
+        <Program label="Qt4 Designer" icon="designer-qt4">designer-qt4</Program>
+        <Program label="Qt4 Linguist" icon="/usr/share/icons/hicolor/48x48/apps/linguist-qt4.png">linguist-qt4</Program>
+        <Program label="Qt4 QDbusViewer" icon="qdbusviewer-qt4">qdbusviewer-qt4</Program>
+        <Program label="Shader Maker" icon="/usr/share/pixmaps/shadermaker.png">ShaderMaker</Program>
+        <Program label="Umbrello" icon="/usr/share/icons/hicolor/48x48/apps/umbrello.png">umbrello -caption</Program>
+        <Program label="glslDevil" icon="/usr/share/pixmaps/glsldevil.png">glsldevil</Program>
+        <!--Development end-->
+    </Menu>
+    <Menu label="Education" icon="/usr/share/icons/Faenza/categories/48/applications-science.png">
+        <Program label="Artikulate" icon="/usr/share/icons/hicolor/48x48/apps/artikulate.png">artikulate -caption</Program>
+        <Program label="Avogadro" icon="/usr/share/pixmaps/avogadro-icon.png">avogadro</Program>
+        <Program label="Blinken" icon="/usr/share/icons/hicolor/48x48/apps/blinken.png">blinken</Program>
+        <Program label="Cantor" icon="/usr/share/icons/hicolor/48x48/apps/cantor.png">cantor -caption</Program>
+        <Program label="GeoGebra" icon="/usr/share/pixmaps/geogebra.png">geogebra</Program>
+        <Program label="GoldenDict" icon="/usr/share/icons/Faenza/apps/48/goldendict.png">goldendict</Program>
+        <Program label="KAlgebra" icon="/usr/share/icons/hicolor/48x48/apps/kalgebra.png">kalgebra</Program>
+        <Program label="KAlgebra Mobile" icon="/usr/share/icons/hicolor/48x48/apps/kalgebra.png">kalgebramobile</Program>
+        <Program label="KBruch" icon="/usr/share/icons/hicolor/48x48/apps/kbruch.png">kbruch -caption</Program>
+        <Program label="KGeography" icon="/usr/share/icons/hicolor/48x48/apps/kgeography.png">kgeography</Program>
+        <Program label="KHangMan" icon="/usr/share/icons/hicolor/48x48/apps/khangman.png">khangman -caption</Program>
+        <Program label="KLettres" icon="/usr/share/icons/hicolor/48x48/apps/klettres.png">klettres -caption</Program>
+        <Program label="KStars" icon="/usr/share/icons/hicolor/48x48/apps/kstars.png">kstars -caption</Program>
+        <Program label="KTouch" icon="/usr/share/icons/Faenza/apps/48/ktouch.png">ktouch -caption</Program>
+        <Program label="KTurtle" icon="/usr/share/icons/hicolor/48x48/apps/kturtle.png">kturtle -caption</Program>
+        <Program label="KWordQuiz" icon="/usr/share/icons/hicolor/48x48/apps/kwordquiz.png">kwordquiz -caption</Program>
+        <Program label="Kalzium" icon="/usr/share/icons/hicolor/48x48/apps/kalzium.png">kalzium -caption</Program>
+        <Program label="Kanagram" icon="/usr/share/icons/hicolor/48x48/apps/kanagram.png">kanagram</Program>
+        <Program label="Kig" icon="/usr/share/icons/hicolor/48x48/apps/kig.png">kig -caption</Program>
+        <Program label="Kiten" icon="/usr/share/icons/hicolor/48x48/apps/kiten.png">kiten -caption</Program>
+        <Program label="KmPlot" icon="/usr/share/icons/hicolor/48x48/apps/kmplot.png">kmplot</Program>
+        <Program label="LibreOffice Math" icon="/usr/share/icons/Faenza/apps/48/libreoffice-math.png">libreoffice --math</Program>
+        <Program label="Marble" icon="/usr/share/icons/hicolor/48x48/apps/marble.png">marble-touch</Program>
+        <Program label="Marble" icon="/usr/share/icons/hicolor/48x48/apps/marble.png">marble-mobile</Program>
+        <Program label="Marble" icon="/usr/share/icons/hicolor/48x48/apps/marble.png">marble</Program>
+        <Program label="Marble" icon="/usr/share/icons/hicolor/48x48/apps/marble.png">marble-qt</Program>
+        <Program label="Pairs" icon="/usr/share/icons/hicolor/48x48/apps/pairs.png">pairs -caption</Program>
+        <Program label="Pairs Theme Editor" icon="/usr/share/icons/hicolor/48x48/apps/pairseditor.png">pairseditor -caption</Program>
+        <Program label="Parley" icon="/usr/share/icons/hicolor/48x48/apps/parley.png">parley</Program>
+        <Program label="Rocs" icon="/usr/share/icons/hicolor/48x48/apps/rocs.png">rocs -caption</Program>
+        <Program label="Step" icon="/usr/share/icons/hicolor/48x48/apps/step.png">step -caption</Program>
+        <!--Education end-->
+    </Menu>
+    <Menu label="Games" icon="/usr/share/icons/Faenza/categories/48/applications-games.png">
+        <Program label="Blinken" icon="/usr/share/icons/hicolor/48x48/apps/blinken.png">blinken</Program>
+        <Program label="Blockout II" icon="/usr/share/pixmaps/blockout2.png">blockout2</Program>
+        <Program label="Bomber" icon="/usr/share/icons/hicolor/48x48/apps/bomber.png">bomber -caption</Program>
+        <Program label="Bovo" icon="/usr/share/icons/hicolor/48x48/apps/bovo.png">bovo -caption</Program>
+        <Program label="Cublock" icon="/usr/share/pixmaps/cublock.xpm">cublock</Program>
+        <Program label="Cuyo" icon="cuyo">cuyo</Program>
+        <Program label="Dolphin Emulator" icon="/usr/share/pixmaps/dolphin-emu.xpm">dolphin-emu</Program>
+        <Program label="DreamChess" icon="/usr/share/dreamchess/icon.png">dreamchess</Program>
+        <Program label="Frozen Bubble" icon="/usr/share/pixmaps/frozen-bubble.png">/usr/bin/vendor_perl/frozen-bubble</Program>
+        <Program label="Granatier" icon="/usr/share/icons/hicolor/48x48/apps/granatier.png">granatier</Program>
+        <Program label="KAtomic" icon="/usr/share/icons/hicolor/48x48/apps/katomic.png">katomic -caption</Program>
+        <Program label="KBlackBox" icon="/usr/share/icons/hicolor/48x48/apps/kblackbox.png">kblackbox -caption</Program>
+        <Program label="KBlocks" icon="/usr/share/icons/hicolor/48x48/apps/kblocks.png">kblocks -caption</Program>
+        <Program label="KBounce" icon="/usr/share/icons/hicolor/48x48/apps/kbounce.png">kbounce -caption</Program>
+        <Program label="KBreakOut" icon="/usr/share/icons/hicolor/48x48/apps/kbreakout.png">kbreakout -caption</Program>
+        <Program label="KDiamond" icon="/usr/share/icons/hicolor/48x48/apps/kdiamond.png">kdiamond -caption</Program>
+        <Program label="KFourInLine" icon="/usr/share/icons/hicolor/48x48/apps/kfourinline.png">kfourinline</Program>
+        <Program label="KGoldrunner" icon="/usr/share/icons/hicolor/48x48/apps/kgoldrunner.png">kgoldrunner</Program>
+        <Program label="KHangMan" icon="/usr/share/icons/hicolor/48x48/apps/khangman.png">khangman -caption</Program>
+        <Program label="KJumpingCube" icon="/usr/share/icons/hicolor/48x48/apps/kjumpingcube.png">kjumpingcube -caption</Program>
+        <Program label="KMahjongg" icon="/usr/share/icons/hicolor/48x48/apps/kmahjongg.png">kmahjongg -caption</Program>
+        <Program label="KMines" icon="/usr/share/icons/hicolor/48x48/apps/kmines.png">kmines -caption</Program>
+        <Program label="KNetWalk" icon="/usr/share/icons/hicolor/48x48/apps/knetwalk.png">knetwalk -caption</Program>
+        <Program label="KPatience" icon="/usr/share/icons/hicolor/48x48/apps/kpat.png">kpat -caption</Program>
+        <Program label="KReversi" icon="/usr/share/icons/hicolor/48x48/apps/kreversi.png">kreversi -caption</Program>
+        <Program label="KSnake" icon="/usr/share/icons/hicolor/48x48/apps/kdesnake.png">ktron -snake -caption</Program>
+        <Program label="KSnakeDuel" icon="/usr/share/icons/hicolor/48x48/apps/ktron.png">ktron -caption</Program>
+        <Program label="KSpaceDuel" icon="/usr/share/icons/hicolor/48x48/apps/kspaceduel.png">kspaceduel -caption</Program>
+        <Program label="KSquares" icon="/usr/share/icons/hicolor/48x48/apps/ksquares.png">ksquares -caption</Program>
+        <Program label="KSudoku" icon="ksudoku">ksudoku -caption</Program>
+        <Program label="Kajongg" icon="/usr/share/icons/hicolor/48x48/apps/kajongg.png">kajongg</Program>
+        <Program label="Kanagram" icon="/usr/share/icons/hicolor/48x48/apps/kanagram.png">kanagram</Program>
+        <Program label="Kapman" icon="/usr/share/icons/hicolor/48x48/apps/kapman.png">kapman</Program>
+        <Program label="Kigo" icon="/usr/share/icons/hicolor/48x48/apps/kigo.png">kigo -caption</Program>
+        <Program label="Killbots" icon="/usr/share/icons/hicolor/48x48/apps/killbots.png">killbots -caption</Program>
+        <Program label="Kiriki" icon="/usr/share/icons/hicolor/48x48/apps/kiriki.png">kiriki -caption</Program>
+        <Program label="Klickety" icon="/usr/share/icons/hicolor/48x48/apps/klickety.png">klickety -caption</Program>
+        <Program label="Kolf" icon="/usr/share/icons/hicolor/48x48/apps/kolf.png">kolf</Program>
+        <Program label="Kollision" icon="/usr/share/icons/hicolor/48x48/apps/kollision.png">kollision</Program>
+        <Program label="Kolor Lines" icon="/usr/share/icons/hicolor/48x48/apps/klines.png">klines -caption</Program>
+        <Program label="Konquest" icon="/usr/share/icons/hicolor/48x48/apps/konquest.png">konquest -caption</Program>
+        <Program label="KsirK" icon="/usr/share/icons/hicolor/48x48/apps/ksirk.png">ksirk -caption</Program>
+        <Program label="KsirK Skin Editor" icon="/usr/share/icons/Faenza/apps/48/preferences-desktop-locale.png">ksirkskineditor -caption</Program>
+        <Program label="Kubrick" icon="/usr/share/icons/hicolor/48x48/apps/kubrick.png">kubrick</Program>
+        <Program label="LSkat" icon="/usr/share/icons/hicolor/48x48/apps/lskat.png">lskat</Program>
+        <Program label="Multitetris" icon="multitet">multitet</Program>
+        <Program label="Naval Battle" icon="/usr/share/icons/hicolor/48x48/apps/knavalbattle.png">knavalbattle -caption</Program>
+        <Program label="PCSX2" icon="/usr/share/pixmaps/pcsx2.xpm">pcsx2</Program>
+        <Program label="PainTown" icon="/usr/share/pixmaps/paintown.png">paintown</Program>
+        <Program label="Pairs" icon="/usr/share/icons/hicolor/48x48/apps/pairs.png">pairs -caption</Program>
+        <Program label="Pairs Theme Editor" icon="/usr/share/icons/hicolor/48x48/apps/pairseditor.png">pairseditor -caption</Program>
+        <Program label="Palapeli" icon="/usr/share/icons/hicolor/48x48/apps/palapeli.png">palapeli</Program>
+        <Program label="Pathological" icon="/usr/share/pixmaps/pathological.xpm">pathological</Program>
+        <Program label="PlayOnLinux" icon="/usr/share/playonlinux/etc/playonlinux.png">playonlinux</Program>
+        <Program label="PokerTH" icon="/usr/share/pixmaps/pokerth.png">pokerth</Program>
+        <Program label="Potato Guy" icon="/usr/share/icons/hicolor/48x48/apps/ktuberling.png">ktuberling -caption</Program>
+        <Program label="QMC2 (SDLMAME)" icon="/usr/share/qmc2/img/mame.png">qmc2-sdlmame</Program>
+        <Program label="SameGame" icon="/usr/share/icons/hicolor/48x48/apps/ksame.png">klickety --KSameMode -caption</Program>
+        <Program label="Shisen-Sho" icon="/usr/share/icons/hicolor/48x48/apps/kshisen.png">kshisen -caption</Program>
+        <Program label="picmi" icon="/usr/share/icons/hicolor/48x48/apps/picmi.png">picmi</Program>
+        <!--Games end-->
+    </Menu>
+    <Menu label="Graphics" icon="/usr/share/icons/Faenza/categories/48/applications-graphics.png">
+        <Program label="AcquireImages" icon="scanner">scangui -caption</Program>
+        <Program label="Blender" icon="/usr/share/icons/Faenza/apps/48/blender.png">blender</Program>
+        <Program label="CMYKTool" icon="/usr/share/icons/hicolor/48x48/apps/cmyktool.png">cmyktool</Program>
+        <Program label="CinePaint" icon="/usr/share/pixmaps/cinepaint.png">cinepaint-remote</Program>
+        <Program label="DNGConverter" icon="/usr/share/icons/hicolor/48x48/apps/kipi-dngconverter.png">dngconverter -caption</Program>
+        <Program label="Darktable" icon="/usr/share/icons/hicolor/48x48/apps/darktable.png">darktable</Program>
+        <Program label="Document Viewer" icon="/usr/share/icons/Faenza/apps/48/evince.png">evince</Program>
+        <Program label="E-book Viewer" icon="/usr/share/pixmaps/calibre-viewer.png">ebook-viewer --detach</Program>
+        <Program label="ExpoBlending" icon="/usr/share/icons/hicolor/48x48/apps/kipi-expoblending.png">expoblending -caption</Program>
+        <Program label="Feh" icon="/usr/share/feh/images/feh.png">feh</Program>
+        <Program label="FontForge" icon="/usr/share/icons/hicolor/48x48/apps/fontforge.png">fontforge</Program>
+        <Program label="Fyre" icon="fyre">fyre</Program>
+        <Program label="GNU Image Manipulation Program" icon="/usr/share/icons/Faenza/apps/48/gimp.png">gimp-2.8</Program>
+        <Program label="GNU Paint" icon="/usr/share/icons/Faenza/apps/48/gnome-logo-icon-transparent.png">gpaint</Program>
+        <Program label="Gwenview" icon="/usr/share/icons/Faenza/apps/48/gwenview.png">gwenview -caption</Program>
+        <Program label="Hugin Batch Processor" icon="/usr/share/pixmaps/ptbatcher.png">PTBatcherGUI</Program>
+        <Program label="Hugin Calibrate Lens" icon="/usr/share/pixmaps/hugin.png">calibrate_lens_gui</Program>
+        <Program label="Hugin Panorama Creator" icon="/usr/share/pixmaps/hugin.png">hugin</Program>
+        <Program label="Image Viewer" icon="/usr/share/icons/Faenza/apps/48/eog.png">eog</Program>
+        <Program label="Inkscape" icon="/usr/share/icons/Faenza/apps/48/inkscape.png">inkscape</Program>
+        <Program label="KColorChooser" icon="kcolorchooser">kcolorchooser</Program>
+        <Program label="KPhotoAlbum" icon="/usr/share/icons/hicolor/48x48/apps/kphotoalbum.png">kphotoalbum</Program>
+        <Program label="KRuler" icon="/usr/share/icons/hicolor/48x48/apps/kruler.png">kruler</Program>
+        <Program label="KSnapshot" icon="/usr/share/icons/Faenza/apps/48/ksnapshot.png">ksnapshot -caption</Program>
+        <Program label="Karbon" icon="/usr/share/icons/hicolor/48x48/apps/calligrakarbon.png">karbon</Program>
+        <Program label="KolourPaint" icon="/usr/share/icons/hicolor/48x48/apps/kolourpaint.png">kolourpaint</Program>
+        <Program label="Krita" icon="/usr/share/icons/hicolor/48x48/apps/calligrakrita.png">krita</Program>
+        <Program label="Krita Gemini" icon="/usr/share/icons/hicolor/48x48/apps/calligrakrita.png">kritagemini</Program>
+        <Program label="Krita Sketch" icon="/usr/share/icons/hicolor/48x48/apps/calligrakrita.png">kritasketch</Program>
+        <Program label="LRF Viewer" icon="/usr/share/pixmaps/calibre-viewer.png">lrfviewer</Program>
+        <Program label="LibreOffice Draw" icon="/usr/share/icons/Faenza/apps/48/libreoffice-draw.png">libreoffice --draw</Program>
+        <Program label="LightZone" icon="/usr/share/icons/hicolor/48x48/apps/LightZone.png">/usr/bin/lightzone</Program>
+        <Program label="Luminance HDR" icon="/usr/share/icons/hicolor/48x48/apps/luminance-hdr.png">luminance-hdr --gui</Program>
+        <Program label="Lux" icon="/usr/share/pixmaps/luxrender.svg">luxrender</Program>
+        <Program label="Okular" icon="/usr/share/icons/hicolor/48x48/apps/okular.png">okular -caption</Program>
+        <Program label="Open in RAW editor" icon="/usr/share/icons/hicolor/48x48/actions/open-raw.png">open-raw.pl</Program>
+        <Program label="Panorama" icon="/usr/share/icons/hicolor/48x48/apps/kipi-panorama.png">panoramagui -caption</Program>
+        <Program label="Photo Layouts Editor" icon="/usr/share/icons/hicolor/48x48/apps/photolayoutseditor.png">photolayoutseditor</Program>
+        <Program label="Pinta" icon="/usr/share/pixmaps/pinta.xpm">pinta</Program>
+        <Program label="Rawstudio" icon="/usr/share/icons/rawstudio.png">rawstudio</Program>
+        <Program label="Scribus" icon="/usr/share/scribus/icons/scribus.png">scribus</Program>
+        <Program label="Skanlite" icon="scanner">skanlite -caption</Program>
+        <Program label="UFRaw" icon="/usr/share/pixmaps/ufraw.png">ufraw</Program>
+        <Program label="XSane - Scanning" icon="/usr/share/pixmaps/xsane.xpm">xsane</Program>
+        <Program label="digiKam" icon="/usr/share/icons/hicolor/48x48/apps/digikam.png">digikam -caption</Program>
+        <Program label="showFoto" icon="/usr/share/icons/hicolor/48x48/apps/showfoto.png">showfoto -caption</Program>
+        <!--Graphics end-->
+    </Menu>
+    <Menu label="Internet" icon="/usr/share/icons/Faenza/categories/48/applications-internet.png">
+        <Program label="Akregator" icon="/usr/share/icons/Faenza/apps/48/akregator.png">akregator -caption</Program>
+        <Program label="Avahi SSH Server Browser" icon="network-wired">/usr/bin/bssh</Program>
+        <Program label="Avahi VNC Server Browser" icon="network-wired">/usr/bin/bvnc</Program>
+        <Program label="Blogilo" icon="/usr/share/icons/hicolor/48x48/apps/blogilo.png">blogilo -caption</Program>
+        <Program label="Chromium" icon="/usr/share/icons/Faenza/apps/48/chromium.png">chromium</Program>
+        <Program label="Cloud Storage Manager" icon="/usr/share/icons/Faenza/apps/48/kmail.png">storageservicemanager</Program>
+        <Program label="Contact Theme Editor" icon="/usr/share/icons/hicolor/48x48/apps/kaddressbook.png">contactthemeeditor</Program>
+        <Program label="Fast-Chromium" icon="/usr/share/pixmaps/fast-chromium.png">fast-chromium.sh</Program>
+        <Program label="Fast-Firefox" icon="fast-firefox">/usr/bin/fast-firefox.sh</Program>
+        <Program label="Firefox" icon="/usr/share/icons/Faenza/apps/48/firefox.png">/usr/lib/firefox/firefox</Program>
+        <Program label="Gwget Download Manager" icon="/usr/share/pixmaps/gwget.png">gwget</Program>
+        <Program label="IM Contacts" icon="/usr/share/icons/hicolor/48x48/apps/telepathy-kde.png">ktp-contactlist</Program>
+        <Program label="KGet" icon="/usr/share/icons/hicolor/48x48/apps/kget.png">kget -caption</Program>
+        <Program label="KMail" icon="/usr/share/icons/Faenza/apps/48/kmail.png">kmail -caption</Program>
+        <Program label="KMail Header Theme Editor" icon="/usr/share/icons/Faenza/apps/48/kmail.png">headerthemeeditor</Program>
+        <Program label="KNetAttach" icon="/usr/share/icons/hicolor/48x48/apps/knetattach.png">knetattach</Program>
+        <Program label="KNode" icon="/usr/share/icons/hicolor/48x48/apps/knode.png">knode -caption</Program>
+        <Program label="KPPP" icon="/usr/share/icons/hicolor/48x48/apps/kppp.png">kppp</Program>
+        <Program label="KRDC" icon="krdc">krdc -caption</Program>
+        <Program label="KTnef" icon="/usr/share/icons/hicolor/48x48/apps/ktnef.png">ktnef</Program>
+        <Program label="Konqueror" icon="/usr/share/icons/hicolor/48x48/apps/konqueror.png">kfmclient openProfile webbrowsing</Program>
+        <Program label="Kopete" icon="/usr/share/icons/Faenza/apps/48/kopete.png">kopete -caption</Program>
+        <Program label="Krfb" icon="krfb">krfb -caption</Program>
+        <Program label="MBoxImporter" icon="/usr/share/icons/Faenza/apps/48/kmail.png">mboximporter</Program>
+        <Program label="Pidgin Internet Messenger" icon="/usr/share/icons/Faenza/apps/48/pidgin.png">pidgin</Program>
+        <Program label="Qtransmission Bittorrent Client" icon="/usr/share/pixmaps/transmission-qt.png">transmission-qt</Program>
+        <Program label="QuickSynergy" icon="/usr/share/pixmaps/quicksynergy.png">quicksynergy</Program>
+        <Program label="Skype" icon="/usr/share/icons/Faenza/apps/48/skype.png">skype</Program>
+        <Program label="Tor-Browser (pt-PT)" icon="/usr/share/pixmaps/tor-browser-pt.png">/usr/bin/tor-browser-pt</Program>
+        <Program label="Web" icon="/usr/share/icons/Faenza/apps/48/web-browser.png">epiphany</Program>
+        <Program label="Zenmap" icon="/usr/share/zenmap/pixmaps/zenmap.png">zenmap</Program>
+        <Program label="Zenmap (as root)" icon="/usr/share/zenmap/pixmaps/zenmap.png">/usr/share/zenmap/su-to-zenmap.sh</Program>
+        <!--Internet end-->
+    </Menu>
+    <Menu label="Multimedia" icon="/usr/share/icons/Faenza/categories/48/applications-multimedia.png">
+        <Program label="AMZ Downloader" icon="download">amzdownloader --amz</Program>
+        <Program label="Amarok" icon="/usr/share/icons/Faenza/apps/48/amarok.png">amarok</Program>
+        <Program label="Audex" icon="/usr/share/icons/hicolor/48x48/apps/audex.png">audex</Program>
+        <Program label="Dragon Player" icon="/usr/share/icons/hicolor/48x48/apps/dragonplayer.png">dragon</Program>
+        <Program label="FFmpeg media player" icon="/usr/share/icons/Faenza/apps/48/vlc.png">/usr/bin/ffplay</Program>
+        <Program label="Gespeaker" icon="/usr/share/gespeaker/data/icons/gespeaker.svg">/usr/bin/gespeaker</Program>
+        <Program label="JuK" icon="/usr/share/icons/hicolor/48x48/apps/juk.png">juk -caption</Program>
+        <Program label="KMix" icon="/usr/share/icons/hicolor/48x48/apps/kmix.png">kmix -caption</Program>
+        <Program label="Kaffeine" icon="/usr/share/icons/Faenza/apps/48/kaffeine.png">kaffeine</Program>
+        <Program label="Kdenlive" icon="/usr/share/icons/hicolor/48x48/apps/kdenlive.png">kdenlive -caption</Program>
+        <Program label="KsCD" icon="/usr/share/icons/hicolor/48x48/apps/kscd.png">kscd -caption</Program>
+        <Program label="LMMS" icon="/usr/share/pixmaps/lmms.png">env QT_X11_NO_NATIVE_MENUBAR=1 lmms</Program>
+        <Program label="Mopidy" icon="audio-x-generic">mopidy</Program>
+        <Program label="OpenShot Video Editor" icon="/usr/share/icons/Faenza/apps/48/openshot.png">openshot</Program>
+        <Program label="Plasma Media Center" icon="/usr/share/icons/Faenza/categories/48/applications-multimedia.png">plasma-mediacenter -graphicssystem raster</Program>
+        <Program label="Qt V4L2 test Utility" icon="qv4l2">qv4l2</Program>
+        <Program label="QtMPC" icon="QtMPC">QtMPC</Program>
+        <Program label="RecordItNow" icon="recorditnow">recorditnow</Program>
+        <Program label="SMPlayer" icon="/usr/share/icons/Faenza/apps/48/smplayer.png">smplayer</Program>
+        <Program label="SMPlayer YouTube Browser" icon="/usr/share/icons/hicolor/48x48/apps/smtube.png">smtube</Program>
+        <Program label="VLC media player" icon="/usr/share/icons/Faenza/apps/48/vlc.png">/usr/bin/vlc --started-from-file</Program>
+        <Program label="Video4Linux Control Panel" icon="/usr/share/icons/v4l2ucp.png">v4l2ucp</Program>
+        <Program label="Webcam Application" icon="/usr/share/pixmaps/wxcam.png">wxcam</Program>
+        <Program label="Winff" icon="/usr/share/icons/hicolor/48x48/apps/winff.png">winff</Program>
+        <Program label="XBMC Media Center" icon="/usr/share/icons/Faenza/apps/48/xbmc.png">xbmc</Program>
+        <Program label="avidemux (Qt)" icon="/usr/share/pixmaps/avidemux.png">avidemux2_qt4</Program>
+        <Program label="mkvinfo" icon="/usr/share/icons/hicolor/48x48/apps/mkvinfo.png">mkvinfo-gtk -g</Program>
+        <Program label="mkvmerge GUI" icon="/usr/share/icons/hicolor/48x48/apps/mkvmergeGUI.png">mmg</Program>
+        <Program label="xine" icon="/usr/share/icons/Faenza/apps/48/xine.png">xine</Program>
+        <!--Multimedia end-->
+    </Menu>
+    <Menu label="Office" icon="/usr/share/icons/Faenza/categories/48/applications-office.png">
+        <Program label="Braindump" icon="/usr/share/icons/hicolor/48x48/apps/braindump.png">braindump</Program>
+        <Program label="Calibre" icon="/usr/share/pixmaps/calibre-gui.png">calibre --detach</Program>
+        <Program label="Calligra Author" icon="/usr/share/icons/hicolor/48x48/apps/calligraauthor.png">calligraauthor</Program>
+        <Program label="Calligra Flow" icon="/usr/share/icons/hicolor/48x48/apps/calligraflow.png">calligraflow</Program>
+        <Program label="Calligra Sheets" icon="/usr/share/icons/hicolor/48x48/apps/calligrasheets.png">calligrasheets</Program>
+        <Program label="Calligra Stage" icon="/usr/share/icons/hicolor/48x48/apps/calligrastage.png">calligrastage</Program>
+        <Program label="Calligra Words" icon="/usr/share/icons/hicolor/48x48/apps/calligrawords.png">calligrawords</Program>
+        <Program label="Cloud Storage Manager" icon="/usr/share/icons/Faenza/apps/48/kmail.png">storageservicemanager</Program>
+        <Program label="Contact Theme Editor" icon="/usr/share/icons/hicolor/48x48/apps/kaddressbook.png">contactthemeeditor</Program>
+        <Program label="Document Viewer" icon="/usr/share/icons/Faenza/apps/48/evince.png">evince</Program>
+        <Program label="Edit E-book" icon="/usr/share/pixmaps/calibre-ebook-edit.png">ebook-edit --detach</Program>
+        <Program label="GoldenDict" icon="/usr/share/icons/Faenza/apps/48/goldendict.png">goldendict</Program>
+        <Program label="KAddressBook" icon="/usr/share/icons/hicolor/48x48/apps/kaddressbook.png">kaddressbook</Program>
+        <Program label="KAddressbook import file" icon="/usr/share/icons/Faenza/apps/48/kmail.png">kaddressbook --import</Program>
+        <Program label="KMail" icon="/usr/share/icons/Faenza/apps/48/kmail.png">kmail -caption</Program>
+        <Program label="KMail Header Theme Editor" icon="/usr/share/icons/Faenza/apps/48/kmail.png">headerthemeeditor</Program>
+        <Program label="KOrganizer" icon="/usr/share/icons/Faenza/apps/48/korganizer.png">korganizer</Program>
+        <Program label="KTimeTracker" icon="/usr/share/icons/hicolor/48x48/apps/ktimetracker.png">ktimetracker</Program>
+        <Program label="KTnef" icon="/usr/share/icons/hicolor/48x48/apps/ktnef.png">ktnef</Program>
+        <Program label="Karbon" icon="/usr/share/icons/hicolor/48x48/apps/calligrakarbon.png">karbon</Program>
+        <Program label="Kexi" icon="/usr/share/icons/hicolor/48x48/apps/calligrakexi.png">kexi</Program>
+        <Program label="Kontact" icon="/usr/share/icons/hicolor/48x48/apps/kontact.png">kontact</Program>
+        <Program label="LibreOffice" icon="/usr/share/icons/Faenza/apps/48/libreoffice-startcenter.png">libreoffice</Program>
+        <Program label="LibreOffice Base" icon="/usr/share/icons/Faenza/apps/48/libreoffice-base.png">libreoffice --base</Program>
+        <Program label="LibreOffice Calc" icon="/usr/share/icons/Faenza/apps/48/libreoffice-calc.png">libreoffice --calc</Program>
+        <Program label="LibreOffice Draw" icon="/usr/share/icons/Faenza/apps/48/libreoffice-draw.png">libreoffice --draw</Program>
+        <Program label="LibreOffice Impress" icon="/usr/share/icons/Faenza/apps/48/libreoffice-impress.png">libreoffice --impress</Program>
+        <Program label="LibreOffice Math" icon="/usr/share/icons/Faenza/apps/48/libreoffice-math.png">libreoffice --math</Program>
+        <Program label="LibreOffice Writer" icon="/usr/share/icons/Faenza/apps/48/libreoffice-writer.png">libreoffice --writer</Program>
+        <Program label="Lokalize" icon="lokalize">lokalize -caption</Program>
+        <Program label="MBoxImporter" icon="/usr/share/icons/Faenza/apps/48/kmail.png">mboximporter</Program>
+        <Program label="Okular" icon="/usr/share/icons/hicolor/48x48/apps/okular.png">okular -caption</Program>
+        <Program label="Plan" icon="/usr/share/icons/hicolor/48x48/apps/calligraplan.png">calligraplan</Program>
+        <Program label="Plan WorkPackage Handler" icon="/usr/share/icons/hicolor/48x48/apps/calligraplanwork.png">calligraplanwork</Program>
+        <Program label="Tellico" icon="/usr/share/icons/hicolor/48x48/apps/tellico.png">tellico -caption</Program>
+        <Program label="Tuxcards" icon="/usr/share/icons/locolor/32x32/apps/tuxcards.png">tuxcards</Program>
+        <Program label="qOrganizer" icon="/usr/share/pixmaps/qorganizer.png">qorganizer</Program>
+        <Program label="skrooge" icon="/usr/share/icons/hicolor/48x48/apps/skrooge.png">skrooge</Program>
+        <!--Office end-->
+    </Menu>
+    <Menu label="Science" icon="/usr/share/icons/Faenza/categories/48/applications-science.png">
+        <Program label="Avogadro" icon="/usr/share/pixmaps/avogadro-icon.png">avogadro</Program>
+        <Program label="Cantor" icon="/usr/share/icons/hicolor/48x48/apps/cantor.png">cantor -caption</Program>
+        <Program label="GeoGebra" icon="/usr/share/pixmaps/geogebra.png">geogebra</Program>
+        <Program label="KAlgebra" icon="/usr/share/icons/hicolor/48x48/apps/kalgebra.png">kalgebra</Program>
+        <Program label="KAlgebra Mobile" icon="/usr/share/icons/hicolor/48x48/apps/kalgebra.png">kalgebramobile</Program>
+        <Program label="KStars" icon="/usr/share/icons/hicolor/48x48/apps/kstars.png">kstars -caption</Program>
+        <Program label="Kalzium" icon="/usr/share/icons/hicolor/48x48/apps/kalzium.png">kalzium -caption</Program>
+        <Program label="LibreOffice Math" icon="/usr/share/icons/Faenza/apps/48/libreoffice-math.png">libreoffice --math</Program>
+        <Program label="R" icon="/usr/share/pixmaps/r.png">R</Program>
+        <Program label="Rocs" icon="/usr/share/icons/hicolor/48x48/apps/rocs.png">rocs -caption</Program>
+        <!--Science end-->
+    </Menu>
+    <Menu label="System" icon="/usr/share/icons/Faenza/categories/48/applications-system.png">
+        <Program label="About Razor" icon="/usr/share/icons/Faenza/actions/48/help-about.png">razor-about</Program>
+        <Program label="Avahi Zeroconf Browser" icon="network-wired">/usr/bin/avahi-discover</Program>
+        <Program label="Boxes" icon="/usr/share/icons/hicolor/48x48/apps/gnome-boxes.png">gnome-boxes</Program>
+        <Program label="Cairo-Dock" icon="/usr/share/pixmaps/cairo-dock.svg">cairo-dock</Program>
+        <Program label="Cairo-Dock (Fallback Mode)" icon="/usr/share/pixmaps/cairo-dock.svg">cairo-dock -A</Program>
+        <Program label="Calibrate Touchscreen" icon="/usr/share/pixmaps/xinput_calibrator.svg">/bin/sh -c "xinput_calibrator; cat"</Program>
+        <Program label="Configuration Editor" icon="/usr/share/icons/Faenza/apps/48/gconf-editor.png">gconf-editor</Program>
+        <Program label="Dolphin" icon="/usr/share/icons/Faenza/apps/48/system-file-manager.png">dolphin -caption</Program>
+        <Program label="GParted" icon="/usr/share/icons/Faenza/apps/48/gparted.png">/usr/bin/gparted_polkit</Program>
+        <Program label="Heimdall" icon="/usr/share/pixmaps/heimdall.png">heimdall-frontend</Program>
+        <Program label="KDiskFree" icon="/usr/share/icons/hicolor/48x48/apps/kdf.png">kdf -caption</Program>
+        <Program label="KInfoCenter" icon="hwinfo">kinfocenter</Program>
+        <Program label="KRandRTray" icon="preferences-desktop-display-randr">krandrtray</Program>
+        <Program label="KSysGuard" icon="/usr/share/icons/Faenza/apps/48/utilities-system-monitor.png">ksysguard</Program>
+        <Program label="KSystemLog" icon="/usr/share/icons/Faenza/apps/48/utilities-log-viewer.png">ksystemlog -caption</Program>
+        <Program label="KUser" icon="/usr/share/icons/Faenza/apps/48/kuser.png">kuser -caption</Program>
+        <Program label="KWalletManager" icon="/usr/share/icons/hicolor/48x48/apps/kwalletmanager.png">kwalletmanager</Program>
+        <Program label="Konsole" icon="/usr/share/icons/Faenza/apps/48/utilities-terminal.png">konsole</Program>
+        <Program label="Krfb" icon="krfb">krfb -caption</Program>
+        <Program label="KwikDisk" icon="/usr/share/icons/hicolor/48x48/apps/kwikdisk.png">kwikdisk -caption</Program>
+        <Program label="Leave" icon="/usr/share/icons/Faenza/actions/48/system-shutdown.png">razor-power</Program>
+        <Program label="Manage Printing" icon="/usr/share/icons/Faenza/apps/48/cups.png">/usr/bin/xdg-open http://localhost:631/</Program>
+        <Program label="Meu Computador" icon="mycomputer">dolphin -caption</Program>
+        <Program label="NmapSI4 - Full mode" icon="nmapsi4">kdesu nmapsi4</Program>
+        <Program label="NmapSI4 - User mode" icon="nmapsi4">nmapsi4</Program>
+        <Program label="Oracle VM VirtualBox" icon="/usr/share/icons/Faenza/apps/48/virtualbox.png">VirtualBox</Program>
+        <Program label="QCmsEvents" icon="/usr/share/pixmaps/qcmsevents.svg">qcmsevents</Program>
+        <Program label="ROX Filer" icon="/usr/share/pixmaps/rox.png">rox</Program>
+        <Program label="Reactivate HP LaserJet 1018/1020 after reloading paper" icon="/usr/share/pixmaps/hplj1020_icon.png">wish /usr/share/foo2zjs/hplj10xx_gui.tcl</Program>
+        <Program label="Tdfsb" icon="/usr/share/pixmaps/tdfsb.png">tdfsb</Program>
+        <Program label="TrueCrypt" icon="/usr/share/icons/Faenza/apps/48/truecrypt.png">truecrypt</Program>
+        <Program label="UNetbootin" icon="/usr/share/icons/hicolor/48x48/apps/unetbootin.png">/usr/bin/unetbootin_polkit</Program>
+        <Program label="UXTerm" icon="/usr/share/icons/Faenza/apps/48/xterm-color_48x48.png">uxterm</Program>
+        <Program label="Wireshark (QT)" icon="/usr/share/icons/Faenza/apps/48/wireshark.png">wireshark-qt</Program>
+        <Program label="XTerm" icon="/usr/share/icons/Faenza/apps/48/xterm-color_48x48.png">xterm</Program>
+        <Program label="Xfce Terminal" icon="/usr/share/icons/Faenza/apps/48/utilities-terminal.png">xfce4-terminal</Program>
+        <Program label="dconf Editor" icon="/usr/share/icons/Faenza/apps/48/dconf-editor.png">dconf-editor</Program>
+        <!--System end-->
+    </Menu>
+    <Menu label="Others" icon="applications-others">
+        <Program label="Find Files/Folders" icon="/usr/share/icons/Faenza/actions/48/kfind.png">kfind</Program>
+        <Program label="Help" icon="/usr/share/icons/Faenza/apps/48/help-browser.png">khelpcenter</Program>
+        <Program label="Quadra" icon="/usr/share/pixmaps/quadra.xpm">/usr/bin/quadra</Program>
+        <Program label="bpmdj" icon="/usr/share/pixmaps/bpmdj.png">bpmdj.sh</Program>
+        <!--Others end-->
+    </Menu>
+    <!--Menu end-->
+
+
+</Menu>
+</Menu>
+
+
+<!-- Additional tray attributes: autohide, width, border, layer, layout -->
+
+<Tray autohide="true" insert="down" valign="center" halign="left" border="0" width="24" layout="vertical">
+<TrayButton popup="mixer" icon="kmix.png" >exec:xterm -T "alsamixer" -e sh -c "/usr/bin/alsamixer"</TrayButton>
+<TrayButton popup="konqueror" icon="konqueror.png">exec:konqueror applications:/</TrayButton>
+<TrayButton popup="kwrite" icon="/usr/share/icons/Faenza/apps/48/accessories-text-editor.png">exec:kwrite</TrayButton>
+<TrayButton popup="synapse" icon="/usr/share/icons/Faenza/apps/48/synapse.png">exec:synapse</TrayButton>
+<TrayButton popup="dolphin" icon="/usr/share/icons/Faenza/apps/48/system-file-manager.png">exec:dolphin</TrayButton>
+<TrayButton popup="fast-firefox" icon="fast-firefox.png">exec:fast-firefox</TrayButton>
+<TrayButton popup="console" icon="/usr/share/icons/Faenza/apps/48/utilities-terminal.png">exec:xfce4-terminal</TrayButton>
+<TaskList/>
+<Dock/>
+</Tray>
+
+
+<Tray autohide="true" x="0" y="-1" height="22">
+<!-- Additional TrayButton attribute: label -->
+<TrayButton label="menu">root:1</TrayButton>
+<TrayButton label="_">showdesktop</TrayButton>
+<!-- Additional Pager attributes; width, height -->
+<Pager/>
+<!-- Additional TaskList attribute: maxwidth -->
+<TaskList/>
+<Dock/>
+<!-- Additional Swallow attribute: height -->
+<Swallow name="xload" width="64">
+xload -nolabel -bg black -fg red -hl white
+</Swallow>
+<Clock format="%H:%M">xclock</Clock>
+</Tray>
+
+<!-- Visual Styles -->
+
+<WindowStyle>
+
+<Font>-*-fixed-*-r-*-*-9-*-*-*-*-*-*-*</Font>
+<Width>4</Width>
+<Height>20</Height>
+
+<Active>
+<Text>white</Text>
+<Title>#70849d:#2e3a67</Title>
+<Corner>white</Corner>
+<Outline>black</Outline>
+</Active>
+
+<Inactive>
+<Text>#aaaaaa</Text>
+<Title>#808488:#303438</Title>
+<Corner>#aaaaaa</Corner>
+<Outline>black</Outline>
+</Inactive>
+
+</WindowStyle>
+
+<TaskListStyle>
+<Font>-*-fixed-*-r-*-*-10-*-*-*-*-*-*-*</Font>
+<ActiveForeground>black</ActiveForeground>
+<ActiveBackground>gray90:gray70</ActiveBackground>
+<Foreground>black</Foreground>
+<Background>gray70:gray90</Background>
+</TaskListStyle>
+
+<!-- Additional TrayStyle attribute: insert -->
+<TrayStyle>
+<Font>-*-fixed-*-r-*-*-10-*-*-*-*-*-*-*</Font>
+<Background>gray90</Background>
+<Foreground>black</Foreground>
+</TrayStyle>
+
+<PagerStyle>
+<Outline>black</Outline>
+<Foreground>gray90</Foreground>
+<Background>#808488</Background>
+<ActiveForeground>#70849d</ActiveForeground>
+<ActiveBackground>#2e3a67</ActiveBackground>
+</PagerStyle>
+
+<MenuStyle>
+<Font>-*-fixed-*-r-*-*-9-*-*-*-*-*-*-*</Font>
+<Foreground>black</Foreground>
+<Background>gray90</Background>
+<ActiveForeground>white</ActiveForeground>
+<ActiveBackground>#70849d:#2e3a67</ActiveBackground>
+</MenuStyle>
+
+<PopupStyle>
+<Font>-*-fixed-*-r-*-*-10-*-*-*-*-*-*-*</Font>
+<Outline>black</Outline>
+<Foreground>black</Foreground>
+<Background>yellow</Background>
+</PopupStyle>
+
+<IconPath>/usr/share/pixmaps</IconPath>
+<IconPath>/usr/share/icons/hicolor/48x48/apps/</IconPath>
+<IconPath>/usr/share/icons/</IconPath>
+
+<!-- Virtual Desktops -->
+<!-- Desktop tags can be contained within Desktops for desktop names. -->
+<Desktops count="4">
+
+<!-- Default background. Note that a Background tag can be
+contained within a Desktop tag to give a specific background
+for that desktop.
+-->
+<!-- #DEBIAN change. Was bg.xpm -->
+<Background type="tile">/usr/share/wallpapers/Autumn/contents/images/1920x1080.jpg</Background>
+
+
+</Desktops>
+
+<!-- Double click speed (in milliseconds) -->
+<DoubleClickSpeed>400</DoubleClickSpeed>
+
+<!-- Double click delta (in pixels) -->
+<DoubleClickDelta>2</DoubleClickDelta>
+
+<!-- The focus model (sloppy or click) -->
+<FocusModel>sloppy</FocusModel>
+
+<!-- The snap mode (none, screen, or border) -->
+<SnapMode distance="10">border</SnapMode>
+
+<!-- The move mode (outline or opaque) -->
+<MoveMode>opaque</MoveMode>
+
+<!-- The resize mode (outline or opaque) -->
+<ResizeMode>opaque</ResizeMode>
+
+   <!-- Key bindings -->
+   <Key key="Up">up</Key>
+   <Key key="Down">down</Key>
+   <Key key="Right">right</Key>
+   <Key key="Left">left</Key>
+   <Key key="h">left</Key>
+   <Key key="j">down</Key>
+   <Key key="k">up</Key>
+   <Key key="l">right</Key>
+   <Key key="Return">select</Key>
+   <Key key="Escape">escape</Key>
+
+   <Key mask="A" key="Tab">nextstacked</Key>
+   <Key mask="A" key="F4">close</Key>
+   <Key mask="A" key="F5">shade</Key>
+   <Key mask="Mod4" key="#">desktop#</Key>
+   <Key mask="CA" key="e">exit</Key>
+   <Key mask="Mod4" key="r">restart</Key>
+   <Key mask="Mod4" key="d">showdesktop</Key>
+   <Key mask="Mod4" key="a">maximize</Key>
+   <Key mask="A" key="F11">fullscreen</Key>
+   <Key mask="CAS" key="Delete">exec:shutdown -h now</Key>
+   <Key mask="CAS" key="h">exec:systemctl hibernate</Key>
+   <Key mask="CAS" key="r">exec:reboot</Key>
+   <Key mask="CA" key="Delete">exec:lxtask</Key>
+   <Key mask="C" key="Escape">exec:lxpanelctl menu</Key>
+   <Key mask="A" key="F2">exec:lxpanelctl run</Key>
+   <Key mask="C" key="F2">exec:gmrun</Key>
+   <Key mask="A" key="space">window</Key>
+   <Key mask="Mod4" key="q">exec:xkill</Key>
+   <Key mask="Mod4" key="t">exec:xfce4-terminal</Key>
+   <Key mask="Mod4+C" key="t">exec:konsole</Key>
+   <Key mask="Mod4" key="f">exec:dolphin</Key>
+   <Key mask="CA" key="Delete">exec:pkill jwm</Key>
+   <Key mask="CA" key="p">exec:pkill pulseaudio && pavucontrol</Key>
+   <Key key="Print">exec:gnome-screenshot</Key>
+   <Key key="XF86AudioRaiseVolume">exec:amixer set Master 5%+ unmute</Key>
+   <Key key="XF86AudioLowerVolume">exec:amixer set Master 5%- unmute</Key>
+   <Key key="XF86MonBrightnessDown">exec:xbacklight -dec 15</Key>   
+   <Key key="XF86MonBrightnessUp">exec:xbacklight -inc 15</Key>
+   <Key key="XF86AudioMute">exec:amixer set Master toggle</Key>
+   <Key key="XF86TouchpadToggle">exec:toggletouchpad.sh</Key>
+   <Key mask="Mod4" key="e">exec:mousepad</Key>
+   <Key mask="Mod4" key="g">exec:fast-chromium.sh</Key>
+   <Key mask="Mod4" key="w">exec:epiphany -i --profile=/tmp/.epiphany</Key>
+   <Key mask="Mod4+C" key="f">exec:fast-firefox.sh</Key>
+   <Key mask="Mod4" key="F1">exec:konqueror applications:/</Key>	
+   <Key mask="C" key="F1">exec:konqueror applications:/</Key>
+
+
+</JWM>

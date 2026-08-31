@@ -1,0 +1,9 @@
+[begin] (Exit)
+  [restart] (Fluxbox restart)
+  [exit] (Logoff) </home/amol/.fluxbox/icons/logoff.png>
+  [exec] (Suspend) {systemctl suspend} </home/amol/.fluxbox/icons/logoff.png>
+  [exec] (Hibernate) {systemctl hibernate} </home/amol/.fluxbox/icons/logoff.png>
+  [exec] (Restart)      {reboot} </home/amol/.fluxbox/icons/reboot.png>
+  [exec] (Shut Down)    {poweroff} </home/amol/.fluxbox/icons/shutdown.png>
+[end]
+

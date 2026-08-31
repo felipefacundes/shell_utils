@@ -1,0 +1,197 @@
+<?xml version="1.0"?>
+
+<JWM>
+<StartupCommand> exec conky</StartupCommand>
+   <!-- The root menu, if this is undefined you will not get a menu. -->
+   <!-- Additional RootMenu attributes: onroot, labeled, label -->
+   <RootMenu onroot="123">
+      <Program icon="terminal" label="Terminal">lxterminal</Program>
+      <Program icon="file-manager.png" label="File Manager">pcmanfm</Program>
+      <Program icon="im-nov.png" label="Instant Messenger">pidgin</Program>
+      <Program icon="firefox.png" label="Fire Fox">firefox</Program>
+      <Program icon="virtualbox.png" label="Virtualbox">VirtualBox</Program>
+      <Program icon="calc.png">gcalc</Program>
+      <Separator/>
+      <Menu icon="folder-music.png" label="Media">
+         <Program icon="multimedia.png" label="Music Player">deadbeef %F</Program>
+         <Program icon="mplayer.png" label="Movie Player">xine</Program>
+         <Program icon="multimedia.png" label="Alsa Mixer">xterm -e alsamixer</Program>
+      </Menu>
+      <Menu icon="folder-documents.png" label="Office">
+         <Program icon="openoffice.png" label="Open Office">ooffice</Program>
+         <Program icon="calc.png">gcalc</Program>
+      </Menu>
+      <Menu icon="folder-deviantART.png" label="Art">  
+         <Program icon="gimp.png" label="Gimp">gimp</Program>
+      </Menu>
+      <Menu icon="folder-html.png" label="Internet">
+         <Program icon="firefox.png" label="Firefox">firefox</Program>
+         <Program icon="im-nov.png" label="Pidgin">pidgin</Program>
+      </Menu>
+      <Menu icon="folder-games.png" label="Games"> 
+      </Menu>
+      <Menu icon="folder-public.png" label="Preferences"> 
+        <Program icon="xfce4-ui.png" label="Change GTK Theme">lxappearance</Program>
+         <Program icon="xkill.png">xfontsel</Program>
+      </Menu>
+      <Menu icon="folder-important.png" label="System">
+         <Program icon="system-software-installer.png" label="Add or Remove Programs">gksu gtkpacman</Program>         
+         <Program icon="utilities-system-monitor.png" label="System Monitor">Terminal -e htop</Program>
+      </Menu>
+ 
+      <Separator/>
+      <Restart label="Restart" icon="system-restart.png"/>
+      <Exit label="Exit" confirm="true" icon="system-switch-user.png"/>
+   </RootMenu>
+
+   <Group>
+      <Class>Pidgin</Class>
+      <Option>sticky</Option>
+   </Group>
+
+   <Group>
+     <Class>Squeeze</Class>
+     <Class>Xarchiver</Class>
+     <Option>nolist</Option>
+   </Group>
+
+   <Group>
+      <Name>rxvt</Name>
+      <Option>vmax</Option>
+   </Group>
+
+   <!-- Additional tray attributes: autohide, width, border, layer, layout -->
+   <Tray  x="0" y="0" height="32" border="1">
+
+      <!-- Additional TrayButton attribute: label -->
+      <TrayButton label="Menu" icon="start-here-arch.png">root:1</TrayButton>
+
+      <TrayButton icon="looknfeel.png">showdesktop</TrayButton>
+
+      <!-- Additional TaskList attribute: maxwidth -->
+      <TaskList/>
+
+      <Dock/>
+
+      <!-- Additional Swallow attribute: height -->
+      <!-- Additional Pager attributes; width, height -->
+      <Pager/>
+      <Clock format="%r %D" >orage</Clock>
+
+   </Tray>
+
+   <!-- Visual Styles -->
+
+   <WindowStyle>
+
+      <Font>FreeSans-9:bold</Font>
+      <Width>4</Width>
+      <Height>20</Height>
+
+      <Active>
+         <Text>black</Text>
+         <Title>#84D1F1:#5193DA</Title>
+         <Corner>white</Corner>
+         <Outline>black</Outline>
+      </Active>
+
+      <Inactive>
+         <Text>white</Text>
+         <Title>#8DA29D:#C8D4D2</Title>
+         <Corner>#aaaaaa</Corner>
+         <Outline>black</Outline>
+      </Inactive>
+
+   </WindowStyle>
+
+   <TaskListStyle>
+      <Font>FreeSans-10:bold</Font>
+      <ActiveForeground>black</ActiveForeground>
+      <ActiveBackground>#84D1F1:#5193DA</ActiveBackground>
+      <Foreground>black</Foreground>
+      <Background>#8DA29D:#C8D4D2</Background>
+   </TaskListStyle>
+
+   <!-- Additional TrayStyle attribute: insert -->
+   <TrayStyle>
+      <Font>FreeSans-10:bold</Font>
+      <Background>#C8D4D2</Background>
+      <Foreground>black</Foreground>
+   </TrayStyle>
+
+   <PagerStyle>
+      <Outline>white</Outline>
+      <Foreground>#8DA29D</Foreground>
+      <Background>#9CBDBC</Background>
+      <ActiveForeground>#84D1F1</ActiveForeground>
+      <ActiveBackground>#5193DA</ActiveBackground>
+   </PagerStyle>
+
+   <MenuStyle>
+      <Font>FreeSans-8:bold</Font>
+      <Foreground>black</Foreground>
+      <Background>#C8D4D2</Background>
+      <ActiveForeground>white</ActiveForeground>
+      <ActiveBackground>#84D1F1:#5193DA</ActiveBackground>
+   </MenuStyle>
+
+   <PopupStyle>
+      <Font>FreeSans-10</Font>
+      <Outline>black</Outline>
+      <Foreground>black</Foreground>
+      <Background>yellow</Background>
+   </PopupStyle>
+
+   <IconPath>
+      /usr/share/icons/
+   </IconPath>
+
+   <!-- Virtual Desktops -->
+   <!-- Desktop tags can be contained within Desktops for desktop names. -->
+   <Desktops count="2">
+
+      <!-- Default background. Note that a Background tag can be
+           contained within a Desktop tag to give a specific background
+           for that desktop.
+       -->
+      <Background type="image">/home/$USER/Pictures/1581319.jpg</Background>
+
+   </Desktops>
+
+   <!-- Double click speed (in milliseconds) -->
+   <DoubleClickSpeed>400</DoubleClickSpeed>
+
+   <!-- Double click delta (in pixels) -->
+   <DoubleClickDelta>2</DoubleClickDelta>
+
+   <!-- The focus model (sloppy or click) -->
+   <FocusModel>sloppy</FocusModel>
+
+   <!-- The snap mode (none, screen, or border) -->
+   <SnapMode distance="10">border</SnapMode>
+
+   <!-- The move mode (outline or opaque) -->
+   <MoveMode>opaque</MoveMode>
+
+   <!-- The resize mode (outline or opaque) -->
+   <ResizeMode>opaque</ResizeMode>
+
+   <!-- Key bindings -->
+   <Key key="Up">up</Key>
+   <Key key="Down">down</Key>
+   <Key key="Right">right</Key>
+   <Key key="Left">left</Key>
+   <Key key="h">left</Key>
+   <Key key="j">down</Key>
+   <Key key="k">up</Key>
+   <Key key="l">right</Key>
+   <Key key="Return">select</Key>
+   <Key key="Escape">escape</Key>
+
+   <Key mask="A" key="Tab">nextstacked</Key>
+   <Key mask="A" key="F4">close</Key>
+   <Key mask="A" key="#">desktop#</Key>
+   <Key mask="A" key="F1">root:1</Key>
+   <Key mask="A" key="F2">window</Key>
+
+</JWM>

@@ -1,0 +1,52 @@
+@define-color trans             rgba(28, 28, 28, 0);
+@define-color black             #1c1c1c;
+@define-color black-trans       rgba(35, 35, 35, .95);
+@define-color blue              #437890;
+@define-color blue-trans        rgba(31, 43, 55, .85);
+@define-color blue-light        #87afd7;
+@define-color yellow            #7c794e;
+@define-color yellow-light      #9b9761;
+@define-color red               #755754;
+@define-color green             #497964;
+@define-color grey              #545555;
+@define-color grey-light        #8e8e8e;
+@define-color white             #b9bab5;
+@define-color orange            #9b885c;
+@define-color orange-darker     #756643;
+@define-color purple            #6b6098;
+@define-color purple-light      #988acf;
+@define-color turquoise         #268889;
+@define-color turquoise-light   #4dc5c6;
+
+window {
+    margin: 0px;
+    border: 2px solid @orange;
+    background-color: @black-trans;
+}
+
+#input {
+    font-family: "Cousine"
+    border-bottom: @orange;
+}
+
+#inner-box {
+    padding: 25px
+}
+
+#outer-box {
+
+}
+
+#scroll {
+}
+
+#text {
+    font-family: "Cousine"
+}
+
+#entry:selected {
+    background-color: @orange;
+}
+
+#text:selected {
+}
