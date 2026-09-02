@@ -755,6 +755,8 @@ main() {
     local purge_mode=false
     local project_dir_arg=""
     
+    clear 
+    
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -h|--help)
