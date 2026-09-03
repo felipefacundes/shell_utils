@@ -1,0 +1,919 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# ============================================================================
+# Script: desktop-shortcut-creator
+# Description: Create, manage and remove .desktop shortcuts for the user
+# Version: 3.0.0
+# ============================================================================
+
+set -euo pipefail
+
+# ----------------------------------------------------------------------------
+# Global Variables
+# ----------------------------------------------------------------------------
+readonly SCRIPT_NAME="$(basename "${0}")"
+readonly SCRIPT_DIR="$(cd "$(dirname "${0}")" && pwd)"
+readonly APPS_DIR="${HOME}/.local/share/applications"
+readonly ICONS_DIR="${HOME}/.local/share/icons"
+readonly BACKUP_DIR="${HOME}/.local/share/desktop-shortcuts-backups"
+readonly DESKTOP_ENTRY="desktop-entry-spec"
+
+# Colors
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly MAGENTA='\033[0;35m'
+readonly CYAN='\033[0;36m'
+readonly WHITE='\033[1;37m'
+readonly BOLD='\033[1m'
+readonly NC='\033[0m' # No Color
+
+# ----------------------------------------------------------------------------
+# Internationalization - Language Dictionary
+# ----------------------------------------------------------------------------
+declare -A MESSAGES
+
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    # Portuguese (Brazil) Messages
+    MESSAGES=(
+        ["title"]="Criador de Atalhos Desktop"
+        ["help_title"]="AJUDA - Criador de Atalhos Desktop"
+        ["help_description"]="Ferramenta para criar, gerenciar e remover atalhos .desktop"
+        ["help_usage"]="Uso"
+        ["help_options"]="Opções"
+        ["help_examples"]="Exemplos"
+        ["help_categories"]="Categorias disponíveis (freedesktop.org):"
+        ["no_args"]="Nenhum argumento fornecido. Iniciando modo interativo..."
+        ["dep_checking"]="Verificando dependências..."
+        ["dep_failed"]="Dependência não encontrada"
+        ["dep_success"]="Todas as dependências verificadas com sucesso"
+        ["enter_name"]="Digite o nome do atalho (ex: Meu App):"
+        ["enter_command"]="Digite o comando para executar (ex: /usr/bin/app ou ~/.local/bin/script.sh):"
+        ["enter_description"]="Digite uma descrição para o atalho (opcional):"
+        ["enter_icon"]="Digite o caminho do ícone (opcional - ex: /usr/share/icons/app.png):"
+        ["select_category"]="Selecione uma categoria para o atalho:"
+        ["select_terminal"]="Este aplicativo deve ser executado no terminal?"
+        ["category_selected"]="Categoria selecionada"
+        ["shortcut_created"]="Atalho criado com sucesso!"
+        ["shortcut_removed"]="Atalho(s) removido(s) com sucesso!"
+        ["shortcut_exists"]="Atalho já existe. Deseja sobrescrevê-lo?"
+        ["shortcut_not_found"]="Atalho não encontrado"
+        ["file_path"]="Arquivo criado em"
+        ["remove_shortcuts"]="Selecione os atalhos para remover:"
+        ["no_shortcuts"]="Nenhum atalho encontrado em ~/.local/share/applications/"
+        ["confirm_remove"]="Tem certeza que deseja remover o(s) atalho(s) selecionado(s)?"
+        ["operation_cancelled"]="Operação cancelada pelo usuário"
+        ["invalid_input"]="Entrada inválida. Tente novamente."
+        ["error"]="ERRO"
+        ["warning"]="AVISO"
+        ["success"]="SUCESSO"
+        ["info"]="INFO"
+        ["creating"]="Criando atalho..."
+        ["backup_created"]="Backup criado"
+        ["restore_possible"]="Você pode restaurar com"
+        ["args_help"]="Mostra esta ajuda"
+        ["args_create"]="Cria um novo atalho (modo interativo)"
+        ["args_remove"]="Remove atalhos (modo interativo)"
+        ["args_list"]="Lista todos os atalhos instalados"
+        ["args_backup"]="Cria um backup de todos os atalhos"
+        ["args_restore"]="Restaura atalhos de um backup"
+        ["args_edit"]="Edita um atalho existente"
+        ["args_export"]="Exporta atalhos para um arquivo de configuração"
+        ["args_import"]="Importa atalhos de um arquivo de configuração"
+        ["invalid_option"]="Opção inválida"
+        ["select_shortcut_edit"]="Selecione o atalho para editar:"
+        ["edit_name"]="Editar nome do atalho:"
+        ["edit_command"]="Editar comando:"
+        ["edit_description"]="Editar descrição:"
+        ["edit_icon"]="Editar caminho do ícone:"
+        ["edit_terminal"]="Executar no terminal?"
+        ["export_shortcuts"]="Exportando atalhos para"
+        ["import_shortcuts"]="Importando atalhos de"
+        ["file_exists"]="Arquivo já existe. Deseja sobrescrever?"
+        ["file_not_found"]="Arquivo não encontrado"
+        ["processing"]="Processando..."
+        ["done"]="Concluído!"
+        ["icon_suggestion_found"]="Ícone sugerido encontrado: %s\nDeseja utilizá-lo?"
+    )
+else
+    # English (Default) Messages
+    MESSAGES=(
+        ["title"]="Desktop Shortcut Creator"
+        ["help_title"]="HELP - Desktop Shortcut Creator"
+        ["help_description"]="Tool to create, manage and remove .desktop shortcuts"
+        ["help_usage"]="Usage"
+        ["help_options"]="Options"
+        ["help_examples"]="Examples"
+        ["help_categories"]="Categories available (freedesktop.org):"
+        ["no_args"]="No arguments provided. Starting interactive mode..."
+        ["dep_checking"]="Checking dependencies..."
+        ["dep_failed"]="Dependency not found"
+        ["dep_success"]="All dependencies verified successfully"
+        ["enter_name"]="Enter shortcut name (e.g.: My App):"
+        ["enter_command"]="Enter command to execute (e.g.: /usr/bin/app or ~/.local/bin/script.sh):"
+        ["enter_description"]="Enter a description for the shortcut (optional):"
+        ["enter_icon"]="Enter icon path (optional - e.g.: /usr/share/icons/app.png):"
+        ["select_category"]="Select a category for the shortcut:"
+        ["select_terminal"]="Should this application run in a terminal?"
+        ["category_selected"]="Category selected"
+        ["shortcut_created"]="Shortcut created successfully!"
+        ["shortcut_removed"]="Shortcut(s) removed successfully!"
+        ["shortcut_exists"]="Shortcut already exists. Overwrite it?"
+        ["shortcut_not_found"]="Shortcut not found"
+        ["file_path"]="File created at"
+        ["remove_shortcuts"]="Select shortcuts to remove:"
+        ["no_shortcuts"]="No shortcuts found in ~/.local/share/applications/"
+        ["confirm_remove"]="Are you sure you want to remove the selected shortcut(s)?"
+        ["operation_cancelled"]="Operation cancelled by user"
+        ["invalid_input"]="Invalid input. Please try again."
+        ["error"]="ERROR"
+        ["warning"]="WARNING"
+        ["success"]="SUCCESS"
+        ["info"]="INFO"
+        ["creating"]="Creating shortcut..."
+        ["backup_created"]="Backup created"
+        ["restore_possible"]="You can restore with"
+        ["args_help"]="Shows this help"
+        ["args_create"]="Creates a new shortcut (interactive mode)"
+        ["args_remove"]="Removes shortcuts (interactive mode)"
+        ["args_list"]="Lists all installed shortcuts"
+        ["args_backup"]="Creates a backup of all shortcuts"
+        ["args_restore"]="Restores shortcuts from a backup"
+        ["args_edit"]="Edits an existing shortcut"
+        ["args_export"]="Exports shortcuts to a configuration file"
+        ["args_import"]="Imports shortcuts from a configuration file"
+        ["invalid_option"]="Invalid option"
+        ["select_shortcut_edit"]="Select shortcut to edit:"
+        ["edit_name"]="Edit shortcut name:"
+        ["edit_command"]="Edit command:"
+        ["edit_description"]="Edit description:"
+        ["edit_icon"]="Edit icon path:"
+        ["edit_terminal"]="Run in terminal?"
+        ["export_shortcuts"]="Exporting shortcuts to"
+        ["import_shortcuts"]="Importing shortcuts from"
+        ["file_exists"]="File already exists. Overwrite it?"
+        ["file_not_found"]="File not found"
+        ["processing"]="Processing..."
+        ["done"]="Done!"
+        ["icon_suggestion_found"]="Suggested icon found: %s\nUse it?"
+    )
+fi
+
+# ----------------------------------------------------------------------------
+# Helper Functions
+# ----------------------------------------------------------------------------
+
+# Colorized echo functions
+print_error() { echo -e "${RED}[${MESSAGES["error"]}]${NC} $*" >&2; }
+print_warning() { echo -e "${YELLOW}[${MESSAGES["warning"]}]${NC} $*"; }
+print_success() { echo -e "${GREEN}[${MESSAGES["success"]}]${NC} $*"; }
+print_info() { echo -e "${BLUE}[${MESSAGES["info"]}]${NC} $*"; }
+print_header() { echo -e "${CYAN}══════════════════════════════════════════════════════════════════════${NC}"; }
+print_title() { echo -e "${BOLD}${MAGENTA}◆ $*${NC}"; }
+
+# Function to expand ~ to home directory
+expand_path() {
+    local path="$1"
+    if [[ "$path" =~ ^~(/|$) ]]; then
+        echo "${HOME}${path:1}"
+    else
+        echo "$path"
+    fi
+}
+
+# Convert a shortcut name into a safe, lowercase, underscore-separated
+# token (used both for building filenames and for icon lookups).
+sanitize_name() {
+    local name="$1"
+    echo "$name" | tr ' ' '_' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]//g'
+}
+
+# Convert a shortcut name into a safe .desktop filename. Centralized here
+# so every place that needs the filename (creation, editing, duplicate
+# checks on import) computes it the exact same way.
+sanitize_filename() {
+    local name="$1"
+    local sanitized
+    sanitized="$(sanitize_name "$name")"
+    if [[ -z "$sanitized" ]]; then
+        sanitized="shortcut_$(date +%s)"
+    fi
+    echo "${sanitized}.desktop"
+}
+
+# Check if required tools are available
+check_dependencies() {
+    print_info "${MESSAGES["dep_checking"]}"
+    local deps=("whiptail" "cat" "tee" "sed" "find" "basename" "dirname" "grep" "cut" "tr" "date" "tar")
+    local missing_deps=()
+
+    for dep in "${deps[@]}"; do
+        if ! command -v "$dep" &>/dev/null; then
+            missing_deps+=("$dep")
+        fi
+    done
+
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        print_error "${MESSAGES["dep_failed"]}: ${missing_deps[*]}"
+        return 1
+    fi
+
+    print_success "${MESSAGES["dep_success"]}"
+    return 0
+}
+
+# Get all valid categories according to freedesktop.org spec
+get_categories() {
+    cat <<'EOF'
+AudioVideo|Audio,Video,Media,Player,Music
+Audio|Audio,Music,Player
+Video|Video,Player,Media
+Development|Development,IDE,Editor
+Education|Education,Science
+Game|Game
+Graphics|Graphics,Viewer,Raster,Vector,2D,3D
+Network|Network,WebBrowser,Email,InstantMessaging,FileTransfer
+Office|Office,WordProcessor,Spreadsheet,Presentation
+Science|Science,Math,Chemistry,Physics
+Settings|Settings,Hardware,DesktopSettings
+System|System,FileManager,Terminal,Monitor
+Utility|Utility,Archiving,Calculator,TextEditor
+EOF
+}
+
+# Categories that are commonly associated with terminal-based applications.
+# Used to pre-select a sensible default when asking whether a shortcut
+# should run inside a terminal.
+get_terminal_categories() {
+    cat <<'EOF'
+Development
+System
+Utility
+EOF
+}
+
+# Returns success (0) if the given category typically runs in a terminal
+is_terminal_category() {
+    local category="$1"
+    get_terminal_categories | grep -qx "$category"
+}
+
+# Try to auto-detect an icon for the given app name by looking first in a
+# local "icons" folder shipped next to this script, then in the user's
+# icons directory. Echoes the found path and returns 0, or returns 1 if
+# nothing matched.
+find_icon_suggestion() {
+    local name="$1"
+    local sanitized
+    sanitized="$(sanitize_name "$name")"
+
+    [[ -z "$sanitized" ]] && return 1
+
+    local search_dirs=("${SCRIPT_DIR}/icons" "${ICONS_DIR}")
+    local dir found
+
+    for dir in "${search_dirs[@]}"; do
+        [[ -d "$dir" ]] || continue
+        found="$(find "$dir" -maxdepth 1 -type f \
+            \( -iname "${sanitized}.png" -o -iname "${sanitized}.svg" \
+               -o -iname "${sanitized}.xpm" -o -iname "${sanitized}.jpg" \) \
+            -print -quit 2>/dev/null || true)"
+        if [[ -n "$found" ]]; then
+            echo "$found"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Create the .desktop file
+create_desktop_entry() {
+    local name="$1"
+    local exec_cmd="$2"
+    local description="$3"
+    local icon="$4"
+    local category="$5"
+    local terminal="$6"
+
+    # Expand path for exec if it starts with ~/
+    local exec_expanded="$(expand_path "$exec_cmd")"
+
+    # Expand path for icon too, so ~/... icon paths also work
+    local icon_expanded=""
+    [[ -n "$icon" ]] && icon_expanded="$(expand_path "$icon")"
+
+    # Build a safe filename (shared with editing/importing so the check
+    # for an existing file and the file that actually gets written always
+    # agree on the same name)
+    local filename
+    filename="$(sanitize_filename "$name")"
+    local filepath="${APPS_DIR}/${filename}"
+
+    # Check if file exists
+    if [[ -f "$filepath" ]]; then
+        whiptail --title "${MESSAGES["title"]}" --yesno "${MESSAGES["shortcut_exists"]}" 8 60 || {
+            print_info "${MESSAGES["operation_cancelled"]}"
+            return 1
+        }
+    fi
+
+    print_info "${MESSAGES["creating"]}"
+
+    # Create directory if it doesn't exist
+    mkdir -p "$APPS_DIR"
+
+    # Write the .desktop file using tee
+    {
+        echo "#Generated by ${SCRIPT_NAME} - ${DESKTOP_ENTRY} compliant"
+        echo "[Desktop Entry]"
+        echo "Version=1.0"
+        echo "Type=Application"
+        echo "Name=$name"
+        [[ -n "$description" ]] && echo "Comment=$description"
+        echo "Exec=$exec_expanded"
+        [[ -n "$icon_expanded" ]] && echo "Icon=$icon_expanded"
+        echo "Terminal=$terminal"
+        echo "Categories=$category"
+        echo "StartupNotify=true"
+        echo "X-Desktop-File-Install-Version=1.0"
+    } | tee "$filepath" > /dev/null
+
+    # Make it executable
+    chmod +x "$filepath"
+
+    print_success "${MESSAGES["shortcut_created"]}"
+    print_info "${MESSAGES["file_path"]}: $filepath"
+
+    # Update desktop database if available
+    if command -v update-desktop-database &>/dev/null; then
+        update-desktop-database "$APPS_DIR" 2>/dev/null || true
+    fi
+
+    return 0
+}
+
+# Interactive shortcut creation
+interactive_create() {
+    # Get shortcut name
+    local name
+    name=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["enter_name"]}" 8 60 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    # Get command
+    local command
+    command=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["enter_command"]}" 10 60 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    # Get description
+    local description
+    description=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["enter_description"]}" 10 60 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    # Get icon
+    local icon
+    icon=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["enter_icon"]}" 10 60 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    # If no icon was given, try to auto-detect one based on the app name
+    if [[ -z "$icon" ]]; then
+        local suggested_icon
+        if suggested_icon=$(find_icon_suggestion "$name"); then
+            if whiptail --title "${MESSAGES["title"]}" --yesno "$(printf "${MESSAGES["icon_suggestion_found"]}" "$suggested_icon")" 8 70; then
+                icon="$suggested_icon"
+            fi
+        fi
+    fi
+
+    # Get category
+    local categories
+    categories=$(get_categories)
+    local category_list=()
+    local IFS=$'\n'
+    for cat in $categories; do
+        category_list+=("${cat%|*}" "${cat#*|}" "OFF")
+    done
+
+    local selected_category
+    selected_category=$(whiptail --title "${MESSAGES["title"]}" --radiolist "${MESSAGES["select_category"]}" 20 60 10 "${category_list[@]}" 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    # Get terminal option - suggest a default based on the chosen category
+    local terminal
+    local terminal_flag=()
+    if ! is_terminal_category "$selected_category"; then
+        terminal_flag=(--defaultno)
+    fi
+    if whiptail --title "${MESSAGES["title"]}" "${terminal_flag[@]}" --yesno "${MESSAGES["select_terminal"]}" 8 60; then
+        terminal="true"
+    else
+        terminal="false"
+    fi
+
+    # Create the shortcut
+    create_desktop_entry "$name" "$command" "$description" "$icon" "$selected_category" "$terminal"
+}
+
+# List all installed shortcuts
+list_shortcuts() {
+    print_header
+    print_title "${MESSAGES["title"]}"
+    print_header
+
+    if [[ ! -d "$APPS_DIR" ]] || [[ -z "$(ls -A "$APPS_DIR" 2>/dev/null)" ]]; then
+        print_warning "${MESSAGES["no_shortcuts"]}"
+        return 0
+    fi
+
+    echo -e "\n${BOLD}${CYAN}Installed Shortcuts:${NC}\n"
+
+    local index=1
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            local name=$(grep -m1 "^Name=" "$file" | cut -d'=' -f2- || echo "")
+            local exec_cmd=$(grep -m1 "^Exec=" "$file" | cut -d'=' -f2- || echo "")
+            local categories=$(grep -m1 "^Categories=" "$file" | cut -d'=' -f2- || echo "")
+            local terminal=$(grep -m1 "^Terminal=" "$file" | cut -d'=' -f2- || echo "")
+
+            printf "${GREEN}%3d.${NC} ${YELLOW}%s${NC}\n" "$index" "$(basename "$file")"
+            printf "    ${BLUE}Name:${NC} %s\n" "$name"
+            printf "    ${BLUE}Exec:${NC} %s\n" "$exec_cmd"
+            [[ -n "$categories" ]] && printf "    ${BLUE}Categories:${NC} %s\n" "$categories"
+            printf "    ${BLUE}Terminal:${NC} %s\n" "$terminal"
+            echo
+            index=$((index + 1))
+        fi
+    done < <(find "$APPS_DIR" -maxdepth 1 -name "*.desktop" -type f | sort)
+}
+
+# Remove shortcuts with multi-selection
+interactive_remove() {
+    if [[ ! -d "$APPS_DIR" ]] || [[ -z "$(ls -A "$APPS_DIR" 2>/dev/null)" ]]; then
+        print_warning "${MESSAGES["no_shortcuts"]}"
+        return 1
+    fi
+
+    local shortcuts=()
+
+    # Build the checklist items
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            local name=$(grep -m1 "^Name=" "$file" | cut -d'=' -f2- || echo "")
+            local basename_file=$(basename "$file")
+            shortcuts+=("$basename_file" "$name" "OFF")
+        fi
+    done < <(find "$APPS_DIR" -maxdepth 1 -name "*.desktop" -type f | sort)
+
+    if [[ ${#shortcuts[@]} -eq 0 ]]; then
+        print_warning "${MESSAGES["no_shortcuts"]}"
+        return 1
+    fi
+
+    # Show checklist and get selected items
+    local selected_raw
+    selected_raw=$(whiptail --title "${MESSAGES["title"]}" --checklist "${MESSAGES["remove_shortcuts"]}" 20 60 10 "${shortcuts[@]}" 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    # Whiptail returns something like: "file1.desktop" "file2.desktop"
+    # Filenames here are always sanitized (no spaces), so a plain word
+    # split plus stripping the surrounding quotes is enough - no need for
+    # a fragile sed/grep chain, and no need for eval.
+    local selected=()
+    if [[ -n "$selected_raw" ]]; then
+        local raw_tokens=()
+        read -ra raw_tokens <<< "$selected_raw"
+        local tok
+        for tok in "${raw_tokens[@]}"; do
+            tok="${tok%\"}"
+            tok="${tok#\"}"
+            [[ -n "$tok" ]] && selected+=("$tok")
+        done
+    fi
+
+    if [[ ${#selected[@]} -eq 0 ]]; then
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    fi
+
+    # Confirm removal
+    local confirm_msg="${MESSAGES["confirm_remove"]}\n\n"
+    for file in "${selected[@]}"; do
+        confirm_msg+="  • $file\n"
+    done
+
+    if ! whiptail --title "${MESSAGES["title"]}" --yesno "$confirm_msg" 15 60; then
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    fi
+
+    # Remove selected shortcuts
+    local removed_count=0
+    for file in "${selected[@]}"; do
+        if [[ -f "${APPS_DIR}/$file" ]]; then
+            rm -f "${APPS_DIR}/$file"
+            # NOTE: "((removed_count++))" is NOT used here on purpose.
+            # Under "set -e", a post-increment that evaluates to 0 (i.e.
+            # the very first increment, from 0 to 1) returns exit status
+            # 1, which makes the whole function - and script - exit right
+            # after removing only the first selected shortcut. Plain
+            # arithmetic assignment doesn't have this problem.
+            removed_count=$((removed_count + 1))
+            print_success "Removed: $file"
+        fi
+    done
+
+    print_success "${MESSAGES["shortcut_removed"]} ($removed_count files)"
+
+    # Update desktop database if available
+    if command -v update-desktop-database &>/dev/null; then
+        update-desktop-database "$APPS_DIR" 2>/dev/null || true
+    fi
+}
+
+# Backup all shortcuts
+backup_shortcuts() {
+    if [[ ! -d "$APPS_DIR" ]] || [[ -z "$(ls -A "$APPS_DIR" 2>/dev/null)" ]]; then
+        print_warning "${MESSAGES["no_shortcuts"]}"
+        return 1
+    fi
+
+    local backup_file="${BACKUP_DIR}/shortcuts-backup-$(date +%Y%m%d_%H%M%S).tar.gz"
+
+    print_info "Creating backup..."
+    tar -czf "$backup_file" -C "$(dirname "$APPS_DIR")" "$(basename "$APPS_DIR")" 2>/dev/null
+
+    if [[ -f "$backup_file" ]]; then
+        print_success "${MESSAGES["backup_created"]}: $backup_file"
+        print_info "${MESSAGES["restore_possible"]}: $0 --restore $backup_file"
+    else
+        print_error "Failed to create backup"
+        return 1
+    fi
+}
+
+# Restore shortcuts from backup
+restore_shortcuts() {
+    local backup_file="$1"
+
+    if [[ ! -f "$backup_file" ]]; then
+        print_error "${MESSAGES["file_not_found"]}: $backup_file"
+        return 1
+    fi
+
+    print_info "${MESSAGES["import_shortcuts"]}: $backup_file"
+
+    # Create backup of current shortcuts
+    if [[ -d "$APPS_DIR" ]] && [[ -n "$(ls -A "$APPS_DIR" 2>/dev/null)" ]]; then
+        local temp_backup="${BACKUP_DIR}/pre-restore-$(date +%Y%m%d_%H%M%S).tar.gz"
+        tar -czf "$temp_backup" -C "$(dirname "$APPS_DIR")" "$(basename "$APPS_DIR")" 2>/dev/null
+        print_info "Current shortcuts backed up to: $temp_backup"
+    fi
+
+    # Restore from backup
+    tar -xzf "$backup_file" -C "$(dirname "$APPS_DIR")" 2>/dev/null
+
+    if [[ -d "$APPS_DIR" ]]; then
+        print_success "Restore completed successfully"
+        list_shortcuts
+    else
+        print_error "Restore failed"
+        return 1
+    fi
+}
+
+# Export shortcuts to a config file
+export_shortcuts() {
+    if [[ ! -d "$APPS_DIR" ]] || [[ -z "$(ls -A "$APPS_DIR" 2>/dev/null)" ]]; then
+        print_warning "${MESSAGES["no_shortcuts"]}"
+        return 1
+    fi
+
+    local export_file="${HOME}/desktop-shortcuts-export-$(date +%Y%m%d_%H%M%S).conf"
+
+    if [[ -f "$export_file" ]]; then
+        if ! whiptail --title "${MESSAGES["title"]}" --yesno "${MESSAGES["file_exists"]}" 8 60; then
+            print_info "${MESSAGES["operation_cancelled"]}"
+            return 1
+        fi
+    fi
+
+    print_info "${MESSAGES["export_shortcuts"]}: $export_file"
+
+    {
+        echo "# Desktop Shortcuts Export File"
+        echo "# Generated: $(date)"
+        echo "# Format: name|exec|description|icon|category|terminal"
+        echo "# ============================================================"
+        echo
+
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                local name=$(grep -m1 "^Name=" "$file" | cut -d'=' -f2- || echo "")
+                local exec_cmd=$(grep -m1 "^Exec=" "$file" | cut -d'=' -f2- || echo "")
+                local desc=$(grep -m1 "^Comment=" "$file" | cut -d'=' -f2- || echo "")
+                local icon=$(grep -m1 "^Icon=" "$file" | cut -d'=' -f2- || echo "")
+                local category=$(grep -m1 "^Categories=" "$file" | cut -d'=' -f2- || echo "")
+                local terminal=$(grep -m1 "^Terminal=" "$file" | cut -d'=' -f2- || echo "false")
+
+                # Escape special characters
+                name="${name//|/\\|}"
+                exec_cmd="${exec_cmd//|/\\|}"
+                desc="${desc//|/\\|}"
+                icon="${icon//|/\\|}"
+                category="${category//|/\\|}"
+
+                echo "$name|$exec_cmd|$desc|$icon|$category|$terminal"
+            fi
+        done < <(find "$APPS_DIR" -maxdepth 1 -name "*.desktop" -type f | sort)
+    } > "$export_file"
+
+    print_success "${MESSAGES["done"]}"
+    print_info "Export file: $export_file"
+}
+
+# Import shortcuts from a config file
+import_shortcuts() {
+    local import_file="$1"
+
+    if [[ ! -f "$import_file" ]]; then
+        print_error "${MESSAGES["file_not_found"]}: $import_file"
+        return 1
+    fi
+
+    print_info "${MESSAGES["import_shortcuts"]}: $import_file"
+    print_info "${MESSAGES["processing"]}"
+
+    local imported=0
+    local skipped=0
+
+    # "|| [[ -n "$name" ]]" makes sure the last line is still processed
+    # even if the import file doesn't end with a trailing newline.
+    while IFS='|' read -r name exec_cmd desc icon category terminal || [[ -n "$name" ]]; do
+        # Skip comments and empty lines
+        [[ "$name" =~ ^#.*$ ]] && continue
+        [[ -z "$name" ]] && continue
+
+        # Unescape special characters
+        name="${name//\\|/|}"
+        exec_cmd="${exec_cmd//\\|/|}"
+        desc="${desc//\\|/|}"
+        icon="${icon//\\|/|}"
+        category="${category//\\|/|}"
+        [[ -z "$terminal" ]] && terminal="false"
+
+        # Check if shortcut already exists (uses the same sanitizer as
+        # create_desktop_entry, so this check and the real filename never
+        # disagree)
+        local filename
+        filename="$(sanitize_filename "$name")"
+        if [[ -f "${APPS_DIR}/$filename" ]]; then
+            print_warning "Skipping existing: $name"
+            # NOTE: plain arithmetic assignment, not "((skipped++))" - see
+            # the comment in interactive_remove for why the "((x++))" form
+            # is unsafe here under "set -e" when the counter starts at 0.
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        # Create the shortcut
+        if create_desktop_entry "$name" "$exec_cmd" "$desc" "$icon" "$category" "$terminal" 2>/dev/null; then
+            imported=$((imported + 1))
+            print_success "Imported: $name"
+        else
+            print_error "Failed to import: $name"
+        fi
+    done < "$import_file"
+
+    print_success "${MESSAGES["done"]}"
+    print_info "Imported: $imported, Skipped: $skipped"
+}
+
+# Edit an existing shortcut
+interactive_edit() {
+    if [[ ! -d "$APPS_DIR" ]] || [[ -z "$(ls -A "$APPS_DIR" 2>/dev/null)" ]]; then
+        print_warning "${MESSAGES["no_shortcuts"]}"
+        return 1
+    fi
+
+    local shortcuts=()
+
+    # Build the radiolist items
+    while IFS= read -r file; do
+        if [[ -f "$file" ]]; then
+            local name=$(grep -m1 "^Name=" "$file" | cut -d'=' -f2- || echo "")
+            local basename_file=$(basename "$file")
+            shortcuts+=("$basename_file" "$name" "OFF")
+        fi
+    done < <(find "$APPS_DIR" -maxdepth 1 -name "*.desktop" -type f | sort)
+
+    local selected
+    selected=$(whiptail --title "${MESSAGES["title"]}" --radiolist "${MESSAGES["select_shortcut_edit"]}" 20 60 10 "${shortcuts[@]}" 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    if [[ -z "$selected" ]]; then
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    fi
+
+    local filepath="${APPS_DIR}/$selected"
+    local current_name=$(grep -m1 "^Name=" "$filepath" | cut -d'=' -f2- || echo "")
+    local current_exec=$(grep -m1 "^Exec=" "$filepath" | cut -d'=' -f2- || echo "")
+    local current_desc=$(grep -m1 "^Comment=" "$filepath" | cut -d'=' -f2- || echo "")
+    local current_icon=$(grep -m1 "^Icon=" "$filepath" | cut -d'=' -f2- || echo "")
+    local current_terminal=$(grep -m1 "^Terminal=" "$filepath" | cut -d'=' -f2- || echo "false")
+    local current_cat=$(grep -m1 "^Categories=" "$filepath" | cut -d'=' -f2- || echo "")
+
+    # Get new values
+    local new_name
+    new_name=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["edit_name"]}" 8 60 "$current_name" 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    local new_exec
+    new_exec=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["edit_command"]}" 8 60 "$current_exec" 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    local new_desc
+    new_desc=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["edit_description"]}" 8 60 "$current_desc" 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    local new_icon
+    new_icon=$(whiptail --title "${MESSAGES["title"]}" --inputbox "${MESSAGES["edit_icon"]}" 8 60 "$current_icon" 3>&1 1>&2 2>&3) || {
+        print_info "${MESSAGES["operation_cancelled"]}"
+        return 1
+    }
+
+    # Use the shortcut's current setting as the suggested default instead
+    # of always defaulting to "Yes"
+    local new_terminal="false"
+    local terminal_flag=()
+    [[ "$current_terminal" != "true" ]] && terminal_flag=(--defaultno)
+    if whiptail --title "${MESSAGES["title"]}" "${terminal_flag[@]}" --yesno "${MESSAGES["edit_terminal"]}" 8 60; then
+        new_terminal="true"
+    fi
+
+    # Remove old file if name changed (uses the shared sanitizer so this
+    # matches exactly what create_desktop_entry will write)
+    local new_filename
+    new_filename="$(sanitize_filename "$new_name")"
+    if [[ "$selected" != "$new_filename" ]]; then
+        rm -f "$filepath"
+    fi
+
+    # Create the updated shortcut
+    create_desktop_entry "$new_name" "$new_exec" "$new_desc" "$new_icon" "$current_cat" "$new_terminal"
+}
+
+# ----------------------------------------------------------------------------
+# Help Function
+# ----------------------------------------------------------------------------
+show_help() {
+    # Build the categories string with proper coloring. Built directly in
+    # bash (not through awk) so "${YELLOW}"/"${NC}" are real bash variable
+    # expansions here, rather than literal text inside an awk program that
+    # bash would never touch.
+    local categories_output=""
+    while IFS='|' read -r cat_name cat_desc; do
+        categories_output+="  ${YELLOW}${cat_name}${NC} → ${cat_desc}\n"
+    done < <(get_categories)
+
+    cat << EOF | { echo -e "$(cat)"; }
+${GREEN}╔══════════════════════════════════════════════════════════════════════╗${NC}
+${GREEN}║${NC} ${MAGENTA}${MESSAGES["help_title"]}${NC}
+${GREEN}╚══════════════════════════════════════════════════════════════════════╝${NC}
+
+${CYAN}${MESSAGES["help_description"]}${NC}
+
+${YELLOW}${MESSAGES["help_usage"]}:${NC}
+  ${WHITE}${SCRIPT_NAME}${NC} [${CYAN}OPTIONS${NC}]
+
+${YELLOW}${MESSAGES["help_options"]}:${NC}
+  ${CYAN}-h, --help${NC}        ${MESSAGES["args_help"]}
+  ${CYAN}-c, --create${NC}      ${MESSAGES["args_create"]}
+  ${CYAN}-r, --remove${NC}      ${MESSAGES["args_remove"]}
+  ${CYAN}-l, --list${NC}        ${MESSAGES["args_list"]}
+  ${CYAN}-b, --backup${NC}      ${MESSAGES["args_backup"]}
+  ${CYAN}--restore FILE${NC}    ${MESSAGES["args_restore"]}
+  ${CYAN}-e, --edit${NC}        ${MESSAGES["args_edit"]}
+  ${CYAN}--export${NC}          ${MESSAGES["args_export"]}
+  ${CYAN}--import FILE${NC}     ${MESSAGES["args_import"]}
+
+${YELLOW}${MESSAGES["help_examples"]}:${NC}
+  ${WHITE}${SCRIPT_NAME}${NC}              ${GREEN}# Interactive mode${NC}
+  ${WHITE}${SCRIPT_NAME} -c${NC}            ${GREEN}# Create shortcut interactively${NC}
+  ${WHITE}${SCRIPT_NAME} -r${NC}            ${GREEN}# Remove shortcuts interactively${NC}
+  ${WHITE}${SCRIPT_NAME} -l${NC}            ${GREEN}# List all shortcuts${NC}
+  ${WHITE}${SCRIPT_NAME} -b${NC}            ${GREEN}# Backup all shortcuts${NC}
+  ${WHITE}${SCRIPT_NAME} --restore backup.tar.gz${NC} ${GREEN}# Restore from backup${NC}
+  ${WHITE}${SCRIPT_NAME} -e${NC}            ${GREEN}# Edit an existing shortcut${NC}
+  ${WHITE}${SCRIPT_NAME} --export${NC}      ${GREEN}# Export shortcuts to config file${NC}
+  ${WHITE}${SCRIPT_NAME} --import file.conf${NC} ${GREEN}# Import shortcuts from config file${NC}
+
+${CYAN}${MESSAGES["help_categories"]}${NC}
+${categories_output}
+EOF
+}
+
+# ----------------------------------------------------------------------------
+# Main Script
+# ----------------------------------------------------------------------------
+
+# Check dependencies first
+check_dependencies || exit 1
+
+# Create necessary directories
+mkdir -p "$APPS_DIR" "$ICONS_DIR" "$BACKUP_DIR"
+
+# Process command line arguments
+if [[ $# -eq 0 ]]; then
+    print_info "${MESSAGES["no_args"]}"
+    interactive_create
+    exit 0
+fi
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -c|--create)
+            shift
+            interactive_create
+            exit 0
+            ;;
+        -r|--remove)
+            shift
+            interactive_remove
+            exit 0
+            ;;
+        -l|--list)
+            shift
+            list_shortcuts
+            exit 0
+            ;;
+        -b|--backup)
+            shift
+            backup_shortcuts
+            exit 0
+            ;;
+        --restore)
+            shift
+            if [[ $# -lt 1 ]]; then
+                print_error "Missing backup file path"
+                exit 1
+            fi
+            restore_shortcuts "$1"
+            exit 0
+            ;;
+        -e|--edit)
+            shift
+            interactive_edit
+            exit 0
+            ;;
+        --export)
+            shift
+            export_shortcuts
+            exit 0
+            ;;
+        --import)
+            shift
+            if [[ $# -lt 1 ]]; then
+                print_error "Missing import file path"
+                exit 1
+            fi
+            import_shortcuts "$1"
+            exit 0
+            ;;
+        *)
+            print_error "${MESSAGES["invalid_option"]}: $1"
+            echo
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+exit 0

@@ -26,6 +26,8 @@ alias resize2tile='tilefix' # Resize to tiles
 alias smartresize='~/.shell_utils/scripts/resize-it'
 alias resize_smart='smartresize'
 
+alias shortcut_desktop_creator='~/.shell_utils/scripts/desktop-shortcut-creator'
+
 alias ffmpeg_chromakey_processor='~/.shell_utils/scripts/remove-background-ffmpeg'
 
 alias compress_pdf='~/.shell_utils/scripts/merge-pdf'
