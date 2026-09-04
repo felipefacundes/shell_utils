@@ -51,7 +51,7 @@ Este repositório tem como objetivo estender o shell e conter funções úteis e
 Para garantir que suas customizações sejam preservadas durante as atualizações automáticas do framework, utilize a estrutura de diretórios persistente:
 
 ```bash
-~/.local/shell_utils/
+~/.local/share/shell_utils/
 ├── functions/   # Suas funções personalizadas (seguras contra atualizações)
 ├── variables/   # Suas variáveis de ambiente personalizadas
 ├── aliases/     # Seus aliases personalizados
@@ -64,7 +64,7 @@ Para garantir que suas customizações sejam preservadas durante as atualizaçõ
 
 ### 🔄 Como Funciona:
 - **`~/.shell_utils/`** - Framework principal (atualizável via Git)
-- **`~/.local/shell_utils/`** - Suas customizações (persistentes e seguras)
+- **`~/.local/share/shell_utils/`** - Suas customizações (persistentes e seguras)
 - **Ordem de Carregamento**: Primeiro o framework, depois suas customizações
 - **Atualizações Automáticas**: Seus arquivos em `~/.local/shell_utils/` nunca são sobrescritos
 

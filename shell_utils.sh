@@ -1,7 +1,7 @@
 zsh_history=~/.zsh_history
 bash_history=~/.bash_history
 shell_utils=~/.shell_utils
-shell_utils_users=~/.local/shell_utils
+shell_utils_users=~/.local/share/shell_utils
 shell_utils_configs=~/.shell_utils_configs
 
 # DEBUG log on/off

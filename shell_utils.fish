@@ -5,7 +5,7 @@
 status --is-interactive; or exit
 
 set shell_utils ~/.shell_utils
-set shell_utils_users ~/.local/shell_utils
+set shell_utils_users ~/.local/share/shell_utils
 set shell_utils_configs ~/.shell_utils_configs
 
 if set -q TERMUX_VERSION
