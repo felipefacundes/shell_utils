@@ -4,8 +4,16 @@
 # Searches for content delimited by : <<'DOCUMENTATION' and DOCUMENTATION in the running script.
 
 # With sed
-show_documentation() {
+show_documentation_sed() {
     sed -n '/^: <<.DOCUMENTATION./,/^DOCUMENTATION/p' "$0" | sed '1d;$d'
+}
+
+show_documentation_sed_with_var() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    VAR2="$VAR2" VAR1="$VAR1" \
+        envsubst '${VAR1} ${VAR2}' <<<"$doc"
+    exit 0
 }
 
 # With awk

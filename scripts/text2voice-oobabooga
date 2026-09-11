@@ -68,14 +68,10 @@ activate="${py_venv}/bin/activate"
 project_dir="${HOME}/.local/share/${PROJECT_NAME}"
 
 show_doc() {
-    # Extract the documentation block and expand script variables
-    export PYTHON_VERSION SCRIPT_NAME
     local doc
-    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" \
-        | sed '1d;$d' \
-        | envsubst '${SCRIPT_NAME} ${PYTHON_VERSION}')
-
-    echo "$doc"
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    PYTHON_VERSION="$PYTHON_VERSION" SCRIPT_NAME="$SCRIPT_NAME" \
+        envsubst '${SCRIPT_NAME} ${PYTHON_VERSION}' <<<"$doc"
     exit 0
 }
 
