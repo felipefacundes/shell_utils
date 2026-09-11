@@ -29,7 +29,7 @@ fi
 if ! command -v pyenv >/dev/null 2>&1; then
     echo "Error: pyenv is not installed. Install it with: sudo pacman -S pyenv"
     exit 1
-elif [[ ! -f "${py_version}" ]] && ! pyenv versions | grep -q "${PYTHON_VERSION}"; then
+elif [[ ! -f "${py_version}" ]] && ! pyenv versions --bare | grep -qx "${PYTHON_VERSION}"; then
     echo "Installing Python ${PYTHON_VERSION}..."
     pyenv install "${PYTHON_VERSION}"
 fi
@@ -41,10 +41,19 @@ if [[ ! -d "${py_venv}" && -f "${py_version}" ]]; then
     #shellcheck source=/dev/null
     source "$activate"
     export VIRTUAL_ENV="$py_venv"
+
+    echo "Upgrading pip..."
+    pip install --upgrade pip
     
     echo "Installing LGWebOSRemote package..."
     pip install git+https://github.com/klattimer/LGWebOSRemote
     echo "Installation complete!"
+fi
+
+# Check if the virtual environment is actually usable
+if [ ! -e "$activate" ]; then
+    echo "Python environment is empty."
+    exit 1
 fi
 
 if [[ -z "$VIRTUAL_ENV" ]]; then
