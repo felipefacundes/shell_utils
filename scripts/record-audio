@@ -7,13 +7,13 @@ This is a simple script for recording audio using ffmpeg. With useful tips!
 It supports both PulseAudio (pacmd) and PipeWire-Pulse (pactl/wpctl) backends.
 DOCUMENTATION
 
-record_dir=~/Music/record
+record_dir="$HOME/Music/record"
 
 # Detect audio backend
 detect_backend() {
-    if command -v pacmd &>/dev/null && pacmd info &>/dev/null 2>&1; then
+    if command -v pacmd &>/dev/null && LANG=en pacmd info &>/dev/null 2>&1; then
         echo "pulseaudio"
-    elif command -v pactl &>/dev/null && pactl info &>/dev/null 2>&1; then
+    elif command -v pactl &>/dev/null && LANG=en pactl info &>/dev/null 2>&1; then
         echo "pipewire"
     else
         echo "unknown"
@@ -60,13 +60,15 @@ Options:
   -mic, --source toggle
             Toggle sources/microphone on/off.
   -ar value
-            Set the sampling rate value. Default is 22.050 Hz.
+            Set the sampling rate value. Default is 48.000 Hz.
   -o, --output file.ext
             Save the recorded audio to the specified output file with the corresponding audio extension: .ogg, .wav, .mp3, .m4a, .flac, etc.
   -fix source
             Print instructions to fix audio recording issues.
   -l, -ls, --list-sources
             Display the current status (muted or unmuted) of audio sources/microphones.
+  -c, --command
+            Show an example command to record audio.
   -h, --help
             Display this help and exit.
 
@@ -84,8 +86,6 @@ Examples:
 Note:
   If no options are provided, the script will record audio with default settings and save it to a timestamped file in ~/Music/record directory.
 EOF
-    
-    exit 0
 }
 
 create_record_dir() {
@@ -100,9 +100,9 @@ check_sources() {
 
     case "$backend" in
         pulseaudio)
-            default_source="$(pacmd info | awk '/Default source name:/ {print $4}')"
+            default_source="$(LANG=en pacmd info | awk '/Default source name:/ {print $4}')"
 
-            mapfile -t muted_array < <(pacmd list-sources | grep -oP 'muted: (?:yes|no)')
+            mapfile -t muted_array < <(LANG=en pacmd list-sources | grep -oP 'muted: (?:yes|no)')
 
             for ((i=0; i<${#muted_array[@]}; i++)); do
                 if [[ ${muted_array[$i]} == 'muted: yes' ]]; then
@@ -113,15 +113,18 @@ check_sources() {
             done
 
             echo ""
-            pacmd info | grep -i --color=auto "$default_source"
+            LANG=en pacmd info | grep -i --color=auto "$default_source"
 
             echo -e "\n Set default source with command: $BGREEN pactl set-default-source <number> $RESET"
             ;;
         pipewire)
             # Use pactl for PipeWire-Pulse (compatible interface)
-            default_source="$(pactl info | awk -F': ' '/Default Source/ {print $2}')"
+            # Note: this function uses the long form of `pactl list sources`
+            # because it needs the "Mute:" field, while `toggle_sources`
+            # uses the short form (only the index/name).
+            default_source="$(LANG=en pactl info | awk -F': ' '/Default Source/ {print $2}')"
 
-            mapfile -t muted_array < <(pactl list sources | grep -oP 'Mute: (?:yes|no)' | tr '[:upper:]' '[:lower:]' | sed 's/mute:/muted:/')
+            mapfile -t muted_array < <(LANG=en pactl list sources | grep -oP 'Mute: (?:yes|no)' | tr '[:upper:]' '[:lower:]' | sed 's/mute:/muted:/')
 
             for ((i=0; i<${#muted_array[@]}; i++)); do
                 if [[ ${muted_array[$i]} == 'muted: yes' ]]; then
@@ -132,7 +135,7 @@ check_sources() {
             done
 
             echo ""
-            pactl info | grep -i --color=auto "$default_source"
+            LANG=en pactl info | grep -i --color=auto "$default_source"
 
             echo -e "\n Set default source with command: $BGREEN pactl set-default-source <number> $RESET"
             ;;
@@ -145,10 +148,10 @@ toggle_sources() {
 
     case "$backend" in
         pulseaudio)
-            pacmd list-sources | grep -oP 'index: \d+' | awk '{ print $2 }' | xargs -I{} pactl set-source-mute {} toggle
+            LANG=en pacmd list-sources | grep -oP 'index: \d+' | awk '{ print $2 }' | xargs -I{} pactl set-source-mute {} toggle
             ;;
         pipewire)
-            pactl list short sources | awk '{print $1}' | xargs -I{} pactl set-source-mute {} toggle
+            LANG=en pactl list short sources | awk '{print $1}' | xargs -I{} pactl set-source-mute {} toggle
             ;;
     esac
 
@@ -198,16 +201,16 @@ record_audio() {
 
     # Detect default sink's monitor device (internal/system audio)
     local monitor_device
-    monitor_device="$(pactl get-default-sink 2>/dev/null).monitor"
+    monitor_device="$(LANG=en pactl get-default-sink 2>/dev/null).monitor"
 
     # If monitor device doesn't exist, fallback to default
-    if ! pactl list short sources | grep -q "$monitor_device"; then
+    if ! LANG=en pactl list short sources | grep -q "$monitor_device"; then
         monitor_device="default"
     fi
 
     # Detect if the default source (microphone) is muted
     local source_state
-    source_state="$(pactl get-source-mute @DEFAULT_SOURCE@ 2>/dev/null | awk '{print $2}')"
+    source_state="$(LANG=en pactl get-source-mute @DEFAULT_SOURCE@ 2>/dev/null | awk '{print $2}')"
 
     local input_device
     if [[ "$source_state" == "yes" ]]; then
@@ -225,6 +228,7 @@ record_audio() {
 
 if [[ -z $1 ]]; then
     help
+    exit 0
 fi
 
 # main function
@@ -272,7 +276,6 @@ main() {
                 ;;
             *)
                 help
-                shift
                 exit 0
                 ;;
         esac
@@ -295,14 +298,14 @@ check_dependencies "$BACKEND"
 create_record_dir
 main "$BACKEND" "$@"
 
-if [[ "$volume" =~ ^[0-9]+$ ]]; then
+if [[ "$volume" =~ ^-?[0-9]+$ ]]; then
     echo "Volume: $volume"
 elif [[ "$volume" ]]; then
     echo 'Only numbers are accepted for volume!'
     exit 1
 fi
 if [[ "$ar" =~ ^[0-9]+$ ]]; then
-    echo "Volume: $ar"
+    echo "Sampling rate: $ar"
 elif [[ "$ar" ]]; then
     echo 'Only numbers are accepted for sampling rate!'
     exit 1

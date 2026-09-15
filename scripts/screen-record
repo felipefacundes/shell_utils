@@ -70,11 +70,6 @@ av1_nvenc (NVIDIA AV1 hardware encoding)
 EOF
 }
 
-# Function to get default audio source for Wayland
-function get_wayland_audio_source {
-    LANG=en pactl list sources | awk '/Name:/ {print $2}' | head -n1 | tail -n1
-}
-
 # Function to check if a command exists
 function command_exists {
     command -v "$1" >/dev/null 2>&1
@@ -92,6 +87,7 @@ muxing=${muxing:-9999}
 #arate=${arate:-22050}
 arate=${arate:-44100}
 codec=${codec:-"libx264"}
+if_muxing=${if_muxing:-off}
 default_folder="${HOME}/Videos/Capture"
 
 # Parse dos argumentos
@@ -149,44 +145,64 @@ done
 # Set output file if not specified by user
 output_file=${output_file:-"${default_folder}/Screen_$(date +'%Y-%m-%d_%H:%M:%S').mp4"}
 
-# Check if Wayland is being used
+# ============================================================
+# Detect audio source (microphone vs internal/system audio)
+# This must run BEFORE the Wayland/X11 branches so both use it
+# ============================================================
+
+# Detect default sink's monitor device (internal/system audio)
+monitor_device="$(LANG=en pactl get-default-sink 2>/dev/null).monitor"
+
+# If monitor device doesn't exist, fallback to default
+if ! LANG=en pactl list short sources | grep -q "$monitor_device"; then
+    monitor_device="default"
+fi
+
+# Detect if the default source (microphone) is muted
+source_state="$(LANG=en pactl get-source-mute @DEFAULT_SOURCE@ 2>/dev/null | awk '{print $2}')"
+
+if [[ "$source_state" == "yes" ]]; then
+    # Microphone is muted -> record internal/system audio
+    input_device="$monitor_device"
+    echo "Microphone is muted. Recording internal/system audio from: $input_device"
+else
+    # Microphone is active -> record from microphone
+    input_device="default"
+    echo "Microphone is active (or unknown state). Recording from microphone."
+fi
+################
+
+
+# ============================================================
+# Wayland branch
+# ============================================================
 if is_wayland; then
     # Check if wf-recorder is already running
     wf_rec=$(pidof wf-recorder)
-    
+
     if [[ -z "${wf_rec}" ]]; then
         echo "Detected Wayland session. Using wf-recorder..."
-        
+
         # Check if wf-recorder is installed
         if ! command_exists wf-recorder; then
             echo "Error: wf-recorder is not installed."
             echo "Please install wf-recorder to use this script on Wayland."
             exit 1
         fi
-        
+
         # Determine audio source
-        audio_source=$(get_wayland_audio_source)
-        
-        # Determine codec based on file extension for wf-recorder
-        filename=$(basename "$output_file")
-        extension="${filename##*.}"
-        
+        audio_source="$input_device"   # <-- Detect mute/monitor
+
+        # Determine codec for wf-recorder
         # Default codec for wf-recorder
         wf_codec="libx265"
-        
         # Map codecs for wf-recorder compatibility
         case "$codec" in
-            libx265|hevc_nvenc)
-                wf_codec="libx265"
-                ;;
-            libsvtav1|av1_nvenc)
-                wf_codec="av1"
-                ;;
-            libvpx-vp9)
-                wf_codec="vp9"
-                ;;
+            libx265|hevc_nvenc) wf_codec="libx265" ;;
+            libsvtav1|av1_nvenc) wf_codec="av1" ;;
+            libvpx-vp9) wf_codec="vp9" ;;
         esac
-        
+
         # Handle scale option if provided
         scale_option=""
         if [[ -n "$vf_scale" ]]; then
@@ -194,15 +210,14 @@ if is_wayland; then
             wf_scale="${vf_scale//:/x}"
             scale_option="-g ${wf_scale}"
         fi
-        
+
         # Build wf-recorder command
         echo "Recording to: $output_file"
         echo "Using codec: $wf_codec"
         echo "Audio source: $audio_source"
-        
+
         # Execute wf-recorder with appropriate options
         wf-recorder -c "$wf_codec" --audio="$audio_source" $scale_option -f "$output_file"
-        
         exit 0
     else
         echo "wf-recorder is already running (PID: ${wf_rec})"
@@ -249,57 +264,57 @@ esac
 if [[ "$if_muxing" == "on" ]]; then
 
     if [[ "$vf_scale" ]]; then
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:a libmp3lame -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -max_muxing_queue_size "$muxing" -f mp4 -vf scale="$vf_scale" "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:a libmp3lame -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -max_muxing_queue_size "$muxing" -f mp4 -vf scale="$vf_scale" "$output_file"
     else
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:a libmp3lame -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -max_muxing_queue_size "$muxing" -f mp4 "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:a libmp3lame -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -max_muxing_queue_size "$muxing" -f mp4 "$output_file"
     fi
 
 elif [[ "$codec" == "libx264" ]]; then
 
     if [[ "$vf_scale" ]]; then
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p "$output_file"
     fi
 
 elif [[ "$codec" == "libx265" ]]; then
     # Optimized parameters for libx265 (HEVC)
     if [[ "$vf_scale" ]]; then
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx265 -preset ultrafast -crf 28 -x265-params log-level=error -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libx265 -preset ultrafast -crf 28 -x265-params log-level=error -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libx265 -preset ultrafast -crf 28 -x265-params log-level=error -pix_fmt yuv420p "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libx265 -preset ultrafast -crf 28 -x265-params log-level=error -pix_fmt yuv420p "$output_file"
     fi
 
 elif [[ "$codec" == "libsvtav1" ]]; then
     # Optimized parameters for libsvtav1 (fast AV1 encoding)
     if [[ "$vf_scale" ]]; then
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libsvtav1 -preset 8 -crf 35 -pix_fmt yuv420p -svtav1-params log-level=error -vf scale="$vf_scale" "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libsvtav1 -preset 8 -crf 35 -pix_fmt yuv420p -svtav1-params log-level=error -vf scale="$vf_scale" "$output_file"
     else
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v libsvtav1 -preset 8 -crf 35 -pix_fmt yuv420p -svtav1-params log-level=error "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libsvtav1 -preset 8 -crf 35 -pix_fmt yuv420p -svtav1-params log-level=error "$output_file"
     fi
 
 elif [[ "$codec" == "hevc_nvenc" ]]; then
     # Optimized parameters for NVIDIA HEVC hardware encoding
     if [[ "$vf_scale" ]]; then
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq 28 -qmin 0 -qmax 51 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq 28 -qmin 0 -qmax 51 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq 28 -qmin 0 -qmax 51 -b:v 0 -pix_fmt yuv420p "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq 28 -qmin 0 -qmax 51 -b:v 0 -pix_fmt yuv420p "$output_file"
     fi
 
 elif [[ "$codec" == "av1_nvenc" ]]; then
     # Optimized parameters for NVIDIA AV1 hardware encoding
     if [[ "$vf_scale" ]]; then
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v av1_nvenc -preset p7 -tune hq -rc vbr -cq 32 -qmin 0 -qmax 63 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v av1_nvenc -preset p7 -tune hq -rc vbr -cq 32 -qmin 0 -qmax 63 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v av1_nvenc -preset p7 -tune hq -rc vbr -cq 32 -qmin 0 -qmax 63 -b:v 0 -pix_fmt yuv420p "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v av1_nvenc -preset p7 -tune hq -rc vbr -cq 32 -qmin 0 -qmax 63 -b:v 0 -pix_fmt yuv420p "$output_file"
     fi
 
 else
 
     if [[ "$vf_scale" ]]; then
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v "$codec" -preset ultrafast -vf scale="$vf_scale" "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v "$codec" -preset ultrafast -vf scale="$vf_scale" "$output_file"
     else
-        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i default -ar "$arate" -c:v "$codec" -preset ultrafast "$output_file"
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v "$codec" -preset ultrafast "$output_file"
     fi
 
 fi
