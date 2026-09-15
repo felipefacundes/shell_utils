@@ -164,7 +164,7 @@ gpu_detect() {
                 ;;
         esac
         
-    elif lspci | grep -E "VGA|3D" | grep -Ei "AMD|ATI" >/dev/null 2>&1; then
+    elif lspci | grep -Ei "VGA|3D" | grep -Eqi "\bAMD\b|\bATI\b"; then
         echo "🔍 AMD GPU detected"
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.4
         

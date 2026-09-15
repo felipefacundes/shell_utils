@@ -65,7 +65,8 @@ PROJECT_NAME="textgen"
 py_version="${HOME}/.pyenv/versions/${PYTHON_VERSION}/bin/python"
 py_venv="${HOME}/.python/${SCRIPT_NAME}"
 activate="${py_venv}/bin/activate"
-project_dir="${HOME}/.local/share/${PROJECT_NAME}"
+# project_dir="${HOME}/.local/share/${PROJECT_NAME}"
+project_dir="${py_venv}/${PROJECT_NAME}"
 
 show_doc() {
     local doc
@@ -119,6 +120,11 @@ if [[ ! -d "${py_venv}" && -f "${py_version}" ]]; then
 
     echo "Installing TextGen of Oobabooga dependencies..."
     pip install -r "${project_dir}/requirements/portable/requirements.txt" --upgrade
+    
+    # TTS Support
+    pip install "coqui-tts==0.27.2" "transformers>=4.52.1,<4.56" #"markupsafe>=2.0,<3"
+    pip install torch==2.7.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu126 --force-reinstall
+    #pip install "markupsafe>=2.0,<3"
 
     echo "Installation complete!"
 fi

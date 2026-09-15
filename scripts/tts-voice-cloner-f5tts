@@ -1,0 +1,602 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+TTS Voice Cloner (F5-TTS)
+=========================
+
+Command-line voice-cloning text-to-speech tool built on top of F5-TTS.
+
+F5-TTS is a non-autoregressive, flow-matching based TTS model that produces
+more natural and stable speech than autoregressive alternatives like XTTS v2.
+It supports zero-shot voice cloning from short reference audio samples.
+
+Given a >=3 second WAV sample of a voice, it clones that voice and reads
+arbitrary text out loud (or saves it to a WAV file), with optional pitch,
+speed and volume adjustments.
+
+Basic usage
+-----------
+    tts_voice_cloner.py -t "Hello, how are you?" -l en -m john.wav
+    tts_voice_cloner.py -f story.txt -l en -m mary.wav -o story.wav
+    tts_voice_cloner.py -t "I am the night" -l en -m john.wav --deep
+
+Run with --help for the full list of options.
+
+LICENSE
+    GPLv3 (script) / CC-BY-NC 4.0 (F5-TTS model)
+
+CREDITS
+    Felipe Facundes
+DOCUMENTATION
+
+PYTHON_SCRIPT="/tmp/tts-voice-cloner-f5.py"
+PYTHON_VERSION="3.11.9"
+SCRIPT_NAME="${0##*/}"
+
+py_version="${HOME}/.pyenv/versions/${PYTHON_VERSION}/bin/python"
+py_venv="${HOME}/.python/${SCRIPT_NAME}"
+activate="${py_venv}/bin/activate"
+
+# ---------------------------------------------------------------------------
+# GPU auto-detection
+#
+# Installs the PyTorch build that matches the machine. F5-TTS is more
+# flexible than coqui-tts regarding PyTorch versions, so we can use newer
+# CUDA wheels when available.
+# ---------------------------------------------------------------------------
+
+get_driver_cuda() {
+    nvidia-smi 2>/dev/null | grep -oP 'CUDA Version:\s*\K[0-9]+\.[0-9]+' | head -n1
+}
+
+gpu_detect() {
+    if ! command -v lspci >/dev/null 2>&1; then
+        echo "⚠️  'lspci' not found -- installing PyTorch for CPU."
+        pip install torch torchaudio
+        return
+    fi
+
+    local gpu_line
+    gpu_line=$(lspci | grep -Ei "VGA|3D")
+
+    if echo "$gpu_line" | grep -qi nvidia; then
+        echo "🔍 NVIDIA GPU detected"
+
+        if ! command -v nvidia-smi >/dev/null 2>&1; then
+            echo "⚠️  nvidia-smi not found -- falling back to CPU."
+            pip install torch torchaudio
+            return
+        fi
+
+        local driver_cuda
+        driver_cuda=$(get_driver_cuda)
+
+        if [[ -z "$driver_cuda" ]]; then
+            echo "⚠️  Could not read CUDA version -- falling back to CPU."
+            pip install torch torchaudio
+        elif awk -v a="$driver_cuda" 'BEGIN { exit !(a >= 12.8) }'; then
+            echo "📌 Driver supports CUDA $driver_cuda (>= 12.8) -> installing torch 2.8.0 + cu128"
+            pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+        elif awk -v a="$driver_cuda" 'BEGIN { exit !(a >= 12.4) }'; then
+            echo "📌 Driver supports CUDA $driver_cuda (>= 12.4) -> installing torch 2.4.0 + cu124"
+            pip install torch==2.4.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124
+        elif awk -v a="$driver_cuda" 'BEGIN { exit !(a >= 11.8) }'; then
+            echo "📌 Driver supports CUDA $driver_cuda (>= 11.8) -> installing torch 2.3.0 + cu118"
+            pip install torch==2.3.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cu118
+        else
+            echo "⚠️  Driver's CUDA $driver_cuda is too old -- falling back to CPU."
+            pip install torch torchaudio
+        fi
+
+    elif echo "$gpu_line" | grep -Eqi "\bAMD\b|\bATI\b"; then
+        echo "🔍 AMD GPU detected"
+        pip install torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+
+    elif echo "$gpu_line" | grep -qi intel; then
+        echo "🔍 Intel GPU detected"
+        pip install torch torchaudio --index-url https://download.pytorch.org/whl/xpu
+
+    else
+        echo "⚠️  No dedicated GPU detected -- installing PyTorch for CPU"
+        pip install torch torchaudio
+    fi
+}
+
+# CREATE PYTHON SCRIPT
+
+cat << 'EOF' | tee "$PYTHON_SCRIPT" &>/dev/null
+#!/usr/bin/env python3
+# License: GPLv3
+# Credits: Felipe Facundes
+
+"""
+TTS Voice Cloner (F5-TTS)
+=========================
+
+Command-line voice-cloning text-to-speech tool built on top of F5-TTS.
+
+F5-TTS uses flow matching with a Diffusion Transformer (DiT) architecture,
+which produces more natural and stable speech compared to autoregressive
+models. It supports zero-shot voice cloning from short reference samples.
+"""
+
+import argparse
+import os
+import platform
+import shutil
+import sys
+import tempfile
+import warnings
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Project directories
+# ---------------------------------------------------------------------------
+
+def get_base_dir() -> Path:
+    system = platform.system()
+    if system == "Windows":
+        root = os.getenv("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(root) / "tts_voice_cloner_f5"
+    if system == "Darwin":
+        return Path.home() / "Library" / "Application Support" / "tts_voice_cloner_f5"
+    root = os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(root) / "tts_voice_cloner_f5"
+
+
+BASE_DIR = get_base_dir()
+MODELS_DIR = BASE_DIR / "models"
+ENGINE_DIR = BASE_DIR / "engine"
+
+
+def ensure_dirs() -> None:
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    ENGINE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# F5-TTS uses Hugging Face cache; redirect it into our project folder
+os.environ.setdefault("HF_HOME", str(ENGINE_DIR / "huggingface"))
+os.environ.setdefault("TORCH_HOME", str(ENGINE_DIR / "torch"))
+
+# ---------------------------------------------------------------------------
+# Languages (F5-TTS supports multilingual, primarily en/zh, with community
+# fine-tunes for other languages. Core model handles en and zh best.)
+# ---------------------------------------------------------------------------
+
+SUPPORTED_LANGUAGES = {
+    "en": "English",
+    "zh": "Chinese",
+    "ja": "Japanese (community fine-tune)",
+    "fr": "French (community fine-tune)",
+    "de": "German (community fine-tune)",
+    "es": "Spanish (community fine-tune)",
+    "it": "Italian (community fine-tune)",
+    "hi": "Hindi (community fine-tune)",
+    "ru": "Russian (community fine-tune)",
+}
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tts-voice-cloner-f5.py",
+        description="Clone a voice from a WAV sample and turn text into speech (F5-TTS).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "-t", "--text",
+        help="Text to synthesize, in the target language, wrapped in quotes.",
+    )
+    parser.add_argument(
+        "-f", "--file",
+        help="Path to a .txt file containing the text to synthesize.",
+    )
+    parser.add_argument(
+        "-l", "--language",
+        choices=sorted(SUPPORTED_LANGUAGES),
+        metavar="LANG",
+        help="Target language code (" + ", ".join(sorted(SUPPORTED_LANGUAGES)) + ").",
+    )
+    parser.add_argument(
+        "-m", "--model",
+        help="Voice sample file name (>=3s WAV) inside the models folder, "
+             "or a path to a WAV file elsewhere.",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        help="Save the result to this WAV file instead of playing it aloud.",
+    )
+
+    adj = parser.add_argument_group("voice adjustments")
+    adj.add_argument(
+        "--pitch", type=float, default=0.0,
+        help="Pitch shift in semitones. Positive = higher, negative = deeper. "
+             "Default: 0. Applied as post-processing via librosa.",
+    )
+    adj.add_argument(
+        "--speed", type=float, default=1.0,
+        help="Speech rate. 1.0 = normal. F5-TTS supports native speed control. "
+             "Values far from 1.0 may introduce artifacts. Default: 1.0.",
+    )
+    adj.add_argument(
+        "--volume", type=float, default=0.0,
+        help="Volume gain in dB. Positive boosts, negative reduces. Default: 0.",
+    )
+    adj.add_argument(
+        "--deep", action="store_true",
+        help="Preset: deep voice (pitch -6 semitones).",
+    )
+    adj.add_argument(
+        "--high", action="store_true",
+        help="Preset: high-pitched voice (pitch +6 semitones).",
+    )
+
+    quality = parser.add_argument_group("quality / stability")
+    quality.add_argument(
+        "--ref-text",
+        help="Transcription of the reference audio. If omitted, F5-TTS will "
+             "attempt to transcribe it automatically (extra GPU memory usage).",
+    )
+    quality.add_argument(
+        "--nfe-step", type=int, default=32,
+        help="Number of function evaluations (flow steps). Higher = better "
+             "quality but slower. Default: 32. Range: 16-64.",
+    )
+    quality.add_argument(
+        "--cfg-strength", type=float, default=2.0,
+        help="Classifier-free guidance strength. Higher = more adherence to "
+             "reference voice but less natural. Default: 2.0.",
+    )
+    quality.add_argument(
+        "--sway-sampling-coef", type=float, default=-1.0,
+        help="Sway sampling coefficient. Negative values enable sway sampling "
+             "which improves quality. Default: -1.0.",
+    )
+    quality.add_argument(
+        "--no-clean-reference", action="store_true",
+        help="Skip automatic cleanup (silence trimming + normalization) of "
+             "the reference voice sample before cloning.",
+    )
+
+    misc = parser.add_argument_group("misc")
+    misc.add_argument(
+        "--list-models", action="store_true",
+        help=f"List voice samples in {MODELS_DIR} and exit.",
+    )
+    misc.add_argument(
+        "--list-languages", action="store_true",
+        help="List supported language codes and exit.",
+    )
+    misc.add_argument(
+        "--gpu", action="store_true",
+        help="Force GPU usage. By default GPU is used automatically if available.",
+    )
+
+    return parser
+
+
+def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.list_models or args.list_languages:
+        return
+    if not args.text and not args.file:
+        parser.error("one of the arguments -t/--text -f/--file is required")
+    if args.text and args.file:
+        parser.error("arguments -t/--text and -f/--file are mutually exclusive")
+    if not args.model:
+        parser.error("the following argument is required: -m/--model")
+    if args.deep and args.high:
+        parser.error("arguments --deep and --high are mutually exclusive")
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def prepare_reference_audio(speaker_wav: Path, tmp_dir: Path, clean: bool) -> Path:
+    """Trim silence and normalize the reference sample for better cloning."""
+    if not clean:
+        return speaker_wav
+
+    try:
+        import librosa
+        import numpy as np
+        import soundfile as sf
+    except ImportError:
+        return speaker_wav
+
+    y, sr = librosa.load(speaker_wav, sr=None, mono=True)
+    y, _ = librosa.effects.trim(y, top_db=30)
+
+    peak = float(np.max(np.abs(y))) if y.size else 0.0
+    if peak > 0:
+        y = y / peak * 0.95
+
+    cleaned_path = tmp_dir / "reference_clean.wav"
+    sf.write(cleaned_path, y, sr)
+    return cleaned_path
+
+
+def resolve_model_path(model_arg: str) -> Path:
+    candidate = Path(model_arg).expanduser()
+    if candidate.is_file():
+        return candidate
+
+    in_models_dir = MODELS_DIR / model_arg
+    if in_models_dir.is_file():
+        return in_models_dir
+
+    sys.exit(
+        f"Error: voice model '{model_arg}' not found.\n"
+        f"Looked for it as a direct path and inside: {MODELS_DIR}\n"
+        f"Tip: drop your >=3s WAV sample into that folder, or pass "
+        f"--list-models to see what's already there."
+    )
+
+
+def read_text_input(args: argparse.Namespace) -> str:
+    if args.file:
+        path = Path(args.file).expanduser()
+        if not path.is_file():
+            sys.exit(f"Error: text file not found: {path}")
+        text = path.read_text(encoding="utf-8").strip()
+    else:
+        text = args.text.strip()
+
+    if not text:
+        sys.exit("Error: no text provided.")
+    return text
+
+
+def list_models() -> None:
+    wavs = sorted(MODELS_DIR.glob("*.wav"))
+    if not wavs:
+        print(f"No voice models found in {MODELS_DIR}")
+        print("Add a WAV file (3s or longer) of the voice you want to clone there.")
+        return
+    print(f"Voice models in {MODELS_DIR}:")
+    for w in wavs:
+        print(f"  {w.name}")
+
+
+def list_languages() -> None:
+    for code, name in sorted(SUPPORTED_LANGUAGES.items()):
+        print(f"{code}\t{name}")
+
+
+# ---------------------------------------------------------------------------
+# Synthesis (F5-TTS)
+# ---------------------------------------------------------------------------
+
+def synthesize(
+    text: str,
+    language: str,
+    speaker_wav: Path,
+    out_path: Path,
+    force_gpu: bool,
+    speed: float,
+    nfe_step: int,
+    cfg_strength: float,
+    sway_sampling_coef: float,
+    ref_text: str = None,
+) -> None:
+    try:
+        from f5_tts.api import F5TTS
+    except ImportError:
+        sys.exit(
+            "Error: the 'f5-tts' package is not installed.\n"
+            "Install it with: pip install f5-tts"
+        )
+
+    import torch
+
+    if force_gpu and not torch.cuda.is_available():
+        sys.exit("Error: --gpu was requested but no CUDA GPU is available.")
+
+    device = "cuda" if (force_gpu or torch.cuda.is_available()) else "cpu"
+    print(f"Loading F5-TTS on {device} (first run downloads the model, this can take a while)...",
+          file=sys.stderr)
+
+    # Initialize F5-TTS model
+    f5tts = F5TTS()
+
+    # Synthesize
+    # F5-TTS infer() returns (wav, sr, spectrogram)
+    wav, sr, _ = f5tts.infer(
+        ref_file=str(speaker_wav),
+        ref_text=ref_text or "",  # Empty string triggers auto-transcription
+        gen_text=text,
+        file_wave=str(out_path),
+        nfe_step=nfe_step,
+        cfg_strength=cfg_strength,
+        sway_sampling_coef=sway_sampling_coef,
+        speed=speed,
+    )
+
+
+def apply_adjustments(wav_path: Path, pitch_semitones: float, volume_db: float) -> None:
+    """Post-process pitch and volume. Speed is handled natively by F5-TTS."""
+    if pitch_semitones == 0 and volume_db == 0:
+        return
+
+    try:
+        import librosa
+        import numpy as np
+        import soundfile as sf
+    except ImportError:
+        sys.exit(
+            "Error: 'librosa'/'soundfile' are required for voice adjustments.\n"
+            "Install them with: pip install librosa soundfile"
+        )
+
+    y, sr = librosa.load(wav_path, sr=None)
+
+    if pitch_semitones != 0:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            y = librosa.effects.pitch_shift(y, sr=sr, n_steps=pitch_semitones)
+
+        if not np.all(np.isfinite(y)):
+            print("Warning: pitch shift produced invalid samples; zeroing them out.",
+                  file=sys.stderr)
+            y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+
+    if volume_db != 0:
+        factor = 10 ** (volume_db / 20)
+        y = y * factor
+        peak = float(np.max(np.abs(y))) if y.size else 0.0
+        if peak > 0.99:
+            y = y / peak * 0.99
+
+    sf.write(wav_path, y, sr)
+
+
+def play_audio(wav_path: Path) -> None:
+    try:
+        import sounddevice as sd
+        import soundfile as sf
+    except ImportError:
+        sys.exit(
+            "Error: 'sounddevice'/'soundfile' are required to play audio.\n"
+            "Install them with: pip install sounddevice soundfile"
+        )
+
+    data, sr = sf.read(wav_path, dtype="float32")
+    sd.play(data, sr)
+    sd.wait()
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    ensure_dirs()
+    parser = build_arg_parser()
+    args = parser.parse_args()
+    validate_args(parser, args)
+
+    if args.list_languages:
+        list_languages()
+        return
+    if args.list_models:
+        list_models()
+        return
+
+    pitch = args.pitch
+    if args.deep:
+        pitch -= 6
+    if args.high:
+        pitch += 6
+
+    text = read_text_input(args)
+    speaker_wav = resolve_model_path(args.model)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        clean_speaker_wav = prepare_reference_audio(
+            speaker_wav, tmp_path, clean=not args.no_clean_reference
+        )
+
+        raw_path = tmp_path / "raw.wav"
+        synthesize(
+            text, args.language, clean_speaker_wav, raw_path, args.gpu,
+            speed=args.speed,
+            nfe_step=args.nfe_step,
+            cfg_strength=args.cfg_strength,
+            sway_sampling_coef=args.sway_sampling_coef,
+            ref_text=args.ref_text,
+        )
+        apply_adjustments(raw_path, pitch, args.volume)
+
+        if args.output:
+            out_path = Path(args.output).expanduser()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(raw_path, out_path)
+            print(f"Saved to {out_path}")
+        else:
+            print("Playing audio...")
+            play_audio(raw_path)
+
+
+if __name__ == "__main__":
+    main()
+EOF
+
+[[ -f "$PYTHON_SCRIPT" && ! -x "$PYTHON_SCRIPT" ]] && chmod +x "$PYTHON_SCRIPT"
+
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION'$/p" "$0" | sed '1d;$d')
+    echo "$doc"
+    exit 0
+}
+
+if [[ "${1,,}" == "-d" || "${1,,}" == "--doc" ]]; then
+    show_doc
+fi
+
+# Remove virtual environment
+if [[ "${1,,}" == "--clean" || "${1,,}" == "-c" ]]; then
+    if [[ -d "${py_venv}" ]]; then
+        echo "Cleaning virtual environment..."
+        rm -rf "${py_venv}"
+        echo "Virtual environment removed."
+    fi
+    exit 0
+fi
+
+if ! command -v pyenv >/dev/null 2>&1; then
+    echo "Error: pyenv is not installed. Install it with: sudo pacman -S pyenv"
+    exit 1
+elif [[ ! -f "${py_version}" ]] && ! pyenv versions --bare | grep -qx "${PYTHON_VERSION}"; then
+    echo "Installing Python ${PYTHON_VERSION}..."
+    pyenv install "${PYTHON_VERSION}"
+fi
+
+# Create virtual environment
+if [[ ! -d "${py_venv}" && -f "${py_version}" ]]; then
+    echo "Creating virtual environment with Python ${PYTHON_VERSION} at ${py_venv}..."
+    "${py_version}" -m venv "${py_venv}"
+
+    source "$activate"
+    export VIRTUAL_ENV="$py_venv"
+
+    echo "Upgrading pip..."
+    pip install --upgrade pip
+
+    # Install FFmpeg dependency (F5-TTS requires it for audio processing)
+    if ! command -v ffmpeg >/dev/null 2>&1; then
+        echo "⚠️  ffmpeg not found. Install it with: sudo pacman -S ffmpeg"
+    fi
+
+    # Install F5-TTS (pulls in its own dependencies including PyTorch if not present)
+    echo "Installing F5-TTS..."
+    pip install f5-tts sounddevice soundfile librosa
+
+    # Override PyTorch with GPU-specific build if available
+    gpu_detect
+
+    echo "Installation complete!"
+fi
+
+if [ ! -e "$activate" ]; then
+    echo "Python environment is empty."
+    exit 1
+fi
+
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    echo "Activating virtual environment..."
+    export VIRTUAL_ENV="$py_venv"
+    source "$activate"
+fi
+
+echo
+python --version
+echo
+"${PYTHON_SCRIPT}" "$@"

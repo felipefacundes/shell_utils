@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes (based on GPT-SoVITS official setup)
+
+: <<'DOCUMENTATION'
+GPT-SoVITS Auto-Setup
+=====================
+
+Automated setup script for GPT-SoVITS-WebUI.
+
+This script clones the official GPT-SoVITS repository, sets up a Python
+virtual environment, installs dependencies, and launches the WebUI.
+
+Basic usage
+-----------
+    ./gpt_sovits_setup.sh
+
+The WebUI will be accessible at http://localhost:9874 after startup.
+
+LICENSE
+    GPLv3 (script) / MIT (GPT-SoVITS)
+
+CREDITS
+    RVC-Boss and contributors
+DOCUMENTATION
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+PROJECT_DIR="${HOME}/gpt-sovits"
+PYTHON_VERSION="3.10"
+CONDA_ENV_NAME="GPTSoVits"
+WEBUI_PORT=9874
+
+# Model version to use (v2Pro recommended for RTX 30/40 series)
+# Options: v2, v3, v4, v2Pro
+MODEL_VERSION="v2Pro"
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+log_info() {
+    echo -e "\033[1;34m[INFO]\033[0m $*"
+}
+
+log_warn() {
+    echo -e "\033[1;33m[WARN]\033[0m $*"
+}
+
+log_error() {
+    echo -e "\033[1;31m[ERROR]\033[0m $*" >&2
+}
+
+check_command() {
+    if ! command -v "$1" &>/dev/null; then
+        log_error "'$1' is not installed. Please install it first."
+        return 1
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Pre-flight checks
+# ---------------------------------------------------------------------------
+
+log_info "Checking prerequisites..."
+
+# Check for conda (required by official GPT-SoVITS install.sh)
+if ! check_command conda; then
+    log_error "conda is required. Install Miniconda/Anaconda first:"
+    log_error "  https://docs.conda.io/en/latest/miniconda.html"
+    exit 1
+fi
+
+# Check for git
+if ! check_command git; then
+    log_error "git is required. Install it with your package manager."
+    exit 1
+fi
+
+# Check for ffmpeg
+if ! check_command ffmpeg; then
+    log_warn "ffmpeg not found in PATH."
+    log_warn "On Arch/Manjaro: sudo pacman -S ffmpeg"
+    log_warn "On Ubuntu/Debian: sudo apt install ffmpeg"
+    log_warn "Continuing anyway, but audio processing may fail."
+fi
+
+# ---------------------------------------------------------------------------
+# Clone repository
+# ---------------------------------------------------------------------------
+
+if [[ -d "$PROJECT_DIR/.git" ]]; then
+    log_info "Repository already exists at $PROJECT_DIR"
+    log_info "Pulling latest changes..."
+    cd "$PROJECT_DIR"
+    git pull --ff-only || log_warn "Could not pull latest changes. Using existing code."
+else
+    log_info "Cloning GPT-SoVITS into $PROJECT_DIR..."
+    git clone https://github.com/RVC-Boss/GPT-SoVITS.git "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
+fi
+
+# ---------------------------------------------------------------------------
+# Setup conda environment
+# ---------------------------------------------------------------------------
+
+log_info "Setting up conda environment: $CONDA_ENV_NAME"
+
+if conda env list | grep -q "^${CONDA_ENV_NAME} "; then
+    log_info "Environment '$CONDA_ENV_NAME' already exists."
+else
+    log_info "Creating conda environment with Python $PYTHON_VERSION..."
+    conda create -n "$CONDA_ENV_NAME" python="$PYTHON_VERSION" -y
+fi
+
+# Activate the environment
+# shellcheck disable=SC1091
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "$CONDA_ENV_NAME"
+
+log_info "Active Python: $(python --version)"
+log_info "Active pip: $(pip --version)"
+
+# ---------------------------------------------------------------------------
+# Install PyTorch (GPU-specific)
+# ---------------------------------------------------------------------------
+
+log_info "Detecting GPU and installing PyTorch..."
+
+detect_gpu_and_torch() {
+    local nvidia_gpu
+    nvidia_gpu=$(lspci 2>/dev/null | grep -i "nvidia" || true)
+
+    if [[ -n "$nvidia_gpu" ]]; then
+        log_info "NVIDIA GPU detected."
+        log_info "Installing PyTorch 2.5.1 with CUDA 12.4..."
+        pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+    else
+        log_info "No NVIDIA GPU detected. Installing CPU-only PyTorch..."
+        pip install torch==2.5.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+    fi
+}
+
+detect_gpu_and_torch
+
+# ---------------------------------------------------------------------------
+# Install GPT-SoVITS dependencies
+# ---------------------------------------------------------------------------
+
+log_info "Installing GPT-SoVITS dependencies..."
+
+# Install pip requirements
+pip install -r requirements.txt
+
+# Install extra requirements (without deps to avoid conflicts)
+if [[ -f extra-req.txt ]]; then
+    pip install -r extra-req.txt --no-deps
+fi
+
+# Ensure ffmpeg is available via conda (safer than system version)
+conda install -c conda-forge ffmpeg -y
+
+log_info "Dependencies installed successfully."
+
+# ---------------------------------------------------------------------------
+# Download pretrained models
+# ---------------------------------------------------------------------------
+
+log_info "Downloading pretrained models for $MODEL_VERSION..."
+
+MODELS_DIR="$PROJECT_DIR/GPT_SoVITS/pretrained_models"
+
+# Base models (always needed)
+if [[ ! -d "$MODELS_DIR/chinese-roberta-wwm-ext-large" ]]; then
+    log_info "Base models not found. Running install.sh for initial setup..."
+    # install.sh handles base model download
+    bash install.sh --device CU124 --source HF || log_warn "install.sh failed, you may need to download models manually."
+fi
+
+log_info "Model directory: $MODELS_DIR"
+log_info "If downloads failed, download pretrained models manually from:"
+log_info "  https://huggingface.co/lj1995/GPT-SoVITS"
+
+# ---------------------------------------------------------------------------
+# Launch WebUI
+# ---------------------------------------------------------------------------
+
+log_info "Starting GPT-SoVITS WebUI..."
+log_info "WebUI will be available at: http://localhost:${WEBUI_PORT}"
+
+cd "$PROJECT_DIR"
+python webui.py --port "$WEBUI_PORT"
