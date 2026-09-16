@@ -1,56 +1,61 @@
 #!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
 ###############################################################################
-# Manutenção do bash_history — v4 (rápida e silenciosa)
+# bash_history maintenance - v4 (fast and quiet)
 #
-# O QUE MUDOU EM RELAÇÃO À v3
+# WHAT CHANGED FROM v3
 #
-# 1. FORKS. A v3 abria um subshell `$( )` por comando do histórico, dentro do
-#    parser, só para juntar as linhas de um bloco. Num histórico de 10 mil
-#    comandos isso são 10 mil forks — era daí que vinha a lentidão. Agora a
-#    junção é feita com `printf -v` (builtin, zero fork).
+# 1. FORKS. v3 spawned a `$( )` subshell for every command in the history,
+#    inside the parser, just to join the lines of a block. On a 10,000-command
+#    history that is 10,000 forks - that was the source of the slowness. The
+#    join is now done with `printf -v` (a builtin, zero forks).
 #
-# 2. UMA PASSADA SÓ. `history_maintenance` fazia 4 travamentos, 4 leituras e
-#    4 reescritas do arquivo. Agora tudo (formato zsh, timestamps órfãos,
-#    timestamps faltando, duplicatas) acontece numa única leitura, uma única
-#    reescrita, sob um único lock.
+# 2. SINGLE PASS. `history_maintenance` used to take 4 locks, do 4 reads and
+#    4 rewrites of the file. Everything (zsh format, orphan timestamps,
+#    missing timestamps, duplicates) now happens in one read and one rewrite,
+#    under a single lock.
 #
-# 3. SEM grep/sed/mktemp/find/ls/tail/xargs. O prefixo do zsh é removido com
-#    expansão do próprio bash; o temporário usa `$$.$RANDOM` em vez de
-#    `mktemp`; a poda de backups sumiu junto com os backups datados. Numa
-#    execução típica sobram 2 processos externos (`ln` e `mv`) — e zero se
-#    não houver nada a corrigir.
+# 3. NO grep/sed/mktemp/find/ls/tail/xargs. The zsh prefix is stripped using
+#    bash's own expansions; the temp file uses `$$.$RANDOM` instead of
+#    `mktemp`; backup pruning is gone along with the dated backups. A typical
+#    run leaves 2 external processes (`ln` and `mv`) - and zero when there is
+#    nothing to fix.
 #
-# 4. BACKUP INSTANTÂNEO. Em vez de `cp -p` (cópia real do arquivo inteiro a
-#    cada execução), o backup é um hard link: `ln -f histfile histfile.bak`.
-#    Custa uma entrada de diretório, não copia byte nenhum. Como a gravação
-#    final é `mv` (rename atômico, que cria um inode novo), o .bak continua
-#    apontando para o conteúdo antigo. Segurança igual, custo ~zero.
+# 4. INSTANT BACKUP. Instead of `cp -p` (a real copy of the whole file on
+#    every run), the backup is a hard link: `ln -f histfile histfile.bak`.
+#    It costs one directory entry and copies no data. Since the final write
+#    is a `mv` (atomic rename, which creates a new inode), the .bak keeps
+#    pointing at the old contents. Same safety, near-zero cost.
 #
-# 5. GRAVAÇÃO ATÔMICA DE VERDADE. `mv` no mesmo filesystem é rename atômico:
-#    ou o arquivo é o antigo, ou é o novo, nunca meio escrito. A v3 usava
-#    `cat tmp > histfile`, que podia deixar o arquivo pela metade numa queda.
+# 5. TRULY ATOMIC WRITE. `mv` within the same filesystem is an atomic rename:
+#    the file is either the old one or the new one, never half-written. v3
+#    used `cat tmp > histfile`, which could leave the file truncated on a
+#    crash or power loss.
 #
-# 6. NÃO ESCREVE SE NADA MUDOU. Cada correção marca um flag; sem flag, o
-#    arquivo não é tocado, não há backup, não há reload do histórico.
+# 6. NO WRITE IF NOTHING CHANGED. Every fix sets a flag; with no flag the
+#    file is not touched, no backup is made, and the history is not reloaded.
 #
-# 7. ATALHO DE ENTRADA. Se o histórico não foi modificado desde a última
-#    manutenção (teste `-nt` contra um arquivo-carimbo, builtin), a função
-#    retorna imediatamente sem nem abrir o arquivo. Custo: zero processos.
+# 7. EARLY-EXIT SHORTCUT. If the history has not been modified since the last
+#    maintenance run (a `-nt` test against a stamp file, builtin), the
+#    function returns immediately without even opening the file. Cost: zero
+#    processes.
 #
-# 8. SILÊNCIO. Nenhuma saída em operação normal. Erros graves vão para stderr.
-#    Lock ocupado = sai quieto (outro terminal já está cuidando disso), sem
-#    travar o seu prompt esperando.
+# 8. QUIET. No output during normal operation. Real failures go to stderr.
+#    A busy lock means another terminal is already handling it, so the
+#    function exits quietly instead of stalling your prompt.
 #
-# CONFIGURAÇÃO (tudo opcional)
-#   HISTMAINT_VERBOSE=1      mostra o relatório do que foi feito
-#   HISTMAINT_LOCK_TIMEOUT   segundos de espera pelo lock (padrão 1)
-#   HISTMAINT_LOCKFILE       caminho alternativo do lock
-#   HISTMAINT_BACKUP=0       desliga o hard link de backup
+# CONFIGURATION (all optional)
+#   HISTMAINT_VERBOSE=1      print a report of what was done
+#   HISTMAINT_LOCK_TIMEOUT   seconds to wait for the lock (default 1)
+#   HISTMAINT_LOCKFILE       alternate lock file path
+#   HISTMAINT_BACKUP=0       disable the hard-link backup
 #
-# USO NO .bashrc
+# USAGE IN .bashrc
 #   source ~/bash_history_maint.sh
-#   history_maintenance          # seguro no startup: sai em ~0ms se nada mudou
-# Ou, mais conservador, no ~/.bash_logout.
+#   history_maintenance          # safe at startup: exits in ~0ms if unchanged
+# Or, more conservatively, from ~/.bash_logout.
 ###############################################################################
 
 : "${HISTMAINT_LOCK_TIMEOUT:=1}"
@@ -64,10 +69,10 @@ _histfile_lockpath() { printf '%s' "${HISTMAINT_LOCKFILE:-${HISTFILE:-$HOME/.bas
 _histfile_stamppath(){ printf '%s' "${HISTFILE:-$HOME/.bash_history}.stamp"; }
 
 #------------------------------------------------------------------------------
-# Lock: UM arquivo para todas as funções, de propósito — lock só exclui
-# concorrência se todo mundo disputar o mesmo arquivo. Aberto com 9>>
-# (append), que não trunca e não esbarra em `set -o noclobber`.
-#   3 = não abriu o lock    4 = ocupado (sai quieto, sem travar o prompt)
+# Lock: ONE file shared by every function, on purpose - a lock only excludes
+# concurrent access if everyone contends for the same file. Opened with 9>>
+# (append), which does not truncate and does not trip `set -o noclobber`.
+#   3 = could not open the lock    4 = busy (exit quietly, never stall the prompt)
 #------------------------------------------------------------------------------
 _histfile_with_lock() {
     local lock_file
@@ -101,9 +106,9 @@ _histfile_touch_stamp() {
 }
 
 ###############################################################################
-# NÚCLEO: lê, corrige e grava — uma passada só, sob o lock.
-#   $1 = 1 para deduplicar, 0 para não
-# Sem saída, a não ser com HISTMAINT_VERBOSE.
+# CORE: read, fix and write - a single pass, under the lock.
+#   $1 = 1 to deduplicate, 0 to skip deduplication
+# Silent unless HISTMAINT_VERBOSE is set.
 ###############################################################################
 _hist_process() {
     local dedup="${1:-1}"
@@ -120,7 +125,7 @@ _hist_process() {
     local ts_list=() body_list=()
     local i=0 line ts body joined
 
-    #--- passada única: tira prefixo zsh, agrupa blocos, descarta órfãos ------
+    #--- single pass: strip zsh prefix, group blocks, drop orphans ------------
     while (( i < n )); do
         ts=""
         if [[ "${lines[i]}" == '#'* && "${lines[i]}" =~ ^#[0-9]+$ ]]; then
@@ -132,7 +137,7 @@ _hist_process() {
         while (( i < n )); do
             line="${lines[i]}"
             [[ "$line" == '#'* && "$line" =~ ^#[0-9]+$ ]] && break
-            # prefixo EXTENDED_HISTORY do zsh: ": <epoch>:0;comando"
+            # zsh EXTENDED_HISTORY prefix: ": <epoch>:0;command"
             if [[ "$line" == ': '* && "$line" =~ ^:\ [0-9]{10}:0\;(.*)$ ]]; then
                 line="${BASH_REMATCH[1]}"
                 changed=1
@@ -142,7 +147,7 @@ _hist_process() {
         done
 
         if (( ${#body[@]} == 0 )); then
-            [[ -n "$ts" ]] && changed=1     # timestamp órfão descartado
+            [[ -n "$ts" ]] && changed=1     # orphan timestamp discarded
             continue
         fi
 
@@ -160,7 +165,7 @@ _hist_process() {
     local total=${#body_list[@]}
     (( total == 0 )) && { _histfile_touch_stamp "$stamp"; return 0; }
 
-    #--- dedup por BLOCO, mantendo a ocorrência mais recente ------------------
+    #--- deduplicate by BLOCK, keeping the most recent occurrence -------------
     local keep_idx=()
     if (( dedup )); then
         local -A seen=()
@@ -175,7 +180,7 @@ _hist_process() {
         for (( i=total-1; i>=0; i-- )); do keep_idx+=("$i"); done
     fi
 
-    #--- monta a saída, completando timestamps que faltam ---------------------
+    #--- build the output, filling in any missing timestamps ------------------
     local now out=() idx k=${#keep_idx[@]}
     printf -v now '%(%s)T' -1
     for (( i=k-1; i>=0; i-- )); do
@@ -191,11 +196,11 @@ _hist_process() {
 
     if (( ! changed )); then
         _histfile_touch_stamp "$stamp"
-        _hist_say "Histórico já está limpo (${total} comandos)."
-        return 2                      # 2 = nada a fazer, não precisa recarregar
+        _hist_say "History is already clean (${total} commands)."
+        return 2                      # 2 = nothing to do, no reload needed
     fi
 
-    #--- grava: backup por hard link (instantâneo) + rename atômico -----------
+    #--- write: hard-link backup (instant) + atomic rename --------------------
     local had_noclobber=0
     [[ -o noclobber ]] && { had_noclobber=1; set +C; }
 
@@ -203,7 +208,7 @@ _hist_process() {
     if ! printf '%s\n' "${out[@]}" > "$tmp_file" 2>/dev/null; then
         rm -f -- "$tmp_file" 2>/dev/null
         (( had_noclobber )) && set -C
-        _hist_err "falha ao escrever o arquivo temporário"
+        _hist_err "failed to write the temporary file"
         return 1
     fi
 
@@ -213,19 +218,19 @@ _hist_process() {
     if ! mv -f -- "$tmp_file" "$hist_file" 2>/dev/null; then
         rm -f -- "$tmp_file" 2>/dev/null
         (( had_noclobber )) && set -C
-        _hist_err "falha ao substituir $hist_file (backup em ${hist_file}.bak)"
+        _hist_err "failed to replace $hist_file (backup at ${hist_file}.bak)"
         return 1
     fi
 
     _histfile_touch_stamp "$stamp"
     (( had_noclobber )) && set -C
 
-    _hist_say "Histórico: ${k} comandos mantidos, $(( total - k )) duplicatas removidas."
+    _hist_say "History: ${k} commands kept, $(( total - k )) duplicates removed."
     return 0
 }
 
 ###############################################################################
-# Manutenção completa. Silenciosa. Sai em ~0 processos se nada mudou.
+# Full maintenance. Quiet. Exits with ~0 processes when nothing changed.
 ###############################################################################
 history_maintenance() {
     local hist_file stamp rc
@@ -233,21 +238,21 @@ history_maintenance() {
     stamp="$(_histfile_stamppath)"
 
     [[ -f "$hist_file" ]] || return 0
-    # atalho builtin: histórico não mexido desde a última manutenção
+    # builtin shortcut: history untouched since the last maintenance run
     [[ -f "$stamp" && ! "$hist_file" -nt "$stamp" ]] && return 0
 
     _histfile_with_lock _hist_process 1
     rc=$?
     case "$rc" in
-        0) _histfile_reload; return 0 ;;   # mudou: recarrega
-        2) return 0 ;;                     # nada a fazer: não recarrega
-        4) return 0 ;;                     # lock ocupado: outro terminal cuida
-        3) _hist_err "não consegui abrir o lock ($(_histfile_lockpath))"; return 3 ;;
+        0) _histfile_reload; return 0 ;;   # changed: reload
+        2) return 0 ;;                     # nothing to do: no reload
+        4) return 0 ;;                     # lock busy: another terminal has it
+        3) _hist_err "could not open the lock ($(_histfile_lockpath))"; return 3 ;;
         *) return "$rc" ;;
     esac
 }
 
-# Mesma coisa, mas sem deduplicar (só normaliza formato e timestamps).
+# Same thing, without deduplication (normalizes format and timestamps only).
 history_normalize() {
     local rc
     [[ -f "$(_histfile_path)" ]] || return 0
@@ -256,41 +261,41 @@ history_normalize() {
     case "$rc" in
         0) _histfile_reload; return 0 ;;
         2|4) return 0 ;;
-        3) _hist_err "não consegui abrir o lock ($(_histfile_lockpath))"; return 3 ;;
+        3) _hist_err "could not open the lock ($(_histfile_lockpath))"; return 3 ;;
         *) return "$rc" ;;
     esac
 }
 
-# Força a limpeza mesmo que o carimbo diga que nada mudou.
+# Forces a cleanup even when the stamp says nothing has changed.
 history_clean_duplicate_commands() {
     local rc
-    [[ -f "$(_histfile_path)" ]] || { _hist_err "arquivo de histórico não encontrado"; return 1; }
+    [[ -f "$(_histfile_path)" ]] || { _hist_err "history file not found"; return 1; }
     _histfile_with_lock _hist_process 1
     rc=$?
     case "$rc" in
         0) _histfile_reload; return 0 ;;
         2|4) return 0 ;;
-        3) _hist_err "não consegui abrir o lock ($(_histfile_lockpath))"; return 3 ;;
+        3) _hist_err "could not open the lock ($(_histfile_lockpath))"; return 3 ;;
         *) return "$rc" ;;
     esac
 }
 
 ###############################################################################
-# Restaura o backup (hard link da versão anterior).
+# Restores the backup (hard link to the previous version).
 ###############################################################################
 history_restore_last_backup() {
     local hist_file bak
     hist_file="$(_histfile_path)"
     bak="${hist_file}.bak"
-    [[ -f "$bak" ]] || { _hist_err "nenhum backup encontrado ($bak)"; return 1; }
+    [[ -f "$bak" ]] || { _hist_err "no backup found ($bak)"; return 1; }
     cp -f -- "$bak" "$hist_file" || return 1
     rm -f -- "$(_histfile_stamppath)" 2>/dev/null
     _histfile_reload
-    _hist_say "Histórico restaurado de $bak"
+    _hist_say "History restored from $bak"
 }
 
 ###############################################################################
-# Compatibilidade com os nomes antigos — todos caem na passada única.
+# Backwards compatibility with the old names - all route to the single pass.
 ###############################################################################
 history_strip_zsh_timestamps()     { history_normalize; }
 history_remove_orphan_timestamps() { history_normalize; }
