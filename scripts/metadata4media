@@ -1,0 +1,498 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+SCRIPT_NAME="${0##*/}"
+SCRIPT_VERSION="1.0.0"
+
+# Color definitions for help output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly MAGENTA='\033[0;35m'
+readonly CYAN='\033[0;36m'
+readonly BOLD='\033[1m'
+readonly DIM='\033[2m'
+readonly NC='\033[0m'
+
+# Modern metadata removal tool (optional)
+readonly MODERN_TOOL="mat2"
+
+: <<'DOCUMENTATION'
+${BOLD}${SCRIPT_NAME}${NC} - Professional metadata editor for media files
+
+${BOLD}USAGE${NC}
+    ${SCRIPT_NAME} [OPTIONS] -i INPUT [-o OUTPUT]
+
+${BOLD}DESCRIPTION${NC}
+    A comprehensive metadata management tool for audio and video files.
+    It can read, compare, clear and write metadata using either
+    interactive prompts (whiptail) or command-line arguments.
+
+    The script follows a strict pipeline:
+      1. Read existing metadata for comparison
+      2. Collect new metadata (interactive or via arguments)
+      3. Remove ALL existing metadata using multiple methods
+      4. Write the new metadata to the output file
+
+${BOLD}OPTIONS${NC}
+    ${CYAN}-i, --input FILE${NC}         Input media file (required)
+    ${CYAN}-o, --output FILE${NC}        Output file (default: overwrite input)
+    ${CYAN}    --clear${NC}              Remove all metadata and exit
+    ${CYAN}    --interactive${NC}        Force interactive mode (whiptail)
+    ${CYAN}    --no-interactive${NC}     Force non-interactive mode (args only)
+
+${BOLD}METADATA OPTIONS${NC}
+    ${CYAN}    --title TEXT${NC}         Title of the media
+    ${CYAN}-a, --artist TEXT${NC}        Artist / performer
+    ${CYAN}    --album TEXT${NC}         Album name
+    ${CYAN}    --album-artist TEXT${NC}  Album artist
+    ${CYAN}    --composer TEXT${NC}      Composer
+    ${CYAN}    --genre TEXT${NC}         Genre
+    ${CYAN}    --year YYYY${NC}          Year
+    ${CYAN}    --date DATE${NC}          Date (YYYY-MM-DD)
+    ${CYAN}    --track N${NC}            Track number
+    ${CYAN}    --track-total N${NC}      Total tracks
+    ${CYAN}    --disc N${NC}             Disc number
+    ${CYAN}    --disc-total N${NC}       Total discs
+    ${CYAN}    --comment TEXT${NC}       Comment
+    ${CYAN}    --description TEXT${NC}   Description
+    ${CYAN}    --copyright TEXT${NC}     Copyright
+    ${CYAN}    --license TEXT${NC}       License
+    ${CYAN}    --publisher TEXT${NC}     Publisher
+    ${CYAN}    --encoded-by TEXT${NC}    Encoded by
+    ${CYAN}    --encoder TEXT${NC}       Encoder software
+    ${CYAN}    --language LANG${NC}      Language (ISO 639-2)
+    ${CYAN}    --lyrics TEXT${NC}        Lyrics
+    ${CYAN}    --cover FILE${NC}         Cover art image file
+    ${CYAN}    --author TEXT${NC}        Author
+    ${CYAN}    --director TEXT${NC}      Director
+    ${CYAN}    --producer TEXT${NC}      Producer
+    ${CYAN}    --studio TEXT${NC}        Studio
+    ${CYAN}    --rating N${NC}           Rating (0-10)
+    ${CYAN}    --bpm N${NC}              Beats per minute
+    ${CYAN}    --isrc CODE${NC}          ISRC code
+    ${CYAN}    --upc CODE${NC}           UPC / EAN code
+
+${BOLD}OTHER OPTIONS${NC}
+    ${CYAN}-h, --help${NC}               Show this help message
+    ${CYAN}-d, --doc${NC}                Show detailed documentation
+    ${CYAN}-v, --version${NC}            Show version information
+
+${BOLD}EXAMPLES${NC}
+    Interactive mode:
+        ${SCRIPT_NAME} -i input.mp4 -o output.mp4
+
+    Non-interactive mode:
+        ${SCRIPT_NAME} -i input.mp4 -o output.mp4 \\
+            -a "Artist Name" --title "My Song" --album "Album" --year 2024
+
+    Clear all metadata:
+        ${SCRIPT_NAME} -i input.mp4 --clear
+
+${BOLD}REQUIREMENTS${NC}
+    ${GREEN}Required:${NC}  ffmpeg, exiftool
+    ${YELLOW}Optional:${NC}  whiptail (for interactive mode), mat2 (modern cleaner)
+
+DOCUMENTATION
+
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    SCRIPT_NAME="$SCRIPT_NAME" \
+    SCRIPT_VERSION="$SCRIPT_VERSION" \
+    RED="$RED" GREEN="$GREEN" YELLOW="$YELLOW" BLUE="$BLUE" \
+    MAGENTA="$MAGENTA" CYAN="$CYAN" BOLD="$BOLD" DIM="$DIM" NC="$NC" \
+        envsubst '${SCRIPT_NAME} ${SCRIPT_VERSION} ${RED} ${GREEN} ${YELLOW} ${BLUE} ${MAGENTA} ${CYAN} ${BOLD} ${DIM} ${NC}' <<<"$doc"
+    exit 0
+}
+
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════════╗
+║  ${NC}${BOLD}${SCRIPT_NAME}${NC}${BOLD} v${SCRIPT_VERSION}${NC}${BOLD} - Professional Metadata Editor for Media${NC}${BOLD}    ║
+╚══════════════════════════════════════════════════════════════════╝${NC}
+
+${BOLD}${YELLOW}USAGE${NC}
+    ${GREEN}${SCRIPT_NAME}${NC} [OPTIONS] ${CYAN}-i${NC} INPUT [${CYAN}-o${NC} OUTPUT]
+
+${BOLD}${YELLOW}QUICK OPTIONS${NC}
+    ${CYAN}-i, --input${NC} FILE        ${DIM}Input media file (required)${NC}
+    ${CYAN}-o, --output${NC} FILE       ${DIM}Output file (default: overwrite input)${NC}
+    ${CYAN}-a, --artist${NC} TEXT       ${DIM}Artist / performer${NC}
+    ${CYAN}    --title${NC} TEXT        ${DIM}Title of the media${NC}
+    ${CYAN}    --album${NC} TEXT        ${DIM}Album name${NC}
+    ${CYAN}    --year${NC} YYYY         ${DIM}Year${NC}
+    ${CYAN}    --genre${NC} TEXT        ${DIM}Genre${NC}
+    ${CYAN}    --comment${NC} TEXT      ${DIM}Comment${NC}
+    ${CYAN}    --copyright${NC} TEXT    ${DIM}Copyright${NC}
+    ${CYAN}    --cover${NC} FILE        ${DIM}Cover art image file${NC}
+    ${CYAN}    --clear${NC}             ${DIM}Remove all metadata and exit${NC}
+    ${CYAN}    --interactive${NC}       ${DIM}Force interactive mode (whiptail)${NC}
+    ${CYAN}    --no-interactive${NC}    ${DIM}Force non-interactive mode (args only)${NC}
+    ${CYAN}-h, --help${NC}              ${DIM}Show this help message${NC}
+    ${CYAN}-d, --doc${NC}               ${DIM}Show detailed documentation${NC}
+    ${CYAN}-v, --version${NC}           ${DIM}Show version information${NC}
+
+${BOLD}${YELLOW}EXAMPLES${NC}
+    ${DIM}# Interactive mode (whiptail)${NC}
+    ${GREEN}${SCRIPT_NAME}${NC} -i input.mp4 -o output.mp4
+
+    ${DIM}# Non-interactive mode${NC}
+    ${GREEN}${SCRIPT_NAME}${NC} -i input.mp4 -o output.mp4 \\
+        -a "Artist" --title "Song" --album "Album" --year 2024
+
+    ${DIM}# Clear all metadata${NC}
+    ${GREEN}${SCRIPT_NAME}${NC} -i input.mp4 --clear
+
+${BOLD}${YELLOW}NOTE${NC}
+    Use ${CYAN}--doc${NC} for a complete list of metadata options (30+ fields).
+    Required tools: ${GREEN}ffmpeg${NC}, ${GREEN}exiftool${NC}
+    Optional tools: ${YELLOW}whiptail${NC}, ${YELLOW}mat2${NC}
+
+EOF
+    exit 0
+}
+
+show_version() {
+    echo "${SCRIPT_NAME} version ${SCRIPT_VERSION}"
+    exit 0
+}
+
+error_exit() {
+    echo -e "${RED}Error:${NC} $1" >&2
+    echo -e "Try '${CYAN}${SCRIPT_NAME} --help${NC}' for more information." >&2
+    exit 1
+}
+
+warn() {
+    echo -e "${YELLOW}Warning:${NC} $1" >&2
+}
+
+info() {
+    echo -e "${CYAN}Info:${NC} $1"
+}
+
+success() {
+    echo -e "${GREEN}Success:${NC} $1"
+}
+
+# Check required tools
+check_requirements() {
+    local missing=()
+    command -v ffmpeg   &>/dev/null || missing+=("ffmpeg")
+    command -v exiftool &>/dev/null || missing+=("exiftool")
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        error_exit "Missing required tools: ${missing[*]}. Please install them first."
+    fi
+}
+
+# Check optional modern tool
+check_modern_tool() {
+    if command -v "$MODERN_TOOL" &>/dev/null; then
+        return 0
+    fi
+    warn "Optional tool '${MODERN_TOOL}' not found. Consider installing it for"
+    warn "more thorough metadata removal (e.g.: apt install mat2)."
+    return 1
+}
+
+# Read current metadata from input file
+read_metadata() {
+    local file="$1"
+    local key="$2"
+    exiftool -s -s -s "-${key}" "$file" 2>/dev/null
+}
+
+# Get all known metadata for comparison display
+dump_metadata() {
+    local file="$1"
+    exiftool -s -s -s "$file" 2>/dev/null
+}
+
+# Interactive prompt using whiptail
+prompt_field() {
+    local label="$1"
+    local current="$2"
+    local default="$3"
+    local result
+
+    local prompt_text="$label"
+    if [[ -n "$current" ]]; then
+        prompt_text+="\n\nCurrent: $current"
+    fi
+
+    result=$(whiptail --title "${SCRIPT_NAME}" \
+        --inputbox "$prompt_text" 12 70 "$default" \
+        3>&1 1>&2 2>&3) || return 1
+    echo "$result"
+}
+
+# Collect metadata interactively
+collect_interactive() {
+    local file="$1"
+
+    info "Reading current metadata from: $file"
+
+    local cur_title cur_artist cur_album cur_album_artist cur_composer
+    local cur_genre cur_year cur_date cur_track cur_comment
+    local cur_copyright cur_description cur_license cur_publisher
+    local cur_language cur_encoded_by cur_encoder cur_author
+
+    cur_title=$(read_metadata "$file" "Title")
+    cur_artist=$(read_metadata "$file" "Artist")
+    cur_album=$(read_metadata "$file" "Album")
+    cur_album_artist=$(read_metadata "$file" "AlbumArtist")
+    cur_composer=$(read_metadata "$file" "Composer")
+    cur_genre=$(read_metadata "$file" "Genre")
+    cur_year=$(read_metadata "$file" "Year")
+    cur_date=$(read_metadata "$file" "Date")
+    cur_track=$(read_metadata "$file" "Track")
+    cur_comment=$(read_metadata "$file" "Comment")
+    cur_copyright=$(read_metadata "$file" "Copyright")
+    cur_description=$(read_metadata "$file" "Description")
+    cur_license=$(read_metadata "$file" "License")
+    cur_publisher=$(read_metadata "$file" "Publisher")
+    cur_language=$(read_metadata "$file" "Language")
+    cur_encoded_by=$(read_metadata "$file" "EncodedBy")
+    cur_encoder=$(read_metadata "$file" "Encoder")
+    cur_author=$(read_metadata "$file" "Author")
+
+    # Summary before interactive
+    if whiptail --title "${SCRIPT_NAME}" --yesno \
+        "Edit metadata interactively?\n\nA series of prompts will guide you.\nPress <Cancel> on any field to skip." \
+        12 70; then
+        :
+    else
+        return 1
+    fi
+
+    [[ -z "$TITLE" ]]        && TITLE=$(prompt_field "Title" "$cur_title" "$cur_title")           || TITLE="$TITLE"
+    [[ -z "$ARTIST" ]]       && ARTIST=$(prompt_field "Artist" "$cur_artist" "$cur_artist")        || ARTIST="$ARTIST"
+    [[ -z "$ALBUM" ]]        && ALBUM=$(prompt_field "Album" "$cur_album" "$cur_album")           || ALBUM="$ALBUM"
+    [[ -z "$ALBUM_ARTIST" ]] && ALBUM_ARTIST=$(prompt_field "Album Artist" "$cur_album_artist" "$cur_album_artist") || ALBUM_ARTIST="$ALBUM_ARTIST"
+    [[ -z "$COMPOSER" ]]     && COMPOSER=$(prompt_field "Composer" "$cur_composer" "$cur_composer") || COMPOSER="$COMPOSER"
+    [[ -z "$GENRE" ]]        && GENRE=$(prompt_field "Genre" "$cur_genre" "$cur_genre")           || GENRE="$GENRE"
+    [[ -z "$YEAR" ]]         && YEAR=$(prompt_field "Year (YYYY)" "$cur_year" "$cur_year")        || YEAR="$YEAR"
+    [[ -z "$DATE" ]]         && DATE=$(prompt_field "Date (YYYY-MM-DD)" "$cur_date" "$cur_date")  || DATE="$DATE"
+    [[ -z "$TRACK" ]]        && TRACK=$(prompt_field "Track Number" "$cur_track" "$cur_track")    || TRACK="$TRACK"
+    [[ -z "$COMMENT" ]]      && COMMENT=$(prompt_field "Comment" "$cur_comment" "$cur_comment")   || COMMENT="$COMMENT"
+    [[ -z "$COPYRIGHT" ]]    && COPYRIGHT=$(prompt_field "Copyright" "$cur_copyright" "$cur_copyright") || COPYRIGHT="$COPYRIGHT"
+    [[ -z "$DESCRIPTION" ]]  && DESCRIPTION=$(prompt_field "Description" "$cur_description" "$cur_description") || DESCRIPTION="$DESCRIPTION"
+    [[ -z "$LICENSE" ]]      && LICENSE=$(prompt_field "License" "$cur_license" "$cur_license")   || LICENSE="$LICENSE"
+    [[ -z "$PUBLISHER" ]]    && PUBLISHER=$(prompt_field "Publisher" "$cur_publisher" "$cur_publisher") || PUBLISHER="$PUBLISHER"
+    [[ -z "$LANGUAGE" ]]     && LANGUAGE=$(prompt_field "Language" "$cur_language" "$cur_language") || LANGUAGE="$LANGUAGE"
+    [[ -z "$ENCODED_BY" ]]   && ENCODED_BY=$(prompt_field "Encoded By" "$cur_encoded_by" "$cur_encoded_by") || ENCODED_BY="$ENCODED_BY"
+    [[ -z "$ENCODER" ]]      && ENCODER=$(prompt_field "Encoder" "$cur_encoder" "$cur_encoder")   || ENCODER="$ENCODER"
+    [[ -z "$AUTHOR" ]]       && AUTHOR=$(prompt_field "Author" "$cur_author" "$cur_author")       || AUTHOR="$AUTHOR"
+
+    return 0
+}
+
+# Remove ALL metadata using multiple methods
+clear_metadata() {
+    local file="$1"
+    local out="$2"
+
+    info "Removing all metadata from: $file"
+
+    # Method 1: exiftool -all=
+    info "  [1/3] exiftool -all= ..."
+    exiftool -all= -overwrite_original "$file" 2>/dev/null || true
+
+    # Method 2: ffmpeg -map_metadata -1
+    info "  [2/3] ffmpeg -map_metadata -1 -c copy ..."
+    ffmpeg -y -i "$file" -map_metadata -1 -c copy "$out" 2>/dev/null || true
+
+    # Method 3: modern tool (optional)
+    if check_modern_tool; then
+        info "  [3/3] ${MODERN_TOOL} --inplace ..."
+        "$MODERN_TOOL" --inplace "$out" 2>/dev/null || true
+    else
+        warn "  [3/3] Skipped (${MODERN_TOOL} not available)"
+    fi
+}
+
+# Build the metadata arguments array
+build_metadata_args() {
+    local args=()
+    [[ -n "$TITLE" ]]        && args+=(-metadata "title=$TITLE")
+    [[ -n "$ARTIST" ]]       && args+=(-metadata "artist=$ARTIST")
+    [[ -n "$ALBUM" ]]        && args+=(-metadata "album=$ALBUM")
+    [[ -n "$ALBUM_ARTIST" ]] && args+=(-metadata "album_artist=$ALBUM_ARTIST")
+    [[ -n "$COMPOSER" ]]     && args+=(-metadata "composer=$COMPOSER")
+    [[ -n "$GENRE" ]]        && args+=(-metadata "genre=$GENRE")
+    [[ -n "$YEAR" ]]         && args+=(-metadata "date=$YEAR")
+    [[ -n "$DATE" ]]         && args+=(-metadata "date=$DATE")
+    [[ -n "$TRACK" ]]        && args+=(-metadata "track=$TRACK")
+    [[ -n "$TRACK_TOTAL" ]]  && args+=(-metadata "track=$TRACK_TOTAL")
+    [[ -n "$DISC" ]]         && args+=(-metadata "disc=$DISC")
+    [[ -n "$DISC_TOTAL" ]]   && args+=(-metadata "disc=$DISC_TOTAL")
+    [[ -n "$COMMENT" ]]      && args+=(-metadata "comment=$COMMENT")
+    [[ -n "$DESCRIPTION" ]]  && args+=(-metadata "description=$DESCRIPTION")
+    [[ -n "$COPYRIGHT" ]]    && args+=(-metadata "copyright=$COPYRIGHT")
+    [[ -n "$LICENSE" ]]      && args+=(-metadata "license=$LICENSE")
+    [[ -n "$PUBLISHER" ]]    && args+=(-metadata "publisher=$PUBLISHER")
+    [[ -n "$ENCODED_BY" ]]   && args+=(-metadata "encoded_by=$ENCODED_BY")
+    [[ -n "$ENCODER" ]]      && args+=(-metadata "encoder=$ENCODER")
+    [[ -n "$LANGUAGE" ]]     && args+=(-metadata "language=$LANGUAGE")
+    [[ -n "$LYRICS" ]]       && args+=(-metadata "lyrics=$LYRICS")
+    [[ -n "$AUTHOR" ]]       && args+=(-metadata "author=$AUTHOR")
+    [[ -n "$DIRECTOR" ]]     && args+=(-metadata "director=$DIRECTOR")
+    [[ -n "$PRODUCER" ]]     && args+=(-metadata "producer=$PRODUCER")
+    [[ -n "$STUDIO" ]]       && args+=(-metadata "studio=$STUDIO")
+    [[ -n "$RATING" ]]       && args+=(-metadata "rating=$RATING")
+    [[ -n "$BPM" ]]          && args+=(-metadata "bpm=$BPM")
+    [[ -n "$ISRC" ]]         && args+=(-metadata "isrc=$ISRC")
+    [[ -n "$UPC" ]]          && args+=(-metadata "upc=$UPC")
+    printf '%s\n' "${args[@]}"
+}
+
+# Write new metadata to output file
+write_metadata() {
+    local input="$1"
+    local output="$2"
+
+    local meta_args
+    mapfile -t meta_args < <(build_metadata_args)
+
+    if [[ ${#meta_args[@]} -eq 0 ]]; then
+        info "No metadata to write. Skipping final write step."
+        return 0
+    fi
+
+    info "Writing ${#meta_args[@]} metadata entries..."
+
+    ffmpeg -y -i "$input" "${meta_args[@]}" -c copy "$output"
+
+    # Apply cover art if provided
+    if [[ -n "$COVER" && -f "$COVER" ]]; then
+        info "Embedding cover art: $COVER"
+        ffmpeg -y -i "$output" -i "$COVER" \
+            -map 0 -map 1 -c copy -disposition:v:1 attached_pic \
+            "$output.tmp" && mv "$output.tmp" "$output"
+    fi
+}
+
+# ─────────────────────────── MAIN ───────────────────────────
+
+INPUT=""
+OUTPUT=""
+CLEAR_ONLY=false
+FORCE_INTERACTIVE=false
+FORCE_NON_INTERACTIVE=false
+
+# Metadata variables (empty by default)
+TITLE="" ARTIST="" ALBUM="" ALBUM_ARTIST="" COMPOSER="" GENRE=""
+YEAR="" DATE="" TRACK="" TRACK_TOTAL="" DISC="" DISC_TOTAL=""
+COMMENT="" DESCRIPTION="" COPYRIGHT="" LICENSE="" PUBLISHER=""
+ENCODED_BY="" ENCODER="" LANGUAGE="" LYRICS="" COVER=""
+AUTHOR="" DIRECTOR="" PRODUCER="" STUDIO="" RATING="" BPM=""
+ISRC="" UPC=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -i|--input)          [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; INPUT="$2"; shift 2 ;;
+        -o|--output)         [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; OUTPUT="$2"; shift 2 ;;
+        -a|--artist)         [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; ARTIST="$2"; shift 2 ;;
+        --title)             [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; TITLE="$2"; shift 2 ;;
+        --album)             [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; ALBUM="$2"; shift 2 ;;
+        --album-artist)      [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; ALBUM_ARTIST="$2"; shift 2 ;;
+        --composer)          [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; COMPOSER="$2"; shift 2 ;;
+        --genre)             [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; GENRE="$2"; shift 2 ;;
+        --year)              [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; YEAR="$2"; shift 2 ;;
+        --date)              [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; DATE="$2"; shift 2 ;;
+        --track)             [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; TRACK="$2"; shift 2 ;;
+        --track-total)       [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; TRACK_TOTAL="$2"; shift 2 ;;
+        --disc)              [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; DISC="$2"; shift 2 ;;
+        --disc-total)        [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; DISC_TOTAL="$2"; shift 2 ;;
+        --comment)           [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; COMMENT="$2"; shift 2 ;;
+        --description)       [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; DESCRIPTION="$2"; shift 2 ;;
+        --copyright)         [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; COPYRIGHT="$2"; shift 2 ;;
+        --license)           [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; LICENSE="$2"; shift 2 ;;
+        --publisher)         [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; PUBLISHER="$2"; shift 2 ;;
+        --encoded-by)        [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; ENCODED_BY="$2"; shift 2 ;;
+        --encoder)           [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; ENCODER="$2"; shift 2 ;;
+        --language)          [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; LANGUAGE="$2"; shift 2 ;;
+        --lyrics)            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; LYRICS="$2"; shift 2 ;;
+        --cover)             [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; COVER="$2"; shift 2 ;;
+        --author)            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; AUTHOR="$2"; shift 2 ;;
+        --director)          [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; DIRECTOR="$2"; shift 2 ;;
+        --producer)          [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; PRODUCER="$2"; shift 2 ;;
+        --studio)            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; STUDIO="$2"; shift 2 ;;
+        --rating)            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; RATING="$2"; shift 2 ;;
+        --bpm)               [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; BPM="$2"; shift 2 ;;
+        --isrc)              [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; ISRC="$2"; shift 2 ;;
+        --upc)               [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; UPC="$2"; shift 2 ;;
+        --clear)             CLEAR_ONLY=true; shift ;;
+        --interactive)       FORCE_INTERACTIVE=true; shift ;;
+        --no-interactive)    FORCE_NON_INTERACTIVE=true; shift ;;
+        -h|--help)           show_help ;;
+        -d|--doc)            show_doc ;;
+        -v|--version)        show_version ;;
+        *)                   error_exit "Unknown option: $1" ;;
+    esac
+done
+
+# Validate required
+[[ -z "$INPUT" ]] && error_exit "Input file is required (-i)"
+[[ ! -f "$INPUT" ]] && error_exit "Input file not found: $INPUT"
+check_requirements
+
+# Default output = input (in-place)
+[[ -z "$OUTPUT" ]] && OUTPUT="$INPUT"
+
+# ─── Mode: clear only ───
+if [[ "$CLEAR_ONLY" == true ]]; then
+    info "Running in CLEAR-ONLY mode"
+    clear_metadata "$INPUT" "$OUTPUT"
+    success "All metadata cleared from: $OUTPUT"
+    exit 0
+fi
+
+# ─── Detect interactive vs argument mode ───
+HAS_ARGS=false
+for v in "$TITLE" "$ARTIST" "$ALBUM" "$ALBUM_ARTIST" "$COMPOSER" "$GENRE" \
+         "$YEAR" "$DATE" "$TRACK" "$TRACK_TOTAL" "$DISC" "$DISC_TOTAL" \
+         "$COMMENT" "$DESCRIPTION" "$COPYRIGHT" "$LICENSE" "$PUBLISHER" \
+         "$ENCODED_BY" "$ENCODER" "$LANGUAGE" "$LYRICS" "$COVER" \
+         "$AUTHOR" "$DIRECTOR" "$PRODUCER" "$STUDIO" "$RATING" "$BPM" \
+         "$ISRC" "$UPC"; do
+    [[ -n "$v" ]] && HAS_ARGS=true && break
+done
+
+USE_INTERACTIVE=false
+if [[ "$FORCE_NON_INTERACTIVE" == true ]]; then
+    USE_INTERACTIVE=false
+elif [[ "$FORCE_INTERACTIVE" == true ]]; then
+    command -v whiptail &>/dev/null || error_exit "whiptail not installed but --interactive was set"
+    USE_INTERACTIVE=true
+elif [[ "$HAS_ARGS" == false ]]; then
+    if command -v whiptail &>/dev/null; then
+        USE_INTERACTIVE=true
+    else
+        warn "whiptail not installed. Falling back to non-interactive mode."
+    fi
+fi
+
+# ─── Interactive collection ───
+if [[ "$USE_INTERACTIVE" == true ]]; then
+    collect_interactive "$INPUT" || error_exit "Interactive session cancelled"
+fi
+
+# ─── Pipeline: clear → write ───
+info "Step 1/2: Removing old metadata"
+clear_metadata "$INPUT" "$OUTPUT"
+
+info "Step 2/2: Writing new metadata"
+write_metadata "$OUTPUT" "$OUTPUT"
+
+success "Metadata update complete: $OUTPUT"
+
+# Show final summary
+echo
+info "Final metadata summary:"
+dump_metadata "$OUTPUT" | head -n 30
