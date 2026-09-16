@@ -39,6 +39,7 @@ ${BOLD}DESCRIPTION${NC}
 ${BOLD}OPTIONS${NC}
     ${CYAN}-i, --input FILE${NC}         Input media file (required)
     ${CYAN}-o, --output FILE${NC}        Output file (default: overwrite input)
+    ${CYAN}    --show${NC}               Display all existing metadata and exit
     ${CYAN}    --clear${NC}              Remove all metadata and exit
     ${CYAN}    --interactive${NC}        Force interactive mode (whiptail)
     ${CYAN}    --no-interactive${NC}     Force non-interactive mode (args only)
@@ -88,6 +89,9 @@ ${BOLD}EXAMPLES${NC}
         ${SCRIPT_NAME} -i input.mp4 -o output.mp4 \\
             -a "Artist Name" --title "My Song" --album "Album" --year 2024
 
+    Show existing metadata:
+        ${SCRIPT_NAME} -i input.mp4 --show
+
     Clear all metadata:
         ${SCRIPT_NAME} -i input.mp4 --clear
 
@@ -128,6 +132,7 @@ ${BOLD}${YELLOW}QUICK OPTIONS${NC}
     ${CYAN}    --comment${NC} TEXT      ${DIM}Comment${NC}
     ${CYAN}    --copyright${NC} TEXT    ${DIM}Copyright${NC}
     ${CYAN}    --cover${NC} FILE        ${DIM}Cover art image file${NC}
+    ${CYAN}    --show${NC}              ${DIM}Display all existing metadata and exit${NC}
     ${CYAN}    --clear${NC}             ${DIM}Remove all metadata and exit${NC}
     ${CYAN}    --interactive${NC}       ${DIM}Force interactive mode (whiptail)${NC}
     ${CYAN}    --no-interactive${NC}    ${DIM}Force non-interactive mode (args only)${NC}
@@ -142,6 +147,9 @@ ${BOLD}${YELLOW}EXAMPLES${NC}
     ${DIM}# Non-interactive mode${NC}
     ${GREEN}${SCRIPT_NAME}${NC} -i input.mp4 -o output.mp4 \\
         -a "Artist" --title "Song" --album "Album" --year 2024
+
+    ${DIM}# Show existing metadata${NC}
+    ${GREEN}${SCRIPT_NAME}${NC} -i input.mp4 --show
 
     ${DIM}# Clear all metadata${NC}
     ${GREEN}${SCRIPT_NAME}${NC} -i input.mp4 --clear
@@ -210,6 +218,59 @@ read_metadata() {
 dump_metadata() {
     local file="$1"
     exiftool -s -s -s "$file" 2>/dev/null
+}
+
+# Display existing metadata in a formatted way
+show_metadata() {
+    local file="$1"
+
+    if [[ ! -f "$file" ]]; then
+        error_exit "File not found: $file"
+    fi
+
+    echo
+    echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════════════════════════╗"
+    echo -e "║  ${NC}${BOLD}Existing Metadata for: ${GREEN}${file}${NC}"
+    echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════════════════════════╝${NC}"
+    echo
+
+    # Prefer exiftool for rich output
+    if command -v exiftool &>/dev/null; then
+        local count
+        count=$(exiftool "$file" 2>/dev/null | wc -l)
+
+        if [[ "$count" -le 1 ]]; then
+            warn "No metadata found in: $file"
+            echo
+            return 0
+        fi
+
+        exiftool -groupNames "$file" 2>/dev/null | \
+            awk -v green="$GREEN" -v cyan="$CYAN" -v nc="$NC" -v bold="$BOLD" '
+                /^\[/ {
+                    print bold cyan $0 nc
+                    next
+                }
+                /=/ {
+                    split($0, arr, "=")
+                    key = arr[1]
+                    val = substr($0, index($0, "=") + 2)
+                    printf "  %s%-22s%s %s\n", cyan, key, nc, val
+                    next
+                }
+                { print }
+            '
+    else
+        # Fallback to ffprobe
+        warn "exiftool not available, using ffprobe fallback"
+        ffprobe -v quiet -print_format json -show_format "$file" 2>/dev/null
+    fi
+
+    echo
+    local tag_count
+    tag_count=$(exiftool -s -s -s "$file" 2>/dev/null | wc -l)
+    info "Total metadata entries: ${tag_count}"
+    echo
 }
 
 # Interactive prompt using whiptail
@@ -381,6 +442,7 @@ write_metadata() {
 INPUT=""
 OUTPUT=""
 CLEAR_ONLY=false
+SHOW_ONLY=false
 FORCE_INTERACTIVE=false
 FORCE_NON_INTERACTIVE=false
 
@@ -427,6 +489,7 @@ while [[ $# -gt 0 ]]; do
         --bpm)               [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; BPM="$2"; shift 2 ;;
         --isrc)              [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; ISRC="$2"; shift 2 ;;
         --upc)               [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"; UPC="$2"; shift 2 ;;
+        --show|--list|--info)  SHOW_ONLY=true; shift ;;
         --clear)             CLEAR_ONLY=true; shift ;;
         --interactive)       FORCE_INTERACTIVE=true; shift ;;
         --no-interactive)    FORCE_NON_INTERACTIVE=true; shift ;;
@@ -440,10 +503,18 @@ done
 # Validate required
 [[ -z "$INPUT" ]] && error_exit "Input file is required (-i)"
 [[ ! -f "$INPUT" ]] && error_exit "Input file not found: $INPUT"
-check_requirements
 
 # Default output = input (in-place)
 [[ -z "$OUTPUT" ]] && OUTPUT="$INPUT"
+
+# ─── Mode: show only ───
+if [[ "$SHOW_ONLY" == true ]]; then
+    show_metadata "$INPUT"
+    exit 0
+fi
+
+# Now check the heavy requirements (only for write/clear operations)
+check_requirements
 
 # ─── Mode: clear only ───
 if [[ "$CLEAR_ONLY" == true ]]; then
