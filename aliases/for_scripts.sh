@@ -28,6 +28,15 @@ alias resize_smart='smartresize'
 
 alias shortcut_desktop_creator='~/.shell_utils/scripts/desktop-shortcut-creator'
 
+# Loop Batch CMD
+alias batch_cmd='~/.shell_utils/scripts/batch-run'
+alias cmd_batch='batch_cmd'
+alias run_batch='batch_cmd'
+alias loop_cmd='batch_cmd'
+alias cmd_loop='batch_cmd'
+alias loop_file='batch_cmd'
+alias file_loop='batch_cmd'
+
 alias ffmpeg_chromakey_processor='~/.shell_utils/scripts/remove-background-ffmpeg'
 
 alias compress_pdf='~/.shell_utils/scripts/merge-pdf'

@@ -1,0 +1,412 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+==============================================================================
+ batch-run.sh - Run a command once per matching file, extension-driven.
+==============================================================================
+
+ Takes a command template (via -c/--command) containing the placeholders
+ $input/$in and, optionally, $output/$out, finds every file matching the
+ given input extension (-ei/--ext-input), and runs the command once per
+ file, replacing the placeholders with the real input/output paths.
+
+ -eo/--ext-output is optional. When given, output files keep the same
+ base name as the input file, get the -eo extension, and are written to
+ a directory named "output_<ext>". When omitted, no output directory is
+ created and $output/$out cannot be used (useful for read-only commands
+ such as playback).
+
+ The command is ALWAYS executed as an array ("${command[@]}"). eval is
+ never used anywhere in this script.
+
+==============================================================================
+DOCUMENTATION
+
+set -uo pipefail
+
+SCRIPT_NAME="${0##*/}"
+
+# ------------------------------------------------------------------------------
+# Colors (only enabled on an interactive terminal that supports them)
+# ------------------------------------------------------------------------------
+if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
+    COLOR_RESET="$(tput sgr0)"
+    COLOR_BOLD="$(tput bold)"
+    COLOR_RED="$(tput setaf 1)"
+    COLOR_GREEN="$(tput setaf 2)"
+    COLOR_YELLOW="$(tput setaf 3)"
+    COLOR_CYAN="$(tput setaf 6)"
+else
+    COLOR_RESET=""
+    COLOR_BOLD=""
+    COLOR_RED=""
+    COLOR_GREEN=""
+    COLOR_YELLOW=""
+    COLOR_CYAN=""
+fi
+
+# ------------------------------------------------------------------------------
+# Logging helpers
+# ------------------------------------------------------------------------------
+print_info()    { printf '%s[INFO]%s %s\n'  "${COLOR_CYAN}"   "${COLOR_RESET}" "$1"; }
+print_success() { printf '%s[OK]%s %s\n'    "${COLOR_GREEN}"  "${COLOR_RESET}" "$1"; }
+print_warn()    { printf '%s[WARN]%s %s\n'  "${COLOR_YELLOW}" "${COLOR_RESET}" "$1" >&2; }
+print_error()   { printf '%s[ERROR]%s %s\n' "${COLOR_RED}"    "${COLOR_RESET}" "$1" >&2; }
+print_usage_hint() { printf "Run '%s --help' for full usage information.\n" "${SCRIPT_NAME}" >&2; }
+
+# ------------------------------------------------------------------------------
+# DOCUMENTATION
+# ------------------------------------------------------------------------------
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    echo "$doc"
+}
+
+# ------------------------------------------------------------------------------
+# Help
+# ------------------------------------------------------------------------------
+show_help() {
+cat << EOF | { echo -e "$(cat)"; }
+${COLOR_BOLD}${COLOR_CYAN}${SCRIPT_NAME}${COLOR_RESET} - run a command over every file matching an extension
+
+${COLOR_BOLD}DESCRIPTION${COLOR_RESET}
+    ${SCRIPT_NAME} finds every file matching an input extension, then runs a
+    command once per file. Inside the command you mark where the input and
+    output file paths go using placeholders; the script substitutes them for
+    you and executes the command as an array (never with eval).
+
+${COLOR_BOLD}USAGE${COLOR_RESET}
+    ${SCRIPT_NAME} -c ${COLOR_YELLOW}COMMAND${COLOR_RESET} -ei ${COLOR_YELLOW}INPUT_EXT${COLOR_RESET} -eo ${COLOR_YELLOW}OUTPUT_EXT${COLOR_RESET}
+
+${COLOR_BOLD}OPTIONS${COLOR_RESET}
+    ${COLOR_GREEN}-c, --command${COLOR_RESET} COMMAND   (required)
+        The command to run for each matched file. It must be a single
+        quoted string and must contain \$input (or \$in) somewhere -
+        see PLACEHOLDERS below:
+
+            -c 'mpv \$input'
+            -c 'tts-voice-cloner -f \$input -m female_01.wav -l en -o \$output'
+
+        ${COLOR_BOLD}Use SINGLE quotes.${COLOR_RESET} If you use double quotes (or no quotes),
+        your shell will expand \\\$input/\\\$output itself (usually to an empty
+        string) before ${SCRIPT_NAME} ever sees it.
+
+    ${COLOR_GREEN}-ei, --ext-input${COLOR_RESET} EXTENSION   (required)
+        The extension used to find input files. Accepted formats:
+        ext, .ext or *.ext (all three are equivalent). May be prefixed
+        with a path; run ${SCRIPT_NAME} --help for path notes below.
+
+    ${COLOR_GREEN}-eo, --ext-output${COLOR_RESET} EXTENSION   (optional)
+        The extension given to generated output files. Same accepted
+        formats as -ei. May also be prefixed with a path to choose where
+        the output folder is created (see below).
+
+        Omit this option entirely when the command has nothing to write
+        out - e.g. just playing or inspecting each file. In that case no
+        output folder is created and \\\$output/\\\$out cannot be used in
+        the command (there would be nothing to substitute them with).
+
+    ${COLOR_GREEN}-d, --doc${COLOR_RESET}
+        Show documentation.
+        
+    ${COLOR_GREEN}-h, --help${COLOR_RESET}
+        Show this help and exit.
+
+${COLOR_BOLD}PLACEHOLDERS${COLOR_RESET}
+    Inside the -c command string, use one of these as a STANDALONE word
+    (surrounded by spaces) wherever the file paths belong:
+
+        \\\$input  or  \\\$in    -> replaced with the current input file path
+        \\\$output or  \\\$out   -> replaced with the generated output file path
+
+    \\\$input/\\\$in is REQUIRED - without it the command would run
+    identically for every file, never actually pointing at one, so
+    ${SCRIPT_NAME} refuses to run and reports the problem instead.
+
+    \\\$output/\\\$out is only needed (and only allowed) when -eo is given.
+
+${COLOR_BOLD}EXTENSION FORMAT${COLOR_RESET}
+    -ei and -eo both accept the extension written as:
+
+        txt        .txt        *.txt
+
+    A path may be prepended. The extension is always whatever comes AFTER
+    the LAST slash, no matter how long the path is:
+
+        -ei ~/subtitles/txt
+        -ei ~/subtitles/.txt
+        -ei ~/subtitles/*.txt
+
+    All three lines above are equivalent and mean: "look for *.txt files
+    inside ~/subtitles". If -ei has no path (just "txt"), the current
+    directory is used - so you can simply run ${SCRIPT_NAME} from inside
+    the folder that holds your files.
+
+    ${COLOR_BOLD}Note:${COLOR_RESET} if the extension argument contains "*", quote it
+    (single or double quotes) so your shell does not expand it as a glob
+    before ${SCRIPT_NAME} receives it, e.g. -ei '*.txt'.
+
+${COLOR_BOLD}OUTPUT FILES${COLOR_RESET}
+    Each output file keeps the SAME base name as its input file, with the
+    -eo extension appended, e.g. "movie.txt" -> "movie.wav".
+
+    All output files are written into a folder named "output_<ext>"
+    (e.g. -eo wav -> folder "output_wav"). By default this folder is
+    created next to the input files (i.e. inside the -ei path, or in the
+    current directory if -ei had no path). To place it somewhere else,
+    give -eo a path of its own, e.g. -eo ~/converted/wav.
+
+    If -eo is omitted, no output folder is created at all - useful when
+    the command only reads each file (playback, inspection, and so on).
+
+${COLOR_BOLD}EXAMPLES${COLOR_RESET}
+    Convert every .txt file in the current directory into a .wav file
+    using tts-voice-cloner, writing results to ./output_wav:
+
+        ${SCRIPT_NAME} -c 'tts-voice-cloner -f \$input -m female_01.wav -l en -o \$output' -ei txt -eo wav
+
+    Same thing, reading .txt from a different folder and choosing where
+    the output folder is created:
+
+        ${SCRIPT_NAME} -c 'tts-voice-cloner -f \$in -m female_01.wav -l en -o \$out' -ei ~/subtitles/txt -eo ~/converted/wav
+
+    Play every .mp4 file in the current directory, one after another,
+    with no output folder involved (-eo omitted):
+
+        ${SCRIPT_NAME} -c 'mpv \$input' -ei mp4
+
+${COLOR_BOLD}EXIT CODES${COLOR_RESET}
+    0   All matched files were processed successfully.
+    1   An argument/setup error occurred, or at least one file failed.
+EOF
+}
+
+# ------------------------------------------------------------------------------
+# Parses an -ei/-eo style argument into a directory part and a clean
+# extension (no leading path, no leading "*" or ".").
+# Sets the globals PARSED_PATH and PARSED_EXT.
+# ------------------------------------------------------------------------------
+parse_extension_arg() {
+    local raw="$1"
+    local path_part="."
+    local ext_part="$raw"
+
+    if [[ "$raw" == */* ]]; then
+        path_part="${raw%/*}"
+        ext_part="${raw##*/}"
+    fi
+
+    ext_part="${ext_part#\*}"
+    ext_part="${ext_part#.}"
+
+    PARSED_PATH="$path_part"
+    PARSED_EXT="$ext_part"
+}
+
+# ------------------------------------------------------------------------------
+# Argument parsing
+# ------------------------------------------------------------------------------
+COMMAND_RAW=""
+EXT_INPUT_RAW=""
+EXT_OUTPUT_RAW=""
+has_command=false
+has_ext_input=false
+has_ext_output=false
+
+if [[ $# -eq 0 ]]; then
+    print_error "Missing required arguments."
+    print_usage_hint
+    exit 1
+fi
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--command)
+            [[ $# -ge 2 ]] || { print_error "Option $1 requires a value."; exit 1; }
+            COMMAND_RAW="$2"
+            has_command=true
+            shift 2
+            ;;
+        -ei|--ext-input)
+            [[ $# -ge 2 ]] || { print_error "Option $1 requires a value."; exit 1; }
+            EXT_INPUT_RAW="$2"
+            has_ext_input=true
+            shift 2
+            ;;
+        -eo|--ext-output)
+            [[ $# -ge 2 ]] || { print_error "Option $1 requires a value."; exit 1; }
+            EXT_OUTPUT_RAW="$2"
+            has_ext_output=true
+            shift 2
+            ;;
+        -d|--doc)
+            show_doc
+            exit 0
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            print_error "Unknown argument: $1"
+            print_usage_hint
+            exit 1
+            ;;
+    esac
+done
+
+if ! "$has_command" || ! "$has_ext_input"; then
+    print_error "This script requires -c and -ei (-eo is optional)."
+    print_usage_hint
+    exit 1
+fi
+
+if [[ -z "$COMMAND_RAW" ]]; then
+    print_error "The -c/--command value cannot be empty."
+    exit 1
+fi
+
+# ------------------------------------------------------------------------------
+# Resolve extensions and directories
+# ------------------------------------------------------------------------------
+parse_extension_arg "$EXT_INPUT_RAW"
+INPUT_DIR="$PARSED_PATH"
+INPUT_EXT="$PARSED_EXT"
+
+if [[ -z "$INPUT_EXT" ]]; then
+    print_error "Could not determine an input extension from: $EXT_INPUT_RAW"
+    exit 1
+fi
+
+if [[ ! -d "$INPUT_DIR" ]]; then
+    print_error "Input directory does not exist: $INPUT_DIR"
+    exit 1
+fi
+
+OUTPUT_EXT=""
+OUTPUT_DIR=""
+
+if "$has_ext_output"; then
+    parse_extension_arg "$EXT_OUTPUT_RAW"
+    OUTPUT_EXT="$PARSED_EXT"
+    if [[ "$EXT_OUTPUT_RAW" == */* ]]; then
+        OUTPUT_BASE_DIR="$PARSED_PATH"
+    else
+        OUTPUT_BASE_DIR="$INPUT_DIR"
+    fi
+
+    if [[ -z "$OUTPUT_EXT" ]]; then
+        print_error "Could not determine an output extension from: $EXT_OUTPUT_RAW"
+        exit 1
+    fi
+
+    OUTPUT_DIR="${OUTPUT_BASE_DIR%/}/output_${OUTPUT_EXT}"
+fi
+
+# ------------------------------------------------------------------------------
+# Find input files
+# ------------------------------------------------------------------------------
+shopt -s nullglob
+input_files=("${INPUT_DIR%/}"/*."${INPUT_EXT}")
+shopt -u nullglob
+
+if [[ ${#input_files[@]} -eq 0 ]]; then
+    print_error "No *.${INPUT_EXT} files found in: ${INPUT_DIR}"
+    exit 1
+fi
+
+# ------------------------------------------------------------------------------
+# Build the command template array (no eval; plain word-splitting).
+# Fixed arguments in the command must not contain spaces.
+# ------------------------------------------------------------------------------
+read -ra command_template <<< "$COMMAND_RAW"
+
+if [[ ${#command_template[@]} -eq 0 ]]; then
+    print_error "The -c/--command value did not contain a usable command."
+    exit 1
+fi
+
+has_input_placeholder=false
+has_output_placeholder=false
+for token in "${command_template[@]}"; do
+    # shellcheck disable=SC2016 # literal placeholder match, expansion not wanted
+    case "$token" in
+        '$input'|'$in')   has_input_placeholder=true ;;
+        '$output'|'$out') has_output_placeholder=true ;;
+    esac
+done
+
+if ! "$has_input_placeholder"; then
+    # shellcheck disable=SC2016 # literal text in the message, not meant to expand
+    print_error 'No $input/$in placeholder found in the command. Add $input (or $in) where the file path should go.'
+    exit 1
+fi
+
+if "$has_output_placeholder" && ! "$has_ext_output"; then
+    # shellcheck disable=SC2016 # literal text in the message, not meant to expand
+    print_error 'The command uses $output/$out, but -eo/--ext-output was not given.'
+    exit 1
+fi
+
+if "$has_ext_output" && ! "$has_output_placeholder"; then
+    # shellcheck disable=SC2016 # literal text in the message, not meant to expand
+    print_warn 'No $output/$out placeholder found; the output directory will still be created but nothing will be written into it by this command.'
+fi
+
+if "$has_ext_output"; then
+    mkdir -p "$OUTPUT_DIR" || { print_error "Could not create output directory: $OUTPUT_DIR"; exit 1; }
+fi
+
+# ------------------------------------------------------------------------------
+# Main loop: run the command once per matched file
+# ------------------------------------------------------------------------------
+total=0
+success=0
+failed=0
+
+for i in "${input_files[@]}"; do
+    filename="$(basename -- "$i")"
+
+    output_file=""
+    if "$has_ext_output"; then
+        base_name="${filename%.*}"
+        output_file="${OUTPUT_DIR}/${base_name}.${OUTPUT_EXT}"
+    fi
+
+    command=()
+    for token in "${command_template[@]}"; do
+        # shellcheck disable=SC2016 # literal placeholder match, expansion not wanted
+        case "$token" in
+            '$input'|'$in')   command+=("$i") ;;
+            '$output'|'$out') command+=("$output_file") ;;
+            *)                command+=("$token") ;;
+        esac
+    done
+
+    total=$((total + 1))
+    print_info "Processing: ${filename}"
+
+    if "${command[@]}"; then
+        success=$((success + 1))
+    else
+        exit_code=$?
+        print_error "Command failed (exit code ${exit_code}) for file: ${i}"
+        failed=$((failed + 1))
+    fi
+done
+
+output_note=""
+if "$has_ext_output"; then
+    output_note=" Output saved in: ${OUTPUT_DIR}"
+fi
+
+if [[ $failed -eq 0 ]]; then
+    print_success "All ${total} file(s) processed successfully.${output_note}"
+    exit 0
+else
+    print_warn "${success} of ${total} file(s) processed successfully, ${failed} failed.${output_note}"
+    exit 1
+fi
