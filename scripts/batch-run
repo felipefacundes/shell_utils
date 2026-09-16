@@ -8,15 +8,20 @@
 ==============================================================================
 
  Takes a command template (via -c/--command) containing the placeholders
- $input/$in and, optionally, $output/$out, finds every file matching the
- given input extension (-ei/--ext-input), and runs the command once per
- file, replacing the placeholders with the real input/output paths.
+ $input/$in and, optionally, $output/$out and $lang/$language, finds every
+ file matching the given input extension (-ei/--ext-input), and runs the
+ command once per file, replacing the placeholders with the real values.
 
  -eo/--ext-output is optional. When given, output files keep the same
  base name as the input file, get the -eo extension, and are written to
  a directory named "output_<ext>". When omitted, no output directory is
  created and $output/$out cannot be used (useful for read-only commands
  such as playback).
+
+ -al/--automatic-language is optional. When given, the language for each
+ file is taken from its own name: whatever follows the LAST "=" right
+ before the extension, e.g. "sub=narration=en.txt" -> language "en".
+ $lang/$language can then be used in the command.
 
  The command is ALWAYS executed as an array ("${command[@]}"). eval is
  never used anywhere in this script.
@@ -79,7 +84,7 @@ ${COLOR_BOLD}DESCRIPTION${COLOR_RESET}
     you and executes the command as an array (never with eval).
 
 ${COLOR_BOLD}USAGE${COLOR_RESET}
-    ${SCRIPT_NAME} -c ${COLOR_YELLOW}COMMAND${COLOR_RESET} -ei ${COLOR_YELLOW}INPUT_EXT${COLOR_RESET} -eo ${COLOR_YELLOW}OUTPUT_EXT${COLOR_RESET}
+    ${SCRIPT_NAME} -c ${COLOR_YELLOW}COMMAND${COLOR_RESET} -ei ${COLOR_YELLOW}INPUT_EXT${COLOR_RESET} [-eo ${COLOR_YELLOW}OUTPUT_EXT${COLOR_RESET}] [-al]
 
 ${COLOR_BOLD}OPTIONS${COLOR_RESET}
     ${COLOR_GREEN}-c, --command${COLOR_RESET} COMMAND   (required)
@@ -91,7 +96,7 @@ ${COLOR_BOLD}OPTIONS${COLOR_RESET}
             -c 'tts-voice-cloner -f \$input -m female_01.wav -l en -o \$output'
 
         ${COLOR_BOLD}Use SINGLE quotes.${COLOR_RESET} If you use double quotes (or no quotes),
-        your shell will expand \\\$input/\\\$output itself (usually to an empty
+        your shell will expand \$input/\$output itself (usually to an empty
         string) before ${SCRIPT_NAME} ever sees it.
 
     ${COLOR_GREEN}-ei, --ext-input${COLOR_RESET} EXTENSION   (required)
@@ -106,8 +111,13 @@ ${COLOR_BOLD}OPTIONS${COLOR_RESET}
 
         Omit this option entirely when the command has nothing to write
         out - e.g. just playing or inspecting each file. In that case no
-        output folder is created and \\\$output/\\\$out cannot be used in
+        output folder is created and \$output/\$out cannot be used in
         the command (there would be nothing to substitute them with).
+
+    ${COLOR_GREEN}-al, --automatic-language${COLOR_RESET}   (optional, no value)
+        Turns on automatic language detection from each file name - see
+        AUTOMATIC LANGUAGE below. Requires \$lang or \$language somewhere
+        in the command.
 
     ${COLOR_GREEN}-d, --doc${COLOR_RESET}
         Show documentation.
@@ -119,14 +129,17 @@ ${COLOR_BOLD}PLACEHOLDERS${COLOR_RESET}
     Inside the -c command string, use one of these as a STANDALONE word
     (surrounded by spaces) wherever the file paths belong:
 
-        \\\$input  or  \\\$in    -> replaced with the current input file path
-        \\\$output or  \\\$out   -> replaced with the generated output file path
+        \$input  or  \$in    -> replaced with the current input file path
+        \$output or  \$out   -> replaced with the generated output file path
+        \$lang   or  \$language -> replaced with the language detected from
+                                  the file name (only with -al, see below)
 
-    \\\$input/\\\$in is REQUIRED - without it the command would run
+    \$input/\$in is REQUIRED - without it the command would run
     identically for every file, never actually pointing at one, so
     ${SCRIPT_NAME} refuses to run and reports the problem instead.
 
-    \\\$output/\\\$out is only needed (and only allowed) when -eo is given.
+    \$output/\$out is only needed (and only allowed) when -eo is given.
+    \$lang/\$language is only needed (and only allowed) when -al is given.
 
 ${COLOR_BOLD}EXTENSION FORMAT${COLOR_RESET}
     -ei and -eo both accept the extension written as:
@@ -162,6 +175,32 @@ ${COLOR_BOLD}OUTPUT FILES${COLOR_RESET}
     If -eo is omitted, no output folder is created at all - useful when
     the command only reads each file (playback, inspection, and so on).
 
+${COLOR_BOLD}AUTOMATIC LANGUAGE (-al)${COLOR_RESET}
+    Turns on when a batch has one file per language and the language code
+    is already baked into every file name - handy for looping a TTS tool
+    or tesseract across several languages without repeating the command.
+
+    With -al, before running the command for each file, ${SCRIPT_NAME} looks
+    at the file name (without its extension) and takes whatever comes
+    after the LAST "=" as the language. That value becomes available as
+    \$lang/\$language in the command. Examples (extension stripped first):
+
+        subtitle=narration=por.txt   -> language: por
+        subtitle_narration=en.txt    -> language: en
+        subtitle_narration=es.txt    -> language: es
+        subtitle=narration=ar.txt    -> language: ar
+        subtitle=narration=zh-cn.txt -> language: zh-cn
+        subtitle=narration=uzb_cyrl.txt -> language: uzb_cyrl
+
+    A file with no "=" before the extension (or nothing after the last
+    "=") is reported and skipped - it still counts as a failure in the
+    final summary, but the rest of the batch keeps running.
+
+    -al requires \$lang or \$language in the command, and vice versa: using
+    \$lang/\$language without -al, or using -al without \$lang/\$language
+    in the command, is reported as an error and ${SCRIPT_NAME} exits
+    immediately, before processing any file.
+
 ${COLOR_BOLD}EXAMPLES${COLOR_RESET}
     Convert every .txt file in the current directory into a .wav file
     using tts-voice-cloner, writing results to ./output_wav:
@@ -172,6 +211,11 @@ ${COLOR_BOLD}EXAMPLES${COLOR_RESET}
     the output folder is created:
 
         ${SCRIPT_NAME} -c 'tts-voice-cloner -f \$in -m female_01.wav -l en -o \$out' -ei ~/subtitles/txt -eo ~/converted/wav
+
+    Same conversion, but the language comes from each file name instead
+    of being fixed (e.g. subtitle=narration=en.txt, ...=por.txt, ...):
+
+        ${SCRIPT_NAME} -c 'tts-voice-cloner -f \$input -m female_01.wav -l \$lang -o \$output' -ei txt -eo wav -al
 
     Play every .mp4 file in the current directory, one after another,
     with no output folder involved (-eo omitted):
@@ -215,6 +259,7 @@ EXT_OUTPUT_RAW=""
 has_command=false
 has_ext_input=false
 has_ext_output=false
+has_automatic_language=false
 
 if [[ $# -eq 0 ]]; then
     print_error "Missing required arguments."
@@ -241,6 +286,10 @@ while [[ $# -gt 0 ]]; do
             EXT_OUTPUT_RAW="$2"
             has_ext_output=true
             shift 2
+            ;;
+        -al|--automatic-language)
+            has_automatic_language=true
+            shift
             ;;
         -d|--doc)
             show_doc
@@ -331,11 +380,13 @@ fi
 
 has_input_placeholder=false
 has_output_placeholder=false
+has_lang_placeholder=false
 for token in "${command_template[@]}"; do
     # shellcheck disable=SC2016 # literal placeholder match, expansion not wanted
     case "$token" in
-        '$input'|'$in')   has_input_placeholder=true ;;
-        '$output'|'$out') has_output_placeholder=true ;;
+        '$input'|'$in')       has_input_placeholder=true ;;
+        '$output'|'$out')     has_output_placeholder=true ;;
+        '$lang'|'$language')  has_lang_placeholder=true ;;
     esac
 done
 
@@ -353,7 +404,20 @@ fi
 
 if "$has_ext_output" && ! "$has_output_placeholder"; then
     # shellcheck disable=SC2016 # literal text in the message, not meant to expand
-    print_warn 'No $output/$out placeholder found; the output directory will still be created but nothing will be written into it by this command.'
+    print_error 'No $output/$out placeholder found in the command, but -eo/--ext-output was given.'
+    exit 1
+fi
+
+if "$has_lang_placeholder" && ! "$has_automatic_language"; then
+    # shellcheck disable=SC2016 # literal text in the message, not meant to expand
+    print_error 'The command uses $lang/$language, but -al/--automatic-language was not given.'
+    exit 1
+fi
+
+if "$has_automatic_language" && ! "$has_lang_placeholder"; then
+    # shellcheck disable=SC2016 # literal text in the message, not meant to expand
+    print_error 'No $lang/$language placeholder found in the command, but -al/--automatic-language was given.'
+    exit 1
 fi
 
 if "$has_ext_output"; then
@@ -369,25 +433,43 @@ failed=0
 
 for i in "${input_files[@]}"; do
     filename="$(basename -- "$i")"
+    base_name="${filename%.*}"
 
     output_file=""
     if "$has_ext_output"; then
-        base_name="${filename%.*}"
         output_file="${OUTPUT_DIR}/${base_name}.${OUTPUT_EXT}"
+    fi
+
+    lang_value=""
+    if "$has_automatic_language"; then
+        if [[ "$base_name" == *=* ]]; then
+            lang_value="${base_name##*=}"
+        fi
+        if [[ -z "$lang_value" ]]; then
+            print_error "No language marker (=) found before the extension in file name: ${filename}"
+            total=$((total + 1))
+            failed=$((failed + 1))
+            continue
+        fi
     fi
 
     command=()
     for token in "${command_template[@]}"; do
         # shellcheck disable=SC2016 # literal placeholder match, expansion not wanted
         case "$token" in
-            '$input'|'$in')   command+=("$i") ;;
-            '$output'|'$out') command+=("$output_file") ;;
-            *)                command+=("$token") ;;
+            '$input'|'$in')       command+=("$i") ;;
+            '$output'|'$out')     command+=("$output_file") ;;
+            '$lang'|'$language')  command+=("$lang_value") ;;
+            *)                    command+=("$token") ;;
         esac
     done
 
     total=$((total + 1))
-    print_info "Processing: ${filename}"
+    if "$has_automatic_language"; then
+        print_info "Processing: ${filename} (language: ${lang_value})"
+    else
+        print_info "Processing: ${filename}"
+    fi
 
     if "${command[@]}"; then
         success=$((success + 1))
