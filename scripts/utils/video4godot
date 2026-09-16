@@ -1,0 +1,229 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+SCRIPT_NAME="${0##*/}"
+
+# Default values
+DEFAULT_VQ=7
+DEFAULT_AQ=6
+DEFAULT_GV=54
+DEFAULT_RATE=60
+
+: <<'DOCUMENTATION'
+${SCRIPT_NAME} - Video converter optimized for Godot engine (OGV format)
+
+USAGE:
+    ${SCRIPT_NAME} [OPTIONS] -i INPUT -o OUTPUT
+
+DESCRIPTION:
+    Converts video files to OGV format optimized for Godot engine using
+    FFmpeg with libtheora (video) and libvorbis (audio) codecs.
+
+OPTIONS:
+    -i, --input FILE      Input video file (required)
+    -o, --output FILE     Output file name without extension (required)
+    -q, --vq VALUE        Video quality level (1-10) [default: ${DEFAULT_VQ}]
+    -a, --aq VALUE        Audio quality level (-1 to 10) [default: ${DEFAULT_AQ}]
+    -g, --gv VALUE        GOP size (max interval between keyframes) [default: ${DEFAULT_GV}]
+    -r, --rate VALUE      Frame rate [default: ${DEFAULT_RATE}]
+    -h, --help            Show this help message
+    -d, --doc             Show detailed documentation
+    -v, --version         Show version information
+
+QUALITY SETTINGS:
+
+    Video Quality (-q:v):
+        Must be between 1 and 10. Quality 6 is a good compromise between
+        quality and file size. If encoding at a high resolution (such as
+        1440p or 4K), you will probably want to decrease -q:v to 5 to keep
+        file sizes reasonable. Since pixel density is higher on a 1440p or
+        4K video, lower quality presets at higher resolutions will look as
+        good or better compared to low-resolution videos.
+
+    Audio Quality (-q:a):
+        Must be between -1 and 10. Quality 6 provides a good compromise
+        between quality and file size. In contrast to video quality,
+        increasing audio quality doesn't increase the output file size
+        nearly as much. Therefore, if you want the cleanest audio possible,
+        you can increase this to 9 to get perceptually lossless audio.
+        This is especially valuable if your input file already uses lossy
+        audio compression. Higher quality audio does increase the CPU usage
+        of the decoder, so it might lead to audio dropouts in case of high
+        system load.
+
+    GOP Size (-g:v):
+        The GOP (Group of Pictures) size is the max interval between
+        keyframes. Increasing this value can improve compression with
+        almost no impact on quality. The default size (12) is too low for
+        most types of content, it's therefore recommended using higher GOP
+        values before reducing video quality. Compression benefits will
+        fade away as the GOP size increases though. Values between 64 and
+        512 usually give the best compression.
+
+        Note: Higher GOP sizes will increase max seek times with a sudden
+        increase when going beyond powers of two starting at 64. Max seek
+        times with GOP size 65 can be almost twice as long as with GOP
+        size 64, depending on decoding speed.
+
+EXAMPLES:
+    Convert a video preserving original resolution:
+        ${SCRIPT_NAME} -i input.mp4 -o output
+
+    Convert and resize video to 720p:
+        ${SCRIPT_NAME} -i input.mp4 -o output -q 6 -a 6 -g 64
+
+    High quality conversion for 4K content:
+        ${SCRIPT_NAME} -i input.mp4 -o output -q 5 -a 9 -g 128
+
+NOTES:
+    - The output file will be created with .ogv extension
+    - The base command used is:
+      ffmpeg -i INPUT -c:v libtheora -q:v VQ -r RATE -c:a libvorbis -q:a AQ -g:v GV OUTPUT.ogv
+    - Ensure FFmpeg is installed with libtheora and libvorbis support
+
+FONT:
+    https://docs.godotengine.org/en/latest/tutorials/animation/playing_videos.html
+
+DOCUMENTATION
+
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    SCRIPT_NAME="$SCRIPT_NAME" \
+    DEFAULT_VQ="$DEFAULT_VQ" \
+    DEFAULT_AQ="$DEFAULT_AQ" \
+    DEFAULT_GV="$DEFAULT_GV" \
+    DEFAULT_RATE="$DEFAULT_RATE" \
+        envsubst '${SCRIPT_NAME} ${DEFAULT_VQ} ${DEFAULT_AQ} ${DEFAULT_GV} ${DEFAULT_RATE}' <<<"$doc"
+    exit 0
+}
+
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${SCRIPT_NAME} - Video converter optimized for Godot engine (OGV format)
+
+USAGE:
+    ${SCRIPT_NAME} [OPTIONS] -i INPUT -o OUTPUT
+
+OPTIONS:
+    -i, --input FILE      Input video file (required)
+    -o, --output FILE     Output file name without extension (required)
+    -q, --vq VALUE        Video quality level (1-10) [default: ${DEFAULT_VQ}]
+    -a, --aq VALUE        Audio quality level (-1 to 10) [default: ${DEFAULT_AQ}]
+    -g, --gv VALUE        GOP size (max interval between keyframes) [default: ${DEFAULT_GV}]
+    -r, --rate VALUE      Frame rate [default: ${DEFAULT_RATE}]
+    -h, --help            Show this help message
+    -d, --doc             Show detailed documentation
+    -v, --version         Show version information
+
+Use --doc for detailed documentation about quality settings.
+EOF
+    exit 0
+}
+
+show_version() {
+    echo "${SCRIPT_NAME} version 1.0.0"
+    exit 0
+}
+
+error_exit() {
+    echo "Error: $1" >&2
+    echo "Try '${SCRIPT_NAME} --help' for more information." >&2
+    exit 1
+}
+
+# Initialize variables
+INPUT=""
+OUTPUT=""
+VQ="$DEFAULT_VQ"
+AQ="$DEFAULT_AQ"
+GV="$DEFAULT_GV"
+RATE="$DEFAULT_RATE"
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -i|--input)
+            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"
+            INPUT="$2"
+            shift 2
+            ;;
+        -o|--output)
+            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"
+            OUTPUT="$2"
+            shift 2
+            ;;
+        -q|--vq)
+            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"
+            VQ="$2"
+            shift 2
+            ;;
+        -a|--aq)
+            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"
+            AQ="$2"
+            shift 2
+            ;;
+        -g|--gv)
+            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"
+            GV="$2"
+            shift 2
+            ;;
+        -r|--rate)
+            [[ -z "$2" || "$2" == -* ]] && error_exit "Option $1 requires an argument"
+            RATE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        -d|--doc)
+            show_doc
+            ;;
+        -v|--version)
+            show_version
+            ;;
+        *)
+            error_exit "Unknown option: $1"
+            ;;
+    esac
+done
+
+# Validate required arguments
+[[ -z "$INPUT" ]] && error_exit "Input file is required (-i)"
+[[ -z "$OUTPUT" ]] && error_exit "Output file is required (-o)"
+
+# Validate input file exists
+[[ ! -f "$INPUT" ]] && error_exit "Input file not found: $INPUT"
+
+# Validate numeric ranges
+if ! [[ "$VQ" =~ ^[0-9]+$ ]] || [[ "$VQ" -lt 1 || "$VQ" -gt 10 ]]; then
+    error_exit "Video quality (-q:v) must be between 1 and 10"
+fi
+
+if ! [[ "$AQ" =~ ^-?[0-9]+$ ]] || [[ "$AQ" -lt -1 || "$AQ" -gt 10 ]]; then
+    error_exit "Audio quality (-q:a) must be between -1 and 10"
+fi
+
+if ! [[ "$GV" =~ ^[0-9]+$ ]] || [[ "$GV" -lt 1 ]]; then
+    error_exit "GOP size (-g:v) must be a positive integer"
+fi
+
+if ! [[ "$RATE" =~ ^[0-9]+$ ]] || [[ "$RATE" -lt 1 ]]; then
+    error_exit "Frame rate (-r) must be a positive integer"
+fi
+
+# Check if ffmpeg is available
+if ! command -v ffmpeg &>/dev/null; then
+    error_exit "ffmpeg is not installed or not in PATH"
+fi
+
+# Execute conversion
+echo "Converting: $INPUT -> ${OUTPUT}.ogv"
+echo "Settings: vq=$VQ, aq=$AQ, gv=$GV, rate=$RATE"
+
+if ffmpeg -i "$INPUT" -c:v libtheora -q:v "$VQ" -r "$RATE" -c:a libvorbis -q:a "$AQ" -g:v "$GV" "${OUTPUT}.ogv"; then
+    echo -e "\nConversion completed successfully: ${OUTPUT}.ogv"
+else
+    error_exit "Conversion failed"
+fi
