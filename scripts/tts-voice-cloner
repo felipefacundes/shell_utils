@@ -181,6 +181,9 @@ Basic usage
     tts-voice-cloner.py -t "Hello, how are you?" -l en -m john.wav
     tts-voice-cloner.py -f story.txt -l pt -m mary.wav -o story.wav
     tts-voice-cloner.py -t "I am the night" -l en -m john.wav --deep
+    tts-voice-cloner.py -t "Hello, how are you?" -l en -m john.wav --no-punctuation
+    tts-voice-cloner.py -t "Hi there" -l en -m alice.wav bob.wav -o blend.wav
+    tts-voice-cloner.py -t "Hi there" -l en -m john.wav --seed 42 --normalize-output
 
 Run with --help for the full list of options.
 """
@@ -188,11 +191,14 @@ Run with --help for the full list of options.
 import argparse
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
+import unicodedata
 import warnings
 from pathlib import Path
+from typing import Union
 
 # ---------------------------------------------------------------------------
 # Project directories
@@ -296,8 +302,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "-m", "--model",
-        help="Voice sample file name (>=10s WAV) inside the models folder, "
-             "or a path to a WAV file elsewhere.",
+        nargs="+",
+        metavar="MODEL",
+        help="One or more voice sample file names (>=10s WAV) inside the "
+             "models folder, or paths to WAV files elsewhere. Pass two or "
+             "more, space-separated, to interpolate between multiple "
+             "voices -- a native XTTS v2 feature that blends their speaker "
+             "embeddings into a new, in-between voice.",
     )
     parser.add_argument(
         "-o", "--output",
@@ -329,6 +340,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     adj.add_argument(
         "--high", action="store_true",
         help="Preset: high-pitched voice (pitch +6 semitones).",
+    )
+
+    text_proc = parser.add_argument_group(
+        "text processing",
+        "By default, punctuation marks (periods, commas, question marks, "
+        "etc.) are kept in the text and naturally narrated by the model as "
+        "pauses and intonation changes -- this is the current, standard "
+        "behavior. Use --no-punctuation to strip them out beforehand instead.",
+    )
+    text_proc.add_argument(
+        "--no-punctuation", action="store_true",
+        help="Strip punctuation marks from the text before synthesis, so "
+             "they are NOT narrated (no pauses/intonation cues from commas, "
+             "periods, question marks, etc.). Off by default, meaning "
+             "punctuation is narrated as usual.",
     )
 
     quality = parser.add_argument_group(
@@ -363,6 +389,38 @@ def build_arg_parser() -> argparse.ArgumentParser:
              "of the reference voice sample before cloning. Cleanup is on by "
              "default because a noisy/quiet/silence-padded reference is the "
              "single biggest cause of a noisy clone.",
+    )
+
+    repro = parser.add_argument_group(
+        "reproducibility & consistency",
+        "Control generation randomness and keep output volume consistent "
+        "across separate runs (useful when stitching together multiple "
+        "generated clips, e.g. audiobook chapters).",
+    )
+    repro.add_argument(
+        "--seed", type=int, default=None,
+        help="Random seed for deterministic generation: the same text, "
+             "model(s), language and parameters plus the same seed always "
+             "produce the same audio. Default: None (XTTS's normal random "
+             "sampling, a different result each run). Note this only "
+             "controls the model's own sampling randomness, not bit-for-bit "
+             "reproducibility across different devices (CPU vs GPU, or "
+             "different GPUs).",
+    )
+    repro.add_argument(
+        "--normalize-output", action="store_true",
+        help="Normalize the final generated audio to a consistent "
+             "perceived loudness (LUFS) instead of leaving it at whatever "
+             "level the model happened to produce. Uses integrated "
+             "loudness normalization via 'pyloudnorm' when installed, "
+             "falling back to simple peak normalization otherwise. Applied "
+             "after --pitch/--volume adjustments. Off by default.",
+    )
+    repro.add_argument(
+        "--target-lufs", type=float, default=0.0,
+        help="Target integrated loudness in LUFS when --normalize-output "
+             "is used. -16 LUFS is a common streaming/podcast target; more "
+             "negative is quieter. Default: 0.0.",
     )
 
     misc = parser.add_argument_group("misc")
@@ -432,6 +490,106 @@ def prepare_reference_audio(speaker_wav: Path, tmp_dir: Path, clean: bool) -> Pa
     return cleaned_path
 
 
+def prepare_reference_audios(speaker_wavs: list, tmp_dir: Path, clean: bool) -> list:
+    """Apply prepare_reference_audio() to each reference clip. Used for
+    voice interpolation, where two or more clips are blended together by
+    the model -- each one still benefits from its own noise/silence
+    cleanup before being handed to XTTS."""
+    if not clean:
+        return speaker_wavs
+
+    prepared = []
+    for i, wav in enumerate(speaker_wavs):
+        cleaned = prepare_reference_audio(wav, tmp_dir, clean=True)
+        if cleaned != wav and len(speaker_wavs) > 1:
+            # prepare_reference_audio() always writes to the same fixed
+            # filename; give each cleaned reference a distinct name so the
+            # next iteration doesn't overwrite this one before synthesis.
+            unique_path = tmp_dir / f"reference_clean_{i}.wav"
+            cleaned.rename(unique_path)
+            cleaned = unique_path
+        prepared.append(cleaned)
+    return prepared
+
+
+def set_seed(seed: int) -> None:
+    """Make generation deterministic: the same text/model(s)/parameters
+    plus this seed will always produce the same audio. This only pins the
+    model's own sampling randomness -- it does not guarantee bit-for-bit
+    reproducibility across different devices (CPU vs GPU, or different
+    GPU models)."""
+    import random
+
+    import numpy as np
+    import torch
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def normalize_output(wav_path: Path, target_lufs: float) -> None:
+    """Normalize the final generated audio to a consistent perceived
+    loudness, so separate generations (different texts, voices, or runs)
+    come out at a comparable volume instead of whatever level the model
+    happened to produce. Uses integrated loudness (LUFS, ITU-R BS.1770)
+    via 'pyloudnorm' when available; falls back to simple peak
+    normalization otherwise."""
+    import numpy as np
+    import soundfile as sf
+
+    data, sr = sf.read(wav_path, dtype="float32")
+    if data.size == 0:
+        return
+
+    try:
+        import pyloudnorm as pyln
+
+        meter = pyln.Meter(sr)
+        current_loudness = meter.integrated_loudness(data)
+        if current_loudness == float("-inf"):
+            return  # effectively silent; nothing meaningful to normalize
+        data = pyln.normalize.loudness(data, current_loudness, target_lufs)
+    except ImportError:
+        print(
+            "Warning: 'pyloudnorm' not installed; falling back to simple "
+            "peak normalization for --normalize-output. Install it "
+            "(pip install pyloudnorm) for consistent perceived loudness "
+            "(LUFS) across generations.",
+            file=sys.stderr,
+        )
+        peak = float(np.max(np.abs(data))) if data.size else 0.0
+        if peak > 0:
+            data = data / peak * 0.95
+
+    # Soft peak-limit in case loudness normalization pushed levels close to
+    # (or past) full scale, to avoid clipping distortion.
+    peak = float(np.max(np.abs(data))) if data.size else 0.0
+    if peak > 0.99:
+        data = data / peak * 0.99
+
+    sf.write(wav_path, data, sr)
+
+
+def strip_punctuation(text: str) -> str:
+    """Remove punctuation marks from the text so the model has no punctuation
+    cues left to narrate (no pauses/intonation shifts at commas, periods,
+    question marks, ellipses, quotes, dashes, brackets, etc.).
+
+    Every Unicode "P*" (punctuation) category character is replaced with a
+    space rather than deleted outright, so words that were only separated by
+    punctuation (e.g. "Hello,how" or "one-two") don't get glued together.
+    Runs of whitespace created by the removal are then collapsed.
+    """
+    cleaned = "".join(
+        " " if unicodedata.category(ch).startswith("P") else ch
+        for ch in text
+    )
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def resolve_model_path(model_arg: str) -> Path:
     """Find the voice sample either as a direct path or inside MODELS_DIR."""
     candidate = Path(model_arg).expanduser()
@@ -450,6 +608,12 @@ def resolve_model_path(model_arg: str) -> Path:
     )
 
 
+def resolve_model_paths(model_args: list) -> list:
+    """Resolve one or more --model arguments to existing WAV paths (used
+    for voice interpolation when more than one is given)."""
+    return [resolve_model_path(m) for m in model_args]
+
+
 def read_text_input(args: argparse.Namespace) -> str:
     if args.file:
         path = Path(args.file).expanduser()
@@ -461,6 +625,12 @@ def read_text_input(args: argparse.Namespace) -> str:
 
     if not text:
         sys.exit("Error: no text provided.")
+
+    if args.no_punctuation:
+        text = strip_punctuation(text)
+        if not text:
+            sys.exit("Error: no text left to synthesize after removing punctuation.")
+
     return text
 
 
@@ -488,7 +658,7 @@ def list_languages() -> None:
 def synthesize(
     text: str,
     language: str,
-    speaker_wav: Path,
+    speaker_wav: Union[Path, list],
     out_path: Path,
     force_gpu: bool,
     speed: float,
@@ -496,6 +666,7 @@ def synthesize(
     repetition_penalty: float,
     top_k: int,
     top_p: float,
+    seed=None,
 ) -> None:
     try:
         from TTS.api import TTS
@@ -514,10 +685,24 @@ def synthesize(
     print(f"Loading XTTS v2 on {device} (first run downloads the model, this can take a while)...",
           file=sys.stderr)
 
+    # A list of two or more references triggers XTTS v2's native speaker
+    # interpolation (blending their embeddings); a single reference is
+    # passed as a plain string, matching the tool's previous behavior.
+    if isinstance(speaker_wav, (list, tuple)):
+        speaker_wav_arg = str(speaker_wav[0]) if len(speaker_wav) == 1 else [str(p) for p in speaker_wav]
+    else:
+        speaker_wav_arg = str(speaker_wav)
+
     tts = TTS(XTTS_MODEL_NAME).to(device)
+
+    if seed is not None:
+        # Pin the RNG right before the actual sampling call, as close to
+        # generation as possible.
+        set_seed(seed)
+
     tts.tts_to_file(
         text=text,
-        speaker_wav=str(speaker_wav),
+        speaker_wav=speaker_wav_arg,
         language=language,
         file_path=str(out_path),
         # Native XTTS generation parameters -- these produce far cleaner
@@ -620,24 +805,31 @@ def main() -> None:
         pitch += 6
 
     text = read_text_input(args)
-    speaker_wav = resolve_model_path(args.model)
+    speaker_wavs = resolve_model_paths(args.model)
+    if len(speaker_wavs) > 1:
+        names = ", ".join(w.name for w in speaker_wavs)
+        print(f"Interpolating between {len(speaker_wavs)} voice references: {names}",
+              file=sys.stderr)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
-        clean_speaker_wav = prepare_reference_audio(
-            speaker_wav, tmp_path, clean=not args.no_clean_reference
+        clean_speaker_wavs = prepare_reference_audios(
+            speaker_wavs, tmp_path, clean=not args.no_clean_reference
         )
 
         raw_path = tmp_path / "raw.wav"
         synthesize(
-            text, args.language, clean_speaker_wav, raw_path, args.gpu,
+            text, args.language, clean_speaker_wavs, raw_path, args.gpu,
             speed=args.speed,
             temperature=args.temperature,
             repetition_penalty=args.repetition_penalty,
             top_k=args.top_k,
             top_p=args.top_p,
+            seed=args.seed,
         )
         apply_adjustments(raw_path, pitch, args.volume)
+        if args.normalize_output:
+            normalize_output(raw_path, args.target_lufs)
 
         if args.output:
             out_path = Path(args.output).expanduser()
