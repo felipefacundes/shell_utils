@@ -212,10 +212,10 @@ _hist_process() {
         return 1
     fi
 
-    (( HISTMAINT_BACKUP )) && ln -f -- "$hist_file" "${hist_file}.bak" 2>/dev/null
+    (( HISTMAINT_BACKUP )) && ln -f -- "$hist_file" "${hist_file}.bak" >/dev/null 2>&1
 
     chmod 600 -- "$tmp_file" 2>/dev/null
-    if ! mv -f -- "$tmp_file" "$hist_file" 2>/dev/null; then
+    if ! mv -f -- "$tmp_file" "$hist_file" >/dev/null 2>&1; then
         rm -f -- "$tmp_file" 2>/dev/null
         (( had_noclobber )) && set -C
         _hist_err "failed to replace $hist_file (backup at ${hist_file}.bak)"
