@@ -93,6 +93,14 @@ _histfile_with_lock() {
 
 _histfile_reload() {
     [[ $- == *i* ]] || return 0
+    # NOTE: history -a must NOT be placed here (after _hist_process, before history -c).
+    # By the time _histfile_reload runs, _hist_process has already rewritten the file
+    # based on its own read; a history -a here would only append commands that were
+    # never seen by _hist_process, leaving the in-memory history inconsistent with the
+    # file. Worse, on the next run _hist_process would read a file that is out of sync
+    # with what the shell actually had, i.e. it would work on stale data. The flush
+    # belongs in PROMPT_COMMAND, before history_normalize, so the file is always
+    # up to date before _hist_process reads it.
     history -c
     history -r "$(_histfile_path)"
 }
