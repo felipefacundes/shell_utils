@@ -118,7 +118,7 @@ fi
 #"agnoster" #"pure" #"rr" #"mairan" #"rjorgenson" #"brainy" #"iterate" #"standard" #"demula" #"powerline-naked" #"powerline-multiline" #"90210" #"clean" #"dulcie" 
 #"brunton" #"binaryanomaly" #"random" #"font" #"powerline" #"duru" #"vscode" #"candy" #"hawaii50" #"emperor" #"tylenol" #"morris" #"pzq" #"zitron" #"kitsune"
 if [[ "$BLE_BASH_ENABLED" != 2 ]]; then 
-    OMB_THEME=purity
+    OMB_THEME=powerbash10k
 
     # shellcheck source=/dev/null
     OMBC=~/.shell_utils/frameworks/oh-my-bash-config.sh && [[ -f "$OMBC" ]] && . "$OMBC" && unset OMBC
@@ -244,12 +244,7 @@ EOF
 
 # Fix several known issues of bash history, and amazingly, it is able to convert .zsh_history to standard .bash_history structure
 # These functions are located in: ~/.shell_utils/utilities/completions/bash/
-_fix_bash_history() {
-    _remove_timestamp_in_single_line_format_from_bash_history
-    _remove_unused_timestamps_from_bash_history
-    _include_timestamp_in_bash_history
-    return 0
-}
+
 
 notifications() {
 	local exit_status=$?
@@ -261,7 +256,7 @@ notifications() {
 _prompt_command() {
     notifications
     "$@"
-    _fix_bash_history
+    history_normalize
 }
 
 complete -abcdefgjksuv sudo

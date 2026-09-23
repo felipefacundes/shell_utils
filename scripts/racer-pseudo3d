@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+NAME
+    ${SCRIPT_NAME} - Install and run Arcade Racer Pseudo3D Python in a pyenv-based
+    virtual environment.
+
+SYNOPSIS
+    ${SCRIPT_NAME} [OPTION]
+
+DESCRIPTION
+    Arcade Racer Pseudo3D written in Python (https://github.com/mefistofeles57/pseudo3d).
+    Installs pygame and scipy in a dedicated virtual environment and launches
+    the game.
+
+OPTIONS
+    -c, --clean
+        Remove the virtual environment and the cloned project, then exit.
+
+    -h, --help
+        Show this documentation (alias for --doc).
+
+    -d, --doc
+        Show this documentation.
+
+FILES
+    ~/.pyenv/versions/${PYTHON_VERSION}/bin/python
+        Python interpreter managed by pyenv.
+
+    ~/.python/${SCRIPT_NAME}
+        Virtual environment directory (also contains the cloned project).
+
+DEPENDENCIES
+    System: pyenv, git, and a working Python ${PYTHON_VERSION} toolchain.
+    Python: pygame, scipy (installed via pip; versions resolved automatically
+    for compatibility with Python ${PYTHON_VERSION}).
+
+EXIT STATUS
+    0   Success.
+    1   pyenv missing, Python install failure, empty virtual environment,
+        or missing project directory.
+
+LICENSE
+    GPLv3
+
+CREDITS
+    Felipe Facundes
+DOCUMENTATION
+
+PYTHON_VERSION="3.13.15"
+SCRIPT_NAME="${0##*/}"
+PROJECT_NAME="racer-pseudo3d"
+
+py_version="${HOME}/.pyenv/versions/${PYTHON_VERSION}/bin/python"
+py_venv="${HOME}/.python/${SCRIPT_NAME}"
+activate="${py_venv}/bin/activate"
+# project_dir="${HOME}/.local/share/${PROJECT_NAME}"
+project_dir="${py_venv}/${PROJECT_NAME}"
+
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    PYTHON_VERSION="$PYTHON_VERSION" SCRIPT_NAME="$SCRIPT_NAME" \
+        envsubst '${SCRIPT_NAME} ${PYTHON_VERSION}' <<<"$doc"
+    exit 0
+}
+
+if [[ "${1,,}" == "-d" || "${1,,}" == "--doc" || "${1,,}" == "-h" || "${1,,}" == "--help" ]]; then
+    show_doc
+fi
+
+# Remove virtual environment and cloned project, then exit
+if [[ "${1,,}" == "--clean" || "${1,,}" == "-c" ]]; then
+    if [[ -d "${py_venv}" ]]; then
+        echo "Cleaning virtual environment..."
+        rm -rf "${py_venv}"
+        echo "Virtual environment removed."
+    fi
+    if [[ -d "${project_dir}" ]]; then
+        echo "Cleaning cloned project..."
+        rm -rf "${project_dir}"
+        echo "Project removed."
+    fi
+    exit 0
+fi
+
+if ! command -v pyenv >/dev/null 2>&1; then
+    echo "Error: pyenv is not installed. Install it with: sudo pacman -S pyenv"
+    exit 1
+elif [[ ! -f "${py_version}" ]] && ! pyenv versions --bare | grep -qx "${PYTHON_VERSION}"; then
+    echo "Installing Python ${PYTHON_VERSION}..."
+    pyenv install "${PYTHON_VERSION}"
+fi
+
+# Create virtual environment if it does not exist yet
+if [[ ! -d "${py_venv}" && -f "${py_version}" ]]; then
+    echo "Creating virtual environment with Python ${PYTHON_VERSION} at ${py_venv}..."
+    "${py_version}" -m venv "${py_venv}"
+
+    #shellcheck source=/dev/null
+    source "$activate"
+    export VIRTUAL_ENV="$py_venv"
+
+    echo "Upgrading pip..."
+    pip install --upgrade pip
+
+    echo "Cloning Arcade Racer Pseudo3D into ${project_dir}..."
+    git clone https://github.com/mefistofeles57/pseudo3d.git "${project_dir}"
+
+    echo "Installing Arcade Racer Pseudo3D Python dependencies..."
+    
+    pip install PyYAML
+    pip install pygame numpy sounddevice
+
+    echo "Installation complete!"
+fi
+
+# Check if the virtual environment is actually usable
+if [ ! -e "$activate" ]; then
+    echo "Python environment is empty."
+    exit 1
+fi
+
+# Activate venv if not already active
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    echo "Activating virtual environment..."
+    export VIRTUAL_ENV="$py_venv"
+    #shellcheck source=/dev/null
+    source "$activate"
+fi
+
+cd "${project_dir}" || {
+    echo "Error: project directory ${project_dir} not found."
+    exit 1
+}
+
+echo "Launching Arcade Racer Pseudo3D..."
+python Juego.py

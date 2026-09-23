@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+NAME
+    ${SCRIPT_NAME} - Install and run Sonic Python in a pyenv-based
+    virtual environment.
+
+SYNOPSIS
+    ${SCRIPT_NAME} [OPTION]
+
+DESCRIPTION
+    Sonic Clone written in Python (https://github.com/jjpaulo2/sonic-pygame.git).
+    Installs pygame in a dedicated virtual environment and launches the game.
+
+OPTIONS
+    -c, --clean
+        Remove the virtual environment and the cloned project, then exit.
+
+    -h, --help
+        Show this documentation (alias for --doc).
+
+    -d, --doc
+        Show this documentation.
+
+FILES
+    ~/.pyenv/versions/${PYTHON_VERSION}/bin/python
+        Python interpreter managed by pyenv.
+
+    ${VENV_DIR}
+        Virtual environment directory.
+
+    ${PROJECT_DIR}
+        Cloned project directory.
+
+DEPENDENCIES
+    System: pyenv, git, and a working Python ${PYTHON_VERSION} toolchain.
+    Python: pygame (installed via pip).
+
+EXIT STATUS
+    0   Success.
+    1   Missing dependency, Python install failure, or missing project directory.
+
+LICENSE
+    GPLv3
+
+CREDITS
+    Felipe Facundes
+DOCUMENTATION
+
+set -euo pipefail
+
+PYTHON_VERSION="3.8.2"
+SCRIPT_NAME="${0##*/}"
+PROJECT_NAME="sonic-pygame"
+REPO_URL="https://github.com/jjpaulo2/sonic-pygame.git"
+
+PYENV_PYTHON="${HOME}/.pyenv/versions/${PYTHON_VERSION}/bin/python"
+VENV_DIR="${HOME}/.python/${SCRIPT_NAME}"
+# PROJECT_DIR="${VENV_DIR}/.local/share/${PROJECT_NAME}"
+PROJECT_DIR="${VENV_DIR}/${PROJECT_NAME}"
+ACTIVATE="${VENV_DIR}/bin/activate"
+
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    PYTHON_VERSION="$PYTHON_VERSION" \
+    SCRIPT_NAME="$SCRIPT_NAME" \
+    VENV_DIR="$VENV_DIR" \
+    PROJECT_DIR="$PROJECT_DIR" \
+        envsubst '${SCRIPT_NAME} ${PYTHON_VERSION} ${VENV_DIR} ${PROJECT_DIR}' <<<"$doc"
+    exit 0
+}
+
+clean_all() {
+    if [[ -d "$VENV_DIR" ]]; then
+        echo "Removing virtual environment at ${VENV_DIR}..."
+        rm -rf "$VENV_DIR"
+    fi
+    if [[ -d "$PROJECT_DIR" ]]; then
+        echo "Removing cloned project at ${PROJECT_DIR}..."
+        rm -rf "$PROJECT_DIR"
+    fi
+    echo "Cleanup complete."
+    exit 0
+}
+
+arg="${1:-}"
+case "${arg,,}" in
+    -h|--help|-d|--doc) show_doc ;;
+    -c|--clean)         clean_all ;;
+esac
+
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "Error: '$1' is not installed." >&2
+        exit 1
+    fi
+}
+
+require_command pyenv
+require_command git
+
+if [[ ! -x "$PYENV_PYTHON" ]]; then
+    if ! pyenv versions --bare | grep -qx "$PYTHON_VERSION"; then
+        echo "Installing Python ${PYTHON_VERSION} with pyenv..."
+        pyenv install "$PYTHON_VERSION"
+    fi
+    # Re-resolve after install
+    PYENV_PYTHON="$(pyenv root)/versions/${PYTHON_VERSION}/bin/python"
+fi
+
+if [[ ! -x "$PYENV_PYTHON" ]]; then
+    echo "Error: Python ${PYTHON_VERSION} interpreter not found at ${PYENV_PYTHON}." >&2
+    exit 1
+fi
+
+# Create virtual environment if missing
+if [[ ! -d "$VENV_DIR" ]]; then
+    echo "Creating virtual environment at ${VENV_DIR}..."
+    "$PYENV_PYTHON" -m venv "$VENV_DIR"
+fi
+
+if [[ ! -f "$ACTIVATE" ]]; then
+    echo "Error: virtual environment is not usable (missing ${ACTIVATE})." >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$ACTIVATE"
+export VIRTUAL_ENV="$VENV_DIR"
+
+echo "Upgrading pip..."
+python -m pip install --upgrade pip
+
+echo "Installing pygame..."
+python -m pip install pygame
+
+# Clone or update the project
+if [[ ! -d "$PROJECT_DIR/.git" ]]; then
+    echo "Cloning ${PROJECT_NAME} into ${PROJECT_DIR}..."
+    mkdir -p "$(dirname "$PROJECT_DIR")"
+    git clone "$REPO_URL" "$PROJECT_DIR"
+else
+    echo "Updating ${PROJECT_NAME} in ${PROJECT_DIR}..."
+    git -C "$PROJECT_DIR" pull --ff-only
+fi
+
+if [[ ! -f "${PROJECT_DIR}/sonic/__main__.py" ]]; then
+    echo "Error: ${PROJECT_DIR}/sonic/__main__.py not found." >&2
+    exit 1
+fi
+
+echo "Launching Sonic Python..."
+cd "$PROJECT_DIR"
+exec python -m sonic
