@@ -8,15 +8,16 @@ This script is designed to automate the backup process for Godot projects, ensur
 easily manage their project files and avoid accidental data loss.
 
 Key Features:
-1. Automatic Backup Creation: Creates timestamped backups of Godot projects in ~/.cache/scriptname/
+1. Automatic Backup Creation: Creates timestamped backups of Godot projects in ~/.cache/${SCRIPT_NAME}/
 2. Restore Functionality: Allows restoring projects from selected backups using dialog/whiptail
 3. Signal Handling: Properly manages process termination signals
 4. Size Management: Monitors backup directory size and auto-deletes oldest backups when limit reached
 5. Bilingual Support: Automatically detects system language (Portuguese/English) for user messages
 6. Godot Binary Selection: Can use latest binary in ~/.local/bin or specify a permanent version
 7. First-run Setup: Uses zenity to select the projects directory on first execution
-8. Cache Directory Management: Stores backups in ~/.cache/scriptname/ with configurable size limit
+8. Cache Directory Management: Stores backups in ~/.cache/${SCRIPT_NAME}/ with configurable size limit
 9. Project Directory Selection: Use --project to temporarily override the projects directory
+10. Backup Copy: Use --copy to copy a selected backup to another directory (interactively via whiptail/zenity, or directly by passing the backup and destination)
 
 DOCUMENTATION
 
@@ -63,6 +64,8 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [help_list_opt]="Listar todos os backups disponíveis"
         [help_purge_opt]="Eliminar todos os backups (requer confirmação)"
         [help_project_opt]="Selecionar diretório de projetos. Sem argumentos, abre seletor gráfico. Com argumento, usa o caminho especificado"
+        [help_copy_opt]="Copiar um backup para outro diretório. Sem argumentos, seleciona o backup via whiptail e o destino via zenity. Também aceita: --copy arquivo.tar ~/destino"
+        [help_doc_opt]="Mostrar a documentação completa do script"
         [help_first_run_text]="Na primeira execução, o zenity solicitará que você selecione o diretório de projetos. O diretório selecionado será o que será copiado em backup."
         [help_backup_dir_text]="Todos os projetos dentro do diretório selecionado serão incluídos no backup. Formato do backup: projectdir_AAAA-MM-DD_HH-MM-SS.tar"
         [help_restore_text]="Ao restaurar, o diretório do projeto existente será movido para: projectdir_backup_AAAA-MM-DD_HH-MM-SS Isso evita perda de dados e evita erros de sobrescrita."
@@ -77,6 +80,8 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [help_example6]="Selecionar diretório de projetos interativamente"
         [help_example7]="Usar diretório de projetos específico"
         [help_example8]="Passar argumentos para o Godot"
+        [help_example9]="Copiar um backup interativamente (whiptail + zenity)"
+        [help_example10]="Copiar um backup específico para um destino"
         [available_backups]="Backups disponíveis:"
         [total_size]="Tamanho total:"
         [no_backups]="Nenhum backup encontrado em"
@@ -103,6 +108,12 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [using_temporary_project_dir]="Usando diretório de projetos temporário:"
         [project_dir_selected]="Diretório de projetos selecionado:"
         [select_project_directory]="Selecione o diretório de projetos"
+        [copy_prompt]="Escolha o backup que deseja copiar"
+        [copy_select_dest]="Selecione o diretório de destino para a cópia"
+        [copy_success]="Backup copiado com sucesso para"
+        [copy_failed]="Falha ao copiar o backup"
+        [copy_file_not_found]="Arquivo de backup não encontrado"
+        [copy_dest_not_found]="Diretório de destino não encontrado"
     )
 else
     MESSAGES=(
@@ -142,6 +153,8 @@ else
         [help_list_opt]="List all available backups"
         [help_purge_opt]="Purge all backups (confirmation required)"
         [help_project_opt]="Select project directory. Without arguments, opens graphical picker. With argument, uses the specified path"
+        [help_copy_opt]="Copy a backup to another directory. Without arguments, selects the backup via whiptail and the destination via zenity. Also accepts: --copy file.tar ~/destination"
+        [help_doc_opt]="Show the script's full documentation"
         [help_first_run_text]="On first execution, zenity will prompt to select the projects directory. The selected directory will be the one backed up."
         [help_backup_dir_text]="All projects inside the selected directory will be included in the backup. Backup format: projectdir_YYYY-MM-DD_HH-MM-SS.tar"
         [help_restore_text]="When restoring, the existing project directory will be moved to: projectdir_backup_YYYY-MM-DD_HH-MM-SS This prevents data loss and avoids overwrite errors."
@@ -156,6 +169,8 @@ else
         [help_example6]="Select project directory interactively"
         [help_example7]="Use specific project directory"
         [help_example8]="Pass arguments to Godot"
+        [help_example9]="Interactively copy a backup (whiptail + zenity)"
+        [help_example10]="Copy a specific backup to a destination"
         [available_backups]="Available backups:"
         [total_size]="Total size:"
         [no_backups]="No backups found in"
@@ -182,6 +197,12 @@ else
         [using_temporary_project_dir]="Using temporary project directory:"
         [project_dir_selected]="Project directory selected:"
         [select_project_directory]="Select the project directory"
+        [copy_prompt]="Choose the backup you want to copy"
+        [copy_select_dest]="Select the destination directory for the copy"
+        [copy_success]="Backup successfully copied to"
+        [copy_failed]="Failed to copy backup"
+        [copy_file_not_found]="Backup file not found"
+        [copy_dest_not_found]="Destination directory not found"
     )
 fi
 
@@ -255,6 +276,8 @@ ${YELLOW}${MESSAGES[help_options]}${NC}
     ${GREEN}-l, --list${NC}        ${MESSAGES[help_list_opt]}
     ${GREEN}-p, --purge${NC}       ${MESSAGES[help_purge_opt]}
     ${GREEN}--project${NC}         ${MESSAGES[help_project_opt]}
+    ${GREEN}-cp, --copy${NC}       ${MESSAGES[help_copy_opt]}
+    ${GREEN}-d, --doc${NC}         ${MESSAGES[help_doc_opt]}
 
 ${YELLOW}${MESSAGES[help_first_run]}${NC}
     ${MESSAGES[help_first_run_text]}
@@ -281,8 +304,21 @@ ${YELLOW}${MESSAGES[help_examples]}${NC}
     ${GREEN}${SCRIPT_NAME} --project${NC}           # ${MESSAGES[help_example6]}
     ${GREEN}${SCRIPT_NAME} --project /path/to/proj${NC} # ${MESSAGES[help_example7]}
     ${GREEN}${SCRIPT_NAME} --project /path/to/proj -- --rendering-driver vulkan${NC} # ${MESSAGES[help_example8]}
+    ${GREEN}${SCRIPT_NAME} -cp${NC}                 # ${MESSAGES[help_example9]}
+    ${GREEN}${SCRIPT_NAME} -cp backup.tar ~/Documents${NC} # ${MESSAGES[help_example10]}
 
 EOF
+}
+
+# Function to display the full script documentation (extracted from the
+# DOCUMENTATION heredoc at the top of this file), with ${SCRIPT_NAME}
+# expanded to the actual script name.
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    SCRIPT_NAME="$SCRIPT_NAME" \
+    envsubst '${SCRIPT_NAME}' <<<"$doc"
+    exit 0
 }
 
 # Function to setup configuration
@@ -515,6 +551,132 @@ restore_backup() {
         return 0
     else
         echo "${MESSAGES[restore_failed]}"
+        return 1
+    fi
+}
+
+# Function to copy a backup to another directory
+# Usage: copy_backup [backup_file_or_name] [destination_dir]
+# With no arguments -> interactive selection (whiptail for the backup, zenity for the destination)
+# With both arguments -> direct copy, no prompts
+copy_backup() {
+    local backup_arg="$1"
+    local dest_arg="$2"
+    local backup_file=""
+    local dest_dir=""
+
+    if [[ -n "$backup_arg" ]] && [[ -n "$dest_arg" ]]; then
+        # Direct mode: resolve the backup file (accepts a full path or just the filename inside CACHE_DIR)
+        if [[ -f "$backup_arg" ]]; then
+            backup_file="$backup_arg"
+        elif [[ -f "$CACHE_DIR/$backup_arg" ]]; then
+            backup_file="$CACHE_DIR/$backup_arg"
+        else
+            echo "${MESSAGES[copy_file_not_found]}: $backup_arg"
+            return 1
+        fi
+        dest_dir="$dest_arg"
+    else
+        # Interactive mode
+        local backups=()
+        while IFS= read -r -d '' file; do
+            backups+=("$file")
+        done < <(find "$CACHE_DIR" -maxdepth 1 -name "*.tar" -print0 2>/dev/null | sort -rz)
+
+        if [[ ${#backups[@]} -eq 0 ]]; then
+            echo "${MESSAGES[no_backups]} $CACHE_DIR"
+            return 1
+        fi
+
+        if command -v whiptail >/dev/null 2>&1; then
+            local options=()
+            for i in "${!backups[@]}"; do
+                local filename=$(basename "${backups[$i]}")
+                local size_human=$(get_human_size "${backups[$i]}")
+                options+=("$i" "$filename ($size_human)")
+            done
+
+            local choice
+            choice=$(whiptail --title "${MESSAGES[copy_prompt]}" \
+                --menu "${MESSAGES[copy_prompt]}" 20 80 10 \
+                "${options[@]}" 3>&1 1>&2 2>&3)
+
+            if [[ $? -ne 0 ]]; then
+                echo "${MESSAGES[operation_cancelled]}"
+                return 1
+            fi
+
+            backup_file="${backups[$choice]}"
+
+        elif command -v dialog >/dev/null 2>&1; then
+            local options=()
+            for i in "${!backups[@]}"; do
+                local filename=$(basename "${backups[$i]}")
+                local size_human=$(get_human_size "${backups[$i]}")
+                options+=("$i" "$filename ($size_human)")
+            done
+
+            local choice
+            choice=$(dialog --title "${MESSAGES[copy_prompt]}" \
+                --menu "${MESSAGES[copy_prompt]}" 20 80 10 \
+                "${options[@]}" 3>&1 1>&2 2>&3)
+
+            if [[ $? -ne 0 ]]; then
+                echo "${MESSAGES[operation_cancelled]}"
+                return 1
+            fi
+
+            backup_file="${backups[$choice]}"
+
+        else
+            # Fallback to simple list
+            echo "${MESSAGES[copy_prompt]}:"
+            for i in "${!backups[@]}"; do
+                local size_human=$(get_human_size "${backups[$i]}")
+                echo "$i) $(basename "${backups[$i]}") ($size_human)"
+            done
+            read -p "${MESSAGES[enter_number]} " choice
+
+            if [[ ! "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -ge "${#backups[@]}" ]]; then
+                echo "${MESSAGES[invalid_selection]}"
+                return 1
+            fi
+
+            backup_file="${backups[$choice]}"
+        fi
+
+        # Select destination directory via zenity
+        if command -v zenity >/dev/null 2>&1; then
+            dest_dir=$(zenity --file-selection --directory --title="${MESSAGES[copy_select_dest]}" 2>/dev/null)
+            if [[ -z "$dest_dir" ]]; then
+                echo "${MESSAGES[operation_cancelled]}"
+                return 1
+            fi
+        else
+            echo "${MESSAGES[install_zenity]}"
+            read -p "${MESSAGES[copy_select_dest]}: " dest_dir
+            if [[ -z "$dest_dir" ]]; then
+                echo "${MESSAGES[operation_cancelled]}"
+                return 1
+            fi
+        fi
+    fi
+
+    # Normalize destination path (avoid double slash like /path//file.tar)
+    dest_dir="${dest_dir%/}"
+
+    # Validate destination directory exists
+    if [[ ! -d "$dest_dir" ]]; then
+        echo "${MESSAGES[copy_dest_not_found]}: $dest_dir"
+        return 1
+    fi
+
+    # Perform the copy, preserving timestamps/permissions
+    if cp -p "$backup_file" "$dest_dir/"; then
+        echo "${MESSAGES[copy_success]} $dest_dir/$(basename "$backup_file")"
+        return 0
+    else
+        echo "${MESSAGES[copy_failed]}"
         return 1
     fi
 }
@@ -753,6 +915,9 @@ main() {
     local restore_mode=false
     local list_mode=false
     local purge_mode=false
+    local copy_mode=false
+    local copy_backup_arg=""
+    local copy_dest_arg=""
     local project_dir_arg=""
     
     clear 
@@ -762,6 +927,9 @@ main() {
             -h|--help)
                 show_help
                 exit 0
+                ;;
+            -d|--doc)
+                show_doc
                 ;;
             -r|--restore)
                 restore_mode=true
@@ -819,6 +987,18 @@ main() {
                 TEMP_PROJECT_DIR="$project_dir_arg"
                 echo "${MESSAGES[project_dir_selected]} $TEMP_PROJECT_DIR"
                 ;;
+            -cp|--copy)
+                copy_mode=true
+                if [[ -n "$2" ]] && [[ ! "$2" =~ ^- ]] && [[ -n "$3" ]] && [[ ! "$3" =~ ^- ]]; then
+                    # Both backup and destination given directly
+                    copy_backup_arg="$2"
+                    copy_dest_arg="$3"
+                    shift 3
+                else
+                    # No arguments - interactive selection (whiptail + zenity)
+                    shift
+                fi
+                ;;
             -l|--list)
                 list_mode=true
                 shift
@@ -856,6 +1036,12 @@ main() {
     # Handle restore mode
     if [[ "$restore_mode" == true ]]; then
         restore_backup
+        exit $?
+    fi
+    
+    # Handle copy mode
+    if [[ "$copy_mode" == true ]]; then
+        copy_backup "$copy_backup_arg" "$copy_dest_arg"
         exit $?
     fi
     
