@@ -256,6 +256,7 @@ notifications() {
 _prompt_command() {
     notifications
     "$@"
+    history -a
     history_normalize
 }
 
