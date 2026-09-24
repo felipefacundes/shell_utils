@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+
+${SCRIPT_NAME} - Godot Project Cache Cleaner
+
+This script is designed to solve a very specific and recurring problem in Godot
+development workflows: the corruption or desynchronization of the hidden .godot
+cache directory. While Godot's caching system is essential for performance,
+it can become a source of significant frustration when it goes wrong.
+
+Why would you need this? Godot stores imported resources, UIDs, and various
+compiled data inside the .godot folder. Over time, or after certain operations
+(like plugin installation, asset swapping, or engine version upgrades), this
+cache can become stale or corrupted. When this happens, you might encounter:
+
+- Script and resource loading errors that persist despite no changes to your code.
+- "Ghost dependencies" where the editor references files you've already deleted.
+- UID warnings during export or load, breaking asset links.
+- Meshes or materials reverting to previous states unexpectedly.
+- The editor freezing or failing to load scenes entirely.
+
+The standard solution in the Godot community is to simply delete the .godot
+folder and let the engine regenerate it from scratch. This forces a clean
+reimport of all your assets and rebuilds the cache from your source files
+(which are the true, authoritative data). It is a safe operation because the
+.godot folder is purely generated data; your actual project files (scenes,
+scripts, resources) are never stored there.
+
+This script automates that process safely. It guides you through selecting
+your project directory, verifies the presence of a .godot folder, and removes
+it cleanly. The outcome is a fresh start for your project's cache, often
+resolving a whole class of "phantom" issues that are otherwise maddening to
+debug.
+
+DOCUMENTATION
+
+SCRIPT_NAME="${0##*/}"
+
+# Internationalization - Bilingual Support
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [fix_description]="A pasta .godot armazena caches de importação, UIDs e outros dados compilados. Quando corrompida ou dessincronizada, pode causar erros fantasma, dependências quebradas e até congelamentos do editor. Removê-la força uma reimportação limpa de todos os assets na próxima abertura do projeto, resolvendo inúmeros problemas de forma silenciosa."
+        [select_project_dir]="Selecione o diretório do projeto Godot"
+        [confirm_removal]="Isso removerá a pasta .godot do projeto selecionado. O Godot irá recriá-la automaticamente na próxima abertura. Deseja prosseguir?"
+        [no_godot_dir]="Nenhuma pasta .godot foi encontrada no diretório especificado."
+        [removing]="Removendo pasta .godot de: %s"
+        [removed_success]="Pasta .godot removida com sucesso."
+        [benefits_title]="Benefícios da remoção da pasta .godot:"
+        [benefit_1]="- Resolve erros de carregamento de scripts e recursos causados por cache corrompido."
+        [benefit_2]="- Elimina dependências fantasma que referenciam arquivos já deletados."
+        [benefit_3]="- Corrige avisos de UID durante exportação ou carregamento do projeto."
+        [benefit_4]="- Restaura materiais e malhas que revertem inesperadamente após operações."
+        [benefit_5]="- Soluciona travamentos do editor ao carregar cenas ou ao abrir o projeto."
+        [benefit_6]="- Força uma reimportação limpa de todos os assets do zero."
+        [help_usage]="Uso: %s [OPÇÕES]"
+        [help_fix]="-f, --fix [DIRETÓRIO]  Remove a pasta .godot do projeto Godot especificado."
+        [help_doc]="-d, --doc            Exibe a documentação completa do script."
+        [help_help]="-h, --help           Exibe esta mensagem de ajuda."
+        [help_godot_note]="A pasta .godot é um cache gerado. Removê-la resolve inúmeros problemas de corrupção, mas o Godot irá recriá-la na próxima abertura."
+        [help_example]="Exemplo: %s --fix ~/meu_projeto_godot"
+    )
+else
+    MESSAGES=(
+        [fix_description]="The .godot folder stores import caches, UIDs, and other compiled data. When corrupted or desynchronized, it can cause phantom errors, broken dependencies, and even editor freezes. Removing it forces a clean reimport of all assets on the next project open, silently resolving countless issues."
+        [select_project_dir]="Select the Godot project directory"
+        [confirm_removal]="This will remove the .godot folder from the selected project. Godot will recreate it automatically on the next open. Do you want to proceed?"
+        [no_godot_dir]="No .godot folder found in the specified directory."
+        [removing]="Removing .godot folder from: %s"
+        [removed_success]=".godot folder removed successfully."
+        [benefits_title]="Benefits of removing the .godot folder:"
+        [benefit_1]="- Resolves script and resource loading errors caused by corrupted cache."
+        [benefit_2]="- Eliminates ghost dependencies that reference already deleted files."
+        [benefit_3]="- Fixes UID warnings during export or project loading."
+        [benefit_4]="- Restores meshes and materials that unexpectedly revert after operations."
+        [benefit_5]="- Solves editor freezes when loading scenes or opening the project."
+        [benefit_6]="- Forces a clean reimport of all assets from scratch."
+        [help_usage]="Usage: %s [OPTIONS]"
+        [help_fix]="-f, --fix [DIRECTORY]  Removes the .godot folder from the specified Godot project."
+        [help_doc]="-d, --doc             Displays the full script documentation."
+        [help_help]="-h, --help            Displays this help message."
+        [help_godot_note]="The .godot folder is a generated cache. Removing it resolves countless corruption issues, but Godot will recreate it on the next open."
+        [help_example]="Example: %s --fix ~/my_godot_project"
+    )
+fi
+
+# Colors
+readonly CLR_RESET="\033[0m"
+readonly CLR_BOLD="\033[1m"
+readonly CLR_DIM="\033[2m"
+readonly CLR_RED="\033[0;31m"
+readonly CLR_GREEN="\033[0;32m"
+readonly CLR_YELLOW="\033[0;33m"
+readonly CLR_BLUE="\033[0;34m"
+readonly CLR_MAGENTA="\033[0;35m"
+readonly CLR_CYAN="\033[0;36m"
+readonly CLR_BOLD_CYAN="\033[1;36m"
+readonly CLR_BOLD_YELLOW="\033[1;33m"
+readonly CLR_BOLD_GREEN="\033[1;32m"
+
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    SCRIPT_NAME="$SCRIPT_NAME" \
+    envsubst '${SCRIPT_NAME}' <<<"$doc"
+    exit 0
+}
+
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${CLR_BOLD_CYAN}${MESSAGES[help_usage]//%s/$SCRIPT_NAME}${CLR_RESET}
+
+${CLR_BOLD_YELLOW}${MESSAGES[help_fix]%% *}${CLR_RESET}${MESSAGES[help_fix]#* }
+
+${CLR_BOLD_YELLOW}${MESSAGES[help_doc]%% *}${CLR_RESET}${MESSAGES[help_doc]#* }
+
+${CLR_BOLD_YELLOW}${MESSAGES[help_help]%% *}${CLR_RESET}${MESSAGES[help_help]#* }
+
+${CLR_DIM}${MESSAGES[help_godot_note]}${CLR_RESET}
+
+${CLR_GREEN}${MESSAGES[help_example]//%s/$SCRIPT_NAME}${CLR_RESET}
+EOF
+    exit 0
+}
+
+show_benefits() {
+    cat << EOF | { echo -e "$(cat)"; }
+${CLR_BOLD_GREEN}${MESSAGES[benefits_title]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_1]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_2]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_3]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_4]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_5]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_6]}${CLR_RESET}
+EOF
+}
+
+remove_godot_dir() {
+    local project_dir="$1"
+    
+    if [[ ! -d "$project_dir/.godot" ]]; then
+        echo -e "${CLR_RED}${MESSAGES[no_godot_dir]}${CLR_RESET}"
+        exit 1
+    fi
+    
+    printf "${CLR_YELLOW}${MESSAGES[removing]}${CLR_RESET}\n" "$project_dir"
+    rm -rf "$project_dir/.godot"
+    
+    if [[ ! -d "$project_dir/.godot" ]]; then
+        echo -e "${CLR_BOLD_GREEN}${MESSAGES[removed_success]}${CLR_RESET}"
+        echo ""
+        show_benefits
+    else
+        echo -e "${CLR_RED}Failed to remove .godot directory.${CLR_RESET}"
+        exit 1
+    fi
+}
+
+main() {
+    local project_dir=""
+    
+    if [[ $# -eq 0 ]]; then
+        show_help
+    fi
+    
+    case "$1" in
+        -h|--help)
+            show_help
+            ;;
+        -d|--doc)
+            show_doc
+            ;;
+        -f|--fix)
+            shift
+            if [[ $# -gt 0 ]]; then
+                project_dir="$1"
+                remove_godot_dir "$project_dir"
+            else
+                echo -e "${CLR_CYAN}${MESSAGES[fix_description]}${CLR_RESET}\n"
+                echo -e "${CLR_BOLD_YELLOW}${MESSAGES[confirm_removal]}${CLR_RESET}\n"
+                read -r -p "[y/N] " response
+                if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                    echo -e "${CLR_RED}Operation cancelled.${CLR_RESET}"
+                    exit 0
+                fi
+                
+                project_dir=$(zenity --file-selection --directory --title="${MESSAGES[select_project_dir]}" 2>/dev/null)
+                
+                if [[ -z "$project_dir" ]]; then
+                    echo -e "${CLR_RED}No directory selected.${CLR_RESET}"
+                    exit 1
+                fi
+                
+                remove_godot_dir "$project_dir"
+            fi
+            ;;
+        *)
+            echo -e "${CLR_RED}Unknown option: $1${CLR_RESET}"
+            show_help
+            ;;
+    esac
+}
+
+main "$@"
