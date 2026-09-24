@@ -2,498 +2,854 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# Script: clean_godot_cache.sh
-# Purpose: Remove .godot directories from Godot projects
-# Usage: ./clean_godot_cache.sh [OPTIONS] <base_directory>
+: <<'DOCUMENTATION'
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+${SCRIPT_NAME} - Godot Project Cache Cleaner (Unified Edition)
 
-# Global variables
-FORCE_MODE=false
-BASE_DIR=""
+This script is a comprehensive tool designed to solve the recurring problem of
+corrupted or desynchronized .godot cache directories in Godot Engine projects.
+It unifies two complementary approaches: a surgical, interactive single-project
+cleaner and a batch, recursive multi-project sweeper.
 
-# Help function
+Why would you need this? Godot stores imported resources, UIDs, and various
+compiled data inside the hidden .godot folder. Over time, or after certain
+operations (like plugin installation, asset swapping, or engine version
+upgrades), this cache can become stale or corrupted. When this happens, you
+might encounter a whole class of "phantom" issues that are maddening to debug:
+
+- Script and resource loading errors that persist despite no changes to code.
+- "Ghost dependencies" where the editor references files already deleted.
+- UID warnings and duplicate UID errors during load or export.
+- Scenes reported as corrupt, especially when projects move between machines.
+- The editor failing to load scenes entirely due to stale filesystem_cache8.
+- Parse errors like "Busy" caused by cyclic references in cached scenes.
+
+The standard solution in the Godot community is to delete the .godot folder
+and let the engine regenerate it from scratch. This forces a clean reimport of
+all assets and rebuilds the cache from your source files (the true, authoritative
+data). It is a safe operation because the .godot folder is purely generated data;
+your actual project files (scenes, scripts, resources) are never stored there.
+
+This script offers three modes:
+
+1. SURGICAL MODE (--fix <dir> or interactive)
+   Targets a single project directory. Ideal for when you have a specific
+   project with mysterious errors and you know exactly which one it is.
+   Uses zenity for a graphical directory picker when no argument is given.
+
+2. SWEEP MODE (--sweep <base_dir>)
+   Recursively scans a base directory containing multiple Godot projects.
+   Validates each .godot parent directory as a legitimate Godot project
+   (checking for project.godot, engine.cfg, typical structures, and Godot
+   file signatures) before removing. Generates a final report with statistics.
+
+3. FORCE SWEEP (--force <base_dir>)
+   Brute force mode. Runs find -type d -name ".godot" -exec rm -rf {} \;
+   WITHOUT ANY VALIDATION. Use only when the safe mode fails or when you
+   are absolutely certain all .godot folders should be removed.
+
+DOCUMENTATION
+
+SCRIPT_NAME="${0##*/}"
+SCRIPT_VERSION="2.0.0"
+
+# Internationalization - Bilingual Support
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [app_title]=".GODOT CACHE CLEANER - GODOT ENGINE"
+        [app_subtitle_sweep]="VARREDURA DE CACHE .GODOT EM PROJETOS GODOT"
+        [app_subtitle_surgical]="LIMPEZA CIRÚRGICA DE CACHE .GODOT"
+        [app_subtitle_force]="FORCE MODE - SEM VALIDAÇÃO"
+        [description]="Remove diretórios .godot (cache) de projetos da Godot Engine. Útil quando você atualiza a Godot Engine e caches antigos podem causar problemas de compatibilidade."
+        [usage_label]="USO"
+        [options_label]="OPÇÕES"
+        [arguments_label]="ARGUMENTOS"
+        [operation_modes_label]="MODOS DE OPERAÇÃO"
+        [examples_label]="EXEMPLOS"
+        [typical_structure_label]="ESTRUTURA TÍPICA"
+        [exit_codes_label]="CÓDIGOS DE SAÍDA"
+        [notes_label]="NOTAS"
+        [version_label]="VERSÃO"
+        [description_label]="DESCRIÇÃO"
+        [help_usage]="Uso: %s [OPÇÕES]"
+        [help_fix]="-f, --fix [DIRETÓRIO]      Remove .godot de UM projeto (cirúrgico, interativo)"
+        [help_sweep]="-s, --sweep DIRETÓRIO     Varre recursivamente DIRETÓRIO buscando projetos Godot"
+        [help_force]="-F, --force DIRETÓRIO     FORCE MODE: remove TODOS os .godot sem validação"
+        [help_doc]="-d, --doc                Exibe a documentação completa do script"
+        [help_help]="-h, --help               Exibe esta mensagem de ajuda"
+        [help_version]="--version                Exibe a versão do script"
+        [help_arg_dir]="[DIRETÓRIO]              Caminho para a pasta contendo seus projetos Godot. O script buscará recursivamente por diretórios .godot"
+        [help_mode_normal_title]="1. MODO NORMAL / SWEEP (padrão com --sweep):"
+        [help_mode_normal_1]="- Busca recursiva por diretórios .godot"
+        [help_mode_normal_2]="- Valida se o diretório pai é um projeto Godot legítimo"
+        [help_mode_normal_3]="- Verifica existência de: project.godot, engine.cfg"
+        [help_mode_normal_4]="- Procura por estruturas típicas: scenes/, scripts/, assets/"
+        [help_mode_normal_5]="- Detecta arquivos específicos: .gd, .tscn, .tres"
+        [help_mode_normal_6]="- Remove APENAS caches de projetos Godot confirmados"
+        [help_mode_normal_7]="- Mantém .godot de não-projetos intactos"
+        [help_mode_force_title]="2. MODO FORCE (-F, --force):"
+        [help_mode_force_1]="SEM NENHUMA VALIDAÇÃO"
+        [help_mode_force_2]="Executa: find <dir> -type d -name \".godot\" -print -exec rm -rf {} \\;"
+        [help_mode_force_3]="Remove TODOS os diretórios .godot encontrados"
+        [help_mode_force_4]="AVISO: Remove qualquer .godot, mesmo sem projeto Godot!"
+        [help_mode_force_5]="Use apenas quando o modo normal não puder remover"
+        [help_mode_surgical_title]="3. MODO CIRÚRGICO (-f, --fix):"
+        [help_mode_surgical_1]="- Remove .godot de um único projeto específico"
+        [help_mode_surgical_2]="- Sem argumento, abre seletor gráfico (zenity)"
+        [help_mode_surgical_3]="- Exibe benefícios detalhados ao final"
+        [help_example_normal]="# Modo normal (seguro, com validação)"
+        [help_example_force]="# Modo force (bruto, sem validação)"
+        [help_example_surgical]="# Modo cirúrgico (projeto único)"
+        [help_example_help]="# Exibir ajuda"
+        [help_example_1]="Exemplo cirúrgico: %s --fix ~/meu_projeto_godot"
+        [help_example_2]="Exemplo varredura:  %s --sweep ~/GodotProjects"
+        [help_example_3]="Exemplo forçado:   %s --force ~/GodotProjects"
+        [help_structure_line_1]="~/GodotProjects/"
+        [help_structure_line_2]="├── MyGame/"
+        [help_structure_line_3]="│   ├── project.godot       ← Detectado como projeto"
+        [help_structure_line_4]="│   └── .godot/             ← Cache será removido"
+        [help_structure_line_5]="├── RPG/"
+        [help_structure_line_6]="│   ├── engine.cfg          ← Detectado como projeto"
+        [help_structure_line_7]="│   └── .godot/             ← Cache será removido"
+        [help_structure_line_8]="└── Backup/"
+        [help_structure_line_9]="    └── .godot/             ← {MODO NORMAL: ignorado}"
+        [help_structure_line_10]="                               {FORCE MODE: removido}"
+        [help_exit_0]="0 - Sucesso (todos os caches removidos)"
+        [help_exit_1]="1 - Erro durante a execução"
+        [help_note_1]="• O cache .godot é regenerado automaticamente ao abrir o projeto"
+        [help_note_2]="• Recomenda-se fechar a Godot Engine antes de executar"
+        [help_note_3]="• O modo normal é mais seguro e recomendado para uso diário"
+        [help_note_4]="• O modo force é um \"canhão\" - remove tudo sem perguntar"
+        [help_godot_note]="A pasta .godot é um cache gerado. Removê-la resolve inúmeros problemas de corrupção, mas a Godot irá recriá-la na próxima abertura."
+        [version_output]="%s v%s"
+        [version_compat]="Compatível com Godot Engine 3.x e 4.x"
+        [fix_description]="A pasta .godot armazena caches de importação, UIDs e outros dados compilados. Quando corrompida ou dessincronizada, pode causar erros fantasma, dependências quebradas e até congelamentos do editor. Removê-la força uma reimportação limpa de todos os assets na próxima abertura do projeto, resolvendo inúmeros problemas de forma silenciosa."
+        [select_project_dir]="Selecione o diretório do projeto Godot"
+        [confirm_removal]="Isso removerá a pasta .godot do projeto selecionado. A Godot irá recriá-la automaticamente na próxima abertura. Deseja prosseguir?"
+        [no_godot_dir]="Nenhuma pasta .godot foi encontrada no diretório especificado."
+        [removing]="Removendo pasta .godot de: %s"
+        [removed_success]="Pasta .godot removida com sucesso."
+        [benefits_title]="Benefícios da remoção da pasta .godot:"
+        [benefit_1]="- Resolve erros de carregamento de scripts e recursos causados por cache corrompido."
+        [benefit_2]="- Elimina dependências fantasma que referenciam arquivos já deletados."
+        [benefit_3]="- Corrige avisos de UID durante exportação ou carregamento do projeto."
+        [benefit_4]="- Restaura materiais e malhas que revertem inesperadamente após operações."
+        [benefit_5]="- Soluciona travamentos do editor ao carregar cenas ou ao abrir o projeto."
+        [benefit_6]="- Força uma reimportação limpa de todos os assets do zero."
+        [sweep_header]="VARREDURA DE CACHE .GODOT EM PROJETOS GODOT"
+        [sweep_phase1]="[FASE 1] Buscando diretórios .godot em: %s"
+        [sweep_may_take]="Isso pode levar alguns instantes..."
+        [sweep_found]="[INFO] Encontrados %d diretório(s) .godot"
+        [sweep_none]="[INFO] Nenhum cache .godot encontrado. Nada para limpar!"
+        [sweep_summary_title]="[RESUMO] Diretórios contendo .godot:"
+        [sweep_attention_title]="[ATENÇÃO] Este script irá:"
+        [sweep_attention_1]="1. Verificar se cada diretório pai é um projeto Godot válido"
+        [sweep_attention_2]="2. Remover APENAS o cache .godot de projetos Godot confirmados"
+        [sweep_attention_3]="3. Manter intactos diretórios .godot que não pertencem a projetos Godot"
+        [sweep_confirm]="Deseja continuar?"
+        [sweep_phase2]="[FASE 2] Analisando e removendo caches..."
+        [sweep_project_label]="Projeto: %s"
+        [sweep_checking]="[VERIFICANDO] %s"
+        [sweep_evidence_found]="[EVIDÊNCIA] Encontrado: %s"
+        [sweep_evidence_dir]="[EVIDÊNCIA] Diretório típico encontrado: %s/"
+        [sweep_evidence_files]="[EVIDÊNCIA] Encontrados %d arquivos específicos da Godot"
+        [sweep_evidence_structure]="[EVIDÊNCIA] Estrutura .godot típica (%d elementos)"
+        [sweep_confirmed_marker]="[CONFIRMADO] Projeto Godot detectado (marcador principal)"
+        [sweep_confirmed]="[CONFIRMADO] Projeto Godot detectado!"
+        [sweep_confirmed_total]="[EVIDÊNCIAS] Total de evidências: %d"
+        [sweep_skipped]="[IGNORADO] Não parece ser um projeto Godot válido. Mantendo .godot intacto."
+        [sweep_no_permission]="[ERRO] Sem permissão de escrita no diretório do projeto."
+        [sweep_cache_info]="[INFO] Cache .godot encontrado:"
+        [sweep_cache_size]="  • Tamanho: %s"
+        [sweep_cache_files]="  • Arquivos: %d"
+        [sweep_structure_title]="[ESTRUTURA] Conteúdo do cache:"
+        [sweep_removing]="[REMOVIDO] %s"
+        [sweep_removed]="[✓ SUCESSO] Cache .godot removido! Espaço liberado: %s"
+        [sweep_error_remove]="[✗ ERRO] Falha ao remover .godot. Possível causa: arquivos em uso ou permissões."
+        [sweep_report_title]="RELATÓRIO FINAL"
+        [sweep_report_total]="Total de diretórios .godot encontrados:       %d"
+        [sweep_report_removed]="Projetos Godot confirmados e limpos:           %d"
+        [sweep_report_ignored]="Ignorados (não-Godot):                         %d"
+        [sweep_report_errors]="Erros:                                         %d"
+        [sweep_report_datetime]="Data/Hora: %s"
+        [sweep_tip_1]="[DICA] Projetos limpos serão regenerados automaticamente"
+        [sweep_tip_2]="[DICA] na próxima vez que você abrir cada projeto na Godot Engine."
+        [sweep_completed]="[CONCLUÍDO] Operação finalizada!"
+        [force_header]="FORCE MODE ATIVADO"
+        [force_cmd]="find -type d -name '.godot' -exec rm -rf {} \\;"
+        [force_warning]="[AVISO] Removendo TODOS os .godot SEM validação!"
+        [force_found]="Encontrados %d diretórios .godot"
+        [force_confirm]="[CONFIRMAÇÃO] FORCE MODE irá remover TODOS os %d diretórios .godot"
+        [force_confirm_2]="[CONFIRMAÇÃO] SEM verificar se são projetos Godot válidos!"
+        [force_type]="Digite 'FORCE' para confirmar:"
+        [force_cancelled]="[INFO] Operação cancelada pelo usuário."
+        [force_running]="[EXECUTANDO] find \"%s\" -type d -name \".godot\" -print -exec rm -rf {} \\;"
+        [force_before]="Antes: %d diretórios .godot"
+        [force_after]="Depois: %d diretórios .godot"
+        [force_removed]="Removidos: %d"
+        [force_success]="[SUCESSO] Todos os diretórios .godot foram removidos!"
+        [force_remaining]="[AVISO] Ainda restam %d diretórios .godot. Possíveis causas: permissões ou arquivos em uso."
+        [force_exec_success]="[SUCESSO] Comando find executado com sucesso"
+        [force_exec_error]="[ERRO] Comando find retornou código: %d"
+        [cancelled]="Operação cancelada."
+        [no_dir_selected]="Nenhum diretório selecionado."
+        [unknown_option]="Opção desconhecida: %s"
+        [dir_not_found]="Diretório não encontrado: %s"
+        [base_dir_required]="Diretório base não especificado. Use --help para ver o uso."
+        [use_help_hint]="Use %s --help para ver as opções disponíveis"
+        [multiple_dirs]="Múltiplos diretórios especificados: %s e %s"
+        [example_hint]="Exemplo: %s ~/GodotProjects"
+        [date_label]="Data: %s"
+        [base_label]="Base: %s"
+        [mode_label]="Modo: %s"
+        [mode_normal]="NORMAL (validação completa)"
+        [mode_force]="FORCE (sem validação)"
+        [mode_surgical]="CIRÚRGICO (projeto único)"
+        [yes_label]="[s/N] "
+        [aborted]="Operação abortada pelo usuário."
+        [prompt_yes_no]="Deseja continuar? (yes/NO): "
+        [prompt_y_n]="Deseja prosseguir? [s/N] "
+    )
+else
+    MESSAGES=(
+        [app_title]=".GODOT CACHE CLEANER - GODOT ENGINE"
+        [app_subtitle_sweep]="GODOT PROJECT CACHE SWEEPER"
+        [app_subtitle_surgical]="SURGICAL .GODOT CACHE CLEANER"
+        [app_subtitle_force]="FORCE MODE - NO VALIDATION"
+        [description]="Removes .godot directories (cache) from Godot Engine projects. Useful when you update Godot Engine and old caches may cause compatibility issues."
+        [usage_label]="USAGE"
+        [options_label]="OPTIONS"
+        [arguments_label]="ARGUMENTS"
+        [operation_modes_label]="OPERATION MODES"
+        [examples_label]="EXAMPLES"
+        [typical_structure_label]="TYPICAL STRUCTURE"
+        [exit_codes_label]="EXIT CODES"
+        [notes_label]="NOTES"
+        [version_label]="VERSION"
+        [description_label]="DESCRIPTION"
+        [help_usage]="Usage: %s [OPTIONS]"
+        [help_fix]="-f, --fix [DIRECTORY]      Removes .godot from a SINGLE project (surgical, interactive)"
+        [help_sweep]="-s, --sweep DIRECTORY      Recursively sweeps DIRECTORY for Godot projects"
+        [help_force]="-F, --force DIRECTORY      FORCE MODE: removes ALL .godot without validation"
+        [help_doc]="-d, --doc                 Displays the full script documentation"
+        [help_help]="-h, --help                Displays this help message"
+        [help_version]="--version                 Displays the script version"
+        [help_arg_dir]="[DIRECTORY]               Path to the folder containing your Godot projects. The script will recursively search for .godot directories"
+        [help_mode_normal_title]="1. NORMAL / SWEEP MODE (default with --sweep):"
+        [help_mode_normal_1]="- Recursive search for .godot directories"
+        [help_mode_normal_2]="- Validates if the parent directory is a legitimate Godot project"
+        [help_mode_normal_3]="- Checks existence of: project.godot, engine.cfg"
+        [help_mode_normal_4]="- Looks for typical structures: scenes/, scripts/, assets/"
+        [help_mode_normal_5]="- Detects specific files: .gd, .tscn, .tres"
+        [help_mode_normal_6]="- Removes ONLY caches from confirmed Godot projects"
+        [help_mode_normal_7]="- Keeps .godot from non-projects intact"
+        [help_mode_force_title]="2. FORCE MODE (-F, --force):"
+        [help_mode_force_1]="WITHOUT ANY VALIDATION"
+        [help_mode_force_2]="Runs: find <dir> -type d -name \".godot\" -print -exec rm -rf {} \\;"
+        [help_mode_force_3]="Removes ALL .godot directories found"
+        [help_mode_force_4]="WARNING: Removes any .godot, even without a Godot project!"
+        [help_mode_force_5]="Use only when normal mode cannot remove"
+        [help_mode_surgical_title]="3. SURGICAL MODE (-f, --fix):"
+        [help_mode_surgical_1]="- Removes .godot from a single specific project"
+        [help_mode_surgical_2]="- Without argument, opens a graphical picker (zenity)"
+        [help_mode_surgical_3]="- Displays detailed benefits at the end"
+        [help_example_normal]="# Normal mode (safe, with validation)"
+        [help_example_force]="# Force mode (brute, without validation)"
+        [help_example_surgical]="# Surgical mode (single project)"
+        [help_example_help]="# Show help"
+        [help_example_1]="Surgical example: %s --fix ~/my_godot_project"
+        [help_example_2]="Sweep example:    %s --sweep ~/GodotProjects"
+        [help_example_3]="Force example:    %s --force ~/GodotProjects"
+        [help_structure_line_1]="~/GodotProjects/"
+        [help_structure_line_2]="├── MyGame/"
+        [help_structure_line_3]="│   ├── project.godot       ← Detected as project"
+        [help_structure_line_4]="│   └── .godot/             ← Cache will be removed"
+        [help_structure_line_5]="├── RPG/"
+        [help_structure_line_6]="│   ├── engine.cfg          ← Detected as project"
+        [help_structure_line_7]="│   └── .godot/             ← Cache will be removed"
+        [help_structure_line_8]="└── Backup/"
+        [help_structure_line_9]="    └── .godot/             ← {NORMAL MODE: ignored}"
+        [help_structure_line_10]="                               {FORCE MODE: removed}"
+        [help_exit_0]="0 - Success (all caches removed)"
+        [help_exit_1]="1 - Error during execution"
+        [help_note_1]="• The .godot cache is automatically regenerated when opening the project"
+        [help_note_2]="• It is recommended to close Godot Engine before running"
+        [help_note_3]="• Normal mode is safer and recommended for daily use"
+        [help_note_4]="• Force mode is a \"cannon\" - removes everything without asking"
+        [help_godot_note]="The .godot folder is a generated cache. Removing it resolves countless corruption issues, but Godot will recreate it on the next open."
+        [version_output]="%s v%s"
+        [version_compat]="Compatible with Godot Engine 3.x and 4.x"
+        [fix_description]="The .godot folder stores import caches, UIDs, and other compiled data. When corrupted or desynchronized, it can cause phantom errors, broken dependencies, and even editor freezes. Removing it forces a clean reimport of all assets on the next project open, silently resolving countless issues."
+        [select_project_dir]="Select the Godot project directory"
+        [confirm_removal]="This will remove the .godot folder from the selected project. Godot will recreate it automatically on the next open. Do you want to proceed?"
+        [no_godot_dir]="No .godot folder found in the specified directory."
+        [removing]="Removing .godot folder from: %s"
+        [removed_success]=".godot folder removed successfully."
+        [benefits_title]="Benefits of removing the .godot folder:"
+        [benefit_1]="- Resolves script and resource loading errors caused by corrupted cache."
+        [benefit_2]="- Eliminates ghost dependencies that reference already deleted files."
+        [benefit_3]="- Fixes UID warnings during export or project loading."
+        [benefit_4]="- Restores meshes and materials that unexpectedly revert after operations."
+        [benefit_5]="- Solves editor freezes when loading scenes or opening the project."
+        [benefit_6]="- Forces a clean reimport of all assets from scratch."
+        [sweep_header]="GODOT PROJECT CACHE SWEEPER"
+        [sweep_phase1]="[PHASE 1] Searching for .godot directories in: %s"
+        [sweep_may_take]="This may take a few moments..."
+        [sweep_found]="[INFO] Found %d .godot director(y/ies)"
+        [sweep_none]="[INFO] No .godot cache found. Nothing to clean!"
+        [sweep_summary_title]="[SUMMARY] Directories containing .godot:"
+        [sweep_attention_title]="[ATTENTION] This script will:"
+        [sweep_attention_1]="1. Check if each parent directory is a valid Godot project"
+        [sweep_attention_2]="2. Remove ONLY .godot cache from confirmed Godot projects"
+        [sweep_attention_3]="3. Keep intact .godot directories that do not belong to Godot projects"
+        [sweep_confirm]="Do you want to continue?"
+        [sweep_phase2]="[PHASE 2] Analyzing and removing caches..."
+        [sweep_project_label]="Project: %s"
+        [sweep_checking]="[CHECKING] %s"
+        [sweep_evidence_found]="[EVIDENCE] Found: %s"
+        [sweep_evidence_dir]="[EVIDENCE] Found typical directory: %s/"
+        [sweep_evidence_files]="[EVIDENCE] Found %d Godot-specific files"
+        [sweep_evidence_structure]="[EVIDENCE] Typical .godot structure (%d elements)"
+        [sweep_confirmed_marker]="[CONFIRMED] Godot project detected (main marker)"
+        [sweep_confirmed]="[CONFIRMED] Godot project detected!"
+        [sweep_confirmed_total]="[EVIDENCES] Total evidences: %d"
+        [sweep_skipped]="[SKIP] Does not appear to be a valid Godot project. Keeping .godot intact."
+        [sweep_no_permission]="[ERROR] No write permission on project directory."
+        [sweep_cache_info]="[INFO] .godot cache found:"
+        [sweep_cache_size]="  • Size: %s"
+        [sweep_cache_files]="  • Files: %d"
+        [sweep_structure_title]="[STRUCTURE] Cache contents:"
+        [sweep_removing]="[REMOVING] %s"
+        [sweep_removed]="[✓ SUCCESS] .godot cache removed! Space freed: %s"
+        [sweep_error_remove]="[✗ ERROR] Failed to remove .godot. Possible cause: files in use or permissions."
+        [sweep_report_title]="FINAL REPORT"
+        [sweep_report_total]="Total .godot directories found:       %d"
+        [sweep_report_removed]="Godot projects confirmed and cleaned: %d"
+        [sweep_report_ignored]="Ignored (non-Godot):                  %d"
+        [sweep_report_errors]="Errors:                               %d"
+        [sweep_report_datetime]="Date/Time: %s"
+        [sweep_tip_1]="[TIP] Cleaned projects will be automatically regenerated"
+        [sweep_tip_2]="[TIP] the next time you open each project in Godot Engine."
+        [sweep_completed]="[COMPLETED] Operation finished!"
+        [force_header]="FORCE MODE ACTIVATED"
+        [force_cmd]="find -type d -name '.godot' -exec rm -rf {} \\;"
+        [force_warning]="[WARNING] Removing ALL .godot WITHOUT validation!"
+        [force_found]="Found %d .godot directories"
+        [force_confirm]="[CONFIRMATION] Force mode will remove ALL %d .godot directories"
+        [force_confirm_2]="[CONFIRMATION] WITHOUT checking if they are valid Godot projects!"
+        [force_type]="Type 'FORCE' to confirm:"
+        [force_cancelled]="[INFO] Operation cancelled by user."
+        [force_running]="[RUNNING] find \"%s\" -type d -name \".godot\" -print -exec rm -rf {} \\;"
+        [force_before]="Before: %d .godot directories"
+        [force_after]="After: %d .godot directories"
+        [force_removed]="Removed: %d"
+        [force_success]="[SUCCESS] All .godot directories have been removed!"
+        [force_remaining]="[WARNING] Still remaining %d .godot directories. Possible causes: permissions or files in use."
+        [force_exec_success]="[SUCCESS] Find command executed successfully"
+        [force_exec_error]="[ERROR] Find command returned code: %d"
+        [cancelled]="Operation cancelled."
+        [no_dir_selected]="No directory selected."
+        [unknown_option]="Unknown option: %s"
+        [dir_not_found]="Directory not found: %s"
+        [base_dir_required]="Base directory not specified. Use --help for usage."
+        [use_help_hint]="Use %s --help to see available options"
+        [multiple_dirs]="Multiple directories specified: %s and %s"
+        [example_hint]="Example: %s ~/GodotProjects"
+        [date_label]="Date: %s"
+        [base_label]="Base: %s"
+        [mode_label]="Mode: %s"
+        [mode_normal]="NORMAL (full validation)"
+        [mode_force]="FORCE (no validation)"
+        [mode_surgical]="SURGICAL (single project)"
+        [yes_label]="[y/N] "
+        [aborted]="Operation aborted by user."
+        [prompt_yes_no]="Do you want to continue? (yes/NO): "
+        [prompt_y_n]="Do you want to proceed? [y/N] "
+    )
+fi
+
+# Colors
+readonly CLR_RESET="\033[0m"
+readonly CLR_BOLD="\033[1m"
+readonly CLR_DIM="\033[2m"
+readonly CLR_RED="\033[0;31m"
+readonly CLR_GREEN="\033[0;32m"
+readonly CLR_YELLOW="\033[0;33m"
+readonly CLR_BLUE="\033[0;34m"
+readonly CLR_MAGENTA="\033[0;35m"
+readonly CLR_CYAN="\033[0;36m"
+readonly CLR_BOLD_CYAN="\033[1;36m"
+readonly CLR_BOLD_YELLOW="\033[1;33m"
+readonly CLR_BOLD_GREEN="\033[1;32m"
+readonly CLR_BOLD_RED="\033[1;31m"
+
+show_doc() {
+    local doc
+    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    SCRIPT_NAME="$SCRIPT_NAME" \
+    envsubst '${SCRIPT_NAME}' <<<"$doc"
+    exit 0
+}
+
+show_version() {
+    printf "${CLR_BLUE}${MESSAGES[version_output]}${CLR_RESET}\n" "$SCRIPT_NAME" "$SCRIPT_VERSION"
+    printf "${CLR_GREEN}${MESSAGES[version_compat]}${CLR_RESET}\n"
+    exit 0
+}
+
 show_help() {
-    cat << EOF | echo -e "$(cat)"
-${BLUE}╔══════════════════════════════════════════════════════════════════╗
-║           .GODOT CACHE CLEANER - GODOT ENGINE                    ║
-╚══════════════════════════════════════════════════════════════════╝${NC}
+    cat << EOF | { echo -e "$(cat)"; }
+${CLR_BLUE}╔══════════════════════════════════════════════════════════════════╗
+║           ${MESSAGES[app_title]}${CLR_BLUE}
+╚══════════════════════════════════════════════════════════════════╝${CLR_RESET}
 
-${GREEN}DESCRIPTION:${NC}
-    Removes .godot directories (cache) from Godot Engine projects.
-    Useful when you update Godot Engine and old caches
-    may cause compatibility issues.
+${CLR_BOLD_GREEN}${MESSAGES[description_label]}:${CLR_RESET}
+    ${MESSAGES[description]}
 
-${GREEN}USAGE:${NC}
-    ${YELLOW}${0##*/}${NC} [OPTIONS] <base_directory>
+${CLR_BOLD_GREEN}${MESSAGES[usage_label]}:${CLR_RESET}
+    ${CLR_YELLOW}${MESSAGES[help_usage]//%s/$SCRIPT_NAME}${CLR_RESET}
 
-${GREEN}OPTIONS:${NC}
-    ${YELLOW}-h, --help${NC}          Shows this help message
-    ${YELLOW}-f, --force${NC}         Brute force mode: runs find with rm -rf
-                       without any validation
-    ${YELLOW}--version${NC}           Shows the script version
+${CLR_BOLD_GREEN}${MESSAGES[options_label]}:${CLR_RESET}
+    ${CLR_YELLOW}${MESSAGES[help_help]%% *}${CLR_RESET}${MESSAGES[help_help]#* }
+    ${CLR_YELLOW}${MESSAGES[help_fix]%% *}${CLR_RESET}${MESSAGES[help_fix]#* }
+    ${CLR_YELLOW}${MESSAGES[help_sweep]%% *}${CLR_RESET}${MESSAGES[help_sweep]#* }
+    ${CLR_YELLOW}${MESSAGES[help_force]%% *}${CLR_RESET}${MESSAGES[help_force]#* }
+    ${CLR_YELLOW}${MESSAGES[help_doc]%% *}${CLR_RESET}${MESSAGES[help_doc]#* }
+    ${CLR_YELLOW}${MESSAGES[help_version]%% *}${CLR_RESET}${MESSAGES[help_version]#* }
 
-${GREEN}ARGUMENTS:${NC}
-    ${YELLOW}<base_directory>${NC}    Path to the folder containing your Godot projects
-                       The script will recursively search for .godot directories
+${CLR_BOLD_GREEN}${MESSAGES[arguments_label]}:${CLR_RESET}
+    ${CLR_YELLOW}${MESSAGES[help_arg_dir]%% *}${CLR_RESET}${MESSAGES[help_arg_dir]#* }
 
-${GREEN}OPERATION MODES:${NC}
+${CLR_BOLD_GREEN}${MESSAGES[operation_modes_label]}:${CLR_RESET}
 
-    ${CYAN}1. NORMAL MODE (default):${NC}
-       • Recursive search for .godot directories
-       • Validates if the parent directory is a legitimate Godot project
-       • Checks existence of: project.godot, engine.cfg
-       • Looks for typical structures: scenes/, scripts/, assets/
-       • Detects specific files: .gd, .tscn, .tres
-       • Removes ONLY caches from confirmed Godot projects
-       • Keeps .godot from non-projects intact
+    ${CLR_CYAN}${MESSAGES[help_mode_normal_title]}${CLR_RESET}
+       ${MESSAGES[help_mode_normal_1]}
+       ${MESSAGES[help_mode_normal_2]}
+       ${MESSAGES[help_mode_normal_3]}
+       ${MESSAGES[help_mode_normal_4]}
+       ${MESSAGES[help_mode_normal_5]}
+       ${MESSAGES[help_mode_normal_6]}
+       ${MESSAGES[help_mode_normal_7]}
 
-    ${CYAN}2. FORCE MODE (-f, --force):${NC}
-       • ${RED}WITHOUT ANY VALIDATION${NC}
-       • Runs: find <dir> -type d -name ".godot" -print -exec rm -rf {} \;
-       • Removes ALL .godot directories found
-       • ${RED}WARNING:${NC} Removes any .godot, even without a Godot project!
-       • Use only when normal mode cannot remove
+    ${CLR_CYAN}${MESSAGES[help_mode_surgical_title]}${CLR_RESET}
+       ${MESSAGES[help_mode_surgical_1]}
+       ${MESSAGES[help_mode_surgical_2]}
+       ${MESSAGES[help_mode_surgical_3]}
 
-${GREEN}EXAMPLES:${NC}
-    ${YELLOW}# Normal mode (safe, with validation)${NC}
-    ${0##*/} ~/GodotProjects
-    ${0##*/} /home/user/development/games
+    ${CLR_CYAN}${MESSAGES[help_mode_force_title]}${CLR_RESET}
+       ${CLR_RED}${MESSAGES[help_mode_force_1]}${CLR_RESET}
+       ${MESSAGES[help_mode_force_2]}
+       ${MESSAGES[help_mode_force_3]}
+       ${CLR_RED}${MESSAGES[help_mode_force_4]}${CLR_RESET}
+       ${MESSAGES[help_mode_force_5]}
 
-    ${YELLOW}# Force mode (brute, without validation)${NC}
-    ${0##*/} --force ~/GodotProjects
-    ${0##*/} -f /path/to/projects
+${CLR_BOLD_GREEN}${MESSAGES[examples_label]}:${CLR_RESET}
+    ${CLR_YELLOW}${MESSAGES[help_example_surgical]}${CLR_RESET}
+    ${CLR_GREEN}${MESSAGES[help_example_1]//%s/$SCRIPT_NAME}${CLR_RESET}
 
-    ${YELLOW}# Show help${NC}
-    ${0##*/} --help
-    ${0##*/} -h
+    ${CLR_YELLOW}${MESSAGES[help_example_normal]}${CLR_RESET}
+    ${CLR_GREEN}${MESSAGES[help_example_2]//%s/$SCRIPT_NAME}${CLR_RESET}
 
-${GREEN}TYPICAL STRUCTURE:${NC}
-    ~/GodotProjects/
-    ├── MyGame/
-    │   ├── project.godot       ← Detected as project
-    │   └── .godot/             ← Cache will be removed
-    ├── RPG/
-    │   ├── engine.cfg          ← Detected as project
-    │   └── .godot/             ← Cache will be removed
-    └── Backup/
-        └── .godot/             ← {NORMAL MODE: ignored}
-                                   {FORCE MODE: removed}
+    ${CLR_YELLOW}${MESSAGES[help_example_force]}${CLR_RESET}
+    ${CLR_GREEN}${MESSAGES[help_example_3]//%s/$SCRIPT_NAME}${CLR_RESET}
 
-${GREEN}EXIT CODES:${NC}
-    ${GREEN}0${NC} - Success (all caches removed)
-    ${RED}1${NC} - Error during execution
+${CLR_BOLD_GREEN}${MESSAGES[typical_structure_label]}:${CLR_RESET}
+    ${MESSAGES[help_structure_line_1]}
+    ${MESSAGES[help_structure_line_2]}
+    ${MESSAGES[help_structure_line_3]}
+    ${MESSAGES[help_structure_line_4]}
+    ${MESSAGES[help_structure_line_5]}
+    ${MESSAGES[help_structure_line_6]}
+    ${MESSAGES[help_structure_line_7]}
+    ${MESSAGES[help_structure_line_8]}
+    ${MESSAGES[help_structure_line_9]}
+    ${MESSAGES[help_structure_line_10]}
 
-${GREEN}NOTES:${NC}
-    • The .godot cache is automatically regenerated when opening the project
-    • It is recommended to close Godot Engine before running
-    • Normal mode is safer and recommended for daily use
-    • Force mode is a "cannon" - removes everything without asking
+${CLR_BOLD_GREEN}${MESSAGES[exit_codes_label]}:${CLR_RESET}
+    ${CLR_GREEN}${MESSAGES[help_exit_0]}${CLR_RESET}
+    ${CLR_RED}${MESSAGES[help_exit_1]}${CLR_RESET}
 
-${GREEN}VERSION:${NC}
-    1.3.0
+${CLR_BOLD_GREEN}${MESSAGES[notes_label]}:${CLR_RESET}
+    ${MESSAGES[help_note_1]}
+    ${MESSAGES[help_note_2]}
+    ${MESSAGES[help_note_3]}
+    ${MESSAGES[help_note_4]}
+
+${CLR_DIM}${MESSAGES[help_godot_note]}${CLR_RESET}
+
+${CLR_BOLD_GREEN}${MESSAGES[version_label]}:${CLR_RESET}
+    ${SCRIPT_VERSION}
+EOF
+    exit 0
+}
+
+show_benefits() {
+    cat << EOF | { echo -e "$(cat)"; }
+${CLR_BOLD_GREEN}${MESSAGES[benefits_title]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_1]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_2]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_3]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_4]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_5]}${CLR_RESET}
+${CLR_GREEN}${MESSAGES[benefit_6]}${CLR_RESET}
 EOF
 }
 
-# Function to show version
-show_version() {
-    echo -e "${BLUE}.godot Cache Cleaner v1.3.0${NC}"
-    echo -e "${GREEN}Compatible with Godot Engine 3.x and 4.x${NC}"
-}
-
-# Function to validate if parent directory is a Godot project
 is_godot_project() {
     local project_dir="$1"
     
-    echo -e "${BLUE}[CHECKING]${NC} $project_dir"
+    printf "${CLR_BLUE}${MESSAGES[sweep_checking]}${CLR_RESET}\n" "$project_dir"
     
-    # Checks if directory exists
-    if [ ! -d "$project_dir" ]; then
-        echo -e "${RED}[ERROR]${NC} Directory does not exist: $project_dir"
+    if [[ ! -d "$project_dir" ]]; then
         return 1
     fi
     
-    # List of Godot project markers
-    local markers=(
-        "project.godot"           # Godot 4.x
-        "engine.cfg"              # Godot 3.x and earlier
-        "default_env.tres"        # Common file in Godot projects
-        "icon.png"                # Default icon
-        "icon.svg"                # SVG icon
-        ".gitignore"              # Godot gitignore
-        ".gitattributes"          # Godot git attributes
-    )
+    if [[ -f "$project_dir/project.godot" ]] || [[ -f "$project_dir/engine.cfg" ]]; then
+        printf "${CLR_GREEN}${MESSAGES[sweep_confirmed_marker]}${CLR_RESET}\n"
+        return 0
+    fi
     
-    local valid_project=false
-    local evidences=()
+    local valid=false
+    local evidence_count=0
     
-    # Checks each Godot project marker
+    # Markers
+    local markers=("project.godot" "engine.cfg" "default_env.tres" "icon.png" "icon.svg" ".gitignore" ".gitattributes")
     for marker in "${markers[@]}"; do
-        if [ -e "$project_dir/$marker" ]; then
-            evidences+=("$marker")
-            valid_project=true
-            echo -e "${GREEN}[EVIDENCE]${NC} Found: $marker"
+        if [[ -e "$project_dir/$marker" ]]; then
+            printf "${CLR_GREEN}${MESSAGES[sweep_evidence_found]}${CLR_RESET}\n" "$marker"
+            valid=true
+            ((evidence_count++))
         fi
     done
     
-    # If found project.godot or engine.cfg, it's definitive
-    if [ -f "$project_dir/project.godot" ] || [ -f "$project_dir/engine.cfg" ]; then
-        echo -e "${GREEN}[CONFIRMED]${NC} Godot project detected (main marker)"
-        return 0
-    fi
-    
-    # Additional checks for Godot project
-    # Looks for typical Godot project directories
-    local godot_dirs=(
-        "scenes"
-        "scripts"
-        "assets"
-        "src"
-        "addons"
-        "autoload"
-        "shaders"
-        "materials"
-        "textures"
-        "sounds"
-        "music"
-        "fonts"
-        "resources"
-    )
-    
+    # Typical Godot directories
+    local godot_dirs=("scenes" "scripts" "assets" "src" "addons" "autoload" "shaders" "materials" "textures" "sounds" "music" "fonts" "resources")
     for dir in "${godot_dirs[@]}"; do
-        if [ -d "$project_dir/$dir" ]; then
-            evidences+=("directory $dir/")
-            valid_project=true
-            echo -e "${GREEN}[EVIDENCE]${NC} Found typical directory: $dir/"
+        if [[ -d "$project_dir/$dir" ]]; then
+            printf "${CLR_GREEN}${MESSAGES[sweep_evidence_dir]}${CLR_RESET}\n" "$dir"
+            valid=true
+            ((evidence_count++))
         fi
     done
     
-    # Checks for .gd, .tscn, .tres, .godot, .import files (Godot specific)
-    local godot_files_list=$(find "$project_dir" -maxdepth 3 \( -name "*.gd" -o -name "*.tscn" -o -name "*.tres" -o -name "*.godot" -o -name "*.import" \) -print0 2>/dev/null | tr '\0' '\n')
-    local count_godot_files=$(echo "$godot_files_list" | grep -c .)
-    
-    if [ "$count_godot_files" -gt 0 ]; then
-        evidences+=("$count_godot_files Godot files (.gd/.tscn/.tres/etc)")
-        valid_project=true
-        echo -e "${GREEN}[EVIDENCE]${NC} Found $count_godot_files Godot-specific files"
+    # Godot-specific files
+    local godot_files_list=$(find "$project_dir" -maxdepth 3 \( -name "*.gd" -o -name "*.tscn" -o -name "*.tres" -o -name "*.godot" -o -name "*.import" \) -print0 2>/dev/null | tr -d '\0' | wc -c)
+    if [[ "$godot_files_list" -gt 0 ]]; then
+        printf "${CLR_GREEN}${MESSAGES[sweep_evidence_files]}${CLR_RESET}\n" "$godot_files_list"
+        valid=true
+        ((evidence_count++))
     fi
     
-    # Checks if .godot directory has typical structure
-    if [ -d "$project_dir/.godot" ]; then
-        local godot_struct=0
-        
-        [ -d "$project_dir/.godot/imported" ] && godot_struct=$((godot_struct + 1))
-        [ -d "$project_dir/.godot/editor" ] && godot_struct=$((godot_struct + 1))
-        [ -d "$project_dir/.godot/shader_cache" ] && godot_struct=$((godot_struct + 1))
-        [ -f "$project_dir/.godot/global_script_class_cache.cfg" ] && godot_struct=$((godot_struct + 1))
-        [ -f "$project_dir/.godot/extension_list.cfg" ] && godot_struct=$((godot_struct + 1))
-        
-        if [ $godot_struct -gt 0 ]; then
-            evidences+=("typical .godot structure ($godot_struct elements)")
-            valid_project=true
-            echo -e "${GREEN}[EVIDENCE]${NC} .godot structure appears to be from a Godot project ($godot_struct elements)"
+    # .godot internal structure
+    if [[ -d "$project_dir/.godot" ]]; then
+        local struct=0
+        [[ -d "$project_dir/.godot/imported" ]] && ((struct++))
+        [[ -d "$project_dir/.godot/editor" ]] && ((struct++))
+        [[ -d "$project_dir/.godot/shader_cache" ]] && ((struct++))
+        [[ -f "$project_dir/.godot/global_script_class_cache.cfg" ]] && ((struct++))
+        [[ -f "$project_dir/.godot/extension_list.cfg" ]] && ((struct++))
+        if [[ $struct -gt 0 ]]; then
+            printf "${CLR_GREEN}${MESSAGES[sweep_evidence_structure]}${CLR_RESET}\n" "$struct"
+            valid=true
+            ((evidence_count++))
         fi
     fi
     
-    # Final result
-    if [ "$valid_project" = true ]; then
-        echo -e "${GREEN}[CONFIRMED]${NC} Godot project detected!"
-        echo -e "${GREEN}[EVIDENCES]${NC} Total evidences: ${#evidences[@]}"
-        for ev in "${evidences[@]}"; do
-            echo -e "${GREEN}  •${NC} $ev"
-        done
+    if [[ "$valid" == true ]]; then
+        printf "${CLR_GREEN}${MESSAGES[sweep_confirmed]}${CLR_RESET}\n"
+        printf "${CLR_GREEN}${MESSAGES[sweep_confirmed_total]}${CLR_RESET}\n" "$evidence_count"
         return 0
-    else
-        echo -e "${YELLOW}[SKIP]${NC} Does not appear to be a valid Godot project"
-        return 1
     fi
+    
+    printf "${CLR_YELLOW}${MESSAGES[sweep_skipped]}${CLR_RESET}\n"
+    return 1
 }
 
-# Function to analyze and remove .godot
-analyze_and_remove_godot() {
+remove_godot_from_project() {
     local project_dir="$1"
     local godot_cache="$project_dir/.godot"
     
-    echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}Project:${NC} $project_dir"
+    printf "${CLR_BLUE}${MESSAGES[sweep_project_label]}${CLR_RESET}\n" "$project_dir"
     
-    # Validate if it's a Godot project
     if ! is_godot_project "$project_dir"; then
-        echo -e "${YELLOW}[IGNORED]${NC} Not a Godot project, keeping .godot intact"
         return 1
     fi
     
-    # Check permissions
-    if [ ! -w "$project_dir" ]; then
-        echo -e "${RED}[ERROR]${NC} No write permission on project directory"
-        echo -e "${RED}[ERROR]${NC} Could not remove: $godot_cache"
+    if [[ ! -w "$project_dir" ]]; then
+        printf "${CLR_RED}${MESSAGES[sweep_no_permission]}${CLR_RESET}\n"
         return 1
     fi
     
-    # Cache information
     local size=$(du -sh "$godot_cache" 2>/dev/null | cut -f1)
     local num_files=$(find "$godot_cache" -type f 2>/dev/null | wc -l)
     
-    echo -e "${BLUE}[INFO]${NC} .godot cache found:"
-    echo -e "  • Size: ${YELLOW}$size${NC}"
-    echo -e "  • Files: ${YELLOW}$num_files${NC}"
+    printf "${CLR_BLUE}${MESSAGES[sweep_cache_info]}${CLR_RESET}\n"
+    printf "${CLR_BLUE}${MESSAGES[sweep_cache_size]}${CLR_RESET}\n" "$size"
+    printf "${CLR_BLUE}${MESSAGES[sweep_cache_files]}${CLR_RESET}\n" "$num_files"
     
-    # Shows cache structure summary
-    echo -e "${BLUE}[STRUCTURE]${NC} Cache contents:"
+    printf "${CLR_BLUE}${MESSAGES[sweep_structure_title]}${CLR_RESET}\n"
     find "$godot_cache" -maxdepth 2 -type d 2>/dev/null | while read -r subdir; do
         local sub_size=$(du -sh "$subdir" 2>/dev/null | cut -f1)
-        echo -e "  • $(basename "$subdir"): $sub_size"
+        printf "  • %s: %s\n" "$(basename "$subdir")" "$sub_size"
     done
     
-    # Remove cache
-    echo -e "${YELLOW}[REMOVING]${NC} $godot_cache"
-    if rm -rf "$godot_cache" 2>/dev/null; then
-        if [ ! -e "$godot_cache" ]; then
-            echo -e "${GREEN}[✓ SUCCESS]${NC} .godot cache removed!"
-            echo -e "${GREEN}[✓]${NC} Space freed: $size"
-            return 0
-        else
-            echo -e "${RED}[✗ ERROR]${NC} Directory still exists after removal attempt"
-            return 1
-        fi
+    printf "${CLR_YELLOW}${MESSAGES[sweep_removing]}${CLR_RESET}\n" "$godot_cache"
+    if rm -rf "$godot_cache" 2>/dev/null && [[ ! -d "$godot_cache" ]]; then
+        printf "${CLR_GREEN}${MESSAGES[sweep_removed]}${CLR_RESET}\n" "$size"
+        return 0
     else
-        echo -e "${RED}[✗ ERROR]${NC} Failed to remove .godot"
-        echo -e "${RED}[ERROR]${NC} Possible cause: files in use or permissions"
+        printf "${CLR_RED}${MESSAGES[sweep_error_remove]}${CLR_RESET}\n"
         return 1
     fi
 }
 
-# Force mode function - pure find without validation
-force_mode() {
-    local dir_base="$1"
+surgical_fix() {
+    local project_dir=""
     
-    echo -e "\n${RED}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${RED}║              FORCE MODE ACTIVATED                       ║${NC}"
-    echo -e "${RED}║     find -type d -name '.godot' -exec rm -rf {} \;      ║${NC}"
-    echo -e "${RED}╚══════════════════════════════════════════════════════════╝${NC}"
-    echo -e "${RED}[WARNING]${NC} Removing ALL .godot without validation!"
-    echo ""
-    
-    # Runs find directly, without validations
-    echo -e "${BLUE}[RUNNING]${NC} find \"$dir_base\" -type d -name \".godot\" -print -exec rm -rf {} \\;"
-    echo ""
-    
-    find "$dir_base" -type d -name ".godot" -print -exec rm -rf {} \;
-    
-    local exit_code=$?
-    echo ""
-    
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${GREEN}[SUCCESS]${NC} Find command executed successfully"
+    if [[ $# -gt 0 ]]; then
+        project_dir="$1"
     else
-        echo -e "${RED}[ERROR]${NC} Find command returned code: $exit_code"
+        echo -e "${CLR_CYAN}${MESSAGES[fix_description]}${CLR_RESET}\n"
+        echo -e "${CLR_BOLD_YELLOW}${MESSAGES[confirm_removal]}${CLR_RESET}\n"
+        read -r -p "${MESSAGES[prompt_y_n]}" response
+        if [[ ! "$response" =~ ^[YySs]$ ]]; then
+            printf "${CLR_RED}${MESSAGES[cancelled]}${CLR_RESET}\n"
+            exit 0
+        fi
+        
+        project_dir=$(zenity --file-selection --directory --title="${MESSAGES[select_project_dir]}" 2>/dev/null)
+        
+        if [[ -z "$project_dir" ]]; then
+            printf "${CLR_RED}${MESSAGES[no_dir_selected]}${CLR_RESET}\n"
+            exit 1
+        fi
     fi
     
-    return $exit_code
+    if [[ ! -d "$project_dir/.godot" ]]; then
+        printf "${CLR_RED}${MESSAGES[no_godot_dir]}${CLR_RESET}\n"
+        exit 1
+    fi
+    
+    printf "${CLR_YELLOW}${MESSAGES[removing]}${CLR_RESET}\n" "$project_dir"
+    rm -rf "$project_dir/.godot"
+    
+    if [[ ! -d "$project_dir/.godot" ]]; then
+        printf "${CLR_BOLD_GREEN}${MESSAGES[removed_success]}${CLR_RESET}\n"
+        echo ""
+        show_benefits
+    else
+        printf "${CLR_RED}${MESSAGES[sweep_error_remove]}${CLR_RESET}\n"
+        exit 1
+    fi
 }
 
-# Exports functions (only for normal mode)
-export -f analyze_and_remove_godot
-export -f is_godot_project
+sweep_projects() {
+    local base_dir="$1"
+    
+    echo -e "${CLR_BLUE}╔══════════════════════════════════════════════════════════╗${CLR_RESET}"
+    echo -e "${CLR_BLUE}║     ${MESSAGES[sweep_header]}${CLR_RESET}"
+    echo -e "${CLR_BLUE}╚══════════════════════════════════════════════════════════╝${CLR_RESET}"
+    printf "${CLR_BLUE}${MESSAGES[date_label]}${CLR_RESET}\n" "$(date '+%Y-%m-%d %H:%M:%S')"
+    printf "${CLR_BLUE}${MESSAGES[base_label]}${CLR_RESET}\n" "$base_dir"
+    printf "${CLR_BLUE}${MESSAGES[mode_label]}${CLR_RESET}\n" "${MESSAGES[mode_normal]}"
+    echo ""
+    
+    printf "${CLR_BLUE}${MESSAGES[sweep_phase1]}${CLR_RESET}\n" "$base_dir"
+    printf "${CLR_DIM}${MESSAGES[sweep_may_take]}${CLR_RESET}\n"
+    
+    local godot_dirs=()
+    while IFS= read -r -d '' dir; do
+        godot_dirs+=("$dir")
+    done < <(find "$base_dir" -type d -name ".godot" -print0 2>/dev/null)
+    
+    printf "${CLR_BLUE}${MESSAGES[sweep_found]}${CLR_RESET}\n" "${#godot_dirs[@]}"
+    
+    if [[ ${#godot_dirs[@]} -eq 0 ]]; then
+        printf "${CLR_GREEN}${MESSAGES[sweep_none]}${CLR_RESET}\n"
+        exit 0
+    fi
+    
+    echo ""
+    printf "${CLR_BLUE}${MESSAGES[sweep_summary_title]}${CLR_RESET}\n"
+    for i in "${!godot_dirs[@]}"; do
+        parent_project=$(dirname "${godot_dirs[$i]}")
+        printf "  ${CLR_YELLOW}%d${CLR_RESET}. %s\n" "$((i+1))" "$parent_project"
+    done
+    
+    echo ""
+    printf "${CLR_YELLOW}${MESSAGES[sweep_attention_title]}${CLR_RESET}\n"
+    printf "  ${MESSAGES[sweep_attention_1]}\n"
+    printf "  ${MESSAGES[sweep_attention_2]}\n"
+    printf "  ${MESSAGES[sweep_attention_3]}\n"
+    echo ""
+    read -r -p "${MESSAGES[prompt_yes_no]}" confirmation
+    
+    if [[ "${confirmation,,}" != "yes" ]] && [[ "${confirmation,,}" != "y" ]]; then
+        printf "${CLR_BLUE}${MESSAGES[cancelled]}${CLR_RESET}\n"
+        exit 0
+    fi
+    
+    echo ""
+    printf "${CLR_BLUE}${MESSAGES[sweep_phase2]}${CLR_RESET}\n"
+    
+    local total_removed=0
+    local total_ignored=0
+    local total_errors=0
+    
+    for godot_cache in "${godot_dirs[@]}"; do
+        local parent_project=$(dirname "$godot_cache")
+        echo ""
+        echo -e "${CLR_BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CLR_RESET}"
+        
+        if remove_godot_from_project "$parent_project"; then
+            ((total_removed++))
+        else
+            if [[ -d "$godot_cache" ]]; then
+                if is_godot_project "$parent_project" 2>/dev/null; then
+                    ((total_errors++))
+                else
+                    ((total_ignored++))
+                fi
+            fi
+        fi
+    done
+    
+    echo ""
+    echo -e "${CLR_BLUE}╔══════════════════════════════════════════════════════════╗${CLR_RESET}"
+    echo -e "${CLR_BLUE}║     ${MESSAGES[sweep_report_title]}${CLR_RESET}"
+    echo -e "${CLR_BLUE}╚══════════════════════════════════════════════════════════╝${CLR_RESET}"
+    printf "${CLR_YELLOW}${MESSAGES[sweep_report_total]}${CLR_RESET}\n" "${#godot_dirs[@]}"
+    printf "${CLR_GREEN}${MESSAGES[sweep_report_removed]}${CLR_RESET}\n" "$total_removed"
+    printf "${CLR_YELLOW}${MESSAGES[sweep_report_ignored]}${CLR_RESET}\n" "$total_ignored"
+    printf "${CLR_RED}${MESSAGES[sweep_report_errors]}${CLR_RESET}\n" "$total_errors"
+    printf "${CLR_BLUE}${MESSAGES[sweep_report_datetime]}${CLR_RESET}\n" "$(date '+%Y-%m-%d %H:%M:%S')"
+    
+    if [[ $total_removed -gt 0 ]]; then
+        echo ""
+        printf "${CLR_GREEN}${MESSAGES[sweep_tip_1]}${CLR_RESET}\n"
+        printf "${CLR_GREEN}${MESSAGES[sweep_tip_2]}${CLR_RESET}\n"
+    fi
+    
+    echo ""
+    printf "${CLR_BLUE}${MESSAGES[sweep_completed]}${CLR_RESET}\n"
+    
+    if [[ $total_errors -gt 0 ]]; then
+        exit 1
+    fi
+}
 
-# Argument processing
-while [[ $# -gt 0 ]]; do
-    case $1 in
+force_sweep() {
+    local base_dir="$1"
+    
+    echo -e "${CLR_BOLD_RED}╔══════════════════════════════════════════════════════════╗${CLR_RESET}"
+    echo -e "${CLR_BOLD_RED}║     ${MESSAGES[force_header]}${CLR_RESET}"
+    echo -e "${CLR_BOLD_RED}║     ${MESSAGES[force_cmd]}${CLR_RESET}"
+    echo -e "${CLR_BOLD_RED}╚══════════════════════════════════════════════════════════╝${CLR_RESET}"
+    printf "${CLR_RED}${MESSAGES[force_warning]}${CLR_RESET}\n"
+    echo ""
+    
+    local before=$(find "$base_dir" -type d -name ".godot" 2>/dev/null | wc -l)
+    printf "${CLR_YELLOW}${MESSAGES[force_found]}${CLR_RESET}\n" "$before"
+    
+    if [[ $before -eq 0 ]]; then
+        printf "${CLR_GREEN}${MESSAGES[sweep_none]}${CLR_RESET}\n"
+        exit 0
+    fi
+    
+    echo ""
+    printf "${CLR_RED}${MESSAGES[force_confirm]}${CLR_RESET}\n" "$before"
+    printf "${CLR_RED}${MESSAGES[force_confirm_2]}${CLR_RESET}\n"
+    read -r -p "${MESSAGES[force_type]} " confirmation
+    
+    if [[ "$confirmation" != "FORCE" ]]; then
+        printf "${CLR_BLUE}${MESSAGES[force_cancelled]}${CLR_RESET}\n"
+        exit 0
+    fi
+    
+    echo ""
+    printf "${CLR_BLUE}${MESSAGES[force_running]}${CLR_RESET}\n" "$base_dir"
+    echo ""
+    
+    find "$base_dir" -type d -name ".godot" -print -exec rm -rf {} \; 2>/dev/null
+    local exit_code=$?
+    
+    echo ""
+    if [[ $exit_code -eq 0 ]]; then
+        printf "${CLR_GREEN}${MESSAGES[force_exec_success]}${CLR_RESET}\n"
+    else
+        printf "${CLR_RED}${MESSAGES[force_exec_error]}${CLR_RESET}\n" "$exit_code"
+    fi
+    
+    local after=$(find "$base_dir" -type d -name ".godot" 2>/dev/null | wc -l)
+    
+    echo ""
+    echo -e "${CLR_BLUE}╔══════════════════════════════════════════════════════════╗${CLR_RESET}"
+    echo -e "${CLR_BLUE}║     ${MESSAGES[sweep_report_title]}${CLR_RESET}"
+    echo -e "${CLR_BLUE}╚══════════════════════════════════════════════════════════╝${CLR_RESET}"
+    printf "${CLR_YELLOW}${MESSAGES[force_before]}${CLR_RESET}\n" "$before"
+    printf "${CLR_YELLOW}${MESSAGES[force_after]}${CLR_RESET}\n" "$after"
+    printf "${CLR_GREEN}${MESSAGES[force_removed]}${CLR_RESET}\n" "$((before - after))"
+    
+    if [[ $after -gt 0 ]]; then
+        printf "${CLR_RED}${MESSAGES[force_remaining]}${CLR_RESET}\n" "$after"
+        exit 1
+    else
+        printf "${CLR_GREEN}${MESSAGES[force_success]}${CLR_RESET}\n"
+        exit 0
+    fi
+}
+
+main() {
+    if [[ $# -eq 0 ]]; then
+        show_help
+    fi
+    
+    case "$1" in
         -h|--help)
             show_help
-            exit 0
+            ;;
+        -d|--doc)
+            show_doc
             ;;
         --version)
             show_version
-            exit 0
             ;;
-        -f|--force)
-            FORCE_MODE=true
+        -f|--fix)
             shift
+            surgical_fix "$@"
             ;;
-        -*)
-            echo -e "${RED}[ERROR]${NC} Unknown option: $1"
-            echo -e "Use ${YELLOW}${0##*/} --help${NC} to see available options"
-            exit 1
-            ;;
-        *)
-            if [ -z "$BASE_DIR" ]; then
-                BASE_DIR="$1"
-            else
-                echo -e "${RED}[ERROR]${NC} Multiple directories specified: $BASE_DIR and $1"
-                echo -e "Use ${YELLOW}${0##*/} --help${NC} to see how to use"
+        -s|--sweep)
+            shift
+            if [[ -z "$1" ]]; then
+                printf "${CLR_RED}${MESSAGES[base_dir_required]}${CLR_RESET}\n"
+                printf "${CLR_RED}${MESSAGES[use_help_hint]//%s/$SCRIPT_NAME}${CLR_RESET}\n"
                 exit 1
             fi
+            if [[ ! -d "$1" ]]; then
+                printf "${CLR_RED}${MESSAGES[dir_not_found]//%s/$1}${CLR_RESET}\n"
+                exit 1
+            fi
+            sweep_projects "$1"
+            ;;
+        -F|--force)
             shift
+            if [[ -z "$1" ]]; then
+                printf "${CLR_RED}${MESSAGES[base_dir_required]}${CLR_RESET}\n"
+                printf "${CLR_RED}${MESSAGES[use_help_hint]//%s/$SCRIPT_NAME}${CLR_RESET}\n"
+                exit 1
+            fi
+            if [[ ! -d "$1" ]]; then
+                printf "${CLR_RED}${MESSAGES[dir_not_found]//%s/$1}${CLR_RESET}\n"
+                exit 1
+            fi
+            force_sweep "$1"
+            ;;
+        *)
+            printf "${CLR_RED}${MESSAGES[unknown_option]//%s/$1}${CLR_RESET}\n"
+            show_help
             ;;
     esac
-done
+}
 
-# Base directory verification
-if [ -z "$BASE_DIR" ]; then
-    echo -e "${RED}[ERROR]${NC} Base directory not specified"
-    echo -e "Use ${YELLOW}${0##*/} --help${NC} to see how to use"
-    echo -e "Example: ${YELLOW}${0##*/} ~/GodotProjects${NC}"
-    exit 1
-fi
-
-if [ ! -d "$BASE_DIR" ]; then
-    echo -e "${RED}[ERROR]${NC} Directory not found: $BASE_DIR"
-    exit 1
-fi
-
-# If force mode, runs directly and exits
-if [ "$FORCE_MODE" = true ]; then
-    echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║     .GODOT CACHE CLEANER - FORCE MODE                    ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
-    echo -e "Date: $(date '+%Y-%m-%d %H:%M:%S')"
-    echo -e "Base: ${YELLOW}$BASE_DIR${NC}"
-    
-    # Counts how many .godot exist before
-    before=$(find "$BASE_DIR" -type d -name ".godot" 2>/dev/null | wc -l)
-    echo -e "Found: ${YELLOW}$before${NC} .godot directories"
-    
-    # Confirmation
-    echo -e "\n${RED}[CONFIRMATION]${NC} Force mode will remove ALL $before .godot directories"
-    echo -e "${RED}[CONFIRMATION]${NC} WITHOUT checking if they are valid Godot projects!"
-    read -rp "$(echo -e "${RED}""Type 'FORCE' to confirm: ""${NC}")" confirmation
-    
-    if [ "$confirmation" != "FORCE" ]; then
-        echo -e "${BLUE}[INFO]${NC} Operation canceled by user"
-        exit 0
-    fi
-    
-    echo ""
-    force_mode "$BASE_DIR"
-    
-    # Check result
-    after=$(find "$BASE_DIR" -type d -name ".godot" 2>/dev/null | wc -l)
-    
-    echo -e "\n${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                    FINAL REPORT                          ║${NC}"
-    echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
-    echo -e "Mode: ${RED}FORCE${NC} (without validation)"
-    echo -e "Before: ${YELLOW}$before${NC} .godot directories"
-    echo -e "After: ${YELLOW}$after${NC} .godot directories"
-    echo -e "Removed: ${GREEN}$((before - after))${NC}"
-    
-    if [ "$after" -gt 0 ]; then
-        echo -e "${RED}[WARNING]${NC} Still remaining $after .godot directories"
-        echo -e "${RED}[WARNING]${NC} Possible causes: permissions or files in use"
-        exit 1
-    else
-        echo -e "${GREEN}[SUCCESS]${NC} All .godot directories have been removed!"
-        exit 0
-    fi
-fi
-
-# ==========================================
-# NORMAL MODE
-# ==========================================
-
-# Header
-echo -e "${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║     .GODOT CACHE CLEANER FOR GODOT PROJECTS              ║${NC}"
-echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
-echo -e "Date: $(date '+%Y-%m-%d %H:%M:%S')"
-echo -e "Base: ${YELLOW}$BASE_DIR${NC}"
-echo -e "Mode: ${GREEN}NORMAL${NC} (full validation)"
-echo ""
-
-# Statistics
-total_projects=0
-total_godot_cache=0
-total_removed=0
-total_ignored=0
-total_errors=0
-
-# Phase 1: Discovery of .godot directories
-echo -e "${BLUE}[PHASE 1]${NC} Searching for .godot directories..."
-echo "This may take a few moments..."
-
-# Using while read with -print0 to handle names with spaces
-godot_dirs=()
-while IFS= read -r -d '' dir; do
-    godot_dirs+=("$dir")
-done < <(find "$BASE_DIR" -type d -name ".godot" -print0 2>/dev/null)
-
-echo -e "${BLUE}[INFO]${NC} Found ${#godot_dirs[@]} .godot directory(ies)"
-
-if [ ${#godot_dirs[@]} -eq 0 ]; then
-    echo -e "${GREEN}[INFO]${NC} No .godot cache found. Nothing to clean!"
-    exit 0
-fi
-
-# Shows summary of what will be analyzed
-echo -e "\n${BLUE}[SUMMARY]${NC} Directories containing .godot:"
-for i in "${!godot_dirs[@]}"; do
-    parent_project=$(dirname "${godot_dirs[$i]}")
-    echo -e "  ${YELLOW}$((i+1))${NC}. $parent_project"
-done
-
-# Confirmation
-echo -e "\n${YELLOW}[ATTENTION]${NC} This script will:"
-echo "  1. Check if each parent directory is a valid Godot project"
-echo "  2. Remove ONLY .godot cache from confirmed Godot projects"
-echo "  3. Keep intact .godot directories that do not belong to Godot projects"
-echo ""
-read -rp "$(echo -e "${YELLOW}""Do you want to continue? (yes/NO): ""${NC}")" confirmation
-
-if [ "${confirmation,,}" != "yes" ] && [ "${confirmation,,}" != "y" ]; then
-    echo -e "${BLUE}[INFO]${NC} Operation canceled by user"
-    exit 0
-fi
-
-echo -e "\n${BLUE}[PHASE 2]${NC} Analyzing and removing caches..."
-
-# Processes each .godot found
-for godot_cache in "${godot_dirs[@]}"; do
-    parent_project=$(dirname "$godot_cache")
-    total_projects=$((total_projects + 1))
-    
-    # Calls the analysis and removal function
-    if bash -c "analyze_and_remove_godot \"$parent_project\""; then
-        total_removed=$((total_removed + 1))
-    else
-        # Checks if it was error or just ignored
-        if [ -d "$godot_cache" ]; then
-            # If .godot still exists, it was ignored
-            if bash -c "is_godot_project \"$parent_project\"" 2>/dev/null; then
-                total_errors=$((total_errors + 1))
-            else
-                total_ignored=$((total_ignored + 1))
-            fi
-        fi
-    fi
-done
-
-# Final report
-echo -e "\n${BLUE}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║                    FINAL REPORT                          ║${NC}"
-echo -e "${BLUE}╚══════════════════════════════════════════════════════════╝${NC}"
-echo -e "Total .godot directories found:       ${YELLOW}$total_projects${NC}"
-echo -e "Godot projects confirmed and cleaned: ${GREEN}$total_removed${NC}"
-echo -e "Ignored (non-Godot):                  ${YELLOW}$total_ignored${NC}"
-echo -e "Errors:                               ${RED}$total_errors${NC}"
-echo -e "Date/Time: $(date '+%Y-%m-%d %H:%M:%S')"
-
-if [ $total_removed -gt 0 ]; then
-    echo -e "\n${GREEN}[TIP]${NC} Cleaned projects will be automatically regenerated"
-    echo -e "${GREEN}[TIP]${NC} the next time you open each project in Godot Engine."
-fi
-
-echo -e "\n${BLUE}[COMPLETED]${NC} Operation finished!"
-
-# Exit code
-if [ $total_errors -gt 0 ]; then
-    exit 1
-else
-    exit 0
-fi
+main "$@"
