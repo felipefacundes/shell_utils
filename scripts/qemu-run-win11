@@ -9,6 +9,9 @@ Script QEMU Windows 11 - com áudio ALSA/PULSE (PA),
 TPM 2.0 e compartilhamento de arquivos com virtiofsd
 DOCUMENTATION
 
+# Rom 1050 TI Mobile
+# https://www.techpowerup.com/vgabios/207591/207591
+
 # Colors for messages / Cores para mensagens
 RED='\033[0;31m'
 GREEN='\033[0;32m'
