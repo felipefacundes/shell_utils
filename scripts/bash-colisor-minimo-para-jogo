@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# AABB mínimo em Bash — setas/WASD movem o retângulo vermelho.
+# O retângulo azul é fixo. Quando colidem, o vermelho é empurrado pra fora.
+
+# --- Estado dos retângulos (x, y, largura, altura) ---
+ax=10; ay=5;  aw=8; ah=4   # retângulo A (móvel)
+bx=30; by=10; bw=12; bh=6  # retângulo B (fixo)
+
+# --- Função AABB: retorna 0 (verdadeiro) se colidem ---
+# Dois retângulos NÃO colidem se qualquer uma destas for verdadeira:
+#   A direita < B esquerda  |  A esquerda > B direita
+#   A base < B topo         |  A topo > B base
+# Se NENHUMA for verdadeira, colidem.
+colide() {
+    local ax=$1 ay=$2 aw=$3 ah=$4
+    local bx=$5 by=$6 bw=$7 bh=$8
+    if (( ax + aw <= bx )); then return 1; fi  # A à esquerda de B
+    if (( ax >= bx + bw )); then return 1; fi  # A à direita de B
+    if (( ay + ah <= by )); then return 1; fi  # A acima de B
+    if (( ay >= by + bh )); then return 1; fi  # A abaixo de B
+    return 0                                    # colisão!
+}
+
+# --- Resolve colisão: empurra A para fora de B pelo lado de menor penetração ---
+resolve() {
+    local penEsq=$(( (bx + bw) - ax ))   # quanto A penetrou vindo da esquerda
+    local penDir=$(( (ax + aw) - bx ))   # quanto A penetrou vindo da direita
+    local penTop=$(( (by + bh) - ay ))   # quanto A penetrou vindo de cima
+    local penBot=$(( (ay + ah) - by ))   # quanto A penetrou vindo de baixo
+
+    local min=$penEsq
+    (( penDir < min )) && min=$penDir
+    (( penTop < min )) && min=$penTop
+    (( penBot < min )) && min=$penBot
+
+    if   (( min == penEsq )); then ax=$(( bx - aw ))
+    elif (( min == penDir )); then ax=$(( bx + bw ))
+    elif (( min == penTop )); then ay=$(( by - ah ))
+    else                           ay=$(( by + bh ))
+    fi
+}
+
+# --- Configura terminal ---
+tput civis          # esconde cursor
+stty -echo -icanon -icrnl min 0 time 0   # leitura crua, não-bloqueante
+trap 'tput cnorm; stty sane; tput cup 20 0; echo; exit' INT TERM
+
+# --- Loop principal ---
+while true; do
+    # Lê uma tecla (se houver)
+    IFS= read -r -s -N 1 -t 0.02 k || k=""
+    if [[ "$k" == $'\e' ]]; then
+        IFS= read -r -s -N 2 -t 0.02 k2 || k2=""
+        k+="$k2"
+    fi
+
+    case "$k" in
+        $'\e[A'|w|W) (( ay-- )) ;;   # cima
+        $'\e[B'|s|S) (( ay++ )) ;;   # baixo
+        $'\e[C'|d|D) (( ax++ )) ;;   # direita
+        $'\e[D'|a|A) (( ax-- )) ;;   # esquerda
+        q|Q) break ;;
+    esac
+
+    # Clampa no "mundo" 80x20
+    (( ax < 0 )) && ax=0
+    (( ay < 0 )) && ay=0
+    (( ax + aw > 80 )) && ax=$(( 80 - aw ))
+    (( ay + ah > 20 )) && ay=$(( 20 - ah ))
+
+    # Detecta e resolve colisão
+    local_status="sem colisão"
+    if colide $ax $ay $aw $ah $bx $by $bw $bh; then
+        local_status="COLISÃO!"
+        resolve
+    fi
+
+    # --- Desenha ---
+    tput cup 0 0
+    printf 'A=(%2d,%2d) B=(%2d,%2d)  %-12s\n' "$ax" "$ay" "$bx" "$by" "$local_status"
+    printf 'Use WASD/setas. q sai.\n'
+
+    # Desenha os retângulos com blocos coloridos
+    for (( y=0; y<20; y++ )); do
+        linha=""
+        for (( x=0; x<80; x++ )); do
+            if (( x>=ax && x<ax+aw && y>=ay && y<ay+ah )); then
+                linha+=$'\e[41m \e[0m'   # fundo vermelho (A)
+            elif (( x>=bx && x<bx+bw && y>=by && y<by+bh )); then
+                linha+=$'\e[44m \e[0m'   # fundo azul (B)
+            else
+                linha+="."
+            fi
+        done
+        tput cup $(( y + 2 )) 0
+        printf '%s' "$linha"
+    done
+done
+
+tput cnorm
+stty sane
+tput cup 24 0
+echo
