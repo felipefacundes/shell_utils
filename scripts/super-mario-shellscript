@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Script corrigido por Felipe Facundes em 16/09/2026, para ser possível executá-lo em qualquer distribuição Linux e também no TERMUX
-
+# Script corrigido por Felipe Facundes em 16/09/2026, para ser possível executá-lo em qualquer distribuição Linux
 # Bash Bros 1.1 (2012 FATEC · patch 2026)
 # Autores originais: Doriedson, Thiago Andre, Vitor Augusto — 24/04/2012
 # Patch: bash 5.3, paplay, ENTER via read -N, log com tee, checagem de comandos.
