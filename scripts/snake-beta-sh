@@ -1,0 +1,294 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Improved Snake Game (based on kolbasky version)
+# Controls:
+#   WASD / Arrow keys  → Move
+#   + / -              → Change speed
+#   P                  → Pause
+#   R                  → Restart (after game over)
+#   Q / Ctrl+C         → Quit
+
+set -euo pipefail
+
+# Colors
+BOUND_COLOR=3
+SNAKE_COLOR=2
+APPLE_COLOR=1
+SCORE_COLOR=6
+CLOCK_COLOR=8
+
+# Characters
+SNAKE_HEAD="@"
+SNAKE_BODY="0"
+APPLE="@"
+
+# Game state
+WIDTH=0
+HEIGHT=0
+FPS=12
+SCORE=0
+HIGH_SCORE=0
+HS_FILE="${HOME}/.snake_highscore"
+BLOCKS=1   # 1 = colored blocks, 0 = symbols only
+
+# Cleanup on exit
+cleanup() {
+    tput cnorm
+    tput sgr0
+    stty echo
+    tput rmcup 2>/dev/null || true
+    exit "${1:-0}"
+}
+trap cleanup SIGINT SIGTERM EXIT
+
+stty -echo
+tput smcup
+tput civis
+
+load_highscore() {
+    [[ -f "$HS_FILE" ]] && HIGH_SCORE=$(<"$HS_FILE") || HIGH_SCORE=0
+}
+
+save_highscore() {
+    if (( SCORE > HIGH_SCORE )); then
+        HIGH_SCORE=$SCORE
+        echo "$HIGH_SCORE" > "$HS_FILE"
+    fi
+}
+
+welcome() {
+    tput sgr0
+    clear
+    local line="S N A K E"
+    tput cup $((HEIGHT / 2 - 3)) $(( (WIDTH - ${#line}) / 2 ))
+    printf "$(tput smso)$(tput setaf $BOUND_COLOR)%s$(tput sgr0)" "$line"
+
+    line="WASD / Arrow keys to move"
+    tput cup $((HEIGHT / 2 - 1)) $(( (WIDTH - ${#line}) / 2 ))
+    printf "$(tput setaf $BOUND_COLOR)%s$(tput sgr0)" "$line"
+
+    line="+ / - to change speed   |   P to pause"
+    tput cup $((HEIGHT / 2)) $(( (WIDTH - ${#line}) / 2 ))
+    printf "$(tput setaf $BOUND_COLOR)%s$(tput sgr0)" "$line"
+
+    line="Press any key to start"
+    tput cup $((HEIGHT / 2 + 2)) $(( (WIDTH - ${#line}) / 2 ))
+    printf "$(tput setaf $BOUND_COLOR)%s$(tput sgr0)" "$line"
+
+    read -rsn1
+}
+
+draw_boundaries() {
+    tput sgr0
+    tput civis
+    WIDTH=$(tput cols)
+    HEIGHT=$(tput lines)
+
+    # Top and bottom
+    for ((i=0; i<=WIDTH; i++)); do
+        tput cup 1 $i
+        printf "$(tput setab $BOUND_COLOR)$(tput setaf $BOUND_COLOR)#"
+        tput cup $HEIGHT $i
+        printf "$(tput setab $BOUND_COLOR)$(tput setaf $BOUND_COLOR)#"
+    done
+
+    # Left and right
+    for ((i=1; i<=HEIGHT; i++)); do
+        tput cup $i 0
+        printf "$(tput setab $BOUND_COLOR)$(tput setaf $BOUND_COLOR)#"
+        tput cup $i $WIDTH
+        printf "$(tput setab $BOUND_COLOR)$(tput setaf $BOUND_COLOR)#"
+    done
+}
+
+read_key() {
+    local key key_arrow=""
+    local escape_char=$'\e'
+
+    # Non-blocking read
+    if read -t 0.001 -rsn1 key 2>/dev/null; then
+        if [[ $key == $escape_char ]]; then
+            read -t 0.001 -rsn2 key_arrow 2>/dev/null || true
+        fi
+    fi
+
+    case "${key,,}${key_arrow}" in
+        w|\[A)  [[ $yspeed -ne 1  ]] && { yspeed=-1; xspeed=0; } ;;
+        s|\[B)  [[ $yspeed -ne -1 ]] && { yspeed=1;  xspeed=0; } ;;
+        a|\[D)  [[ $xspeed -ne 1  ]] && { xspeed=-1; yspeed=0; } ;;
+        d|\[C)  [[ $xspeed -ne -1 ]] && { xspeed=1;  yspeed=0; } ;;
+        -)      FPS=$(( FPS > 5  ? FPS - 2 : 5  )) ;;
+        +|=)    FPS=$(( FPS < 40 ? FPS + 2 : 40 )) ;;
+        p)      read -rsn1 ;;   # pause until any key
+        q)      cleanup 0 ;;
+    esac
+}
+
+draw_screen() {
+    # Erase previous tail
+    local last=$(( ${#prevpos[@]} - 1 ))
+    if (( last >= 1 )); then
+        tput cup ${prevpos[$last]} ${prevpos[$((last-1))]}
+        printf " "
+    fi
+
+    # Draw snake
+    local i=0
+    while (( i < ${#pos[@]} )); do
+        tput cup $(( ${pos[$((i+1))]} )) ${pos[$i]}
+
+        if (( i == 0 )); then
+            # Head
+            if (( BLOCKS )); then
+                if (( xspeed == 0 )); then
+                    printf "$(tput setab $SNAKE_COLOR)$(tput setaf 0)⠒$(tput sgr0)"
+                else
+                    printf "$(tput setab $SNAKE_COLOR)$(tput setaf 0):$(tput sgr0)"
+                fi
+            else
+                printf "$(tput setaf $SNAKE_COLOR)$SNAKE_HEAD$(tput sgr0)"
+            fi
+        else
+            # Body
+            printf "$(tput setab $SNAKE_COLOR)$(tput setaf $SNAKE_COLOR)$SNAKE_BODY$(tput sgr0)"
+        fi
+        i=$((i + 2))
+    done
+
+    # Draw apple
+    tput cup $a_ypos $a_xpos
+    printf "$(tput setaf $APPLE_COLOR)$(tput setab $APPLE_COLOR)$APPLE$(tput sgr0)"
+
+    # Status bar
+    local score_txt="Score: $SCORE  High: $HIGH_SCORE"
+    tput cup 0 $(( (WIDTH - ${#score_txt}) / 2 ))
+    printf "$(tput setaf $SCORE_COLOR)$(tput smso)%s$(tput sgr0)" "$score_txt"
+
+    tput cup 0 2
+    printf "$(tput setaf $CLOCK_COLOR)$(tput smso)%s$(tput sgr0)" "$(date +%H:%M:%S)"
+
+    local speed_txt="Speed: $FPS"
+    tput cup 0 $(( WIDTH - ${#speed_txt} - 1 ))
+    printf "$(tput setaf $CLOCK_COLOR)$(tput smso)%s$(tput sgr0)" "$speed_txt"
+}
+
+move_snake() {
+    prevpos=("${pos[@]}")
+    local i=0
+    while (( i < ${#pos[@]} )); do
+        if (( i == 0 )); then
+            pos[0]=$(( ${pos[0]} + xspeed ))
+            pos[1]=$(( ${pos[1]} + yspeed ))
+        else
+            pos[$i]=${prevpos[$((i-2))]}
+            pos[$((i+1))]=${prevpos[$((i-1))]}
+        fi
+        i=$((i + 2))
+    done
+}
+
+eat_apple() {
+    if (( ${pos[0]} == a_xpos && ${pos[1]} == a_ypos )); then
+        # Grow
+        pos+=("${pos[-2]}" "${pos[-1]}")
+        SCORE=$((SCORE + 1))
+
+        # Increase speed every 5 points
+        if (( SCORE % 5 == 0 && FPS < 40 )); then
+            FPS=$((FPS + 2))
+        fi
+
+        # New apple position (avoid snake body)
+        while true; do
+            a_xpos=$(( 1 + RANDOM % (WIDTH - 2) ))
+            a_ypos=$(( 2 + RANDOM % (HEIGHT - 3) ))
+            local conflict=0
+            local i=0
+            while (( i < ${#pos[@]} )); do
+                if (( ${pos[$i]} == a_xpos && ${pos[$((i+1))]} == a_ypos )); then
+                    conflict=1
+                    break
+                fi
+                i=$((i + 2))
+            done
+            (( conflict == 0 )) && break
+        done
+    fi
+}
+
+detect_collision() {
+    # Wall
+    if (( ${pos[0]} <= 0 || ${pos[0]} >= WIDTH || ${pos[1]} <= 1 || ${pos[1]} >= HEIGHT )); then
+        die
+    fi
+
+    # Self
+    local i=2
+    while (( i < ${#pos[@]} )); do
+        if (( ${pos[0]} == ${pos[$i]} && ${pos[1]} == ${pos[$((i+1))]} )); then
+            die
+        fi
+        i=$((i + 2))
+    done
+}
+
+die() {
+    save_highscore
+    tput sgr0
+
+    local msg="GAME OVER"
+    tput cup $((HEIGHT / 2 - 2)) $(( (WIDTH - ${#msg}) / 2 ))
+    printf "$(tput blink)$(tput setaf 1)%s$(tput sgr0)" "$msg"
+
+    msg="Score: $SCORE   High: $HIGH_SCORE"
+    tput cup $((HEIGHT / 2)) $(( (WIDTH - ${#msg}) / 2 ))
+    printf "$(tput setaf 1)%s$(tput sgr0)" "$msg"
+
+    msg="R = Restart    Q = Quit"
+    tput cup $((HEIGHT / 2 + 2)) $(( (WIDTH - ${#msg}) / 2 ))
+    printf "$(tput setaf 3)%s$(tput sgr0)" "$msg"
+
+    while true; do
+        read -rsn1 key
+        case "${key,,}" in
+            r) main; return ;;
+            q) cleanup 0 ;;
+        esac
+    done
+}
+
+main() {
+    WIDTH=$(tput cols)
+    HEIGHT=$(tput lines)
+    xspeed=1
+    yspeed=0
+    pos=( $((WIDTH / 4)) $((HEIGHT / 2)) )
+    FPS=12
+    SCORE=0
+    a_xpos=$(( 1 + RANDOM % (WIDTH - 2) ))
+    a_ypos=$(( 2 + RANDOM % (HEIGHT - 3) ))
+
+    draw_boundaries
+
+    while true; do
+        read_key
+        move_snake
+        detect_collision
+        eat_apple
+        draw_screen
+
+        # Sleep based on FPS (no bc needed)
+        local delay
+        delay=$(awk "BEGIN {printf \"%.3f\", 1/$FPS}")
+        sleep "$delay"
+    done
+}
+
+# Start
+load_highscore
+WIDTH=$(tput cols)
+HEIGHT=$(tput lines)
+welcome
+main
