@@ -14,7 +14,8 @@ TMPDIR="${TMPDIR:-/tmp}"
 _soundDir="${HOME}/.shell_utils/sounds/mario"
 _logFile="${TMPDIR}/mario.debug.log"
 _paplay_ok=0
-_musicId=""
+_musicId=""        # PID do subshell do loop de fundo (gerenciador)
+_musicPid=""       # PID do paplay real que está tocando agora
 
 log() {
 	printf '[%s] %s\n' "$(date '+%F %T')" "$*" | tee -a "$_logFile" >/dev/null
@@ -1694,33 +1695,37 @@ function ColisaoBuraco {
 
 #Função para matar o personagem definindo trilha sonora e tipo de animação do personagem
 function Dead {
-
-	#Define que o jogo está na passagem de morte do personagem
 	_screenGame="DEAD"
+	((_jogLife--))
 
-	((_jogLife--)) #Subtrai um vida do personagem
-	
-	if [ $_jogLife = 0 ]; then #se zerou as vidas do jogador toca audio fim de jogo
+	if [ $_jogLife = 0 ]; then
 		Play "gameover"
-	else #se não toca audio de perda de vida
+	else
 		Play "die"
-	fi	
+	fi
 
-	_jogDead=true #define variavel verdadeira para rotina de animação da morte do personagem
-
-	((_velocY+=_gravidade)) #Atualaiza velocidade de queda do personagem
+	_jogDead=true
+	((_velocY+=_gravidade))
 }
 
 #Função para parar a musica
 function Stop {
 	local _pid="${1:-}"
-	if [[ -z "$_pid" ]]; then
-		return
+	log "stop pid=$_pid musicPid=${_musicPid:-}"
+	if [[ -n "$_pid" ]]; then
+		kill -TERM "$_pid" 2>/dev/null || true
+		sleep 0.05
+		kill -9 "$_pid" 2>/dev/null || true
 	fi
-	log "stop pid=$_pid"
-	kill -TERM "$_pid" 2>/dev/null || true
-	sleep 0.05
-	kill -9 "$_pid" 2>/dev/null || true
+	if [[ -n "${_musicPid:-}" ]]; then
+		kill -TERM "$_musicPid" 2>/dev/null || true
+		sleep 0.05
+		kill -9 "$_musicPid" 2>/dev/null || true
+		_musicPid=""
+	fi
+	# Rede de segurança: mata qualquer paplay que seja filho deste shell
+	pkill -P $$ paplay 2>/dev/null || true
+	_musicId=""
 }
 
 
@@ -1763,28 +1768,41 @@ function Play {
 		return
 	fi
 
+	# Clipes que matam o background antes de tocar
 	case "$_clip" in
 		background|timewarning|gameover|die|flagpole|worldcleared)
-			if [[ -n "${_musicId:-}" ]]; then
+			if [[ -n "${_musicId:-}" || -n "${_musicPid:-}" ]]; then
 				Stop "$_musicId"
-				_musicId=""
 			fi
 			;;
 	esac
 
 	if [[ "$_clip" == "background" ]]; then
+		# Loop controlado: guardamos o PID do paplay real em _musicPid
 		(
 			while true; do
-				paplay "$_path" || break
+				paplay "$_path" &
+				_musicPid=$!
+				# Escreve o PID num arquivo para o shell pai poder ler
+				echo "$_musicPid" > "${TMPDIR}/.mario_music.pid"
+				wait "$_musicPid"
+				# Se o arquivo foi removido, o pai pediu stop
+				[[ -f "${TMPDIR}/.mario_music.pid" ]] || break
 			done
 		) >/dev/null 2>&1 &
 		_musicId="$!"
-		log "play background loop pid=$_musicId file=$_file"
+		# Espera o subshell gravar o PID do primeiro paplay
+		local _tries=0
+		while [[ ! -s "${TMPDIR}/.mario_music.pid" && $_tries -lt 20 ]]; do
+			sleep 0.02
+			((_tries++))
+		done
+		_musicPid=$(cat "${TMPDIR}/.mario_music.pid" 2>/dev/null || echo "")
+		log "play background loop pid=$_musicId paplayPid=$_musicPid file=$_file"
 	else
 		paplay "$_path" >/dev/null 2>&1 &
 		log "play clip=$_clip file=$_file pid=$!"
 	fi
-
 }
 
 function MoveEnemy {
@@ -1880,6 +1898,9 @@ function Cleanup {
 	tput cnorm 2>/dev/null || true
 	tput sgr0  2>/dev/null || true
 	tput reset 2>/dev/null || true
+
+    # Remove o arquivo de PID para o subshell sair do loop
+	rm -f "${TMPDIR}/.mario_music.pid" 2>/dev/null || true
 
 	# Limpa a tela e posiciona o cursor no topo
 	clear
