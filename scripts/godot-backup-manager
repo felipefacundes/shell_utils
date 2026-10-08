@@ -58,7 +58,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [help_cleanup]="LIMPEZA AUTOMÁTICA:"
         [help_examples]="EXEMPLOS:"
         [help_show]="Mostrar esta mensagem de ajuda"
-        [help_restore_opt]="Restaurar projetos a partir de um backup"
+        [help_restore_opt]="Restaurar projetos a partir de um backup. Sem argumentos, seleciona o backup via whiptail. Também aceita: --restore arquivo.tar (restaura direto, sem prompt)"
         [help_cache_opt]="Definir limite de tamanho do cache (ex: 30G, 500M) [padrão: 30G]"
         [help_godot_opt]="Definir versão permanente do binário Godot. Sem argumentos, lista interativamente as versões disponíveis"
         [help_list_opt]="Listar todos os backups disponíveis"
@@ -82,6 +82,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [help_example8]="Passar argumentos para o Godot"
         [help_example9]="Copiar um backup interativamente (whiptail + zenity)"
         [help_example10]="Copiar um backup específico para um destino"
+        [help_example11]="Restaurar um backup específico diretamente"
         [available_backups]="Backups disponíveis:"
         [total_size]="Tamanho total:"
         [no_backups]="Nenhum backup encontrado em"
@@ -114,6 +115,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         [copy_failed]="Falha ao copiar o backup"
         [copy_file_not_found]="Arquivo de backup não encontrado"
         [copy_dest_not_found]="Diretório de destino não encontrado"
+        [restore_file_not_found]="Arquivo de backup não encontrado"
     )
 else
     MESSAGES=(
@@ -147,7 +149,7 @@ else
         [help_cleanup]="AUTOMATIC CLEANUP:"
         [help_examples]="EXAMPLES:"
         [help_show]="Show this help message"
-        [help_restore_opt]="Restore projects from a backup"
+        [help_restore_opt]="Restore projects from a backup. Without arguments, selects the backup via whiptail. Also accepts: --restore file.tar (restores directly, no prompt)"
         [help_cache_opt]="Set cache size limit (ex: 30G, 500M) [default: 30G]"
         [help_godot_opt]="Set permanent Godot binary version. Without arguments, interactively lists available versions"
         [help_list_opt]="List all available backups"
@@ -171,6 +173,7 @@ else
         [help_example8]="Pass arguments to Godot"
         [help_example9]="Interactively copy a backup (whiptail + zenity)"
         [help_example10]="Copy a specific backup to a destination"
+        [help_example11]="Restore a specific backup directly"
         [available_backups]="Available backups:"
         [total_size]="Total size:"
         [no_backups]="No backups found in"
@@ -203,6 +206,7 @@ else
         [copy_failed]="Failed to copy backup"
         [copy_file_not_found]="Backup file not found"
         [copy_dest_not_found]="Destination directory not found"
+        [restore_file_not_found]="Backup file not found"
     )
 fi
 
@@ -306,6 +310,7 @@ ${YELLOW}${MESSAGES[help_examples]}${NC}
     ${GREEN}${SCRIPT_NAME} --project /path/to/proj -- --rendering-driver vulkan${NC} # ${MESSAGES[help_example8]}
     ${GREEN}${SCRIPT_NAME} -cp${NC}                 # ${MESSAGES[help_example9]}
     ${GREEN}${SCRIPT_NAME} -cp backup.tar ~/Documents${NC} # ${MESSAGES[help_example10]}
+    ${GREEN}${SCRIPT_NAME} -r backup.tar${NC}         # ${MESSAGES[help_example11]}
 
 EOF
 }
@@ -432,8 +437,25 @@ get_backup_list() {
 }
 
 # Function to restore backup
+# Usage: restore_backup [backup_file_or_name]
+# With no argument -> interactive selection via whiptail/dialog, as before
+# With an argument -> restores that backup directly, no prompt
 restore_backup() {
+    local backup_arg="$1"
     local backup_file
+
+    if [[ -n "$backup_arg" ]]; then
+        # Direct mode: resolve the backup file (accepts a full path or just the filename inside CACHE_DIR)
+        if [[ -f "$backup_arg" ]]; then
+            backup_file="$backup_arg"
+        elif [[ -f "$CACHE_DIR/$backup_arg" ]]; then
+            backup_file="$CACHE_DIR/$backup_arg"
+        else
+            echo "${MESSAGES[restore_file_not_found]}: $backup_arg"
+            return 1
+        fi
+    else
+
     local backups=()
     
     # Get list of backups using null-delimited handling
@@ -504,6 +526,7 @@ restore_backup() {
         fi
         
         backup_file="${backups[$choice]}"
+    fi
     fi
     
     # Extract project name from backup file
@@ -918,6 +941,7 @@ main() {
     local copy_mode=false
     local copy_backup_arg=""
     local copy_dest_arg=""
+    local restore_backup_arg=""
     local project_dir_arg=""
     
     clear 
@@ -933,7 +957,14 @@ main() {
                 ;;
             -r|--restore)
                 restore_mode=true
-                shift
+                if [[ -n "$2" ]] && [[ ! "$2" =~ ^- ]]; then
+                    # Argument given - restore this backup directly, no prompt
+                    restore_backup_arg="$2"
+                    shift 2
+                else
+                    # No argument - interactive selection (whiptail), as before
+                    shift
+                fi
                 ;;
             -c|--cache)
                 if [[ -n "$2" ]] && [[ "$2" =~ ^[0-9]+[GgMmTtKk]?$ ]]; then
@@ -1035,7 +1066,7 @@ main() {
     
     # Handle restore mode
     if [[ "$restore_mode" == true ]]; then
-        restore_backup
+        restore_backup "$restore_backup_arg"
         exit $?
     fi
     
