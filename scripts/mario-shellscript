@@ -1862,6 +1862,31 @@ function ChangeSpriteEnemy {
 
 }
 
+function Cleanup {
+	# Mata o loop de música, se existir
+	if [[ -n "${_musicId:-}" ]]; then
+		kill -TERM "$_musicId" 2>/dev/null || true
+		sleep 0.05
+		kill -9 "$_musicId" 2>/dev/null || true
+		_musicId=""
+	fi
+
+	# Garante que nenhum paplay remanescente fique vivo
+	pkill -P $$ paplay 2>/dev/null || true
+	pkill -f "paplay.*${_soundDir}" 2>/dev/null || true
+
+	# Restaura o terminal
+	stty sane 2>/dev/null || true
+	tput cnorm 2>/dev/null || true
+	tput sgr0  2>/dev/null || true
+	tput reset 2>/dev/null || true
+
+	# Limpa a tela e posiciona o cursor no topo
+	clear
+
+	exit 130
+}
+
 # [ INICIO SCRIPT ] ----------------------------------------------------------------------------------------------------------
 
 # Configurações padrão (bash 5.x: inteiros vazios quebram [ -ge ])
@@ -2320,6 +2345,8 @@ stty -echo -icanon -icrnl min 0 #time 0
 
 # Desliga o cursor piscante na tela
 tput civis
+
+trap Cleanup INT TERM EXIT
 
 # Define constantes para as Teclas de controle seremm detectadas no _ListenKey
 KEY_ENTER=$(printf '\x0d')
