@@ -1,0 +1,478 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# pingpong-seq - Reverse Sequential File Copier
+
+: <<'DOCUMENTATION'
+================================================================================
+${SCRIPT_NAME} - Documentação Profissional
+================================================================================
+
+VISÃO GERAL
+-----------
+O ${SCRIPT_NAME} é uma ferramenta de linha de comando projetada para realizar
+cópias "reversas" de arquivos que seguem uma nomenclatura sequencial numérica
+em um diretório. Em vez de simplesmente copiar os arquivos mantendo a ordem
+original, o script inverte a sequência, gerando novos arquivos com numeração
+contínua a partir do maior número existente.
+
+POR QUE ESSA FERRAMENTA EXISTE?
+-------------------------------
+Em produção de animações 2D, sprites, flipbooks e pipelines de renderização,
+é comum termos sequências de imagens nomeadas como:
+
+    0001.png, 0002.png, 0003.png, ..., 0024.png
+
+Para criar um loop perfeito (sem "salto" visual entre o último e o primeiro
+frame), muitas vezes precisamos duplicar a sequência de forma espelhada. Por
+exemplo, uma animação de vai-e-vem (ping-pong) pode ser construída assim:
+
+    original:  0001 0002 0003 0004
+    espelhado: 0008 0007 0006 0005  (o script gera estes)
+
+Ou então, ao gerar um sprite sheet a partir de uma sequência, pode ser
+necessário produzir uma segunda leva de arquivos em ordem inversa para
+compor o ciclo completo de animação.
+
+Este script NÃO se limita a imagens: qualquer conjunto de arquivos com
+nomenclatura sequencial (mesmo prefixo + número com padding fixo) é aceito.
+O que importa é o padrão de nomeação.
+
+COMO FUNCIONA A DETECÇÃO DE PADRÃO
+----------------------------------
+1. O script varre o diretório alvo (padrão: diretório atual).
+2. Verifica se TODOS os arquivos regulares seguem o padrão:
+       <prefixo><dígitos><sufixo>
+   onde <dígitos> tem largura fixa (padding) e os números são contíguos
+   começando em 1 (ou em algum valor inicial consistente).
+3. Se houver qualquer arquivo fora do padrão, ou se houver "buracos" na
+   sequência, o script aborta com erro e mensagem clara.
+4. Se o padrão for válido, o script calcula o maior número N da sequência
+   e copia cada arquivo original para um novo nome cujo número é:
+
+       novo_numero = 2 * N + 1 - numero_original
+
+   Ou seja, o arquivo de maior número é copiado para N+1, o segundo maior
+   para N+2, e assim por diante, até o menor (start) ser copiado para
+   2*N - start + 1.
+
+EXEMPLO PRÁTICO
+---------------
+Suponha um diretório com:
+
+    00001.png
+    00002.png
+    00003.png
+    00004.png
+
+N = 4. O script irá gerar:
+
+    00004.png  ->  00005.png
+    00003.png  ->  00006.png
+    00002.png  ->  00007.png
+    00001.png  ->  00008.png
+
+Resultado final no diretório: 8 arquivos, sendo os 4 primeiros os originais
+e os 4 últimos a sequência espelhada.
+
+USANDO --start PARA RECORTES
+----------------------------
+Se a pasta contém apenas uma parte da animação, por exemplo:
+
+    00022, 00023, 00024
+
+Basta chamar com --start 22. O script valida que o menor número encontrado
+é 22 e gera:
+
+    00024 -> 00025
+    00023 -> 00026
+    00022 -> 00027
+
+Isso é útil para fazer loop somente com um trecho da animação, sem precisar
+renomear nada antes.
+
+USANDO --pad PARA FORÇAR PADDING
+--------------------------------
+Se os arquivos têm padding irregular (por exemplo, alguns com 4 dígitos e
+outros com 5), a detecção automática falha. Use --pad N para forçar uma
+largura fixa. O script ainda valida que todos os arquivos têm exatamente N
+dígitos; divergentes são reportados como erro.
+
+SEGURANÇA E BOAS PRÁTICAS
+-------------------------
+- O script NUNCA sobrescreve arquivos existentes. Se o destino já existir,
+  ele aborta com erro antes de qualquer escrita.
+- Por padrão, opera em modo "dry-run" (simulação). Use --apply para
+  efetivamente copiar.
+- Sempre exiba o plano de ação antes de executar qualquer cópia real.
+- Utilize --verbose para ver cada operação individualmente.
+
+CASOS DE USO RECOMENDADOS
+-------------------------
+- Animação ping-pong para sprites em engines 2D.
+- Geração de sequências espelhadas para vídeos em loop.
+- Testes de pipelines que exigem entradas sequenciais invertidas.
+- Preparação de dados para treinamento de modelos que usam pares
+  (frame, frame_reverso).
+- Recortes de animação com --start para loops parciais.
+
+LIMITAÇÕES CONHECIDAS
+---------------------
+- Requer padding fixo (todos os números com a mesma quantidade de dígitos).
+- Não lida com múltiplos prefixos/sufixos misturados no mesmo diretório.
+- Não renomeia arquivos originais; apenas cria cópias.
+
+SUPORTE A IDIOMAS
+-----------------
+O script detecta o idioma via variável LANG. Atualmente suporta:
+    - Português (pt_*)
+    - Inglês (en_* ou fallback)
+
+Para forçar um idioma, exporte LANG antes de executar:
+    LANG=pt_BR.UTF-8 ./${SCRIPT_NAME} --help
+    LANG=en_US.UTF-8 ./${SCRIPT_NAME} --help
+
+AUTOR
+-----
+Script profissional bilíngue gerado como referência de boas práticas em
+shell scripting.
+
+DOCUMENTATION
+
+set -euo pipefail
+
+SCRIPT_NAME="${0##*/}"
+
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [ERR_NO_ARGS]="Nenhum argumento fornecido. Use --help para ajuda."
+        [ERR_DIR_NOT_FOUND]="Diretório não encontrado: %s"
+        [ERR_NOT_A_DIR]="O caminho não é um diretório: %s"
+        [ERR_EMPTY_DIR]="O diretório está vazio: %s"
+        [ERR_NOT_SEQUENTIAL]="Os arquivos não seguem um padrão sequencial reconhecido."
+        [ERR_MIXED_PATTERN]="Padrões de nomeação misturados detectados. Arquivos divergentes:"
+        [ERR_GAP]="Lacuna na sequência detectada. Esperado: %s, encontrado: %s"
+        [ERR_DEST_EXISTS]="Arquivo de destino já existe: %s"
+        [ERR_MKDIR]="Falha ao criar diretório: %s"
+        [ERR_COPY]="Falha ao copiar: %s -> %s"
+        [ERR_INVALID_PAD]="Valor inválido para --pad: %s (esperado inteiro >= 1)"
+        [ERR_INVALID_START]="Valor inválido para --start: %s (esperado inteiro >= 0)"
+        [ERR_START_NOT_FOUND]="Sequência não começa em %s (menor número encontrado: %s)"
+        [WARN_DRY_RUN]="Modo simulação (dry-run). Nenhum arquivo foi copiado."
+        [INFO_SCAN]="Analisando diretório: %s"
+        [INFO_DETECTED]="Padrão detectado: prefixo='%s', padding=%d, sufixo='%s', total=%d"
+        [INFO_FORCED_PAD]="Padding forçado via --pad: %d"
+        [INFO_FORCED_START]="Início forçado via --start: %d"
+        [INFO_PLAN]="Plano de cópia (%d arquivos):"
+        [INFO_COPY]="Copiando: %s -> %s"
+        [INFO_DONE]="Concluído. %d arquivos copiados."
+        [INFO_APPLY]="Use --apply para executar de verdade."
+        [HELP_TITLE]="Uso: %s [OPÇÕES] [DIRETÓRIO]"
+        [HELP_DESC]="Copia arquivos sequenciais em ordem reversa espelhada."
+        [HELP_EXAMPLE_TITLE]="Exemplo prático:"
+        [HELP_EXAMPLE_BEFORE]="Suponha um diretório com 4 arquivos sequenciais (padding=5):"
+        [HELP_EXAMPLE_ITEMS]="  00001  00002  00003  00004"
+        [HELP_EXAMPLE_AFTER]="O script gera cópias espelhadas, SEM tocar nos originais:"
+        [HELP_EXAMPLE_MAP]="  00001 -> 00008    00002 -> 00007    00003 -> 00006    00004 -> 00005"
+        [HELP_EXAMPLE_RESULT]="Resultado: 8 arquivos no total, formando um loop perfeito (ping-pong)."
+        [HELP_EXAMPLE_NOTE]="Útil para sprites/animações que precisam de vai-e-vem sem salto visual."
+        [HELP_OPTS]="Opções:"
+        [HELP_OPT_H]="-h, --help       Exibe esta ajuda e sai"
+        [HELP_OPT_D]="-d, --doc        Exibe a documentação completa e sai"
+        [HELP_OPT_A]="-a, --apply      Executa as cópias (padrão: dry-run)"
+        [HELP_OPT_V]="-v, --verbose    Exibe cada operação individualmente"
+        [HELP_OPT_Q]="-q, --quiet      Suprime saída informativa"
+        [HELP_OPT_PAD]="--pad N          Força padding N em vez de detectar automaticamente"
+        [HELP_OPT_START]="--start N        Número inicial da sequência (padrão: 1)"
+        [HELP_OPT_DIR]="DIRETÓRIO        Diretório alvo (padrão: .)"
+        [HELP_USAGE_EXAMPLE]="Exemplo: %s --apply -v ./frames"
+        [HELP_NOTE]="Nota: este script NUNCA sobrescreve arquivos existentes."
+    )
+else
+    MESSAGES=(
+        [ERR_NO_ARGS]="No arguments provided. Use --help for usage."
+        [ERR_DIR_NOT_FOUND]="Directory not found: %s"
+        [ERR_NOT_A_DIR]="Path is not a directory: %s"
+        [ERR_EMPTY_DIR]="Directory is empty: %s"
+        [ERR_NOT_SEQUENTIAL]="Files do not follow a recognized sequential pattern."
+        [ERR_MIXED_PATTERN]="Mixed naming patterns detected. Divergent files:"
+        [ERR_GAP]="Gap detected in sequence. Expected: %s, found: %s"
+        [ERR_DEST_EXISTS]="Destination file already exists: %s"
+        [ERR_MKDIR]="Failed to create directory: %s"
+        [ERR_COPY]="Failed to copy: %s -> %s"
+        [ERR_INVALID_PAD]="Invalid value for --pad: %s (expected integer >= 1)"
+        [ERR_INVALID_START]="Invalid value for --start: %s (expected integer >= 0)"
+        [ERR_START_NOT_FOUND]="Sequence does not start at %s (lowest number found: %s)"
+        [WARN_DRY_RUN]="Dry-run mode. No files were copied."
+        [INFO_SCAN]="Scanning directory: %s"
+        [INFO_DETECTED]="Pattern detected: prefix='%s', padding=%d, suffix='%s', total=%d"
+        [INFO_FORCED_PAD]="Padding forced via --pad: %d"
+        [INFO_FORCED_START]="Start forced via --start: %d"
+        [INFO_PLAN]="Copy plan (%d files):"
+        [INFO_COPY]="Copying: %s -> %s"
+        [INFO_DONE]="Done. %d files copied."
+        [INFO_APPLY]="Use --apply to actually execute."
+        [HELP_TITLE]="Usage: %s [OPTIONS] [DIRECTORY]"
+        [HELP_DESC]="Copies sequential files in mirrored reverse order."
+        [HELP_EXAMPLE_TITLE]="Practical example:"
+        [HELP_EXAMPLE_BEFORE]="Suppose a directory with 4 sequential files (padding=5):"
+        [HELP_EXAMPLE_ITEMS]="  00001  00002  00003  00004"
+        [HELP_EXAMPLE_AFTER]="The script creates mirrored copies, WITHOUT touching the originals:"
+        [HELP_EXAMPLE_MAP]="  00001 -> 00008    00002 -> 00007    00003 -> 00006    00004 -> 00005"
+        [HELP_EXAMPLE_RESULT]="Result: 8 files total, forming a perfect loop (ping-pong)."
+        [HELP_EXAMPLE_NOTE]="Great for sprites/animations that need back-and-forth with no visual jump."
+        [HELP_OPTS]="Options:"
+        [HELP_OPT_H]="-h, --help       Show this help and exit"
+        [HELP_OPT_D]="-d, --doc        Show full documentation and exit"
+        [HELP_OPT_A]="-a, --apply      Execute copies (default: dry-run)"
+        [HELP_OPT_V]="-v, --verbose    Show each individual operation"
+        [HELP_OPT_Q]="-q, --quiet      Suppress informational output"
+        [HELP_OPT_PAD]="--pad N          Force padding N instead of auto-detecting"
+        [HELP_OPT_START]="--start N        Starting number for the sequence (default: 1)"
+        [HELP_OPT_DIR]="DIRECTORY        Target directory (default: .)"
+        [HELP_USAGE_EXAMPLE]="Example: %s --apply -v ./frames"
+        [HELP_NOTE]="Note: this script NEVER overwrites existing files."
+    )
+fi
+
+# Cores (desabilitadas se não for TTY)
+if [[ -t 1 ]]; then
+    C_RESET=$'\033[0m'
+    C_RED=$'\033[1;31m'
+    C_GREEN=$'\033[1;32m'
+    C_YELLOW=$'\033[1;33m'
+    C_BLUE=$'\033[1;34m'
+    C_CYAN=$'\033[1;36m'
+    C_BOLD=$'\033[1m'
+else
+    C_RESET=""; C_RED=""; C_GREEN=""; C_YELLOW=""
+    C_BLUE=""; C_CYAN=""; C_BOLD=""
+fi
+
+msg() {
+    local key="$1"; shift
+    local fmt="${MESSAGES[$key]:-$key}"
+    if [[ $# -eq 0 ]]; then
+        printf '%s' "$fmt"
+    else
+        # shellcheck disable=SC2059
+        printf -- "$fmt" "$@"
+    fi
+}
+
+log_info()  { [[ "${QUIET:-0}" -eq 1 ]] && return 0; echo -e "${C_BLUE}[INFO]${C_RESET} $(msg "$@")"; }
+log_warn()  { [[ "${QUIET:-0}" -eq 1 ]] && return 0; echo -e "${C_YELLOW}[WARN]${C_RESET} $(msg "$@")" >&2; }
+log_error() { echo -e "${C_RED}[ERROR]${C_RESET} $(msg "$@")" >&2; }
+log_ok()    { [[ "${QUIET:-0}" -eq 1 ]] && return 0; echo -e "${C_GREEN}[OK]${C_RESET} $(msg "$@")"; }
+
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${C_BOLD}$(msg HELP_TITLE "$SCRIPT_NAME")${C_RESET}
+
+$(msg HELP_DESC)
+
+${C_BOLD}$(msg HELP_EXAMPLE_TITLE)${C_RESET}
+$(msg HELP_EXAMPLE_BEFORE)
+${C_CYAN}$(msg HELP_EXAMPLE_ITEMS)${C_RESET}
+
+$(msg HELP_EXAMPLE_AFTER)
+${C_GREEN}$(msg HELP_EXAMPLE_MAP)${C_RESET}
+
+${C_YELLOW}$(msg HELP_EXAMPLE_RESULT)${C_RESET}
+${C_YELLOW}$(msg HELP_EXAMPLE_NOTE)${C_RESET}
+
+${C_BOLD}$(msg HELP_OPTS)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_H)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_D)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_A)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_V)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_Q)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_PAD)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_START)${C_RESET}
+  ${C_CYAN}$(msg HELP_OPT_DIR)${C_RESET}
+
+${C_YELLOW}$(msg HELP_USAGE_EXAMPLE "$SCRIPT_NAME")${C_RESET}
+
+${C_YELLOW}$(msg HELP_NOTE)${C_RESET}
+EOF
+    exit 0
+}
+
+show_doc() {
+    local doc
+    doc=$(
+        sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" \
+        | sed '1d;$d'
+    )
+    SCRIPT_NAME="$SCRIPT_NAME" envsubst '${SCRIPT_NAME}' <<<"$doc"
+    exit 0
+}
+
+APPLY=0
+VERBOSE=0
+QUIET=0
+TARGET_DIR="."
+FORCED_PAD=""
+START_NUM=1
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help) show_help ;;
+        -d|--doc)  show_doc ;;
+        -a|--apply) APPLY=1; shift ;;
+        -v|--verbose) VERBOSE=1; shift ;;
+        -q|--quiet) QUIET=1; shift ;;
+        --pad)
+            shift
+            [[ $# -gt 0 && "$1" =~ ^[0-9]+$ && "$1" -ge 1 ]] \
+                || { log_error ERR_INVALID_PAD "${1:-<empty>}"; exit 1; }
+            FORCED_PAD="$1"; shift ;;
+        --pad=*)
+            v="${1#--pad=}"
+            [[ "$v" =~ ^[0-9]+$ && "$v" -ge 1 ]] \
+                || { log_error ERR_INVALID_PAD "$v"; exit 1; }
+            FORCED_PAD="$v"; shift ;;
+        --start)
+            shift
+            [[ $# -gt 0 && "$1" =~ ^[0-9]+$ && "$1" -ge 0 ]] \
+                || { log_error ERR_INVALID_START "${1:-<empty>}"; exit 1; }
+            START_NUM="$1"; shift ;;
+        --start=*)
+            v="${1#--start=}"
+            [[ "$v" =~ ^[0-9]+$ && "$v" -ge 0 ]] \
+                || { log_error ERR_INVALID_START "$v"; exit 1; }
+            START_NUM="$v"; shift ;;
+        --) shift; break ;;
+        -*) log_error ERR_NO_ARGS; show_help ;;
+        *) TARGET_DIR="$1"; shift ;;
+    esac
+done
+
+[[ -d "$TARGET_DIR" ]] || { log_error ERR_DIR_NOT_FOUND "$TARGET_DIR"; exit 1; }
+TARGET_DIR="$(cd "$TARGET_DIR" && pwd)"
+
+log_info INFO_SCAN "$TARGET_DIR"
+[[ -n "$FORCED_PAD" ]] && log_info INFO_FORCED_PAD "$FORCED_PAD"
+[[ "$START_NUM" -ne 1 ]] && log_info INFO_FORCED_START "$START_NUM"
+
+shopt -s nullglob
+files=()
+for f in "$TARGET_DIR"/*; do
+    [[ -f "$f" ]] && files+=("$(basename "$f")")
+done
+shopt -u nullglob
+
+[[ ${#files[@]} -eq 0 ]] && { log_error ERR_EMPTY_DIR "$TARGET_DIR"; exit 1; }
+
+# Detectar padrão: prefixo + dígitos + sufixo
+prefix=""
+suffix=""
+padding=0
+declare -A seen
+declare -a divergent=()
+
+for f in "${files[@]}"; do
+    if [[ "$f" =~ ^(.*[^0-9])?([0-9]+)(\.[^.]+)?$ ]]; then
+        p="${BASH_REMATCH[1]}"
+        n="${BASH_REMATCH[2]}"
+        s="${BASH_REMATCH[3]}"
+        if [[ -z "$prefix" && -z "$suffix" && $padding -eq 0 ]]; then
+            prefix="$p"; suffix="$s"
+            [[ -z "$FORCED_PAD" ]] && padding=${#n}
+        fi
+        if [[ -n "$FORCED_PAD" && $padding -eq 0 ]]; then
+            padding="$FORCED_PAD"
+        fi
+        if [[ "$p" != "$prefix" || "$s" != "$suffix" || ${#n} -ne $padding ]]; then
+            divergent+=("$f")
+        else
+            num=$((10#$n))
+            seen[$num]="$f"
+        fi
+    else
+        divergent+=("$f")
+    fi
+done
+
+if [[ ${#divergent[@]} -gt 0 ]]; then
+    log_error ERR_NOT_SEQUENTIAL
+    log_error ERR_MIXED_PATTERN
+    for d in "${divergent[@]}"; do
+        echo "  - $d" >&2
+    done
+    exit 1
+fi
+
+[[ $padding -eq 0 ]] && { log_error ERR_NOT_SEQUENTIAL; exit 1; }
+
+# Verificar contiguidade a partir de START_NUM
+nums=($(printf '%s\n' "${!seen[@]}" | sort -n))
+total=${#nums[@]}
+min_num="${nums[0]}"
+
+if [[ "$min_num" -ne "$START_NUM" ]]; then
+    log_error ERR_START_NOT_FOUND "$START_NUM" "$min_num"
+    exit 1
+fi
+
+expected=$START_NUM
+for n in "${nums[@]}"; do
+    if [[ $n -ne $expected ]]; then
+        log_error ERR_GAP "$(printf "%0${padding}d" "$expected")" "$(printf "%0${padding}d" "$n")"
+        exit 1
+    fi
+    expected=$((expected + 1))
+done
+
+max=$((START_NUM + total - 1))
+log_info INFO_DETECTED "${prefix:-<none>}" "$padding" "${suffix:-<none>}" "$total"
+
+# Montar plano
+declare -a src_list=()
+declare -a dst_list=()
+for ((n=START_NUM; n<=max; n++)); do
+    src="${seen[$n]}"
+    new_num=$((2 * max - n + 1))
+    new_name=$(printf "%s%0${padding}d%s" "$prefix" "$new_num" "$suffix")
+    src_list+=("$src")
+    dst_list+=("$new_name")
+done
+
+# Verificar colisões de destino
+for d in "${dst_list[@]}"; do
+    if [[ -e "$TARGET_DIR/$d" ]]; then
+        log_error ERR_DEST_EXISTS "$d"
+        exit 1
+    fi
+done
+
+echo
+echo -e "${C_BOLD}$(msg INFO_PLAN "$total")${C_RESET}"
+for i in "${!src_list[@]}"; do
+    echo -e "  ${C_CYAN}${src_list[$i]}${C_RESET} -> ${C_GREEN}${dst_list[$i]}${C_RESET}"
+done
+echo
+
+if [[ $APPLY -eq 0 ]]; then
+    log_warn WARN_DRY_RUN
+    log_info INFO_APPLY
+    exit 0
+fi
+
+copied=0
+for i in "${!src_list[@]}"; do
+    src="$TARGET_DIR/${src_list[$i]}"
+    dst="$TARGET_DIR/${dst_list[$i]}"
+    if [[ $VERBOSE -eq 1 ]]; then
+        log_info INFO_COPY "${src_list[$i]}" "${dst_list[$i]}"
+    fi
+    if ! cp -- "$src" "$dst"; then
+        log_error ERR_COPY "${src_list[$i]}" "${dst_list[$i]}"
+        exit 1
+    fi
+    copied=$((copied + 1))
+done
+
+log_ok INFO_DONE "$copied"
