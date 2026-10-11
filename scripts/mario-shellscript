@@ -17,6 +17,147 @@ _paplay_ok=0
 _musicId=""        # PID do subshell do loop de fundo (gerenciador)
 _musicPid=""       # PID do paplay real que está tocando agora
 
+# =====================================================================
+#  VERIFICAÇÃO DE DEPENDÊNCIAS (multi-distro: dnf / apt / pacman)
+# =====================================================================
+_check_deps() {
+	local _faltando=()
+	local _cmd
+
+	# --- Dependências obrigatórias (sem elas o jogo não roda) ---
+	local _obrigatorios=(tput stty date kill sleep)
+
+	# --- Dependências opcionais (sem elas o jogo roda, mas sem áudio) ---
+	local _opcionais=(paplay)
+
+	# Detecta o gerenciador de pacotes da distro
+	local _pkgmgr=""
+	local _install_cmd=""
+	if command -v dnf >/dev/null 2>&1; then
+		_pkgmgr="dnf"
+		_install_cmd="sudo dnf install"
+	elif command -v apt >/dev/null 2>&1; then
+		_pkgmgr="apt"
+		_install_cmd="sudo apt install"
+	elif command -v pacman >/dev/null 2>&1; then
+		_pkgmgr="pacman"
+		_install_cmd="sudo pacman -S"
+	else
+		_pkgmgr="desconhecido"
+		_install_cmd=""
+	fi
+
+	# Mapeia cada comando para o pacote correspondente em cada distro
+	# Formato: comando|pacote_dnf|pacote_apt|pacote_pacman
+	local _mapa=(
+		"tput|ncurses|ncurses-bin|ncurses"
+		"stty|coreutils|coreutils|coreutils"
+		"date|coreutils|coreutils|coreutils"
+		"kill|procps-ng|procps|procps-ng"
+		"sleep|coreutils|coreutils|coreutils"
+		"paplay|pulseaudio-utils|pulseaudio-utils|libpulse"
+	)
+
+	# Verifica os obrigatórios
+	for _cmd in "${_obrigatorios[@]}"; do
+		if ! command -v "$_cmd" >/dev/null 2>&1; then
+			_faltando+=("$_cmd")
+		fi
+	done
+
+	# Verifica os opcionais
+	local _faltando_opcionais=()
+	for _cmd in "${_opcionais[@]}"; do
+		if ! command -v "$_cmd" >/dev/null 2>&1; then
+			_faltando_opcionais+=("$_cmd")
+		fi
+	done
+
+	# Se não falta nada obrigatório, segue o jogo
+	if [ ${#_faltando[@]} -eq 0 ]; then
+		if [ ${#_faltando_opcionais[@]} -gt 0 ]; then
+			echo "Aviso: dependências opcionais ausentes: ${_faltando_opcionais[*]}"
+			echo "O jogo vai rodar, mas sem áudio."
+			if [ -n "$_install_cmd" ]; then
+				echo "Para instalar, use:"
+				for _cmd in "${_faltando_opcionais[@]}"; do
+					for _entrada in "${_mapa[@]}"; do
+						local _c="${_entrada%%|*}"
+						[ "$_c" != "$_cmd" ] && continue
+						local _resto="${_entrada#*|}"
+						local _p_dnf="${_resto%%|*}"
+						local _resto2="${_resto#*|}"
+						local _p_apt="${_resto2%%|*}"
+						local _p_pacman="${_resto2##*|}"
+						case "$_pkgmgr" in
+							dnf)    echo "  $_install_cmd $_p_dnf" ;;
+							apt)    echo "  $_install_cmd $_p_apt" ;;
+							pacman) echo "  $_install_cmd $_p_pacman" ;;
+						esac
+					done
+				done
+			fi
+			echo ""
+		fi
+		return 0
+	fi
+
+	# --- Faltam obrigatórios: mostra alerta e sai ---
+	echo "================================================================"
+	echo "  DEPENDÊNCIAS OBRIGATÓRIAS AUSENTES"
+	echo "================================================================"
+	echo ""
+	echo "Comandos não encontrados: ${_faltando[*]}"
+	echo ""
+
+	if [ "$_pkgmgr" = "desconhecido" ]; then
+		echo "Não foi possível detectar o gerenciador de pacotes (dnf/apt/pacman)."
+		echo "Instale manualmente os comandos acima."
+		echo ""
+		exit 1
+	fi
+
+	echo "Detectado: $_pkgmgr"
+	echo ""
+	echo "Para instalar tudo de uma vez, rode:"
+	echo ""
+
+	# Monta a lista de pacotes únicos para o gerenciador atual
+	local _pacotes=()
+	for _cmd in "${_faltando[@]}"; do
+		for _entrada in "${_mapa[@]}"; do
+			local _c="${_entrada%%|*}"
+			[ "$_c" != "$_cmd" ] && continue
+			local _resto="${_entrada#*|}"
+			local _p_dnf="${_resto%%|*}"
+			local _resto2="${_resto#*|}"
+			local _p_apt="${_resto2%%|*}"
+			local _p_pacman="${_resto2##*|}"
+			local _pkg=""
+			case "$_pkgmgr" in
+				dnf)    _pkg="$_p_dnf" ;;
+				apt)    _pkg="$_p_apt" ;;
+				pacman) _pkg="$_p_pacman" ;;
+			esac
+			# Evita duplicatas
+			local _ja_tem=0
+			for _p in "${_pacotes[@]}"; do
+				[ "$_p" = "$_pkg" ] && _ja_tem=1 && break
+			done
+			[ $_ja_tem -eq 0 ] && _pacotes+=("$_pkg")
+		done
+	done
+
+	echo "  $_install_cmd ${_pacotes[*]}"
+	echo ""
+	echo "Depois de instalar, rode o script novamente."
+	echo "================================================================"
+	exit 1
+}
+
+_check_deps
+# =====================================================================
+
 log() {
 	printf '[%s] %s\n' "$(date '+%F %T')" "$*" | tee -a "$_logFile" >/dev/null
 }
