@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
+
 # Script corrigido por Felipe Facundes em 16/09/2026, para ser possível executá-lo em qualquer distribuição Linux
 # Bash Bros 1.1 (2012 FATEC · patch 2026)
 # Autores originais: Doriedson, Thiago Andre, Vitor Augusto — 24/04/2012
 # Patch: bash 5.3, paplay, ENTER via read -N, log com tee, checagem de comandos.
+# Contribuidor para o Patch: Felipe Facundes
 #
 # Autores:
 # Doriedson RA 1430431213050
@@ -2666,16 +2668,22 @@ _tempoN=$((10#`date +%N`))
 # [ TIME LINE ] --------------------------------------------------------------------------------------------------------------------
 
 # loop do jogo (Time Line)
-while true; do
+running=true
+while [ "$running" = true ]; do
 
 	FPS #Atualiza a taxa de quadros por segundo
-	
+
 	ListenKey #Houve o Teclado
 
-	if [ $_next = true ]; then
+	# Verifica se a tecla pressionada foi q ou Q
+	case "$_key" in
+		q|Q) running=false && Cleanup -c;;
+	esac
+
+	if [ "$_next" = true ]; then
 		LoadColors #Carrega as cores de fundo
 
-		MoveEnemy #Calcula movimento do inimigo		
+		MoveEnemy #Calcula movimento do inimigo
 
 		Jogador #Calcula Coordenadas do Jogador
 
@@ -2685,4 +2693,3 @@ while true; do
 	_next=false #Controle para quando poderá calcular o próximo quadro do jogo
 
 done
-
