@@ -2508,7 +2508,7 @@ stty -echo -icanon -icrnl min 0 #time 0
 # Desliga o cursor piscante na tela
 tput civis
 
-trap Cleanup INT TERM EXIT
+trap Cleanup INT TERM #EXIT
 
 # Define constantes para as Teclas de controle seremm detectadas no _ListenKey
 KEY_ENTER=$(printf '\x0d')
