@@ -17,6 +17,7 @@ _paplay_ok=0
 _musicId=""        # PID do subshell do loop de fundo (gerenciador)
 _musicPid=""       # PID do paplay real que está tocando agora
 
+exec 2 | tee -a "$_logFile"
 # =====================================================================
 #  VERIFICAÇÃO DE DEPENDÊNCIAS (multi-distro: dnf / apt / pacman)
 # =====================================================================
