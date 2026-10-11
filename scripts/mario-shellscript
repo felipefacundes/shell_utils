@@ -315,7 +315,6 @@ function ResizeScreen {
 
 # Função para limpar a tela
 function ClearScreen {
-
 	tput cup 0 0
 	
 	if [ $_color = "on" ]; then
@@ -2038,13 +2037,15 @@ function Cleanup {
 	stty sane 2>/dev/null || true
 	tput cnorm 2>/dev/null || true
 	tput sgr0  2>/dev/null || true
-	tput reset 2>/dev/null || true
+
+    # Reset limpa a tela e reseta o terminal, quando o sinal não for EXIT, para que possa er exibida as mensagens de erro.
+	[[ "$1" == "-c" ]] && tput reset 2>/dev/null || true
 
     # Remove o arquivo de PID para o subshell sair do loop
 	rm -f "${TMPDIR}/.mario_music.pid" 2>/dev/null || true
 
-	# Limpa a tela e posiciona o cursor no topo
-	clear
+	# Limpa a tela e posiciona o cursor no topo, quando o sinal não for EXIT, pois EXIT não pode ser limpo para que possa er exibida as mensagens de erro.
+	[[ "$1" == "-c" ]] && clear
 
 	exit 130
 }
@@ -2508,7 +2509,8 @@ stty -echo -icanon -icrnl min 0 #time 0
 # Desliga o cursor piscante na tela
 tput civis
 
-trap Cleanup INT TERM #EXIT
+trap 'Cleanup -c' INT TERM
+trap Cleanup EXIT
 
 # Define constantes para as Teclas de controle seremm detectadas no _ListenKey
 KEY_ENTER=$(printf '\x0d')
