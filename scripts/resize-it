@@ -23,6 +23,10 @@ ARGUMENTS:
 
 SIZE SPECIFIERS:
   [width]                 Resize proportionally to specified width
+  [width]w                Same as [width]: fixed width, proportional height
+  [height]h               Fixed height, proportional width (e.g., 256h)
+  [size]w> / [size]h>     Shrink only: never enlarges smaller images (e.g., "256w>")
+  [size]w< / [size]h<     Enlarge only: never shrinks larger images (e.g., "256h<")
   [width]x[height]        Resize proportionally to fit within dimensions
   "[width]x[height]!"     Resize exactly to specified dimensions
   [factor]x               Multiply size proportionally (e.g., 2x, 0.5x, 1.5x, 0.9x)
@@ -47,7 +51,10 @@ PERCENTAGE SPECIFIERS:
 EXAMPLES:
   ${0##*/} image.jpg 640                        # Resize to width 640px, saves as image-resized.jpg
   ${0##*/} image.jpg 640 output.jpg             # Resize to width 640px, saves as output.jpg
+  ${0##*/} image.jpg 256w                       # Fixed width 256px, proportional height
+  ${0##*/} image.jpg 256h                       # Fixed height 256px, proportional width
   ${0##*/} directory 640                        # Resize all images in directory (saves to resized/)
+  ${0##*/} directory "1024w>"                   # Limit width to 1024px, skip smaller images
   ${0##*/} image.jpg 640x480                    # Resize proportionally to fit
   ${0##*/} image.jpg "640x480!"                 # Resize exactly to 640x480
   ${0##*/} image.jpg 2x                         # Double size proportionally
@@ -61,7 +68,7 @@ SUPPORTED IMAGE FORMATS:
   jpg, jpeg, png, gif, bmp, tiff, webp
 
 NOTES:
-  - Use quotes around specifiers containing special characters (!, %, /, +, -)
+  - Use quotes around specifiers containing special characters (!, %, /, +, -, <, >)
   - For single image: output saved alongside original with -resized suffix (or custom name)
   - For directory: resized images saved in a 'resized' subfolder
   - Original images are always preserved
@@ -215,6 +222,24 @@ resize_image() {
     if [[ "$resize_param" =~ ^[0-9]+$ ]]; then
         echo "Matched pattern: Simple width"
         run_magick "$input_file" "${resize_param}x" "$output_file"
+
+    elif [[ "$resize_param" =~ ^([0-9]+)([wWhH])([\<\>]?)$ ]]; then
+        local dim_value="${BASH_REMATCH[1]}"
+        local dim_axis="${BASH_REMATCH[2],,}"   # lowercase: w or h
+        local dim_flag="${BASH_REMATCH[3]}"     # optional: > (shrink only) or < (enlarge only)
+
+        if [ "$dim_value" -eq 0 ]; then
+            echo "Error: Dimension must be greater than zero" >&2
+            return 1
+        fi
+
+        if [ "$dim_axis" = "w" ]; then
+            echo "Matched pattern: Fixed width ${dim_value}px (height proportional)${dim_flag:+ [flag: $dim_flag]}"
+            run_magick "$input_file" "${dim_value}x${dim_flag}" "$output_file"
+        else
+            echo "Matched pattern: Fixed height ${dim_value}px (width proportional)${dim_flag:+ [flag: $dim_flag]}"
+            run_magick "$input_file" "x${dim_value}${dim_flag}" "$output_file"
+        fi
 
     elif [[ "$resize_param" =~ ^[0-9]+x[0-9]+!$ ]]; then
         echo "Matched pattern: Exact dimensions with !"
