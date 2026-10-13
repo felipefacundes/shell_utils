@@ -15,7 +15,6 @@
 TMPDIR="${TMPDIR:-/tmp}"
 _soundDir="${HOME}/.shell_utils/sounds/mario"
 _logFile="${TMPDIR}/mario.debug.log"
-_paplay_ok=0
 _musicId=""        # PID do subshell do loop de fundo (gerenciador)
 _musicPid=""       # PID do paplay real que está tocando agora
 
@@ -29,8 +28,8 @@ _check_deps() {
 	# --- Dependências obrigatórias (sem elas o jogo não roda) ---
 	local _obrigatorios=(tput stty date kill sleep)
 
-	# --- Dependências opcionais (sem elas o jogo roda, mas sem áudio) ---
-	local _opcionais=(paplay)
+	# --- Dependências opcionais (o jogo roda com qualquer um dos três) ---
+	local _opcionais=(paplay ffplay mpv)
 
 	# Detecta o gerenciador de pacotes da distro
 	local _pkgmgr=""
@@ -58,6 +57,8 @@ _check_deps() {
 		"kill|procps-ng|procps|procps-ng"
 		"sleep|coreutils|coreutils|coreutils"
 		"paplay|pulseaudio-utils|pulseaudio-utils|libpulse"
+		"ffplay|ffmpeg|ffmpeg|ffmpeg"
+		"mpv|mpv|mpv|mpv"
 	)
 
 	# Verifica os obrigatórios
@@ -180,13 +181,28 @@ require_cmd date "Instale coreutils."
 require_cmd kill "Instale procps / util-linux."
 require_cmd sleep "Instale coreutils."
 
-if ! command -v paplay >/dev/null 2>&1; then
-	echo "comando 'paplay' não instalado. Áudio desligado — instale pulseaudio-utils." | tee -a "$_logFile" >/dev/null
-	_paplay_ok=0
-	_sound="off"
+# --- Detecção do player de áudio (paplay > ffplay > mpv) ---
+_audio_player=""    # nome do binário escolhido
+_audio_ok=0         # 1 se algum player foi encontrado
+
+if command -v paplay >/dev/null 2>&1; then
+	_audio_player="paplay"
+	_audio_ok=1
+elif command -v ffplay >/dev/null 2>&1; then
+	_audio_player="ffplay"
+	_audio_ok=1
+elif command -v mpv >/dev/null 2>&1; then
+	_audio_player="mpv"
+	_audio_ok=1
 else
-	_paplay_ok=1
+	_audio_player=""
+	_audio_ok=0
+	_sound="off"
+	echo "Nenhum player de áudio encontrado (paplay/ffplay/mpv)." | tee -a "$_logFile" >/dev/null
+	echo "Áudio desligado. Instale pulseaudio-utils, ffmpeg ou mpv." | tee -a "$_logFile" >/dev/null
 fi
+
+log "audio player detectado: '${_audio_player:-nenhum}'"
 
 cd "$TMPDIR" || exit 1
 : | tee "$_logFile" >/dev/null
@@ -828,8 +844,8 @@ _canvas[31]="${_edgeScreen}${_spaceScreen}${_edgeScreen}"
 #Carrega a tela do menu para o buffer
 function LoadMenu {
 
-	if [ $_musicId ]; then
-		Stop $_musicId #Mata o processo da musica de fundo
+	if [[ -n "${_musicId:-}" || -n "${_musicPid:-}" ]]; then
+		Stop "$_musicId"
 	fi
 
 	#Seta o nome da tela atual(posicao no jogo)
@@ -1338,9 +1354,8 @@ function ListenKey {
 			fi
 		else
 			_sound="off"
-			if [ -n "${_musicId:-}" ]; then
+			if [[ -n "${_musicId:-}" || -n "${_musicPid:-}" ]]; then
 				Stop "$_musicId"
-				_musicId=""
 			fi
 		fi
 		log "toggle sound=$_sound"
@@ -1853,7 +1868,10 @@ function Dead {
 #Função para parar a musica
 function Stop {
 	local _pid="${1:-}"
-	log "stop pid=$_pid musicPid=${_musicPid:-}"
+	local _proc
+	_proc="$(_audio_proc_name)"
+	log "stop pid=$_pid musicPid=${_musicPid:-} player=$_audio_player"
+
 	if [[ -n "$_pid" ]]; then
 		kill -TERM "$_pid" 2>/dev/null || true
 		sleep 0.05
@@ -1865,22 +1883,43 @@ function Stop {
 		kill -9 "$_musicPid" 2>/dev/null || true
 		_musicPid=""
 	fi
-	# Rede de segurança: mata qualquer paplay que seja filho deste shell
-	pkill -P $$ paplay 2>/dev/null || true
+	if [[ -n "$_proc" ]]; then
+		pkill -P $$ "$_proc" 2>/dev/null || true
+	fi
 	_musicId=""
 }
 
 
 #Função para tocar os audios
-function Play {
+# Retorna o comando completo para tocar um arquivo, com flags específicas por player.
+# Uso: _audio_cmd "$path"
+_audio_cmd() {
+	local _path="$1"
+	case "$_audio_player" in
+		paplay) printf 'paplay %q' "$_path" ;;
+		ffplay) printf 'ffplay -nodisp -autoexit -loglevel quiet -nostdin %q' "$_path" ;;
+		mpv)    printf 'mpv --no-video --really-quiet --no-terminal --no-input-default-bindings %q' "$_path" ;;
+		*)      printf '' ;;
+	esac
+}
 
+_audio_proc_name() {
+	case "$_audio_player" in
+		paplay) echo "paplay" ;;
+		ffplay) echo "ffplay" ;;
+		mpv)    echo "mpv" ;;
+		*)      echo "" ;;
+	esac
+}
+
+function Play {
 	local _clip="$1"
 	if [[ "${_sound}" != "on" ]]; then
 		log "play skip (sound off) clip=$_clip"
 		return
 	fi
-	if [[ "${_paplay_ok}" != "1" ]]; then
-		log "play skip (paplay ausente) clip=$_clip"
+	if [[ "${_audio_ok}" != "1" ]]; then
+		log "play skip (sem player) clip=$_clip"
 		return
 	fi
 
@@ -1898,19 +1937,15 @@ function Play {
 		coin)         _file="coin.ogg" ;;
 		up)           _file="up.ogg" ;;
 		enemy)        _file="stomp.ogg" ;;
-		*)
-			log "play clip desconhecido: $_clip"
-			return
-			;;
+		*)            log "play clip desconhecido: $_clip"; return ;;
 	esac
 
 	local _path="${_soundDir}/${_file}"
 	if [[ ! -f "$_path" ]]; then
-		log "audio ausente: $_path (soundDir=$_soundDir)"
+		log "audio ausente: $_path"
 		return
 	fi
 
-	# Clipes que matam o background antes de tocar
 	case "$_clip" in
 		background|timewarning|gameover|die|flagpole|worldcleared)
 			if [[ -n "${_musicId:-}" || -n "${_musicPid:-}" ]]; then
@@ -1919,34 +1954,33 @@ function Play {
 			;;
 	esac
 
+	local _cmd
+	_cmd="$(_audio_cmd "$_path")"
+	[[ -z "$_cmd" ]] && { log "play skip (cmd vazio) clip=$_clip"; return; }
+
 	if [[ "$_clip" == "background" ]]; then
-		# Loop controlado: guardamos o PID do paplay real em _musicPid
 		(
 			while true; do
-				paplay "$_path" &
+				eval "$_cmd" >/dev/null 2>&1 &
 				_musicPid=$!
-				# Escreve o PID num arquivo para o shell pai poder ler
 				echo "$_musicPid" > "${TMPDIR}/.mario_music.pid"
 				wait "$_musicPid"
-				# Se o arquivo foi removido, o pai pediu stop
 				[[ -f "${TMPDIR}/.mario_music.pid" ]] || break
 			done
 		) >/dev/null 2>&1 &
 		_musicId="$!"
-		# Espera o subshell gravar o PID do primeiro paplay
 		local _tries=0
 		while [[ ! -s "${TMPDIR}/.mario_music.pid" && $_tries -lt 20 ]]; do
 			sleep 0.02
 			((_tries++))
 		done
 		_musicPid=$(cat "${TMPDIR}/.mario_music.pid" 2>/dev/null || echo "")
-		log "play background loop pid=$_musicId paplayPid=$_musicPid file=$_file"
+		log "play background loop pid=$_musicId playerPid=$_musicPid player=$_audio_player file=$_file"
 	else
-		paplay "$_path" >/dev/null 2>&1 &
-		log "play clip=$_clip file=$_file pid=$!"
+		eval "$_cmd" >/dev/null 2>&1 &
+		log "play clip=$_clip player=$_audio_player file=$_file pid=$!"
 	fi
 }
-
 function MoveEnemy {
 
 	case $_screenGame in
@@ -2032,7 +2066,9 @@ function Cleanup {
 	fi
 
 	# Garante que nenhum paplay remanescente fique vivo
-	pkill -P $$ paplay 2>/dev/null || true
+	pkill -P $$ paplay  2>/dev/null || true
+	pkill -P $$ ffplay  2>/dev/null || true
+	pkill -P $$ mpv     2>/dev/null || true
 	pkill -f "paplay.*${_soundDir}" 2>/dev/null || true
 
 	# Restaura o terminal
@@ -2065,9 +2101,12 @@ if [[ -f .settings ]]; then
 else
 	log "arquivo .settings ausente — usando padrões"
 fi
-if [[ "${_paplay_ok}" != "1" ]]; then
-	_sound="off"
-	log "paplay ausente — forçando sound=off"
+
+# Se um player foi detectado, garante que o som não fique desligado por settings antigos
+if [[ "$_audio_ok" = "1" ]] && [[ "$_sound" = "off" ]]; then
+	# Não força on automaticamente — respeita a escolha do usuário.
+	# Mas avisa no log para você saber por que está mudo.
+	log "sound=off nos settings, mas player '$_audio_player' disponível"
 fi
 
 # Mapa do score no topo da tela
