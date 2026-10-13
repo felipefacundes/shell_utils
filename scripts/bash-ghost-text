@@ -417,7 +417,7 @@ ghost_cmd_cache() {
     # Save to cache file (atomically)
     mkdir -p "$_ghost_text_cache_dir" &>/dev/null
     printf '%s\n' "${_ghost_cmd_cache[@]}" >| "$_ghost_cmd_cache_file.tmp" 2>/dev/null \
-        && mv -f "$_ghost_cmd_cache_file.tmp" "$_ghost_cmd_cache_file" >/dev/null 2>&1
+        && command mv -f "$_ghost_cmd_cache_file.tmp" "$_ghost_cmd_cache_file" >/dev/null 2>&1
 }
 
 _ghost_load_path_cache() {
