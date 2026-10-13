@@ -93,7 +93,9 @@ ${C_BOLD}DIRECTIONS${C_RESET}  (can be combined freely)
   -left  | -l  <+N|-N>   Add (+) or crop (-) N pixels on the LEFT
   -right | -r  <+N|-N>   Add (+) or crop (-) N pixels on the RIGHT
 
-  N must be a positive integer; the sign (+/-) determines the operation.
+  N may be an integer or a decimal (e.g. +100, -99.5). Decimals are
+  rounded to the nearest whole pixel (0.5 rounds away from zero).
+  The sign (+/-) determines the operation.
 
 ${C_BOLD}SUPPORTED FORMATS${C_RESET}
   PNG, WebP, AVIF, TIFF, GIF, APNG (transparency-capable formats only)
@@ -192,6 +194,10 @@ process_image() {
     local delta_left="$5"
     local delta_right="$6"
     local bg_color="$7"
+
+    # Convert decimal deltas to integers, rounding each axis total only once
+    read -r delta_left delta_right  <<< "$(split_deltas "$delta_left"  "$delta_right")"
+    read -r delta_top  delta_bottom <<< "$(split_deltas "$delta_top"   "$delta_bottom")"
 
     # Resolve canvas fill: "none" = transparent; hex value = "#RRGGBB"
     local canvas_fill
@@ -351,16 +357,42 @@ parse_direction_args() {
     REMAINING_ARGS=("${remaining[@]+"${remaining[@]}"}")
 }
 
-# Parse "+100" or "-100" → integer (signed)
+# Parse "+100", "-100", "+99.5" or "-99.5" → signed decimal string (not rounded)
 parse_pixels() {
     local raw="$1"
-    # Strip leading + (bash arithmetic handles -)
+    # Strip leading +
     raw="${raw#+}"
-    if ! [[ "$raw" =~ ^-?[0-9]+$ ]]; then
-        err "Invalid pixel value: '$1'. Expected +N or -N (e.g. +100, -50)."
+
+    # Accept integers or decimals (dot or comma as separator), optionally negative
+    if ! [[ "$raw" =~ ^-?([0-9]+([.,][0-9]*)?|[.,][0-9]+)$ ]]; then
+        err "Invalid pixel value: '$1'. Expected +N or -N, integer or decimal (e.g. +100, -50, -99.5)."
         exit 1
     fi
-    echo "$raw"
+
+    # Normalize decimal separator
+    echo "${raw/,/.}"
+}
+
+# Round a decimal string half away from zero → integer
+round_num() {
+    LC_ALL=C awk -v v="$1" 'BEGIN { r = (v < 0) ? -int(-v + 0.5) : int(v + 0.5); printf "%d\n", r + 0 }'
+}
+
+# Succeeds when the decimal string is exactly zero
+is_zero() {
+    LC_ALL=C awk -v v="$1" 'BEGIN { exit (v == 0) ? 0 : 1 }'
+}
+
+# Split two decimal deltas (opposite sides) into integers whose sum is
+# round(A + B): the total is rounded ONCE, so the final size is exact.
+# Prints: "<int_A> <int_B>"
+split_deltas() {
+    local a="$1" b="$2" total ia ib
+    total=$(LC_ALL=C awk -v a="$a" -v b="$b" 'BEGIN { printf "%.10f\n", a + b }')
+    total=$(round_num "$total")
+    ia=$(round_num "$a")
+    ib=$(( total - ia ))
+    echo "$ia $ib"
 }
 
 # ---------------------------------------------------------------------------
@@ -376,7 +408,7 @@ main() {
     parse_direction_args "$@"
 
     # Ensure at least one direction was specified
-    if (( G_TOP == 0 && G_BOTTOM == 0 && G_LEFT == 0 && G_RIGHT == 0 )); then
+    if is_zero "$G_TOP" && is_zero "$G_BOTTOM" && is_zero "$G_LEFT" && is_zero "$G_RIGHT"; then
         err "No direction specified. Use -up/-down/-left/-right with +N or -N."
         echo ""
         usage
