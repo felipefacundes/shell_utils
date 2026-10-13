@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+: <<'DOCUMENTATION'
+${SCRIPT_NAME} - Professional Sprite Sheet Slicer
+
+PURPOSE:
+    This script reverses the sprite sheet generation process. Instead of
+    combining individual frames into a single sprite sheet, it slices a
+    single sprite sheet image into multiple individual frame images.
+
+WHY THIS SCRIPT EXISTS:
+    Game developers often work with sprite sheets for efficiency in memory
+    and rendering. However, during development, editing, or analysis, it
+    becomes necessary to extract individual frames from a sprite sheet.
+    This script automates that extraction process with precision.
+
+KEY CONCEPTS:
+    - Sprite Sheet: A single image containing multiple animation frames
+      arranged in a grid (rows x columns).
+    - Tile: The grid dimension of the sprite sheet, expressed as
+      COLUMNSxROWS (e.g., 4x5 means 4 columns and 5 rows).
+    - Line: The number of rows in the sprite sheet grid.
+    - Column: The number of columns in the sprite sheet grid.
+    - Frame: An individual cell in the sprite sheet grid.
+
+HOW IT WORKS:
+    1. The user provides a sprite sheet image and the grid dimensions
+       either via -l (lines) and -c (columns) together, or via
+       -t (tile) as a single COLUMNSxROWS argument.
+    2. The script calculates the width and height of each frame by
+       dividing the total image dimensions by the number of columns
+       and rows respectively.
+    3. Using ImageMagick's 'convert' with the '-crop' operator, each
+       frame is extracted and saved as a separate image file.
+    4. Output files are named with a base name and an index, optionally
+       zero-padded for proper sorting.
+
+REQUIREMENTS:
+    - ImageMagick (convert and identify commands)
+    - Bash 4.0 or later
+
+USAGE EXAMPLES:
+    ${SCRIPT_NAME} -t 4x5 spritesheet.png
+    ${SCRIPT_NAME} -l 5 -c 4 spritesheet.png
+    ${SCRIPT_NAME} -t 8x8 -o frame -f jpg spritesheet.png
+
+MNEMONICS:
+    -t, --tile    : Tile grid dimensions (COLUMNSxROWS)
+    -l, --line    : Number of lines (rows) in the grid
+    -c, --column  : Number of columns in the grid
+    -o, --output  : Output base name for extracted frames
+    -f, --format  : Output image format (png or jpg)
+    -p, --pad     : Zero-padding width for frame numbering
+    -d, --doc     : Display this documentation
+    -h, --help    : Display help message
+
+AUTHOR:
+    Felipe Facundes
+
+LICENSE:
+    GPLv3
+DOCUMENTATION
+
+# Define script name for documentation and messages
+SCRIPT_NAME="${0##*/}"
+
+# Message array for internationalization (English default)
+declare -A MESSAGES=(
+    [USAGE]="Usage: %s [OPTIONS] SPRITE_SHEET"
+    [DESC]="Slice a sprite sheet into individual frame images."
+    [OPT_TILE]="  -t, --tile COLSxROWS   Grid dimensions (e.g., 4x5)"
+    [OPT_LINE]="  -l, --line NUMBER      Number of lines (rows)"
+    [OPT_COLUMN]="  -c, --column NUMBER    Number of columns"
+    [OPT_OUTPUT]="  -o, --output NAME      Output base name (default: frame)"
+    [OPT_FORMAT]="  -f, --format FORMAT    Output format: png or jpg (default: png)"
+    [OPT_PAD]="  -p, --pad NUMBER       Zero-padding for frame numbers (default: 4)"
+    [OPT_DOC]="  -d, --doc              Show documentation"
+    [OPT_HELP]="  -h, --help             Show this help message"
+    [ERR_NO_INPUT]="Error: No sprite sheet provided."
+    [ERR_NO_DIM]="Error: You must specify either -t or both -l and -c."
+    [ERR_LINE_COL]="Error: -l requires -c and vice versa."
+    [ERR_INVALID_TILE]="Error: Invalid tile format. Use COLUMNSxROWS (e.g., 4x5)."
+    [ERR_INVALID_NUM]="Error: Invalid number: %s"
+    [ERR_INVALID_FORMAT]="Error: Invalid format '%s'. Use png or jpg."
+    [ERR_FILE_NOT_FOUND]="Error: File '%s' not found."
+    [ERR_NOT_IMAGE]="Error: '%s' is not a valid image."
+    [ERR_MAGICK]="Error: ImageMagick 'convert' and 'identify' are required."
+    [INFO_IMAGE]="Image: %s (%dx%d)"
+    [INFO_GRID]="Grid: %d columns x %d lines"
+    [INFO_FRAME]="Frame size: %dx%d"
+    [INFO_OUTPUT]="Output: %s_%%0%dd.%s"
+    [INFO_SLICING]="Slicing %d frames..."
+    [INFO_DONE]="Done. %d frames extracted."
+    [INFO_SKIP]="Skipping empty frame at row %d, column %d"
+)
+
+# Color definitions
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
+CYAN='\033[1;36m'
+NC='\033[0m'
+
+msg() {
+    local key="$1"
+    shift
+    printf "${MESSAGES[$key]}\n" "$@"
+}
+
+show_doc() {
+    local doc
+    doc=$(
+        sed -n "/: <<'DOCUMENTATION'/,/^DOCUMENTATION$/p" "$0" |
+        sed '1d;$d'
+    )
+    SCRIPT_NAME="$SCRIPT_NAME" envsubst '${SCRIPT_NAME}' <<<"$doc"
+    exit 0
+}
+
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${CYAN}$(msg USAGE "$SCRIPT_NAME")${NC}
+
+${YELLOW}$(msg DESC)${NC}
+
+${GREEN}Options:${NC}
+$(msg OPT_TILE)
+$(msg OPT_LINE)
+$(msg OPT_COLUMN)
+$(msg OPT_OUTPUT)
+$(msg OPT_FORMAT)
+$(msg OPT_PAD)
+$(msg OPT_DOC)
+$(msg OPT_HELP)
+
+${GREEN}Examples:${NC}
+  ${SCRIPT_NAME} -t 4x5 spritesheet.png
+  ${SCRIPT_NAME} -l 5 -c 4 spritesheet.png
+  ${SCRIPT_NAME} -t 8x8 -o frame -f jpg -p 3 spritesheet.png
+
+${GREEN}Notes:${NC}
+  - You must provide either -t OR both -l and -c.
+  - If -t is given, -l and -c are ignored.
+  - Output files are named <output>_<index>.<format>
+EOF
+    exit "${1:-0}"
+}
+
+validate_number() {
+    if ! [[ "$1" =~ ^[0-9]+$ ]] || [[ "$1" -lt 1 ]]; then
+        echo -e "${RED}$(msg ERR_INVALID_NUM "$1")${NC}" >&2
+        exit 1
+    fi
+}
+
+check_dependencies() {
+    for cmd in convert identify; do
+        if ! command -v "$cmd" &>/dev/null; then
+            echo -e "${RED}$(msg ERR_MAGICK)${NC}" >&2
+            exit 1
+        fi
+    done
+}
+
+# Defaults
+tile=""
+lines=""
+columns=""
+output_name="frame"
+format="png"
+pad=4
+input_file=""
+
+# Parse arguments
+if [[ $# -eq 0 ]]; then
+    echo -e "${RED}$(msg ERR_NO_INPUT)${NC}" >&2
+    show_help 1
+fi
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -t|--tile)
+            tile="$2"
+            if ! [[ "$tile" =~ ^[0-9]+x[0-9]+$ ]]; then
+                echo -e "${RED}$(msg ERR_INVALID_TILE)${NC}" >&2
+                exit 1
+            fi
+            columns="${tile%x*}"
+            lines="${tile#*x}"
+            validate_number "$columns"
+            validate_number "$lines"
+            shift 2
+            ;;
+        -l|--line)
+            lines="$2"
+            validate_number "$lines"
+            shift 2
+            ;;
+        -c|--column)
+            columns="$2"
+            validate_number "$columns"
+            shift 2
+            ;;
+        -o|--output)
+            output_name="$2"
+            shift 2
+            ;;
+        -f|--format)
+            format="$2"
+            if [[ "$format" != "png" && "$format" != "jpg" ]]; then
+                echo -e "${RED}$(msg ERR_INVALID_FORMAT "$format")${NC}" >&2
+                exit 1
+            fi
+            shift 2
+            ;;
+        -p|--pad)
+            pad="$2"
+            validate_number "$pad"
+            shift 2
+            ;;
+        -d|--doc)
+            show_doc
+            ;;
+        -h|--help)
+            show_help 0
+            ;;
+        -*)
+            echo -e "${RED}Error: Unknown option '$1'${NC}" >&2
+            show_help 1
+            ;;
+        *)
+            input_file="$1"
+            shift
+            ;;
+    esac
+done
+
+# Validate required arguments
+if [[ -z "$input_file" ]]; then
+    echo -e "${RED}$(msg ERR_NO_INPUT)${NC}" >&2
+    show_help 1
+fi
+
+if [[ -z "$tile" && ( -z "$lines" || -z "$columns" ) ]]; then
+    echo -e "${RED}$(msg ERR_NO_DIM)${NC}" >&2
+    show_help 1
+fi
+
+if [[ -n "$tile" && ( -n "$lines" || -n "$columns" ) ]]; then
+    # -t takes precedence, but we already set lines/columns from tile
+    :
+fi
+
+if [[ -n "$lines" && -z "$columns" ]] || [[ -z "$lines" && -n "$columns" ]]; then
+    echo -e "${RED}$(msg ERR_LINE_COL)${NC}" >&2
+    show_help 1
+fi
+
+# Check input file
+if [[ ! -f "$input_file" ]]; then
+    echo -e "${RED}$(msg ERR_FILE_NOT_FOUND "$input_file")${NC}" >&2
+    exit 1
+fi
+
+check_dependencies
+
+if ! identify -quiet "$input_file" &>/dev/null; then
+    echo -e "${RED}$(msg ERR_NOT_IMAGE "$input_file")${NC}" >&2
+    exit 1
+fi
+
+# Get image dimensions
+read -r img_width img_height < <(identify -format "%w %h" "$input_file")
+echo -e "${BLUE}$(msg INFO_IMAGE "$input_file" "$img_width" "$img_height")${NC}"
+echo -e "${BLUE}$(msg INFO_GRID "$columns" "$lines")${NC}"
+
+# Calculate frame dimensions
+frame_width=$((img_width / columns))
+frame_height=$((img_height / lines))
+echo -e "${BLUE}$(msg INFO_FRAME "$frame_width" "$frame_height")${NC}"
+echo -e "${BLUE}$(msg INFO_OUTPUT "$output_name" "$pad" "$format")${NC}"
+
+# Output directory (same as input file)
+output_dir="$(dirname "$input_file")"
+base_name="$(basename "$input_file" ."${input_file##*.}")"
+
+echo -e "${YELLOW}$(msg INFO_SLICING $((columns * lines)))${NC}"
+
+# Slice the sprite sheet
+count=0
+index=0
+for ((row=0; row<lines; row++)); do
+    for ((col=0; col<columns; col++)); do
+        x=$((col * frame_width))
+        y=$((row * frame_height))
+        out_file=$(printf "%s/%s_%0${pad}d.%s" "$output_dir" "$output_name" "$index" "$format")
+        convert "$input_file" -crop "${frame_width}x${frame_height}+${x}+${y}" +repage "$out_file" 2>/dev/null
+        if [[ -f "$out_file" ]]; then
+            ((count++))
+        fi
+        ((index++))
+    done
+done
+
+echo -e "${GREEN}$(msg INFO_DONE "$count")${NC}"
