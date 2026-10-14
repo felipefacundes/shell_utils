@@ -78,7 +78,7 @@ __fzf_alt_c_handler__() {
   local selected
   selected=$(
     __fzf_alt_c_commands__ | command sort -u |
-    FZF_DEFAULT_OPTS=$(__fzf_defaults "--reverse --prompt='Command> ' --no-sort" "${FZF_ALT_C_OPTS-} +m") \
+    FZF_DEFAULT_OPTS=$(__fzf_defaults "--exact --reverse --prompt='Command> ' --no-sort" "${FZF_ALT_C_OPTS-} +m") \
     FZF_DEFAULT_OPTS_FILE='' $(__fzfcmd)
   ) || return
   
