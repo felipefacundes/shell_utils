@@ -61,7 +61,11 @@ project_dir="${py_venv}/${PROJECT_NAME}"
 
 show_doc() {
     local doc
-    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    doc=$(
+        sed -n "/^: <<'[D]OCUMENTATION'/,/^[D]OCUMENTATION[[:space:]]*$/p" "$0" |
+        sed '1d;$d'
+    )
+    
     PYTHON_VERSION="$PYTHON_VERSION" SCRIPT_NAME="$SCRIPT_NAME" \
         envsubst '${SCRIPT_NAME} ${PYTHON_VERSION}' <<<"$doc"
     exit 0

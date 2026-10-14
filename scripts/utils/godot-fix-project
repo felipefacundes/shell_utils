@@ -103,7 +103,10 @@ readonly CLR_BOLD_GREEN="\033[1;32m"
 
 show_doc() {
     local doc
-    doc=$(sed -n "/^: <<'DOCUMENTATION'$/,/^DOCUMENTATION$/p" "$0" | sed '1d;$d')
+    doc=$(
+        sed -n "/^: <<'[D]OCUMENTATION'/,/^[D]OCUMENTATION[[:space:]]*$/p" "$0" |
+        sed '1d;$d'
+    )
     SCRIPT_NAME="$SCRIPT_NAME" \
     envsubst '${SCRIPT_NAME}' <<<"$doc"
     exit 0

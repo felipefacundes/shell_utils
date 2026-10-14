@@ -2,7 +2,7 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-: <<DOCUMENTATION
+: <<'DOCUMENTATION'
 Script for managing wallpapers with support for:
 - Sequential list with position cache
 - Random mode
@@ -48,7 +48,8 @@ ensure_wallpaper_dir() {
 
 # Documentation and help functions
 show_doc() {
-    sed -n '/^: <<DOCUMENTATION$/,/^DOCUMENTATION$/p' "${0}" | sed '1d;$d'
+    sed -n "/^: <<'[D]OCUMENTATION'/,/^[D]OCUMENTATION[[:space:]]*$/p" "$0" |
+    sed '1d;$d'
 }
 
 show_help() {
