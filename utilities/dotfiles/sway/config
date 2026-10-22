@@ -182,6 +182,8 @@ set $QuakeTerminal $Qterm -T $title
 #bindsym $sup+F12 [title="$title"] scratchpad show
 bindsym $sup+F12 exec bash -c '~/.shell_utils/scripts/sway-dropdown-terminal &'
 
+bindsym $sup+F11 exec bash -c '~/.shell_utils/scripts/sway-keepassxc-hide-show &'
+
 bindsym $sup+Button1 tiling_drag
 
 # Help functions
@@ -434,7 +436,9 @@ bindsym $sup+v exec bash -c '~/.shell_utils/scripts/print-screen -d &'
 # Screen Recorder
 #bindsym $ctrl+$alt+r exec bash -c '$term -e ffmpeg -video_size 1360x768 -framerate 25 -f x11grab -i :0.0 -f pulse -ac 2 -i default ${HOME}/Videos/Tela_$(date +%d-%m-%Y_%H:%M:%S).mkv'
 #bindsym $ctrl+$alt+r exec obs
-bindsym $ctrl+$alt+r exec bash <($term -e wf-recorder -c libx265 --audio=`LC_ALL=c pactl list sources | head -n 3 | tail -n1 | awk '{print $2}'` pulse -f "${HOME}/Videos/Capture/WScreen_$(date +%d-%m-%Y_%H:%M:%S).mkv")
+
+# bindsym $ctrl+$alt+r exec bash <($term -e wf-recorder -c libx265 --audio=`LC_ALL=c pactl list sources | head -n 3 | tail -n1 | awk '{print $2}'` pulse -f "${HOME}/Videos/Capture/WScreen_$(date +%d-%m-%Y_%H:%M:%S).mkv")
+bindsym $ctrl+$alt+r exec bash -c '~/.shell_utils/scripts/screen-record &'
 
 ####################################################################
 ####################### W O R K S P A C E S ########################
@@ -692,9 +696,10 @@ exec bash -c 'cadmus &' &
 
 # Portal and permissions
 # sudo systemctl enable --now seatd
-exec bash -c 'systemctl --user enable --now xdg-desktop-portal xdg-desktop-portal-gtk 2>/dev/null &' &
+#exec bash -c 'systemctl --user enable --now xdg-desktop-portal xdg-desktop-portal-gtk 2>/dev/null &' &
 exec bash -c 'systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP 2>/dev/null &' &
 exec bash -c 'dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP 2>/dev/null &' & 
+exec bash -c 'systemctl --user start xdg-desktop-portal 2>/dev/null &' &
 
 # Fix pulseaudio
 exec bash -c '~/.shell_utils/scripts/fix-pulseaudio &' &

@@ -1,0 +1,2 @@
+for_window [con_id=20] move to layer bottom
+for_window [con_id=31] move to layer bottom

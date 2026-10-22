@@ -1,0 +1,698 @@
+#!/bin/bash
+# 😉 Crédito: Felipe Facundes
+#  Telegram: @FeFacundes
+#  Telegram Group: t.me/winehq_linux
+# 😅 Dúvidas: https://github.com/swaywm/sway/wiki
+#          https://i3wm.org/docs/userguide.html
+#          https://manned.org/sway.5
+
+####################################################################
+################ P A P E L  D E  P A R E D E #######################
+####################################################################
+
+# Para o papel de parede aleatório use o comando $ctrl+alt+w
+# Para mudar o caminho da pasta é em ajustes e ao final em executar.
+# Ou, use o modo fixo, como está logo abaixo, só descomentar:
+#output * bg ${HOME}/Pictures/Wallpapers/Floresta.jpg fill
+
+####################################################################
+##################### X W A Y L A N D ##############################
+xwayland enable
+
+####################################################################
+##################### E N T R A D A S ##############################
+####################################################################
+
+# Execute:     swaymsg -t get_inputs
+#              man sway-input
+# Para saber a identificação do seu dispositivo, e manual de configuração dos mesmos.
+
+# Teclado
+input * xkb_layout "br"
+input * xkb_numlock enabled
+#input * xkb_variant "colemak,,typewriter"
+#input * xkb_options "grp:win_space_toggle"
+#input "MANUFACTURER1 Keyboard" xkb_model "pc101"
+
+# Touchpad
+input "2:14:ETPS/2_Elantech_Touchpad" {
+    dwt enabled
+    tap enabled
+    drag enabled
+#    tap_button_map lmr
+    tap_button_map lrm
+    middle_emulation enabled
+#    natural_scroll enabled
+    pointer_accel 0.2
+    accel_profile adaptive
+}
+
+# Touch Screen
+input "1003:33815:Atmel_Atmel_maXTouch_Digitizer" {
+    events disabled
+}
+
+#input "2:10:TPPS/2_Elan_TrackPoint" {
+#    pointer_accel 1.0
+#    accel_profile adaptive
+#}
+
+####################################################################
+######################### S A Í D A S ##############################
+####################################################################
+
+# Execute:     swaymsg -t get_outputs
+#              man sway-output
+# Para saber a identificação dos monitores
+
+output HDMI-A-1 {
+#res 1360x768
+mode 1920x1080@144Hz
+# Observe que o x-pos esquerdo do eDP1 é 1600 = 3200/2 e o y-pos inferior é 1020 + (1800/2) = 1920 = 0 + 1920
+#pos 0 1020
+# subpixel rgb|bgr|vrgb|vbgr|none
+#subpixel rgb
+# background|bg <color> solid_color
+# Pode ser "90", "180", "270" para rotação; ou "flipped", "flipped-90", "flipped-180", "flipped-270" para aplicar uma rotação e inverter, ou "normal"
+transform 180
+#dpms on
+#scale 2
+}
+
+output eDP-1 { 
+
+disable 
+
+}
+####################################################################
+######################### A J U S T E S ############################
+####################################################################
+focus_follows_mouse no
+
+set $gaps_inner_default 5
+set $gaps_outer_default 5
+gaps inner $gaps_inner_default
+gaps outer $gaps_outer_default
+
+set $alt Mod1
+set $sup Mod4
+set $ctrl Control
+set $paper bash -c 'swww img "$(find ${HOME}/Pictures/Pictures_of_HardDisk/wallpapers -name "*[jJpP][nNpP][gG]" | shuf -n1)" &'
+
+# Para já iniciar no modo tabbed, ao estilo openbox, mas pode ser:  workspace_layout default|stacking|tabbed
+
+# Modificar espaçamento interno no modo tabbed
+workspace_layout tabbed
+
+# Alinhar o título da janela:  title_align left|center|right
+title_align center
+# Fonte do título das janelas
+font pango:Poppins Italic 9
+#font pango:Fantasque Sans Mono 7
+
+#######################################################
+##################### S W A Y  FX #####################
+#######################################################
+# https://github.com/head-gardener/swayfx
+#blur enable
+#blur_passes 1
+#blur_radius 6
+#corner_radius 28
+#shadows enable
+#shadows_on_csd enable
+#shadow_blur_radius 30
+#shadow_color #88000088
+#default_dim_inactive 0.20
+#titlebar_separator disable
+
+#######################################################
+##################### B O R D A S #####################
+#######################################################
+# só funciona no i3 e não no sway: new_window pixel 0
+#smart_borders on
+#smart_gaps on
+default_border normal 3
+default_border pixel 3
+#default_border none
+default_floating_border pixel 3
+#mode hide
+#hide_edge_borders smart
+#hide_edge_borders both
+#hide_edge_borders --i3 both
+#hide_edge_borders --i3 smart
+
+floating_modifier $sup
+
+# smart|urgent|focus|none
+focus_on_window_activation focus
+
+### Outras opções
+#floating_minimum_size 75 x 50
+#floating_maximum_size -1 x -1
+
+####################################################################
+####################### C O R E S ##################################
+####################################################################
+
+# só funciona no i3 e não no sway: set_from_resource $bg background
+
+#set_from_resource $bg background
+
+# classe                borda   fundo   texto   ind.    borda filho
+client.focused          #aeff00  #474747 #ffffff    #aeff00    #aeff00
+client.focused_inactive #ffcf7c  #453824 #ffffff    #ffcf7c    #ffcf7c
+client.unfocused        #ffcf7c  #453824 #ffffff    #ffcf7c    #fa8100
+client.urgent           #2f343a  #900000 #ffffff    #900000    #900000
+client.placeholder      #000000  #0c0c0c #ffffff    #000000    #0c0c0c
+
+#shock#f700ff | #abacate#aeff00 | #semisalmon~laranja~fosco#ffcf7c
+
+####################################################################
+###################### A T A L H O S ###############################
+####################################################################
+### Use o comando:  xev  para detectar qual é à sua tecla especial.
+
+# Set your preferred terminal emulator# Give it a title (for dropdown terminal)
+set $title QuakeTerminal
+set $Qterm alacritty
+set $term terminator
+set $QuakeTerminal $Qterm -T $title
+# Execute your preferred terminal emulator in scratchpad (for dropdown terminal)
+#exec $QuakeTerminal
+#for_window [title="$title"] move container to scratchpad
+
+# Bind your preferred shortcut to show / hide the terminal  
+#bindsym $sup+F12 [title="$title"] scratchpad show
+bindsym $sup+F12 exec bash -c '~/.shell_utils/scripts/sway_dropdown_terminal.sh'
+
+bindsym $sup+Button1 tiling_drag
+
+# Help functions
+bindsym $ctrl+$alt+h exec bash -c '~/.shell_utils/scripts/help_with_rofi'
+
+# Simulate awful.tag.history.restore from Awesome
+bindsym $sup+apostrophe exec bash -c '~/.shell_utils/scripts/sway_workspace_history.sh -b'
+
+# Shortcut to open terminal in Nautilus directory
+bindsym $sup+F4 exec bash -c '~/.shell_utils/scripts/custom_terminal_for_nautilus.sh'
+
+# Translate to Clipboard
+bindsym $sup+Shift+T exec bash -c '~/.shell_utils/scripts/translate_to_clipboard'
+
+# Reiniciar o sistema
+bindsym $ctrl+$sup+backspace exec bash -c 'openrc-shutdown --reboot now; systemctl reboot'
+
+# Matar janela
+bindsym $ctrl+$alt+Escape exec xkill
+
+# Xpad (Postit)
+bindsym $sup+$alt+p exec bash -c 'xpad -t &'
+
+# Clipboard wayland
+bindsym $ctrl+$alt+c exec bash -c 'pkill -9 wofi; cliphist list | wofi --show dmenu | cliphist decode | wl-copy'
+
+# TaskManager (Gerenciador de Janelas)
+bindsym $ctrl+Escape exec $term -T HTOP -e htop
+bindsym $ctrl+$sup+Escape exec $term -T VTOP -e vtop
+bindsym $ctrl+Shift+Escape exec $term -T nvtop -e nvtop
+
+# Desligar o sistema
+bindsym $ctrl+Shift+$alt+delete exec bash -c 'openrc-shutdown --poweroff now; systemctl poweroff'
+bindsym $ctrl+$alt+d exec bash -c '~/.shell_utils/scripts/rofi-power-menu-simple'
+
+# Mouse Scroll
+bindsym $sup+w exec wlrctl pointer scroll -10 0 # Mouse scroll UP # xdotool click 4
+bindsym $sup+s exec wlrctl pointer scroll 10 0  # Mouse scroll Down # xdotool click 5
+# Mouse Click
+bindsym $sup+KP_9 exec wlrctl pointer click right               
+
+bindsym $sup+Next exec wlrctl pointer click right
+bindsym $sup+KP_7 exec wlrctl pointer click left
+bindsym $sup+Delete exec wlrctl pointer click left
+# Move Mouse
+bindsym $sup+KP_8 exec wlrctl pointer move 0 -10
+bindsym $sup+Up exec wlrctl pointer move 0 -10
+bindsym $ctrl+$sup+KP_8 exec wlrctl pointer move 0 -40
+bindsym $ctrl+$sup+Up exec wlrctl pointer move 0 -40
+bindsym $sup+KP_2 exec wlrctl pointer move 0 10
+bindsym $sup+Down exec wlrctl pointer move 0 10
+bindsym $ctrl+$sup+KP_2 exec wlrctl pointer move 0 40
+bindsym $ctrl+$sup+Down exec wlrctl pointer move 0 40
+bindsym $sup+KP_4 exec wlrctl pointer move -10 0
+bindsym $sup+Left exec wlrctl pointer move -10 0
+bindsym $ctrl+$sup+KP_4 exec wlrctl pointer move -40 0
+bindsym $ctrl+$sup+Left exec wlrctl pointer move -40 0
+bindsym $sup+KP_6 exec wlrctl pointer move 10 0
+bindsym $sup+Right exec wlrctl pointer move 10 0
+bindsym $ctrl+$sup+KP_6 exec wlrctl pointer move 40 0
+bindsym $ctrl+$sup+Right exec wlrctl pointer move 40 0
+
+# Atualizar o sistema
+bindsym $sup+u exec $term -e sudo pacman -Syyu --noconfirm
+
+# Telegram
+bindsym $sup+$alt+t exec bash -c '64gram-desktop &' #telegram-desktop
+
+# Mude seu papel de parede  #antes mude o caminho das imagens em "ajustes" (3ª sessão)
+bindsym $ctrl+$alt+w exec $paper
+
+# Volume Pulseaudio
+bindsym XF86AudioRaiseVolume exec bash -c '~/.shell_utils/scripts/volume_with_osd.sh -v +5% &'
+bindsym $sup+Shift+Up exec bash -c '~/.shell_utils/scripts/volume_with_osd.sh -v +5% &'
+bindsym XF86AudioLowerVolume exec bash -c '~/.shell_utils/scripts/volume_with_osd.sh -v -5% &'
+bindsym $sup+Shift+Down exec bash -c '~/.shell_utils/scripts/volume_with_osd.sh -v -5% &'
+bindsym XF86AudioMute exec bash -c '~/.shell_utils/scripts/volume_with_osd.sh -m &'
+bindsym $sup+Shift+m exec bash -c '~/.shell_utils/scripts/volume_with_osd.sh -m &'
+
+# Volume Alsa
+#bindsym --locked XF86AudioLowerVolume exec amixer set Master 5%- unmute && pkill -x -RTMIN+11 waybar
+#bindsym --locked XF86AudioRaiseVolume exec amixer set Master 5%+ unmute && pkill -x -RTMIN+11 waybar
+#bindsym XF86AudioMute exec "amixer set Master toggle"
+#bindsym XF86AudioMicMute exec "amixer set Capture toggle"
+
+# Pavucontrol
+bindsym $sup+p exec pavucontrol
+
+# Brilho
+bindsym XF86MonBrightnessUp exec "light -A 5%"
+bindsym $sup+Shift+Right exec "light -A 5%"
+bindsym XF86MonBrightnessDown exec "light -U 5%"
+bindsym $sup+Shift+Left exec "light -U 5%"
+bindsym XF86ScreenSaver exec "echo 0 > /sys/class/backlight/intel_backlight/brightness"
+#bindsym --whole-window $sup+Shift+button4 exec "light -A 2"
+#bindsym --whole-window $sup+Shift+button5 exec "light -U 2"
+#bindsym XF86MonBrightnessUp exec /bin/xbacklight -dec 15
+#bindsym XF86MonBrightnessDown exec /bin/xbacklight -inc 15
+
+# Playerctl (gestor de players multimídia)
+bindsym Shift+space exec playerctl play-pause
+
+# Min Browser
+bindsym $ctrl+$sup+m exec min
+
+# Open With MPV
+bindsym $ctrl+$alt+m exec bash -c '~/.shell_utils/scripts/open_video_with_mpv.sh &'
+
+# quickmark add
+bindsym $sup+$ctrl+a exec bash -c '~/.shell_utils/scripts/quickmarks -a &'
+# quickmark search
+bindsym $sup+$ctrl+s exec bash -c '~/.shell_utils/scripts/quickmarks -s &'
+
+# Firefox
+bindsym $ctrl+$sup+f exec bash -c '~/.shell_utils/scripts/check_firefox.sh &'
+
+# https://www.qwant.com
+bindsym $ctrl+$sup+c exec bash -c 'chromium &'
+
+#https://www.ecosia.org/
+bindsym $ctrl+$sup+e exec bash -c 'firefox --new-tab https://www.ecosia.org/ &'
+
+#https://duckduckgo.com/
+bindsym $ctrl+$sup+d exec bash -c 'firefox --new-tab https://duckduckgo.com/ &'
+
+# Arquivos
+bindsym Shift+$sup+f exec xdg-open ~
+bindsym $sup+n exec xdg-open ~
+bindsym $sup+Shift+e exec xdg-open ~
+
+# Inkscape
+bindsym $ctrl+$sup+i exec bash -c 'inkscape &'
+
+# Gimp
+bindsym $ctrl+$sup+g exec bash -c 'gimp &'
+
+# Iniciar terminal e previnir de coredump com a regra: for_window [app_id=".*$term$"] floating enable, resize set 1900 1020, split horizontal
+bindsym $sup+t exec bash -c "$term & swaymsg [app_id=".*$term$"] -t command split horizontal & sleep 0.5 && swaymsg [app_id=".*$term$"] -t command resize set width 1920px height 1020px &"
+
+#
+bindsym $sup+y exec bash -c 'yakuake &'
+bindsym $sup+Return exec $Qterm
+bindsym $sup+Shift+x exec bash -c 'xterm &'
+
+# Iniciar Transmission
+bindsym $ctrl+$alt+t exec bash -c 'transmission-gtk &'
+
+# "Assasquinar" janela (mata essa "pomba" seu "assasquino")
+bindsym $alt+F4 kill
+
+# Mudar foco
+bindsym $alt+h focus left
+bindsym $alt+$sup+Left focus left
+bindsym $sup+Shift+Tab focus left
+bindsym $alt+j focus down
+bindsym $alt+$sup+Down focus down
+bindsym $sup+Tab exec bash -c '~/.shell_utils/scripts/sway_all_windows_focused.sh'
+bindsym $alt+k focus up
+bindsym $alt+$sup+Up focus up
+bindsym $alt+l focus right
+bindsym $alt+$sup+Right focus right
+bindsym $alt+Tab focus right
+
+# Entrar em modo tela cheia
+bindsym $alt+F11 fullscreen toggle
+
+# change container layout (stacked, tabbed, toggle split)
+bindsym $sup+Shift+s layout toggle split
+bindsym $sup+a layout toggle tabbed split
+bindsym $sup+Shift+w layout tabbed
+bindsym $sup+Shift+a layout toggle tabbed stacking split
+bindsym $sup+Shift+Space layout toggle tabbed stacking split
+
+# Float resize
+bindsym $sup+Shift+h exec swaymsg -t command resize shrink width 50px
+bindsym $sup+Shift+k exec swaymsg -t command resize grow height 50px
+bindsym $sup+Shift+j exec swaymsg -t command resize shrink height 50px
+bindsym $sup+Shift+l exec swaymsg -t command resize grow width 50px
+bindsym $sup+backslash exec bash -c 'f=/tmp/sway_toggle_float_size; if [[ ! -f "$f" ]]; then swaymsg -t command resize set width 1900px height 1020px; touch "$f"; else swaymsg -t command resize set width 1000px height 800px; rm "$f"; fi'
+
+# Move float
+bindsym $sup+h exec bash -c '~/.shell_utils/scripts/sway_move_position.sh h'
+bindsym $sup+l exec bash -c '~/.shell_utils/scripts/sway_move_position.sh l'
+bindsym $sup+k exec bash -c '~/.shell_utils/scripts/sway_move_position.sh k'
+bindsym $sup+j exec bash -c '~/.shell_utils/scripts/sway_move_position.sh j'
+
+# Tela maximizada/floating
+bindsym $sup+f floating toggle
+bindsym button3 floating toggle
+
+# change focus between tiling / floating windows
+bindsym $sup+space focus mode_toggle
+bindsym $alt+Escape focus mode_toggle
+
+# zoom
+bindsym $sup+Equal exec bash -c '~/.shell_utils/scripts/sway_zoom.sh +'
+bindsym $sup+Minus exec bash -c '~/.shell_utils/scripts/sway_zoom.sh -'
+
+# Centro
+bindsym $sup+Shift+c move position center
+bindsym $sup+c move position center
+
+# Sway reload
+bindsym $sup+$ctrl+r reload
+
+# Alterar config da SwayWM
+bindsym $ctrl+$alt+Shift+c exec code ~/.config/sway/config
+
+# Matar Sway
+bindsym $ctrl+$sup+q exec pkill -9 sway
+
+# Sway Exit
+#bindsym $ctrl+$alt+backspace exit
+bindsym $ctrl+$alt+backspace exec bash -c 'pkill -9 -u $USER'
+
+# Lançadores de programas
+bindsym $sup+x exec bash -c '~/.config/rofi/rofimenu2.sh &'
+bindsym $alt+F2 exec bash -c 'rofi -no-lazy-grab -show drun -modi drun -theme ~/.config/rofi/launchers/misc/row_dock.rasi &'
+bindsym $alt+F3 exec bash -c 'rofi -no-lazy-grab -show drun -modi drun -theme ~/.config/rofi/launchers/misc/appdrawer.rasi &'
+bindsym $sup+F1 exec bash -c 'rofi -no-lazy-grab -show drun -modi drun -theme ~/.config/rofi/launchers/misc/screen.rasi &'
+bindsym $sup+z exec  bash -c 'rofi -show drun -font "Poppins 13" &'
+bindsym $alt+F1 exec bash -c "rm ~/.jgmenu-lockfile ; jgmenu"
+bindsym $ctrl+space exec bash -c 'synapse &'
+
+# Lock
+bindsym $ctrl+$alt+l bash -c 'swaylock &'
+
+# Screenshot
+#bindsym Print exec bash -c 'grim -t png - | wl-copy && wl-paste > "${HOME}/Pictures/Capture/$(date +"%Y-%m-%d %H:%M:%S") - Capture.png"'
+#bindsym Shift+Print exec bash -c 'slurp | grim -g - - | tee "${HOME}/Pictures/Capture/$(date +"%Y-%m-%d %H:%M:%S") - Capture.png" | wl-copy'
+bindsym Print exec bash -c '~/.shell_utils/scripts/print_screen.sh -p -msg &'
+bindsym $alt+Print exec bash -c '~/.shell_utils/scripts/print_screen.sh -ap -msg &'
+bindsym Shift+Print exec bash -c '~/.shell_utils/scripts/print_screen.sh -sp -msg &'
+bindsym $sup+v exec bash -c '~/.shell_utils/scripts/print_screen.sh -d &'
+
+# Gravar tela
+#bindsym $ctrl+$alt+r exec bash -c '$term -e ffmpeg -video_size 1360x768 -framerate 25 -f x11grab -i :0.0 -f pulse -ac 2 -i default ${HOME}/Videos/Tela_$(date +%d-%m-%Y_%H:%M:%S).mkv'
+#bindsym $ctrl+$alt+r exec obs
+bindsym $ctrl+$alt+r exec bash <($term -e wf-recorder -c libx265 --audio=`LC_ALL=c pactl list sources | head -n 3 | tail -n1 | awk '{print $2}'` pulse -f "${HOME}/Videos/Capture/WScreen_$(date +%d-%m-%Y_%H:%M:%S).mkv")
+
+####################################################################
+######################### A R E A S ################################
+####################################################################
+
+set $ws1 "1"
+set $ws2 "2"
+set $ws3 "3"
+set $ws4 "4"
+set $ws5 "5"
+set $ws6 "6"
+set $ws7 "7"
+set $ws8 "8"
+set $ws9 "9"
+set $ws10 "10"
+################
+#set $ws1 ""
+#set $ws2 ""
+#set $ws3 ""
+#set $ws4 ""
+#set $ws5 ""
+#set $ws6 ""
+#set $ws7 ""
+#set $ws8 ""
+#set $ws9 ""
+#set $ws10 ""
+
+# Navegar pelas workspaces
+bindsym $sup+1 workspace number $ws1
+bindsym $sup+2 workspace number $ws2
+bindsym $sup+3 workspace number $ws3
+bindsym $sup+4 workspace number $ws4
+bindsym $sup+5 workspace number $ws5
+bindsym $sup+6 workspace number $ws6
+bindsym $sup+7 workspace number $ws7
+bindsym $sup+8 workspace number $ws8
+bindsym $sup+9 workspace number $ws9
+bindsym $sup+0 workspace number $ws10
+
+# Mover foco para as workspace
+bindsym $sup+Shift+1 move container to workspace number $ws1
+bindsym $sup+Shift+2 move container to workspace number $ws2
+bindsym $sup+Shift+3 move container to workspace number $ws3
+bindsym $sup+Shift+4 move container to workspace number $ws4
+bindsym $sup+Shift+5 move container to workspace number $ws5
+bindsym $sup+Shift+6 move container to workspace number $ws6
+bindsym $sup+Shift+7 move container to workspace number $ws7
+bindsym $sup+Shift+8 move container to workspace number $ws8
+bindsym $sup+Shift+9 move container to workspace number $ws9
+bindsym $sup+Shift+0 move container to workspace number $ws10
+
+bindsym $sup+d workspace back_and_forth
+
+####################################################################
+############## R E G R A S # D A S # J A N E L A S #################
+####################################################################
+#
+######## No i3 o modo floating seria assim:
+# for_window [class="($term)"]floating enable, move position center
+#
+######## No sway o modo floating é diferente, não precisa da opção "move position center" é assim:
+# for_window [app_id=".*$term$"] floating enable
+#
+######## Ou com (title / app_id ou class), dependerá do progrma, ou vai funcionar de um modo ou de outro,
+######## No entanto, às vezes precisa de uma parâmetro especial, como: ".*progrma$", ou simplesmente: "progrma", exemplos:
+
+# Termite (Terminal)
+#for_window [app_id=".*termite$"] floating enable
+
+# Default terminal
+#for_window [app_id=".*$term$"] floating enable #, resize set 1900 1020, split horizontal
+
+# Telegram (Desktop)
+#for_window [title=".*telegram$"] floating enable
+
+# Nemo (Gerenciador de arquivos)
+#for_window [app_id="nemo"] floating enable
+
+# Nautilus (Gerenciador de arquivos)
+#for_window [title="Nautilus"] floating enable
+
+# Orage (Calendário)
+#for_window [class=".*orage$" instance=".*orage$" title="Orage" app_id=".*orage$"] floating enable
+
+# MPV (Video Player)
+for_window [title=".*mpv$"] floating enable
+
+# Xpad (Postit)
+for_window [app_id="xpad"] split vertical
+#assign [app_id="xpad"] $ws6
+
+# Qbittorrent
+for_window [app_id="qbittorrent"] floating enable
+assign [app_id="qbittorrent"] $ws5
+
+# Howl (IDE)
+#for_window [app_id=".*howl$"] floating enable
+
+# Viewnior (Gerenciador de imagens)
+#for_window [class="Viewnior"] floating enable
+
+####################################################################
+######################### M O V E R ################################
+####################################################################
+# Modo de mover janelas
+mode "move" {
+    # Usar as teclas hjkl para mover a janela
+    bindsym h move left
+    bindsym a move left
+    bindsym Left move left
+    bindsym j move down
+    bindsym s move down
+    bindsym Down move down
+    bindsym k move up
+    bindsym w move up
+    bindsym Up move up
+    bindsym l move right
+    bindsym d move right
+    bindsym Right move right
+
+    # Pressionar Enter ou Escape para sair do modo de mover
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $sup+m mode "default"
+    bindsym $sup+a mode "default"
+    bindsym $sup+w mode "default"
+    bindsym $alt+z mode "default"
+    bindsym $sup+$ctrl+w mode "default"
+        
+}
+
+# Atalho para entrar no modo mover (por exemplo, $sup+m)
+bindsym $sup+m mode "move"
+bindsym $sup+$ctrl+w mode "move"
+
+####################################################################
+################# R E D I M E N S I O N A R ########################
+####################################################################
+# resize window (you can also use the mouse for that)
+mode "resize" {
+        # These bindings trigger as soon as you enter the resize mode
+
+        # Pressing left will shrink the window’s width.
+        # Pressing right will grow the window’s width.
+        # Pressing up will shrink the window’s height.
+        # Pressing down will grow the window’s height.
+        bindsym h resize shrink width 10 px or 10 ppt
+        bindsym a resize shrink width 10 px or 10 ppt
+        bindsym j resize grow height 10 px or 10 ppt
+        bindsym w resize grow height 10 px or 10 ppt
+        bindsym k resize shrink height 10 px or 10 ppt
+        bindsym s resize shrink height 10 px or 10 ppt
+        bindsym l resize grow width 10 px or 10 ppt
+        bindsym d resize grow width 10 px or 10 ppt
+
+        # same bindings, but for the arrow keys
+        bindsym Left resize shrink width 10 px or 10 ppt
+        bindsym Down resize grow height 10 px or 10 ppt
+        bindsym Up resize shrink height 10 px or 10 ppt
+        bindsym Right resize grow width 10 px or 10 ppt
+
+        # back to normal: Enter or Escape or $sup+r
+        bindsym Return mode "default"
+        bindsym Escape mode "default"
+        bindsym $sup+r mode "default"
+        bindsym $sup+a mode "default"
+        bindsym $sup+w mode "default"
+        bindsym $alt+z mode "default"
+        bindsym $sup+$ctrl+w mode "default"
+}
+bindsym $sup+r mode "resize"
+
+####################################################################
+######################### G A P S ##################################
+####################################################################
+# Activate smart borders when no gaps present
+
+set $mode_gaps Gaps: (o) outer, (i) inner
+set $mode_gaps_outer Outer Gaps: +|-|0|d (local), Shift + +|-|0|d (global)
+set $mode_gaps_inner Inner Gaps: +|-|0|d (local), Shift + +|-|0|d (global)
+bindsym $sup+Shift+g mode "$mode_gaps"
+
+mode "$mode_gaps" {
+        bindsym o      mode "$mode_gaps_outer"
+        bindsym i      mode "$mode_gaps_inner"
+        bindsym Return mode "default"
+        bindsym Escape mode "default"
+}
+
+mode "$mode_gaps_inner" {
+        bindsym plus  gaps inner current plus 5
+        bindsym minus gaps inner current minus 5
+        bindsym 0     gaps inner current set 0
+
+        bindsym Shift+plus  gaps inner all plus 5
+        bindsym Shift+minus gaps inner all minus 5
+        bindsym Shift+0     gaps inner all set 0
+
+        bindsym d gaps inner current set $gaps_inner_default, mode "default"
+        bindsym Shift+d gaps inner all set $gaps_inner_default, mode "default"
+
+        bindsym Return mode "default"
+        bindsym Escape mode "default"
+}
+
+mode "$mode_gaps_outer" {
+        bindsym plus  gaps outer current plus 5
+        bindsym minus gaps outer current minus 5
+        bindsym 0     gaps outer current set 0
+
+        bindsym Shift+plus  gaps outer all plus 5
+        bindsym Shift+minus gaps outer all minus 5
+        bindsym Shift+0     gaps outer all set 0
+
+        bindsym d gaps outer current set $gaps_outer_default, mode "default"
+        bindsym Shift+d gaps outer all set $gaps_outer_default, mode "default"
+
+        bindsym Return mode "default"
+        bindsym Escape mode "default"
+}
+
+####################################################################
+####################### E X E C U T A R ############################
+####################################################################
+# xss-lock grabs a logind suspend inhibit lock and will use i3lock to lock the
+# screen before suspend. Use loginctl lock-session to lock your screen.
+
+# Kernel Update
+exec bash -c '~/.shell_utils/scripts/kernel_check_update.sh &' &
+
+# Simple Battery Manager
+exec bash -c '~/.shell_utils/scripts/simple_battery_manager.sh &' &
+
+# QuakeTerminal daemon
+#exec bash -c '~/.shell_utils/scripts/sway_dropdown_terminal_daemon.sh &' &
+
+# Set a random wallpaper
+exec bash -c 'swww-daemon & sleep 2; swww img "$(find ${HOME}/Pictures/Pictures_of_HardDisk/wallpapers -name "*[jJpP][nNpP][gG]" | shuf -n1)"' &
+
+# waybar
+exec bash -c '~/.shell_utils/scripts/persistent_pid.sh /bin/waybar &' & 
+
+# Others
+exec bash -c 'mako &' &
+exec bash -c '~/.shell_utils/scripts/persistent_pid.sh /bin/anyremote -f /usr/share/anyremote/cfg-data/Server-mode/all-in-one2.cfg -s socket:5197 &' &
+exec bash -c '~/.shell_utils/scripts/persistent_pid.sh /bin/minidlnad -f ${HOME}/.config/minidlna/minidlna.conf -P ${HOME}/.config/minidlna/minidlna.pid &' &
+exec bash -c '~/.shell_utils/scripts/gnome-keyring-fix.sh &' &
+exec bash -c 'LANG=en /usr/lib/xdg-desktop-portal-gtk & LANG=en /usr/lib/xdg-desktop-portal-gnome &' &
+exec bash -c 'cadmus &' &
+
+# Fix pulseaudio
+exec bash -c '~/.shell_utils/scripts/fix_pulseaudio.sh &' &
+
+# Simulate awful.tag.history.restore from Awesome
+exec bash -c '~/.shell_utils/scripts/sway_workspace_history.sh -d' &
+
+# Start a sound
+#exec pactl set-card-profile 0 output:analog-stereo+input:analog-stereo &
+#exec pactl upload-sample "${HOME}/.local/songs/media-center-family-facundes.ogg" &
+#exec paplay "${HOME}/.local/songs/media-center-family-facundes.ogg" --volume=76767 &
+
+# sets xwayland scale
+exec xprop -root -f _XWAYLAND_GLOBAL_OUTPUT_SCALE 32c -set _XWAYLAND_GLOBAL_OUTPUT_SCALE 2 &
+
+#dbus-update-activation-environment --systemd --all &
+exec systemctl --user import-environment WAYLAND_DISPLAY & dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE &
+
+# https://github.com/swaywm/swaylock/issues/99
+#exec swayidle -w timeout 300 'imv-wayland -x -t 1 -f /usr/share/backgrounds/sway/Sway_Wallpaper_Blue_1920x1080.png & sleep 0.25 ; swaymsg "output * dpms off"' resume 'swaymsg "output * dpms on"' timeout 315 'swaylock -f' before-sleep 'swaylock -f ; sleep 1' &
+
+# Clipboard wayland
+exec bash -c 'wl-paste --type image --watch cliphist store & wl-paste --type text --watch cliphist -max-dedupe-search 750 -max-items 750 store &' &

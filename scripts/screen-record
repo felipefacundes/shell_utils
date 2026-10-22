@@ -5,17 +5,17 @@
 : <<'DOCUMENTATION'
 Screen Record
 
-This script is a video screen capture tool that uses FFmpeg to record the user's screen. 
-The purpose of the script is to provide a flexible and customizable tool for capturing the user's 
+This script is a video screen capture tool that uses FFmpeg to record the user's screen.
+The purpose of the script is to provide a flexible and customizable tool for capturing the user's
 screen in different formats and configurations.
 
 The strengths of the script include:
-1. Resolution configuration: The script allows the user to define the screen capture resolution, 
+1. Resolution configuration: The script allows the user to define the screen capture resolution,
 either using the current monitor resolution or setting a custom resolution.
 2. Frame rate configuration: The script allows the user to set the screen capture frame rate, with a default value of 15 fps.
-3. Video codec configuration: The script allows the user to choose between different video codecs, including libx264, libx265, 
+3. Video codec configuration: The script allows the user to choose between different video codecs, including libx264, libx265,
 libvpx-vp9, mpeg4, mpeg2video, and libsvtav1.
-4. Audio sampling rate configuration: The script allows the user to set the audio sampling rate for the screen capture, 
+4. Audio sampling rate configuration: The script allows the user to set the audio sampling rate for the screen capture,
 with a default value of 22050 Hz.
 5. Muxing support: The script supports muxing functionality, which allows the user to define the maximum muxing queue size.
 
@@ -25,10 +25,12 @@ The script's capabilities include:
 * Supporting muxing functionality to control the muxing queue size.
 * Allowing the user to define the resolution, frame rate, video codec, and audio sampling rate of the screen capture.
 * Providing a help output to help the user understand the available options and settings.
+* Automatic VAAPI H.264 hardware encoding detection and prioritization on both Wayland and X11.
+* Automatic fallback to software encoding when screen rotation is detected (wf-recorder VAAPI limitation).
 DOCUMENTATION
 
 # Define a signal handler to capture SIGINT (Ctrl+C)
-trap 'kill $(jobs -p)' SIGINT #SIGTERM #SIGHUP #SIGINT #SIGQUIT #SIGABRT #SIGKILL #SIGALRM #SIGTERM
+trap 'kill $(jobs -p)' SIGINT
 
 # Function to detect Wayland session
 function is_wayland {
@@ -46,20 +48,20 @@ Options:
     -ar, -audio_rate <rate>             Set audio sampling rate (default: 22050)
     -muxing, -muxing_enabled <on/off>   Enable or disable video muxing (default: off)
     -max_muxing <value>                 Set maximum muxing queue size (default: 9999)
-    -vc, -video_codec <codec>           Set video codec (default: libx264)
+    -vc, -video_codec <codec>           Set video codec (default: libx264 / h264_vaapi if supported)
     -list, -codec_list                  List available video codecs
     -o <output_file>                    Set output file path and name (optional)
 EOF
 }
 
 function resolution_current_monitor {
-    xrandr --current | grep '*' | uniq | awk '{print $1}'
+    xrandr --current 2>/dev/null | grep '*' | uniq | awk '{print $1}'
 }
 
 function codecs_list {
-  
     cat <<'EOF'
-libx264 (H.264 codec, MP4 or MKV format) - Default
+libx264 (H.264 codec, MP4 or MKV format) - Default (VAAPI auto if supported)
+h264_vaapi (H.264 hardware encoding via VAAPI) - Auto-preferred when supported
 libx265 (H.265/HEVC codec, MP4 or MKV format)
 libsvtav1 (AV1 codec, MP4 or MKV format) - Fast AV1 encoding
 libvpx-vp9 (VP9 codec, WebM format)
@@ -80,15 +82,79 @@ function ffmpeg_has_codec {
     ffmpeg -hide_banner -encoders 2>/dev/null | grep -i "$1" >/dev/null 2>&1
 }
 
+# Function to detect VAAPI H.264 encoding support
+function vaapi_h264_supported {
+    local warning="Warning: 'vainfo' not found. Install 'vainfo' (usually in 'vainfo' or 'libva-utils' package) to enable VAAPI hardware encoding detection."
+    if ! command_exists vainfo; then
+        echo "$warning" >&2
+        command_exists notify-send && notify-send "$warning" 2>/dev/null
+        return 1
+    fi
+    vainfo 2>/dev/null | grep -q "VAProfileH264.*VAEntrypointEncSlice"
+}
+
+# Function to detect screen rotation (wf-recorder VAAPI limitation)
+# Returns 0 (true) if rotation is detected, 1 (false) otherwise
+function screen_rotation_detected {
+    local transform=""
+
+    # wlr-randr (funciona em Sway, Hyprland, river, dwl, etc.)
+    if command_exists wlr-randr; then
+        transform=$(wlr-randr 2>/dev/null | grep -E '^\s+Transform:' | head -1)
+        # Formato: "  Transform: 180" ou "  Transform: normal"
+        if [[ "$transform" =~ Transform:\ (normal|0) ]]; then
+            return 1
+        elif [[ -n "$transform" ]]; then
+            return 0
+        fi
+    fi
+
+    # Sway
+    if command_exists swaymsg; then
+        transform=$(swaymsg -t get_outputs 2>/dev/null | grep -o '"transform": "[^"]*"' | head -1)
+        if [[ "$transform" == *"normal"* || -z "$transform" ]]; then
+            return 1
+        else
+            return 0
+        fi
+    fi
+
+    # Hyprland
+    if command_exists hyprctl; then
+        transform=$(hyprctl monitors -j 2>/dev/null | grep -o '"transform": [0-9]*' | head -1)
+        if [[ "$transform" =~ "transform":\ ([1-7]) ]]; then
+            return 0
+        fi
+        return 1
+    fi
+
+    # Fallback: assumir que pode haver rotação se não conseguir detectar
+    # Melhor perder VAAPI do que falhar a gravação
+    return 0
+}
+
 # Default variables
 mon=${mon:-$(resolution_current_monitor)}
 framerate=${framerate:-15}
 muxing=${muxing:-9999}
-#arate=${arate:-22050}
 arate=${arate:-44100}
 codec=${codec:-"libx264"}
 if_muxing=${if_muxing:-off}
 default_folder="${HOME}/Videos/Capture"
+vaapi_device="/dev/dri/renderD128"
+
+# Detect VAAPI support once (used by both branches)
+if vaapi_h264_supported; then
+    vaapi_available=true
+else
+    vaapi_available=false
+fi
+
+# Detect screen rotation; disable VAAPI if rotation is present
+if screen_rotation_detected; then
+    echo "Screen rotation detected. VAAPI with wf-recorder may fail; disabling VAAPI hardware encoding." >&2
+    vaapi_available=false
+fi
 
 # Parse dos argumentos
 while [[ $# -gt 0 ]]; do
@@ -147,14 +213,13 @@ output_file=${output_file:-"${default_folder}/Screen_$(date +'%Y-%m-%d_%H:%M:%S'
 
 # ============================================================
 # Detect audio source (microphone vs internal/system audio)
-# This must run BEFORE the Wayland/X11 branches so both use it
 # ============================================================
 
 # Detect default sink's monitor device (internal/system audio)
 monitor_device="$(LANG=en pactl get-default-sink 2>/dev/null).monitor"
 
 # If monitor device doesn't exist, fallback to default
-if ! LANG=en pactl list short sources | grep -q "$monitor_device"; then
+if ! LANG=en pactl list short sources 2>/dev/null | grep -q "$monitor_device"; then
     monitor_device="default"
 fi
 
@@ -162,62 +227,79 @@ fi
 source_state="$(LANG=en pactl get-source-mute @DEFAULT_SOURCE@ 2>/dev/null | awk '{print $2}')"
 
 if [[ "$source_state" == "yes" ]]; then
-    # Microphone is muted -> record internal/system audio
     input_device="$monitor_device"
     echo "Microphone is muted. Recording internal/system audio from: $input_device"
 else
-    # Microphone is active -> record from microphone
     input_device="default"
     echo "Microphone is active (or unknown state). Recording from microphone."
 fi
 ################
 
-
 # ============================================================
 # Wayland branch
 # ============================================================
 if is_wayland; then
-    # Check if wf-recorder is already running
     wf_rec=$(pidof wf-recorder)
 
     if [[ -z "${wf_rec}" ]]; then
         echo "Detected Wayland session. Using wf-recorder..."
 
-        # Check if wf-recorder is installed
         if ! command_exists wf-recorder; then
             echo "Error: wf-recorder is not installed."
             echo "Please install wf-recorder to use this script on Wayland."
             exit 1
         fi
 
-        # Determine audio source
-        audio_source="$input_device"   # <-- Detect mute/monitor
+        audio_source="$input_device"
 
-        # Determine codec for wf-recorder
-        # Default codec for wf-recorder
-        wf_codec="libx265"
-        # Map codecs for wf-recorder compatibility
+        # ============================================================
+        # Codec mapping with VAAPI prioritization for wf-recorder
+        # ============================================================
         case "$codec" in
+            libx264|h264_vaapi)
+                if [[ "$vaapi_available" == true ]]; then
+                    wf_codec="h264_vaapi"
+                else
+                    wf_codec="libx264"
+                fi
+                ;;
             libx265|hevc_nvenc) wf_codec="libx265" ;;
             libsvtav1|av1_nvenc) wf_codec="av1" ;;
             libvpx-vp9) wf_codec="vp9" ;;
+            *) wf_codec="$codec" ;;
         esac
 
-        # Handle scale option if provided
+        # ============================================================
+        # Performance parameters based on final codec
+        # ============================================================
+        extra_params=""
         scale_option=""
-        if [[ -n "$vf_scale" ]]; then
-            # Convert scale format from ffmpeg to wf-recorder format
+
+        if [[ "$wf_codec" == "h264_vaapi" ]]; then
+            # VAAPI: device + pixel format para evitar tela verde/preta
+            extra_params="-d $vaapi_device -x yuv420p"
+            # Scale com VAAPI é problemático no wf-recorder; avisa se tentarem
+            if [[ -n "$vf_scale" ]]; then
+                echo "Warning: scaling with h264_vaapi in wf-recorder is known to fail." >&2
+                echo "Ignoring -vf scale. Record in native resolution and scale afterwards if needed." >&2
+                scale_option=""
+            fi
+        elif [[ "$wf_codec" == "libx264" ]]; then
+            extra_params="-p preset=ultrafast -p tune=zerolatency"
+        fi
+
+        # Scale option apenas para codecs de software
+        if [[ -z "$scale_option" && -n "$vf_scale" && "$wf_codec" != "h264_vaapi" ]]; then
             wf_scale="${vf_scale//:/x}"
             scale_option="-g ${wf_scale}"
         fi
 
-        # Build wf-recorder command
         echo "Recording to: $output_file"
         echo "Using codec: $wf_codec"
         echo "Audio source: $audio_source"
+        [[ "$vaapi_available" == true ]] && echo "VAAPI H.264 hardware encoding: available"
 
-        # Execute wf-recorder with appropriate options
-        wf-recorder -c "$wf_codec" --audio="$audio_source" $scale_option -f "$output_file"
+        wf-recorder -c "$wf_codec" --audio="$audio_source" $scale_option $extra_params -f "$output_file"
         exit 0
     else
         echo "wf-recorder is already running (PID: ${wf_rec})"
@@ -225,17 +307,18 @@ if is_wayland; then
     fi
 fi
 
-# Original X11/FFmpeg code
+# ============================================================
+# X11/FFmpeg branch
+# ============================================================
 echo "Using X11 session with FFmpeg..."
 
-# Check if ffmpeg is installed
 if ! command_exists ffmpeg; then
     echo "Error: ffmpeg is not installed."
     echo "Please install ffmpeg to use this script on X11."
     exit 1
 fi
 
-# Check for specific codec support
+# Codec availability checks
 case "$codec" in
     "hevc_nvenc"|"av1_nvenc")
         if ! ffmpeg_has_codec "$codec"; then
@@ -258,6 +341,12 @@ case "$codec" in
             exit 1
         fi
         ;;
+    "h264_vaapi")
+        if [[ "$vaapi_available" != true ]] || ! ffmpeg_has_codec "h264_vaapi"; then
+            echo "Error: Codec 'h264_vaapi' is not available (no VAAPI H.264 encoding support or FFmpeg lacks it)."
+            exit 1
+        fi
+        ;;
 esac
 
 # https://stackoverflow.com/questions/39887869/ffmpeg-whatsapp-video-format-not-supported
@@ -269,6 +358,37 @@ if [[ "$if_muxing" == "on" ]]; then
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:a libmp3lame -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -bsf:v h264_mp4toannexb -max_muxing_queue_size "$muxing" -f mp4 "$output_file"
     fi
 
+elif [[ "$codec" == "libx264" && "$vaapi_available" == true ]]; then
+    # libx264 requested but VAAPI H.264 available -> prefer hardware
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" \
+            -f pulse -ac 2 -i "$input_device" -ar "$arate" \
+            -vaapi_device "$vaapi_device" \
+            -vf "format=nv12,hwupload,scale=$vf_scale" \
+            -c:v h264_vaapi -qp 20 "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" \
+            -f pulse -ac 2 -i "$input_device" -ar "$arate" \
+            -vaapi_device "$vaapi_device" \
+            -vf "format=nv12,hwupload" \
+            -c:v h264_vaapi -qp 20 "$output_file"
+    fi
+
+elif [[ "$codec" == "h264_vaapi" ]]; then
+    if [[ "$vf_scale" ]]; then
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" \
+            -f pulse -ac 2 -i "$input_device" -ar "$arate" \
+            -vaapi_device "$vaapi_device" \
+            -vf "format=nv12,hwupload,scale=$vf_scale" \
+            -c:v h264_vaapi -qp 20 "$output_file"
+    else
+        ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" \
+            -f pulse -ac 2 -i "$input_device" -ar "$arate" \
+            -vaapi_device "$vaapi_device" \
+            -vf "format=nv12,hwupload" \
+            -c:v h264_vaapi -qp 20 "$output_file"
+    fi
+
 elif [[ "$codec" == "libx264" ]]; then
 
     if [[ "$vf_scale" ]]; then
@@ -278,7 +398,6 @@ elif [[ "$codec" == "libx264" ]]; then
     fi
 
 elif [[ "$codec" == "libx265" ]]; then
-    # Optimized parameters for libx265 (HEVC)
     if [[ "$vf_scale" ]]; then
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libx265 -preset ultrafast -crf 28 -x265-params log-level=error -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
@@ -286,7 +405,6 @@ elif [[ "$codec" == "libx265" ]]; then
     fi
 
 elif [[ "$codec" == "libsvtav1" ]]; then
-    # Optimized parameters for libsvtav1 (fast AV1 encoding)
     if [[ "$vf_scale" ]]; then
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v libsvtav1 -preset 8 -crf 35 -pix_fmt yuv420p -svtav1-params log-level=error -vf scale="$vf_scale" "$output_file"
     else
@@ -294,7 +412,6 @@ elif [[ "$codec" == "libsvtav1" ]]; then
     fi
 
 elif [[ "$codec" == "hevc_nvenc" ]]; then
-    # Optimized parameters for NVIDIA HEVC hardware encoding
     if [[ "$vf_scale" ]]; then
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq 28 -qmin 0 -qmax 51 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
@@ -302,7 +419,6 @@ elif [[ "$codec" == "hevc_nvenc" ]]; then
     fi
 
 elif [[ "$codec" == "av1_nvenc" ]]; then
-    # Optimized parameters for NVIDIA AV1 hardware encoding
     if [[ "$vf_scale" ]]; then
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v av1_nvenc -preset p7 -tune hq -rc vbr -cq 32 -qmin 0 -qmax 63 -b:v 0 -pix_fmt yuv420p -vf scale="$vf_scale" "$output_file"
     else
@@ -310,11 +426,9 @@ elif [[ "$codec" == "av1_nvenc" ]]; then
     fi
 
 else
-
     if [[ "$vf_scale" ]]; then
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v "$codec" -preset ultrafast -vf scale="$vf_scale" "$output_file"
     else
         ffmpeg -video_size "$mon" -framerate "$framerate" -f x11grab -re -i "${DISPLAY}" -f pulse -ac 2 -i "$input_device" -ar "$arate" -c:v "$codec" -preset ultrafast "$output_file"
     fi
-
 fi
