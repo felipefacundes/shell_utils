@@ -77,14 +77,23 @@ _ghost_special_keys=(
     '\e ' '\e\\' '\C-m' '\C-x\C-m'
 )
 
-# Fallbacks used only if a key cannot be found in the snapshot
-declare -A _ghost_default_fn=(
-    ['\C-m']='accept-line'        ['\C-?']='backward-delete-char'
-    ['\C-h']='backward-delete-char' ['\C-u']='unix-line-discard'
-    ['\C-a']='beginning-of-line'  ['\C-e']='end-of-line'
-    ['\C-l']='clear-screen'       ['\e[C']='forward-char'
-    ['\e[D']='backward-char'      ['\e[3~']='delete-char'
-)
+# Fallbacks used only if a key cannot be found in the snapshot.
+# (A case statement on purpose: no associative array, so it works even when this file
+# is sourced from inside a function and never evaluates the key arithmetically.)
+_ghost_default_fn_for() {
+    case "$1" in
+        '\C-m')  printf '%s' 'accept-line' ;;
+        '\C-?')  printf '%s' 'backward-delete-char' ;;
+        '\C-h')  printf '%s' 'backward-delete-char' ;;
+        '\C-u')  printf '%s' 'unix-line-discard' ;;
+        '\C-a')  printf '%s' 'beginning-of-line' ;;
+        '\C-e')  printf '%s' 'end-of-line' ;;
+        '\C-l')  printf '%s' 'clear-screen' ;;
+        '\e[C')  printf '%s' 'forward-char' ;;
+        '\e[D')  printf '%s' 'backward-char' ;;
+        '\e[3~') printf '%s' 'delete-char' ;;
+    esac
+}
 
 # Table: ASCII code -> literal character (used by the self-insert binds)
 _ghost_chars=()
@@ -1094,8 +1103,10 @@ _ghost_restore_key() {
     $found && return 0
 
     # c) fall back to the readline default, if we know it
-    if [[ -n "${_ghost_default_fn[$key]:-}" ]]; then
-        bind "\"$key\": ${_ghost_default_fn[$key]}" 2>/dev/null
+    local fn
+    fn=$(_ghost_default_fn_for "$key")
+    if [[ -n "$fn" ]]; then
+        bind "\"$key\": $fn" 2>/dev/null
     fi
     return 0
 }
