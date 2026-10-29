@@ -1,18 +1,53 @@
 #!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+set -euo pipefail
 
 script="${0##*/}"
 lock_file="/tmp/${script}.lock"
-touch "$lock_file"
 
+# --- Verificação de dependências ---
+
+# optipng é OBRIGATÓRIO
+if ! command -v optipng >/dev/null 2>&1; then
+    echo "ERROR: 'optipng' is required but not installed." >&2
+    echo "Install it with one of the following commands:" >&2
+    echo "  Arch Linux:   sudo pacman -S optipng" >&2
+    echo "  Debian/Ubuntu: sudo apt install optipng" >&2
+    echo "  Fedora/RHEL:  sudo dnf install optipng" >&2
+    exit 1
+fi
+
+# pngout é OPCIONAL
+have_pngout=false
+if command -v pngout >/dev/null 2>&1; then
+    have_pngout=true
+else
+    echo "WARNING: 'pngout' not found — skipping the pngout pass." >&2
+    echo "It is optional, but recommended for extra compression." >&2
+    echo "Install it with one of the following commands:" >&2
+    echo "  Arch Linux (AUR): yay -S pngout" >&2
+    echo "  Debian/Ubuntu:    sudo apt install pngout" >&2
+    echo "  Fedora/RHEL:      sudo dnf install pngout" >&2
+fi
+
+# --- Lock ---
+touch "$lock_file"
+trap 'rm -f "$lock_file"' EXIT
+
+# --- Função de processamento ---
 _check() {
-	if [[ -f "$lock_file" ]]; then
-		optipng -o7 -nc "$1"
-	fi
+    local file="$1"
+
+    optipng -o7 -zm9 -strip all -nc "$file"
+
+    if [[ "$have_pngout" == true ]]; then
+        pngout -c6 -f6 -d8 -y -ks "$file"
+    fi
 }
 
 export -f _check
-export lock_file
+export have_pngout
 
-find . -type f -iname "*.png" -exec bash -c '_check "{}"' \;
-
-rm "$lock_file"
+find . -type f -iname "*.png" -exec bash -c '_check "$0"' {} \;
