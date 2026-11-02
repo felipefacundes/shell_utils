@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Credits: MahouShoujoMivutilde
-# Source: https://github.com/hyprwm/Hyprland/discussions/830
-# wofi --show dmenu window for Hyprland, basically (-tofi -gojq)
+# License: GPLv3
+# Credits: Felipe Facundes
 
-if pidof wofi; then
-  exit 1
+if ! command -v rofi >/dev/null; then
+    notify-send 'Install: rofi!'
+    exit 1
+fi
+
+if pidof rofi >/dev/null; then
+    exit 1
 fi
 
 state="$(hyprctl -j clients)"
@@ -12,31 +16,51 @@ active_window="$(hyprctl -j activewindow)"
 
 current_addr="$(echo "$active_window" | jq -r '.address')"
 
+# Marca a janela ativa diretamente no jq (sem sed), evitando problemas de escaping
 window="$(echo "$state" |
-    jq -r '.[] | select(.monitor != -1 ) | "\(.address)    \(.workspace.name)    \(.title)"' |
-    sed "s|$current_addr|focused ->|" |
-    sort -r |
-    wofi --show dmenu )"
+    jq -r --arg cur "$current_addr" '
+        .[]
+        | select(.monitor != -1)
+        | if .address == $cur
+          then "focused        \(.workspace.name)    \(.title)"
+          else "\(.address)    \(.workspace.name)    \(.title)"
+          end' |
+    sort -r | rofi -show window "Windows")"
+
+[[ -z "$window" ]] && exit 0
 
 addr="$(echo "$window" | awk '{print $1}')"
 ws="$(echo "$window" | awk '{print $2}')"
 
-if [[ "$addr" =~ focused* ]]; then
+if [[ "$addr" == "focused" ]]; then
     echo 'already focused, exiting'
     exit 0
 fi
 
-fullscreen_on_same_ws="$(echo "$state" | jq -r ".[] | select(.fullscreen == true) | select(.workspace.name == \"$ws\") | .address")"
+# Remove qualquer whitespace residual do endereço (defensivo)
+addr="${addr//[[:space:]]/}"
 
-if [[ "$window" != "" ]]; then
-    if [[ "$fullscreen_on_same_ws" == "" ]]; then
-        hyprctl dispatch focuswindow address:${addr}
-    else
-        # If we want to focus app_A and app_B is fullscreen on the same workspace,
-        # app_A will get focus, but app_B will remain on top.
-        # This monstrosity is to make sure app_A will end up on top instead.
-        # XXX: doesn't handle fullscreen 0, but I don't care.
-        notify-send 'Complex switch' "$window"
-        hyprctl --batch "dispatch focuswindow address:${fullscreen_on_same_ws}; dispatch fullscreen 1; dispatch focuswindow address:${addr}; dispatch fullscreen 1"
-    fi
+# Janela em fullscreen na workspace alvo
+# (fullscreen pode ser bool ou número dependendo da versão do Hyprland)
+fullscreen_on_same_ws="$(echo "$state" | jq -r --arg ws "$ws" '
+    .[]
+    | select(.fullscreen != 0 and .fullscreen != false)
+    | select(.workspace.name == $ws)
+    | .address' | head -n1)"
+
+# Remove whitespace residual do endereço da fullscreen também
+fullscreen_on_same_ws="${fullscreen_on_same_ws//[[:space:]]/}"
+
+if [[ -z "$fullscreen_on_same_ws" ]]; then
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:${addr}\" })"
+else
+    # Se app_B está em fullscreen na mesma workspace, focar apenas app_A
+    # deixa app_B por cima. Desliga o fullscreen de B, foca A, e religa em A.
+    notify-send 'Complex switch' "$window"
+    hyprctl eval "
+        hl.dispatch(hl.dsp.focus({ window = 'address:${fullscreen_on_same_ws}' }))
+        hl.dispatch(hl.dsp.window.fullscreen({ mode = 'maximized', action = 'toggle' }))
+        hl.dispatch(hl.dsp.focus({ window = 'address:${addr}' }))
+        hl.dispatch(hl.dsp.window.fullscreen({ mode = 'maximized', action = 'toggle' }))
+    "
 fi

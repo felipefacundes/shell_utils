@@ -263,7 +263,7 @@ local scroll = require("mouse_scroll")
 --   rc=0 on every query  wrong device (Step 2 again)
 -- =============================================================================
 scroll.config.device = "/dev/input/by-id/usb-SUNSONNY_GAMING_KEYBOARD-if01-event-kbd"
--- scroll.config.interval = "0.1"
+scroll.config.interval = "0.05"
 
 hl.bind(mainMod .. " + W", scroll.up)
 hl.bind(mainMod .. " + S", scroll.down)
