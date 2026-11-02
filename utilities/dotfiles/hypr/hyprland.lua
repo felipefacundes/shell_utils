@@ -262,14 +262,12 @@ local scroll = require("mouse_scroll")
 --   rc=1 with an error message  device missing or no read permission
 --   rc=0 on every query  wrong device (Step 2 again)
 -- =============================================================================
+-- Mouse scroll
 scroll.config.device = "/dev/input/by-id/usb-SUNSONNY_GAMING_KEYBOARD-if01-event-kbd"
 scroll.config.interval = "0.05"
 
 hl.bind(mainMod .. " + W", scroll.up)
 hl.bind(mainMod .. " + S", scroll.down)
-
-
-
 
 -- Optional: if you release Super before W, the release bind above may not
 -- match, so this stops everything when Super is released
@@ -284,6 +282,10 @@ hl.bind(mainMod .. " + S", scroll.down)
 -- ============================================================
 -- Binds
 -- ============================================================
+
+-- Old Mouse scroll
+-- hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("wlrctl pointer scroll -10 0"))
+-- hl.bind(mainMod .. " + S", hl.dsp.exec_cmd("wlrctl pointer scroll 10 0"))
 
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("terminator"))
 
@@ -370,9 +372,11 @@ hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd([[bash -c '~/.shell_utils/script
 hl.bind(mainSft .. " + " .. mainMod .. " + Down", hl.dsp.exec_cmd([[bash -c '~/.shell_utils/scripts/volume-with-osd -v -5%']]))
 
 -- Power
-hl.bind(mainCtr .. " + " .. mainAlt .. " + D", hl.dsp.exec_cmd([[bash -c "/bin/openrc-shutdown --poweroff now ; systemctl -i poweroff"]]))
+hl.bind(mainCtr .. " + " .. mainSft .. " + " .. mainAlt .. " + delete", hl.dsp.exec_cmd([[bash -c "/bin/openrc-shutdown --poweroff now ; systemctl -i poweroff"]]))
 
 hl.bind(mainCtr .. " + " .. mainMod .. " + Backspace", hl.dsp.exec_cmd([[bash -c "/bin/openrc-shutdown -r now ; systemctl -i reboot"]]))
+
+hl.bind(mainCtr .. " + " .. mainAlt .. " + D", hl.dsp.exec_cmd("~/.shell_utils/scripts/rofi-power-menu-simple"))
 
 hl.bind(mainCtr .. " + " .. mainAlt .. " + H", hl.dsp.exec_cmd([[bash -c "systemctl hibernate"]]))
 
@@ -381,10 +385,6 @@ hl.bind(mainCtr .. " + " .. mainAlt .. " + L", hl.dsp.exec_cmd("swaylock"))
 
 -- WINE (matar processos .exe)
 hl.bind(mainMod .. " + " .. mainCtr .. " + W", hl.dsp.exec_cmd([[bash -c "ps ax|egrep '*\.exe'|grep -v 'egrep'|awk '{print \$1 }' | xargs kill -9 \$1 ; pkill -9 .exe"]]))
-
--- Mouse scroll
--- hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("wlrctl pointer scroll -10 0"))
--- hl.bind(mainMod .. " + S", hl.dsp.exec_cmd("wlrctl pointer scroll 10 0"))
 
 -- Move mouse
 hl.bind(mainMod .. " + up", hl.dsp.exec_cmd("wlrctl pointer move 0 -10"))
