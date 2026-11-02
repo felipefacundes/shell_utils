@@ -2,6 +2,25 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
+# --- Theme setup ---------------------------------------------------------
+THEME_DIR="$HOME/.config/rofi/themes"
+THEME_NAME="tokyonight"
+THEME_FILE="$THEME_DIR/${THEME_NAME}.rasi"
+THEME_URL="https://raw.githubusercontent.com/lairizzle/rofi-tokyonight/master/tokyonight.rasi"
+
+if [[ ! -d "$THEME_DIR" ]]; then
+    mkdir -p "$THEME_DIR"
+fi
+
+if [[ ! -f "$THEME_FILE" ]]; then
+    if ! curl -fsSL -o "$THEME_FILE" "$THEME_URL"; then
+        notify-send 'Failed to download rofi theme' "$THEME_URL"
+        rm -f "$THEME_FILE"
+        exit 1
+    fi
+fi
+
+# --- Dependency check ----------------------------------------------------
 if ! command -v rofi >/dev/null; then
     notify-send 'Install: rofi!'
     exit 1
@@ -11,12 +30,13 @@ if pidof rofi >/dev/null; then
     exit 1
 fi
 
+# --- Gather window state -------------------------------------------------
 state="$(hyprctl -j clients)"
 active_window="$(hyprctl -j activewindow)"
 
 current_addr="$(echo "$active_window" | jq -r '.address')"
 
-# Marca a janela ativa diretamente no jq (sem sed), evitando problemas de escaping
+# Mark the active window directly in jq (no sed), avoiding escaping issues
 window="$(echo "$state" |
     jq -r --arg cur "$current_addr" '
         .[]
@@ -25,7 +45,7 @@ window="$(echo "$state" |
           then "focused        \(.workspace.name)    \(.title)"
           else "\(.address)    \(.workspace.name)    \(.title)"
           end' |
-    sort -r | rofi -show window "Windows")"
+    sort -r | rofi -show window -theme "$THEME_NAME" -theme-str 'window { border-radius: 12px; width: 50%; height: 40%; } listview { lines: 10; }' -p "Windows")"
 
 [[ -z "$window" ]] && exit 0
 
@@ -37,25 +57,25 @@ if [[ "$addr" == "focused" ]]; then
     exit 0
 fi
 
-# Remove qualquer whitespace residual do endereço (defensivo)
+# Strip any residual whitespace from the address (defensive)
 addr="${addr//[[:space:]]/}"
 
-# Janela em fullscreen na workspace alvo
-# (fullscreen pode ser bool ou número dependendo da versão do Hyprland)
+# Fullscreen window on the target workspace
+# (fullscreen may be a bool or a number depending on the Hyprland version)
 fullscreen_on_same_ws="$(echo "$state" | jq -r --arg ws "$ws" '
     .[]
     | select(.fullscreen != 0 and .fullscreen != false)
     | select(.workspace.name == $ws)
     | .address' | head -n1)"
 
-# Remove whitespace residual do endereço da fullscreen também
+# Strip residual whitespace from the fullscreen address too
 fullscreen_on_same_ws="${fullscreen_on_same_ws//[[:space:]]/}"
 
 if [[ -z "$fullscreen_on_same_ws" ]]; then
     hyprctl dispatch "hl.dsp.focus({ window = \"address:${addr}\" })"
 else
-    # Se app_B está em fullscreen na mesma workspace, focar apenas app_A
-    # deixa app_B por cima. Desliga o fullscreen de B, foca A, e religa em A.
+    # If app_B is fullscreen on the same workspace, focusing only app_A
+    # leaves app_B on top. Toggle B's fullscreen off, focus A, then toggle A on.
     notify-send 'Complex switch' "$window"
     hyprctl eval "
         hl.dispatch(hl.dsp.focus({ window = 'address:${fullscreen_on_same_ws}' }))
