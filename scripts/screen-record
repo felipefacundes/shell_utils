@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# License: GPLv3
-# Credits: Felipe Facundes
 
 ##########################
 
@@ -20,7 +18,7 @@ libvpx-vp9, mpeg4, mpeg2video, and libsvtav1.
 4. Audio sampling rate configuration: The script allows the user to set the audio sampling rate for the screen capture,
 with a default value of 22050 Hz.
 5. Muxing support: The script supports muxing functionality, which allows the user to define the maximum muxing queue size.
-6. Quality modes: light, medium (default), and high. High applies filters for better fidelity.
+6. Quality modes: light, medium (default), high, and ultra. Ultra is gpu-screen-recorder only.
 
 The script's capabilities include:
 * Capturing the user's screen in different video formats, including MP4, MKV, and WebM.
@@ -36,6 +34,7 @@ The script's capabilities include:
 * On Wayland (without gpu-screen-recorder), prefer wl-screenrec; fall back to wf-recorder.
 * When rotation is detected, force wf-recorder on Wayland (wl-screenrec does not support transform).
 * Optional -R/--recorder flag to force a specific recorder.
+* Optional -hdr/--hdr flag to enable HDR recording (gpu-screen-recorder only, Wayland only).
 DOCUMENTATION
 
 # Define a signal handler to capture SIGINT (Ctrl+C) cleanly
@@ -58,8 +57,9 @@ Options:
     -muxing, -muxing_enabled <on/off>   Enable or disable video muxing (default: off)
     -max_muxing <value>                 Set maximum muxing queue size (default: 9999)
     -vc, -video_codec <codec>           Set video codec (default: libx264 / h264_vaapi if supported)
-    -q, --quality <mode>                Quality mode: l/low/light, m/medium, h/high (default: medium)
+    -q, --quality <mode>                Quality mode: l/low/light, m/medium, h/high, u/ultra (default: medium)
     -R, --recorder <name>               Force recorder: gpu-screen-recorder, wf-recorder, wl-screenrec, ffmpeg (default: auto)
+    -hdr, --hdr <hevc|av1>              Enable HDR recording (gpu-screen-recorder only, Wayland only)
     --no-dmabuf                         Force CPU encoding path on Wayland (GPU buffers disabled)
     --no-rotation                       Force rotation_detected=false (useful when detection is wrong)
     -list, -codec_list                  List available video codecs
@@ -159,6 +159,7 @@ function print_arguments_summary {
     echo -e "${green_bold}Framerate${reset}: ${magenta}${framerate}${reset}"
     echo -e "${green_bold}Quality${reset}: ${magenta}${quality}${reset}"
     echo -e "${green_bold}Video codec${reset}: ${magenta}${codec_label}${reset}"
+    echo -e "${green_bold}HDR mode${reset}: ${magenta}${hdr_mode:-none}${reset}"
     echo -e "${green_bold}Monitor resolution${reset}: ${magenta}${mon}${reset}"
     echo -e "${green_bold}Video scale${reset}: ${magenta}${vf_scale:-none}${reset}"
     echo -e "${green_bold}Audio rate${reset}: ${magenta}${arate}${reset}"
@@ -185,6 +186,7 @@ quality=${quality:-"medium"}
 force_no_dmabuf=false
 force_no_rotation=false
 force_recorder=""
+hdr_mode=""
 default_folder="${HOME}/Videos/Capture"
 vaapi_device="/dev/dri/renderD128"
 
@@ -252,6 +254,10 @@ while [[ $# -gt 0 ]]; do
       force_recorder="$2"
       shift 2
       ;;
+    "-hdr"|"--hdr")
+      hdr_mode="$2"
+      shift 2
+      ;;
     "--no-dmabuf")
       force_no_dmabuf=true
       shift
@@ -282,8 +288,9 @@ case "$quality" in
     l|low|light) quality="light" ;;
     m|medium) quality="medium" ;;
     h|high) quality="high" ;;
+    u|ultra) quality="ultra" ;;
     *)
-        echo "Error: Invalid quality mode '$quality'. Use l/low/light, m/medium, or h/high." >&2
+        echo "Error: Invalid quality mode '$quality'. Use l/low/light, m/medium, h/high, or u/ultra." >&2
         exit 1
         ;;
 esac
@@ -297,6 +304,25 @@ if [[ -n "$force_recorder" ]]; then
             exit 1
             ;;
     esac
+fi
+
+# Validate HDR mode value (early check, before any recorder branch)
+if [[ -n "$hdr_mode" ]]; then
+    case "$hdr_mode" in
+        hevc|hevc_hdr|av1|av1_hdr) ;;
+        *)
+            echo "Error: Invalid HDR mode '$hdr_mode'. Use hevc or av1." >&2
+            exit 1
+            ;;
+    esac
+    if ! is_wayland; then
+        echo "Error: HDR recording is only available on Wayland (gpu-screen-recorder limitation)." >&2
+        exit 1
+    fi
+    if [[ -n "$force_recorder" && "$force_recorder" != "gpu-screen-recorder" ]]; then
+        echo "Error: HDR recording requires gpu-screen-recorder (you forced '$force_recorder')." >&2
+        exit 1
+    fi
 fi
 
 # Inform about rotation detection (VAAPI fallback happens per-codec)
@@ -365,14 +391,22 @@ fi
 if [[ "$use_gsr" == true ]]; then
     echo "Using gpu-screen-recorder."
 
-    # Codec mapping: gpu-screen-recorder uses h264, hevc, av1, vp9
-    case "$codec" in
-        libx264|h264_vaapi|x264|h264|264|avc) gsr_codec="h264" ;;
-        libx265|hevc_vaapi|hevc_nvenc|x265|h265|hevc) gsr_codec="hevc" ;;
-        libsvtav1|av1_nvenc|av1) gsr_codec="av1" ;;
-        libvpx-vp9|vp9) gsr_codec="vp9" ;;
-        *) gsr_codec="h264" ;;
-    esac
+    # HDR mode has priority over -vc
+    if [[ -n "$hdr_mode" ]]; then
+        case "$hdr_mode" in
+            hevc|hevc_hdr) gsr_codec="hevc_hdr" ;;
+            av1|av1_hdr)   gsr_codec="av1_hdr" ;;
+        esac
+    else
+        # Codec mapping: gpu-screen-recorder uses h264, hevc, av1, vp9
+        case "$codec" in
+            libx264|h264_vaapi|x264|h264|264|avc) gsr_codec="h264" ;;
+            libx265|hevc_vaapi|hevc_nvenc|x265|h265|hevc) gsr_codec="hevc" ;;
+            libsvtav1|av1_nvenc|av1) gsr_codec="av1" ;;
+            libvpx-vp9|vp9) gsr_codec="vp9" ;;
+            *) gsr_codec="h264" ;;
+        esac
+    fi
 
     # Quality: gpu-screen-recorder supports presets (medium, high, very_high, ultra)
     # and bitrate for CBR mode. Use QP mode for quality presets.
@@ -380,6 +414,7 @@ if [[ "$use_gsr" == true ]]; then
         light)  gsr_quality="-q medium -bm qp" ;;
         medium) gsr_quality="-q high -bm qp" ;;
         high)   gsr_quality="-q very_high -bm qp" ;;
+        ultra)  gsr_quality="-q 50000 -bm cbr" ;;
     esac
 
     # Audio source: gpu-screen-recorder uses default_output / default_input
@@ -448,6 +483,12 @@ if is_wayland; then
     else
         echo "Error: Neither wl-screenrec nor wf-recorder is installed." >&2
         exit 1
+    fi
+
+    # Ultra is gpu-screen-recorder only; downgrade to high for other recorders
+    if [[ "$quality" == "ultra" ]]; then
+        echo "Warning: 'ultra' quality is only supported by gpu-screen-recorder. Using 'high' with $recorder." >&2
+        quality="high"
     fi
 
     audio_source="$input_device"
@@ -620,6 +661,12 @@ if ! command_exists ffmpeg; then
     echo "Error: ffmpeg is not installed."
     echo "Please install ffmpeg to use this script on X11."
     exit 1
+fi
+
+# Ultra is gpu-screen-recorder only; downgrade to high for ffmpeg
+if [[ "$quality" == "ultra" ]]; then
+    echo "Warning: 'ultra' quality is only supported by gpu-screen-recorder. Using 'high' with ffmpeg." >&2
+    quality="high"
 fi
 
 vaapi_usable=false

@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# License: GPLv3
-# Credits: Felipe Facundes
-
 # ==============================================================================
 #  flowframes.sh — AI frame interpolation for the terminal (TUI + CLI)
 # ------------------------------------------------------------------------------
@@ -26,10 +23,12 @@
 #  Environment:
 #    FF_BIN_<ENGINE>   Override an engine binary (e.g. FF_BIN_RIFENCNN=/opt/rife/rife-ncnn-vulkan)
 #    FF_MODELS_DIR     Model root (default: ~/.local/share/flowframes-cli/models)
-#    FF_TMPDIR         Scratch directory for extracted frames (default: $TMPDIR or /tmp)
+#    FF_TMPDIR         Scratch directory for extracted frames (default: ~/.cache/flowframes-cli)
 #    FF_GPU_ID         GPU id forwarded to the engine with -g
 #    FF_ENGINE_ARGS    Extra arguments appended to the engine command line
 #    FF_CRF            Override the default quality value of the selected encoder
+#    FF_PRESET         Override the encoder preset / speed (x264, x265, SvtAv1, Aom)
+#    FF_SVT_PARAMS     Extra libsvtav1 parameters, e.g. "tune=0:film-grain=0"
 #    NO_COLOR          Disable ANSI colors
 # ==============================================================================
 
@@ -54,6 +53,7 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/$APP"
 CONFIG_FILE="$CONFIG_DIR/config"
 MANIFEST_FILE="$CONFIG_DIR/models.tsv"
 MODELS_DIR="${FF_MODELS_DIR:-$DATA_DIR/models}"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$APP"
 LOG_FILE="$STATE_DIR/last-run.log"
 
 # Theme
@@ -150,7 +150,7 @@ declare -A ENGINE_DEFAULT_MODEL=(
 #  Output tables
 # ------------------------------------------------------------------------------
 declare -a FORMAT_LIST=(Mp4 Mkv Webm Mov Avi Gif Images Realtime)
-declare -a ALL_ENCODERS=(X264 X265 SvtAv1 VpxVp9 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265
+declare -a ALL_ENCODERS=(X264 X265 SvtAv1 Aom VpxVp9 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265
                          Qsv264 Qsv265 ProResKs Gif Png Jpeg Webp Tiff Exr Ffv1 Huffyuv
                          Magicyuv Rawvideo)
 declare -a ALL_PIXFMTS=(Yuv420P Yuva420P Yuv420P10Le Yuv422P Yuv422P10Le Yuv444P Yuv444P10Le
@@ -158,9 +158,9 @@ declare -a ALL_PIXFMTS=(Yuv420P Yuva420P Yuv420P10Le Yuv422P Yuv422P10Le Yuv444P
                         Rgb48Be Rgba64Le Rgba64Be Pal8 Gbrpf32Le Gbrapf32Le)
 
 declare -A FORMAT_ENCODERS=(
-  [mp4]="X264 X265 SvtAv1 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265 Qsv264 Qsv265"
-  [mkv]="X264 X265 SvtAv1 VpxVp9 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265 Qsv264 Qsv265 ProResKs Ffv1 Huffyuv Magicyuv Rawvideo"
-  [webm]="VpxVp9 SvtAv1"
+  [mp4]="X264 X265 SvtAv1 Aom Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265 Qsv264 Qsv265"
+  [mkv]="X264 X265 SvtAv1 Aom VpxVp9 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265 Qsv264 Qsv265 ProResKs Ffv1 Huffyuv Magicyuv Rawvideo"
+  [webm]="VpxVp9 SvtAv1 Aom"
   [mov]="X264 X265 Nvenc264 Nvenc265 Amf264 Amf265 Qsv264 Qsv265 ProResKs Rawvideo"
   [avi]="X264 Ffv1 Huffyuv Magicyuv Rawvideo"
   [gif]="Gif"
@@ -170,6 +170,7 @@ declare -A ENCODER_PIXFMTS=(
   [X264]="Yuv420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le"
   [X265]="Yuv420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le Yuv444P12Le"
   [SvtAv1]="Yuv420P Yuv420P10Le"
+  [Aom]="Yuv420P Yuv420P10Le Yuv422P Yuv444P Yuv422P10Le Yuv444P10Le"
   [VpxVp9]="Yuv420P Yuva420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le Yuv444P12Le"
   [Nvenc264]="Yuv420P Yuv444P"
   [Nvenc265]="Yuv420P P010Le Yuv444P Yuv444P16Le"
@@ -208,7 +209,7 @@ setup_colors() {
 }
 
 init_paths() {
-  mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$STATE_DIR" "$MODELS_DIR" 2>/dev/null || true
+  mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$STATE_DIR" "$MODELS_DIR" "$CACHE_DIR" 2>/dev/null || true
   : >>"$LOG_FILE" 2>/dev/null || LOG_FILE=/dev/null
 }
 
@@ -497,11 +498,13 @@ select_engine() {  # select_engine <strict 0|1>
 encoder_args() {  # encoder_args <encoder> <out_array_name>
   # NOTE: locals are underscore-prefixed to avoid nameref collisions with the caller.
   local -n _ea=$2
-  local _enc=$1 _crf=${FF_CRF:-}
+  local _enc=$1 _crf=${FF_CRF:-} _pre=${FF_PRESET:-}
   case $_enc in
-    X264)     _ea=(-c:v libx264 -preset medium -crf "${_crf:-18}") ;;
-    X265)     _ea=(-c:v libx265 -preset medium -crf "${_crf:-20}") ;;
-    SvtAv1)   _ea=(-c:v libsvtav1 -preset 6 -crf "${_crf:-28}") ;;
+    X264)     _ea=(-c:v libx264 -preset "${_pre:-medium}" -crf "${_crf:-18}") ;;
+    X265)     _ea=(-c:v libx265 -preset "${_pre:-medium}" -crf "${_crf:-20}") ;;
+    SvtAv1)   _ea=(-c:v libsvtav1 -preset "${_pre:-6}" -crf "${_crf:-28}")
+              if [[ -n ${FF_SVT_PARAMS:-} ]]; then _ea+=(-svtav1-params "$FF_SVT_PARAMS"); fi ;;
+    Aom)      _ea=(-c:v libaom-av1 -cpu-used "${_pre:-6}" -crf "${_crf:-30}" -b:v 0 -row-mt 1 -tiles 2x2) ;;
     VpxVp9)   _ea=(-c:v libvpx-vp9 -b:v 0 -crf "${_crf:-28}" -row-mt 1) ;;
     Nvenc264) _ea=(-c:v h264_nvenc -preset p5 -rc vbr -cq "${_crf:-19}" -b:v 0) ;;
     Nvenc265) _ea=(-c:v hevc_nvenc -preset p5 -rc vbr -cq "${_crf:-21}" -b:v 0) ;;
@@ -735,16 +738,46 @@ detect_scenes() {
   ui_ok "Found ${#CUTS[@]} scene change(s)"
 }
 
-extract_frames() {  # extract_frames <input>
-  local input=$1 vf="fps=$FPS_RAT"
+build_extract_vf() {  # sets $REPLY to the filter chain used for frame extraction
+  REPLY="fps=$FPS_RAT"
   if (( MAX_HEIGHT > 0 )); then
-    vf+=",scale=-2:'min(ih,$MAX_HEIGHT)'"
+    REPLY+=",scale=-2:'min(ih,$MAX_HEIGHT)'"
   else
-    vf+=",scale='trunc(iw/2)*2':'trunc(ih/2)*2'"
+    REPLY+=",scale='trunc(iw/2)*2':'trunc(ih/2)*2'"
   fi
+}
+
+human_size() { numfmt --to=iec --suffix=B "$1" 2>/dev/null || printf '%s bytes' "$1"; }
+
+# Estimates the scratch space needed (input frames + interpolated frames) from one sample frame.
+check_disk_space() {  # check_disk_space <input>
+  local input=$1 sample=$WORK/sample.png size need avail
+  if [[ -n ${FF_SKIP_DISK_CHECK:-} ]]; then return 0; fi
+  build_extract_vf
+  ffmpeg -nostdin -y -hide_banner -loglevel error -ss "$(awk -v d="$V_DUR" 'BEGIN { printf "%.3f", d / 2 }')" \
+    -i "$input" -map 0:v:0 -frames:v 1 -vf "$REPLY" -pix_fmt rgb24 -compression_level 1 "$sample" 2>>"$LOG_FILE" || return 0
+  size=$(stat -c %s "$sample" 2>/dev/null) || return 0
+  rm -f "$sample"
+  need=$(awk -v s="$size" -v n="$V_FRAMES" -v f="$FACTOR" 'BEGIN { printf "%.0f", s * n * (1 + f) * 1.1 }')
+  avail=$(df -P -B1 "$WORK" 2>/dev/null | awk 'NR == 2 { print $4 }')
+  [[ $avail =~ ^[0-9]+$ ]] || return 0
+  ui_dim "Disk estimate: ~$(human_size "$need") needed, $(human_size "$avail") free in ${WORK%/*}"
+  if (( need > avail )); then
+    ui_err "Not enough free disk space for the temporary frames."
+    ui_dim "Point FF_TMPDIR to a bigger disk:   FF_TMPDIR=/path/with/space $SCRIPT_NAME ..."
+    ui_dim "Or reduce the load: -mh 720 (downscale), a lower factor, or split the video into parts."
+    ui_dim "Set FF_SKIP_DISK_CHECK=1 to ignore this check."
+    return 1
+  fi
+  return 0
+}
+
+extract_frames() {  # extract_frames <input>
+  local input=$1
+  build_extract_vf
   # Engines operate on 8-bit RGB frames; PNG level 1 keeps extraction fast.
   run_ffmpeg_progress "$V_FRAMES" "Extracting" -i "$input" -map 0:v:0 -an -sn -dn \
-    -vf "$vf" -pix_fmt rgb24 -compression_level 1 -start_number 1 "$IN_DIR/%08d.png"
+    -vf "$REPLY" -pix_fmt rgb24 -compression_level 1 -start_number 1 "$IN_DIR/%08d.png"
 }
 
 run_engine() {  # run_engine <seg_in> <seg_out> <done_base> <total_out> <label>
@@ -933,6 +966,7 @@ run_pipeline() {  # run_pipeline <input>
   else
     ui_dim "Scene change handling disabled"
   fi
+  check_disk_space "$input" || return 1
 
   ui_stage 2 4 "Extracting frames"
   extract_frames "$input" || { show_log_tail; return 1; }
@@ -983,8 +1017,11 @@ process_file() {  # process_file <input> <index> <count>
   log "=== JOB $idx/$cnt: $input"
 
   if ! probe_video "$input"; then ui_err "No readable video stream in: $input"; return 1; fi
-  WORK=$(mktemp -d "${FF_TMPDIR:-${TMPDIR:-/tmp}}/flowframes.XXXXXX") \
-    || { ui_err "Cannot create a work directory (set FF_TMPDIR)."; return 1; }
+  # Work dir: <cache>/<timestamp>.<random>, e.g. ~/.cache/flowframes-cli/2026-11-02_12-38-44.a1B2c3
+  local base=${FF_TMPDIR:-$CACHE_DIR}
+  mkdir -p "$base" 2>/dev/null || true
+  WORK=$(mktemp -d "$base/$(date +%Y-%m-%d_%H-%M-%S).XXXXXX") \
+    || { ui_err "Cannot create a work directory in $base (set FF_TMPDIR)."; return 1; }
   IN_DIR=$WORK/in; FINAL_DIR=$WORK/out
   mkdir -p "$IN_DIR" "$FINAL_DIR" || { cleanup_work; return 1; }
   plan_output "$input"
@@ -1395,7 +1432,7 @@ Options:
   -m,   --model                       : AI model to use
   -vf,  --video_format                : Output video format to use (Options: Mp4, Mkv, Webm, Mov, Avi, Gif, Images, Realtime)
   -ve,  --video_encoder               : Output video encoder to use
-                                        (Options: X264, X265, SvtAv1, VpxVp9, Nvenc264, Nvenc265, NvencAv1, Amf264, Amf265,
+                                        (Options: X264, X265, SvtAv1, Aom, VpxVp9, Nvenc264, Nvenc265, NvencAv1, Amf264, Amf265,
                                          Qsv264, Qsv265, ProResKs, Gif, Png, Jpeg, Webp, Tiff, Exr, Ffv1, Huffyuv, Magicyuv, Rawvideo)
   -pf,  --pixel_format                : Output pixel format to use
                                         (Options: Yuv420P, Yuva420P, Yuv420P10Le, Yuv422P, Yuv422P10Le, Yuv444P, Yuv444P10Le,
