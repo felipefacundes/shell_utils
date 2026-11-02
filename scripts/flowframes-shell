@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# =============================================================================
+# FlowframesCmd - Hybrid CLI/TUI video frame interpolation tool
+# Requires: gum, ffmpeg, ffprobe, and at least one of: rife-ncnn-vulkan,
+#           flavr (python script), cain-ncnn-vulkan
+# =============================================================================
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Global defaults
+# ---------------------------------------------------------------------------
+SCRIPT_NAME="$(basename "$0")"
+
+# Available AI implementations and their binaries
+declare -A AI_BIN=(
+    [RifeCuda]="rife-ncnn-vulkan"
+    [RifeNcnnVs]="rife-ncnn-vulkan"
+    [RifeNcnn]="rife-ncnn-vulkan"
+    [FlavrCuda]="flavr"
+    [CainNcnn]="cain-ncnn-vulkan"
+)
+
+# Video format extensions
+declare -A FORMAT_EXT=(
+    [Mp4]="mp4"
+    [Mkv]="mkv"
+    [Webm]="webm"
+    [Mov]="mov"
+    [Avi]="avi"
+    [Gif]="gif"
+    [Images]="png"
+)
+
+# Encoder mapping (ffmpeg)
+declare -A ENCODER_MAP=(
+    [X264]="libx264"
+    [X265]="libx265"
+    [SvtAv1]="libsvtav1"
+    [VpxVp9]="libvpx-vp9"
+    [Nvenc264]="h264_nvenc"
+    [Nvenc265]="hevc_nvenc"
+    [NvencAv1]="av1_nvenc"
+    [Amf264]="h264_amf"
+    [Amf265]="hevc_amf"
+    [Qsv264]="h264_qsv"
+    [Qsv265]="hevc_qsv"
+    [ProResKs]="prores_ks"
+    [Gif]="gif"
+    [Png]="png"
+    [Jpeg]="mjpeg"
+    [Webp]="libwebp"
+    [Tiff]="tiff"
+    [Exr]="exr"
+    [Ffv1]="ffv1"
+    [Huffyuv]="huffyuv"
+    [Magicyuv]="magicyuv"
+    [Rawvideo]="rawvideo"
+)
+
+# Defaults
+DEBUG=false
+NO_PYTHON=false
+ENABLE_PYTHON=false
+AUTORUN=false
+FACTOR=2
+AI_IMPL=""
+MODEL=""
+VIDEO_FORMAT="Mp4"
+VIDEO_ENCODER="X264"
+PIXEL_FORMAT="Yuv420P"
+MAX_HEIGHT=0
+LOOP=false
+FIX_SCENE_CHANGES=false
+SCENE_CHANGE_SENSITIVITY="0.18"
+MAX_FPS=0
+OUTPUT_DIR=""
+INPUT_FILES=()
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+debug() {
+    if [[ "$DEBUG" == true ]]; then
+        echo "[DEBUG] $*" >&2
+    fi
+}
+
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<EOF
+Usage: $SCRIPT_NAME <OPTIONS> <FILE(S)>
+
+-d, --debug                       : Enable debug/developer features
+-np, --no_python                  : Disable Python implementations
+-py, --enable_python              : Enable Python implementations
+-a, --autorun                     : Start interpolation automatically and exit
+-f, --factor                      : Interpolation factor (default: 2)
+-ai                               : AI implementation (RifeCuda, RifeNcnnVs, RifeNcnn,
+                                    FlavrCuda, CainNcnn)
+-m, --model                       : AI model to use
+-vf, --video_format               : Output format (Mp4, Mkv, Webm, Mov, Avi, Gif, Images)
+-ve, --video_encoder              : Output encoder (X264, X265, Nvenc264, ...)
+-pf, --pixel_format               : Output pixel format (Yuv420P, Rgb24, ...)
+-mh, --max_height                 : Max video height (0 = no limit)
+-l, --loop                        : Enable loop output mode
+-scn, --fix_scene_changes         : Do not interpolate scene cuts
+-scnv, --scene_change_sensitivity : Scene change sensitivity (default: 0.18)
+-fps, --max_fps                   : Maximum FPS of output video
+-o, --output_dir                  : Output folder
+<Loose Arguments>                 : Input file(s)
+-h, --help                        : Show this help
+
+If no arguments are given, the script runs in interactive mode using gum.
+EOF
+    exit 0
+}
+
+check_dependency() {
+    command -v "$1" &>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing (manual, supports long options)
+# ---------------------------------------------------------------------------
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d|--debug) DEBUG=true; shift ;;
+            -np|--no_python) NO_PYTHON=true; shift ;;
+            -py|--enable_python) ENABLE_PYTHON=true; shift ;;
+            -a|--autorun) AUTORUN=true; shift ;;
+            -f|--factor) FACTOR="$2"; shift 2 ;;
+            -ai) AI_IMPL="$2"; shift 2 ;;
+            -m|--model) MODEL="$2"; shift 2 ;;
+            -vf|--video_format) VIDEO_FORMAT="$2"; shift 2 ;;
+            -ve|--video_encoder) VIDEO_ENCODER="$2"; shift 2 ;;
+            -pf|--pixel_format) PIXEL_FORMAT="$2"; shift 2 ;;
+            -mh|--max_height) MAX_HEIGHT="$2"; shift 2 ;;
+            -l|--loop) LOOP=true; shift ;;
+            -scn|--fix_scene_changes) FIX_SCENE_CHANGES=true; shift ;;
+            -scnv|--scene_change_sensitivity) SCENE_CHANGE_SENSITIVITY="$2"; shift 2 ;;
+            -fps|--max_fps) MAX_FPS="$2"; shift 2 ;;
+            -o|--output_dir) OUTPUT_DIR="$2"; shift 2 ;;
+            -h|--help) usage ;;
+            -*) die "Unknown option: $1" ;;
+            *) INPUT_FILES+=("$1"); shift ;;
+        esac
+    done
+}
+
+# ---------------------------------------------------------------------------
+# Interactive mode using gum
+# ---------------------------------------------------------------------------
+interactive_mode() {
+    gum style --border double --padding "1 2" --foreground 212 \
+        "FlowframesCmd - Video Frame Interpolation"
+
+    # Detect available engines
+    local available=()
+    for impl in "${!AI_BIN[@]}"; do
+        if check_dependency "${AI_BIN[$impl]}"; then
+            available+=("$impl")
+        fi
+    done
+
+    if [[ ${#available[@]} -eq 0 ]]; then
+        gum style --foreground 196 "No interpolation engine found (RIFE/FLAVR/CAIN)."
+        exit 1
+    fi
+
+    # Input file
+    local input
+    input=$(gum file --file --header "Select input video:") || exit 1
+    INPUT_FILES=("$input")
+
+    # AI implementation
+    AI_IMPL=$(gum choose --header "Select AI implementation:" "${available[@]}")
+
+    # Factor
+    FACTOR=$(gum choose --header "Interpolation factor:" "2" "4" "8")
+
+    # Output format
+    VIDEO_FORMAT=$(gum choose --header "Output format:" \
+        "Mp4" "Mkv" "Webm" "Mov" "Avi" "Gif" "Images")
+
+    # Encoder (skip for Images/Gif)
+    if [[ "$VIDEO_FORMAT" != "Images" && "$VIDEO_FORMAT" != "Gif" ]]; then
+        VIDEO_ENCODER=$(gum choose --header "Video encoder:" \
+            "X264" "X265" "Nvenc264" "Nvenc265" "SvtAv1" "VpxVp9")
+        PIXEL_FORMAT=$(gum choose --header "Pixel format:" \
+            "Yuv420P" "Yuv422P" "Yuv444P" "Rgb24")
+    fi
+
+    # Optional settings
+    if gum confirm "Configure advanced options?"; then
+        MAX_HEIGHT=$(gum input --placeholder "Max height (0 = no limit)" --value "$MAX_HEIGHT")
+        MAX_FPS=$(gum input --placeholder "Max FPS (0 = no limit)" --value "$MAX_FPS")
+        if gum confirm "Fix scene changes?"; then
+            FIX_SCENE_CHANGES=true
+            SCENE_CHANGE_SENSITIVITY=$(gum input --placeholder "Sensitivity (lower = more sensitive)" --value "0.18")
+        fi
+        if gum confirm "Enable loop mode?"; then
+            LOOP=true
+        fi
+    fi
+
+    # Output directory
+    OUTPUT_DIR=$(gum input --placeholder "Output directory (empty = current)" --value "")
+}
+
+# ---------------------------------------------------------------------------
+# Engine detection
+# ---------------------------------------------------------------------------
+get_engine_binary() {
+    local impl="$1"
+    local bin="${AI_BIN[$impl]:-}"
+    if [[ -z "$bin" ]] || ! check_dependency "$bin"; then
+        die "AI implementation '$impl' is not installed (binary: $bin)."
+    fi
+    echo "$bin"
+}
+
+# ---------------------------------------------------------------------------
+# Core interpolation pipeline (simplified)
+# ---------------------------------------------------------------------------
+run_interpolation() {
+    local input="$1"
+    local bin
+    bin=$(get_engine_binary "$AI_IMPL")
+
+    local ext="${FORMAT_EXT[$VIDEO_FORMAT]:-mp4}"
+    local outdir="${OUTPUT_DIR:-.}"
+    local base
+    base=$(basename "$input" | sed 's/\.[^.]*$//')
+    local output="${outdir}/${base}_${FACTOR}x.${ext}"
+
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+
+    gum spin --spinner dot --title "Extracting frames..." -- \
+        ffmpeg -i "$input" -vsync 0 "$tmpdir/in_%08d.png" -y -loglevel error
+
+    # Count frames
+    local frame_count
+    frame_count=$(find "$tmpdir" -name 'in_*.png' | wc -l)
+    debug "Extracted $frame_count frames"
+
+    # Run interpolation engine
+    case "$AI_IMPL" in
+        Rife*|CainNcnn)
+            gum spin --spinner dot --title "Running $AI_IMPL..." -- \
+                "$bin" -i "$tmpdir" -o "$tmpdir/out" -m "$MODEL" -f "$FACTOR"
+            ;;
+        FlavrCuda)
+            # FLAVR typically accepts --factor and --input_video directly
+            gum spin --spinner dot --title "Running FLAVR..." -- \
+                python3 "$bin" --input_video "$input" --factor "$FACTOR" \
+                --load_model "$MODEL" --savepath "$tmpdir/out" 2>/dev/null || \
+                die "FLAVR execution failed. Check model path."
+            ;;
+        *)
+            die "Unsupported AI implementation: $AI_IMPL"
+            ;;
+    esac
+
+    # Determine frame rate
+    local src_fps
+    src_fps=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate \
+        -of default=noprint_wrappers=1:nokey=1 "$input" | awk -F'/' '{print $1/$2}')
+    local out_fps
+    out_fps=$(echo "$src_fps * $FACTOR" | bc)
+
+    # Apply max_fps limit
+    if (( $(echo "$MAX_FPS > 0" | bc -l) )) && (( $(echo "$out_fps > $MAX_FPS" | bc -l) )); then
+        out_fps="$MAX_FPS"
+    fi
+
+    # Encode
+    local encoder="${ENCODER_MAP[$VIDEO_ENCODER]:-libx264}"
+    local pixfmt
+    pixfmt=$(echo "$PIXEL_FORMAT" | sed 's/Yuv/yuv/;s/Rgb/rgb/;s/Le/le/')
+
+    gum spin --spinner dot --title "Encoding to $VIDEO_FORMAT..." -- \
+        ffmpeg -framerate "$out_fps" -i "$tmpdir/out/%08d.png" \
+        -i "$input" -map 0:v -map 1:a? -c:v "$encoder" -pix_fmt "$pixfmt" \
+        -c:a copy -shortest "$output" -y -loglevel error
+
+    gum style --foreground 82 "✓ Output saved to: $output"
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+main() {
+    # Check essential dependencies
+    for cmd in gum ffmpeg ffprobe; do
+        check_dependency "$cmd" || die "Required command not found: $cmd"
+    done
+
+    parse_args "$@"
+
+    # If no input files and no autorun, go interactive
+    if [[ ${#INPUT_FILES[@]} -eq 0 ]] && [[ "$AUTORUN" != true ]]; then
+        interactive_mode
+    fi
+
+    [[ ${#INPUT_FILES[@]} -gt 0 ]] || die "No input files provided."
+
+    # If autorun and AI_IMPL is empty, try to pick first available
+    if [[ -z "$AI_IMPL" ]]; then
+        for impl in "${!AI_BIN[@]}"; do
+            if check_dependency "${AI_BIN[$impl]}"; then
+                AI_IMPL="$impl"
+                break
+            fi
+        done
+    fi
+
+    [[ -n "$AI_IMPL" ]] || die "No AI implementation selected or available."
+
+    for file in "${INPUT_FILES[@]}"; do
+        [[ -f "$file" ]] || die "Input file not found: $file"
+        echo "Processing: $file"
+        run_interpolation "$file"
+    done
+
+    if [[ "$AUTORUN" == true ]]; then
+        exit 0
+    fi
+}
+
+main "$@"

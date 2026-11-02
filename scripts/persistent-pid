@@ -3,7 +3,47 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-This script is to keep the program open in X seconds. The default is 5 seconds.
+NAME
+    keepalive.sh - Keep a program running, restarting it if it dies
+
+SYNOPSIS
+    [delay=SECONDS] keepalive.sh [OPTIONS] COMMAND [ARGS...]
+
+DESCRIPTION
+    Runs the given COMMAND (with optional arguments) and monitors it.
+    If the process dies, it is automatically restarted after a check
+    interval. The script runs in an infinite loop until interrupted.
+
+    Unlike a simple `while true; do ...; done` wrapper, this script
+    verifies the process is actually alive after each delay period,
+    which avoids restarting healthy processes and prevents duplicate
+    instances.
+
+OPTIONS
+    -h, --help      Show this help message and exit.
+
+ENVIRONMENT
+    delay           Seconds to wait between checks (default: 5).
+                    Example: delay=20 keepalive.sh tint2
+
+EXAMPLES
+    keepalive.sh tint2
+        Keep tint2 running with the default 5-second check interval.
+
+    delay=20 keepalive.sh myapp --config /etc/myapp.conf
+        Keep myapp running with a 20-second interval and pass arguments.
+
+    keepalive.sh /usr/local/bin/mydaemon -v --port 8080
+        Keep a binary running with multiple arguments.
+
+EXIT STATUS
+    0   Help was requested.
+    1   The command could not be found or is not executable.
+
+NOTES
+    - Arguments beginning with '-' are passed through to the command,
+      so they are not misinterpreted as script options.
+    - Child processes are terminated when the script exits (trap).
 DOCUMENTATION
 
 doc() {
@@ -11,81 +51,123 @@ doc() {
     echo
 }
 
+usage() {
+    doc
+    cat <<EOF
+Usage: ${0##*/} [OPTIONS] COMMAND [ARGS...]
+
+Keep COMMAND running, restarting it if it exits.
+Arguments after COMMAND are passed through to it.
+
+Options:
+    -h, --help    Show this help message.
+
+Environment:
+    delay=SECONDS    Check interval in seconds (default: 5)
+
+Examples:
+    ${0##*/} tint2
+    delay=20 ${0##*/} tint2
+    ${0##*/} myapp --config /etc/myapp.conf
+EOF
+}
+
 error() {
-    echo 'It must be an executable command: script or binary'
+    echo "Error: $*" >&2
+    echo "It must be an executable command: script or binary" >&2
     exit 1
 }
 
-command="$1"
-check_pids=()
-delay="${delay:-5}"
-native_command=$(command -v "$command")
-ban_term=$(echo "$command" | sed '/^-/d')
+# ---------------------------------------------------------------------------
+# Argument parsing: store the command and its arguments in an array
+# ---------------------------------------------------------------------------
+cmd_args=()
 
-if [[ -z "$command" ]] || [[ -z "$ban_term" ]]; then
-    doc
-    echo "Usage: ${0##*/} [command]
-Example:
-        delay=20 ${0##*/} tint2
-"
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            cmd_args+=("$arg")
+            ;;
+    esac
+done
+
+if [[ ${#cmd_args[@]} -eq 0 ]]; then
+    usage
     exit 0
 fi
 
+# The first element is the command; the rest are its arguments
+command="${cmd_args[0]}"
 
-if [[ -z "$native_command" ]]; then
-    error
-elif [[ ! -x "$command" && ! -f "$command" ]]; then
-    error
+delay="${delay:-5}"
+
+# Validate the delay is a positive integer
+if ! [[ "$delay" =~ ^[0-9]+$ ]] || [[ "$delay" -le 0 ]]; then
+    error "delay must be a positive integer (got: '$delay')"
 fi
 
-# if pgrep -f "${0##*/}"; then
-# 	exit 1
-# fi
+# Resolve the command path
+native_command=$(command -v "$command")
 
-_check() {
-    local test=$1
-    sleep "$delay"
+if [[ -z "$native_command" ]]; then
+    error "command not found: '$command'"
+elif [[ ! -x "$command" && ! -f "$command" ]]; then
+    error "not an executable file: '$command'"
+fi
 
-    if [[ -z "$test" ]] && ! pidof "$command"; then
-        clear
-        echo "$command not working"
-        # Kill all script processes
-        kill -9 $(jobs -p) 2>/dev/null
-        exit 1
-    fi
-}
+# Keep track of PIDs we have spawned (unused for lookup but kept for cleanup)
+check_pids=()
 
-# Cleaning function
+# ---------------------------------------------------------------------------
+# Cleanup: terminate child processes when the script exits
+# ---------------------------------------------------------------------------
 cleanup() {
-    # Kill all child processes
-    kill -9 $(jobs -p) 2>/dev/null 2>/dev/null
-    # Clear the PID array
+    kill -9 $(jobs -p) 2>/dev/null
     check_pids=()
     exit
 }
 
+# ---------------------------------------------------------------------------
+# Check helper: verify the command is still alive after `delay` seconds
+# ---------------------------------------------------------------------------
+_check() {
+    sleep "$delay"
+
+    if ! pidof "$command" >/dev/null 2>&1; then
+        clear
+        echo "$command not working"
+        cleanup
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Main loop: run the command, wait, and restart it if it dies
+# ---------------------------------------------------------------------------
 main() {
     local pid
-    
-    # Configure traps for different signals
+
     trap cleanup EXIT INT TERM
-    
+
     while true; do
         pid=$(pidof "$command")
-        
+
         if [[ -z "$pid" ]]; then
-            "$command" &
-            # Store the PID for possible cleaning
+            # Launch the command with all of its arguments
+            "${cmd_args[@]}" &
             check_pids+=($!)
         fi
-        
+
         sleep "$delay"
 
         if [[ -z "$pid" ]]; then
-            _check "$pid" &
+            _check &
         fi
-        
-        # Clear PIDs of processes that have already finished
+
+        # Drop PIDs of processes that have already exited
         for i in "${!check_pids[@]}"; do
             if ! kill -0 "${check_pids[$i]}" 2>/dev/null; then
                 unset "check_pids[$i]"

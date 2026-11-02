@@ -1,0 +1,1517 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# ==============================================================================
+#  flowframes.sh — AI frame interpolation for the terminal (TUI + CLI)
+# ------------------------------------------------------------------------------
+#  A Flowframes-inspired workflow written in Bash:
+#    probe -> (scene detection) -> extract frames -> interpolate -> encode
+#
+#  Engines (detected with `command -v`):
+#    RIFE   rife-ncnn-vulkan | rife-cuda
+#    FLAVR  flavr-cuda | flavr
+#    CAIN   cain-ncnn-vulkan | cain
+#
+#  Modes:
+#    * Interactive (default): a gum based dashboard resembling the Flowframes GUI.
+#    * CLI: pass -a/--autorun with file(s) and the options below.
+#
+#  Engine contract (every backend is called the same way):
+#    <engine> -i <input_frames_dir> -o <output_frames_dir> -n <target_frames> [-m <model>]
+#  Input/output frames are 8-digit PNGs (00000001.png, ...). This is the native
+#  CLI of the *-ncnn-vulkan tools; for Python/CUDA implementations provide a thin
+#  wrapper that honours the same contract.
+#
+#  Environment:
+#    FF_BIN_<ENGINE>   Override an engine binary (e.g. FF_BIN_RIFENCNN=/opt/rife/rife-ncnn-vulkan)
+#    FF_MODELS_DIR     Model root (default: ~/.local/share/flowframes-cli/models)
+#    FF_TMPDIR         Scratch directory for extracted frames (default: $TMPDIR or /tmp)
+#    FF_GPU_ID         GPU id forwarded to the engine with -g
+#    FF_ENGINE_ARGS    Extra arguments appended to the engine command line
+#    FF_CRF            Override the default quality value of the selected encoder
+#    NO_COLOR          Disable ANSI colors
+# ==============================================================================
+
+set -Eeuo pipefail
+shopt -s nullglob
+
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+  printf 'flowframes: bash >= 4.4 is required.\n' >&2
+  exit 1
+fi
+
+# ------------------------------------------------------------------------------
+#  Constants & paths
+# ------------------------------------------------------------------------------
+readonly APP="flowframes-cli"
+readonly VERSION="1.0.0"
+readonly SCRIPT_NAME="${0##*/}"
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$APP"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/$APP"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/$APP"
+CONFIG_FILE="$CONFIG_DIR/config"
+MANIFEST_FILE="$CONFIG_DIR/models.tsv"
+MODELS_DIR="${FF_MODELS_DIR:-$DATA_DIR/models}"
+LOG_FILE="$STATE_DIR/last-run.log"
+
+# Theme
+C_ACCENT="#38BDF8"; C_OK="#4ADE80"; C_WARN="#FACC15"; C_ERR="#F87171"; C_DIM="#6B7280"
+
+CR=""; CB=""; CA=""; CO=""; CW=""; CE=""; CD=""
+HAVE_GUM=0
+IS_TTY=0
+BAR_W=34
+STAGE_T0=0
+LAST_PCT=-1
+
+# ------------------------------------------------------------------------------
+#  Settings (defaults < config file < command line)
+# ------------------------------------------------------------------------------
+DEBUG=0
+PYTHON_ENABLED=1
+OPEN_DOWNLOADER=0
+CLOSE_DOWNLOADER=0
+SAVE_CONFIG=1
+AUTORUN=0
+
+FACTOR=2
+AI=""
+MODEL=""
+VIDEO_FORMAT="Mp4"
+VIDEO_ENCODER=""
+PIXEL_FORMAT=""
+MAX_HEIGHT=0
+LOOP=0
+FIX_SCENES=0
+SCENE_SENS="0.18"
+MAX_FPS=0
+OUTPUT_DIR=""
+
+AI_FROM_CLI=0
+OUTPUT_FROM_CLI=0
+INPUTS=()
+RESULTS=()
+CUTS=()
+QUIT=0
+
+CONFIG_KEYS=(FACTOR AI MODEL VIDEO_FORMAT VIDEO_ENCODER PIXEL_FORMAT MAX_HEIGHT LOOP
+             FIX_SCENES SCENE_SENS MAX_FPS OUTPUT_DIR PYTHON_ENABLED)
+
+# Runtime state
+WORK=""
+IN_DIR=""
+FINAL_DIR=""
+ENGINE_PID=""
+FFMPEG_ENCODERS=""
+declare -A PROBE_CACHE=()
+V_W=0; V_H=0; V_FRAMES=0; V_DUR=0; A_CODEC=""
+FPS_NUM=0; FPS_DEN=1; FPS_RAT="0/1"; FPS_DEC="0"
+OUT_FPS_RAT=""; OUT_FPS_DEC=""; FINAL_FPS_DEC=""; REDUCE_FPS=0
+OUT_PATH=""; N_ORIG=0; N_IN=0; OUT_IDX=0
+
+# ------------------------------------------------------------------------------
+#  Engine tables
+# ------------------------------------------------------------------------------
+declare -a ENGINE_ORDER=(RifeNcnn RifeCuda FlavrCuda CainNcnn)
+declare -a ENGINE_EXPERIMENTAL=(DainNcnn XvfiCuda IfrnetNcnn)
+declare -a ENGINE_UNSUPPORTED=(RifeNcnnVs)
+
+declare -A ENGINE_FAMILY=(
+  [RifeNcnn]=rife [RifeCuda]=rife [RifeNcnnVs]=rife [FlavrCuda]=flavr [CainNcnn]=cain
+  [DainNcnn]=dain [XvfiCuda]=xvfi [IfrnetNcnn]=ifrnet
+)
+declare -A ENGINE_BINS=(
+  [RifeNcnn]="rife-ncnn-vulkan"
+  [RifeCuda]="rife-cuda rife-pytorch"
+  [FlavrCuda]="flavr-cuda flavr"
+  [CainNcnn]="cain-ncnn-vulkan cain"
+  [DainNcnn]="dain-ncnn-vulkan"
+  [XvfiCuda]="xvfi-cuda xvfi"
+  [IfrnetNcnn]="ifrnet-ncnn-vulkan"
+)
+declare -A ENGINE_PY=([RifeCuda]=1 [FlavrCuda]=1 [XvfiCuda]=1)
+declare -A ENGINE_MODELS=(
+  [RifeNcnn]="rife-v4.6 rife-v4 rife-v3.1 rife-anime rife-HD rife-UHD"
+  [RifeCuda]="4.6 4.0 3.1 2.3"
+  [FlavrCuda]="FLAVR_2x FLAVR_4x FLAVR_8x"
+  [CainNcnn]="cain"
+  [DainNcnn]="best"
+  [XvfiCuda]="default"
+  [IfrnetNcnn]="default"
+)
+declare -A ENGINE_DEFAULT_MODEL=(
+  [RifeNcnn]=rife-v4.6 [RifeCuda]=4.6 [FlavrCuda]=FLAVR_2x [CainNcnn]=cain
+  [DainNcnn]=best [XvfiCuda]=default [IfrnetNcnn]=default
+)
+
+# ------------------------------------------------------------------------------
+#  Output tables
+# ------------------------------------------------------------------------------
+declare -a FORMAT_LIST=(Mp4 Mkv Webm Mov Avi Gif Images Realtime)
+declare -a ALL_ENCODERS=(X264 X265 SvtAv1 VpxVp9 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265
+                         Qsv264 Qsv265 ProResKs Gif Png Jpeg Webp Tiff Exr Ffv1 Huffyuv
+                         Magicyuv Rawvideo)
+declare -a ALL_PIXFMTS=(Yuv420P Yuva420P Yuv420P10Le Yuv422P Yuv422P10Le Yuv444P Yuv444P10Le
+                        Yuva444P10Le Yuv444P12Le Yuv444P16Le P010Le P016Le Rgb24 Rgba Rgb48Le
+                        Rgb48Be Rgba64Le Rgba64Be Pal8 Gbrpf32Le Gbrapf32Le)
+
+declare -A FORMAT_ENCODERS=(
+  [mp4]="X264 X265 SvtAv1 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265 Qsv264 Qsv265"
+  [mkv]="X264 X265 SvtAv1 VpxVp9 Nvenc264 Nvenc265 NvencAv1 Amf264 Amf265 Qsv264 Qsv265 ProResKs Ffv1 Huffyuv Magicyuv Rawvideo"
+  [webm]="VpxVp9 SvtAv1"
+  [mov]="X264 X265 Nvenc264 Nvenc265 Amf264 Amf265 Qsv264 Qsv265 ProResKs Rawvideo"
+  [avi]="X264 Ffv1 Huffyuv Magicyuv Rawvideo"
+  [gif]="Gif"
+  [images]="Png Jpeg Webp Tiff Exr"
+)
+declare -A ENCODER_PIXFMTS=(
+  [X264]="Yuv420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le"
+  [X265]="Yuv420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le Yuv444P12Le"
+  [SvtAv1]="Yuv420P Yuv420P10Le"
+  [VpxVp9]="Yuv420P Yuva420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le Yuv444P12Le"
+  [Nvenc264]="Yuv420P Yuv444P"
+  [Nvenc265]="Yuv420P P010Le Yuv444P Yuv444P16Le"
+  [NvencAv1]="Yuv420P P010Le"
+  [Amf264]="Yuv420P"
+  [Amf265]="Yuv420P P010Le"
+  [Qsv264]="Yuv420P"
+  [Qsv265]="Yuv420P P010Le"
+  [ProResKs]="Yuv422P10Le Yuv444P10Le Yuva444P10Le"
+  [Gif]="Pal8"
+  [Png]="Rgb24 Rgba Rgb48Be Rgba64Be"
+  [Jpeg]="Yuv420P Yuv422P Yuv444P"
+  [Webp]="Yuv420P Yuva420P"
+  [Tiff]="Rgb24 Rgba Rgb48Le Rgba64Le Pal8"
+  [Exr]="Gbrpf32Le Gbrapf32Le"
+  [Ffv1]="Yuv420P Yuva420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le Yuva444P10Le Yuv444P12Le Yuv444P16Le"
+  [Huffyuv]="Yuv422P Rgb24"
+  [Magicyuv]="Yuv420P Yuv422P Yuv444P Yuv420P10Le Yuv422P10Le Yuv444P10Le"
+  [Rawvideo]="Yuv420P Yuv422P Yuv444P Rgb24 Rgba Rgb48Le Rgba64Le P010Le"
+)
+
+# ------------------------------------------------------------------------------
+#  Generic helpers
+# ------------------------------------------------------------------------------
+hex_fg() {
+  local h=${1#\#}
+  printf '\033[38;2;%d;%d;%dm' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"
+}
+
+setup_colors() {
+  if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
+    CR=$'\033[0m'; CB=$'\033[1m'
+    CA=$(hex_fg "$C_ACCENT"); CO=$(hex_fg "$C_OK"); CW=$(hex_fg "$C_WARN")
+    CE=$(hex_fg "$C_ERR");    CD=$(hex_fg "$C_DIM")
+  fi
+}
+
+init_paths() {
+  mkdir -p "$CONFIG_DIR" "$DATA_DIR" "$STATE_DIR" "$MODELS_DIR" 2>/dev/null || true
+  : >>"$LOG_FILE" 2>/dev/null || LOG_FILE=/dev/null
+}
+
+init_ui() {
+  HAVE_GUM=0; IS_TTY=0
+  if [[ -t 0 && -t 1 ]]; then IS_TTY=1; fi
+  if (( IS_TTY )) && command -v gum >/dev/null 2>&1; then HAVE_GUM=1; fi
+  if (( HAVE_GUM )); then
+    export CLICOLOR_FORCE=1
+    export GUM_CHOOSE_CURSOR="❯ "
+    export GUM_CHOOSE_CURSOR_FOREGROUND="$C_ACCENT" GUM_CHOOSE_SELECTED_FOREGROUND="$C_ACCENT"
+    export GUM_CHOOSE_HEADER_FOREGROUND="$C_DIM"
+    export GUM_INPUT_PROMPT_FOREGROUND="$C_ACCENT" GUM_INPUT_CURSOR_FOREGROUND="$C_ACCENT"
+    export GUM_INPUT_HEADER_FOREGROUND="$C_DIM"
+    export GUM_CONFIRM_PROMPT_FOREGROUND="$C_FG_FALLBACK"
+    export GUM_CONFIRM_SELECTED_BACKGROUND="$C_ACCENT" GUM_CONFIRM_SELECTED_FOREGROUND="#0B1220"
+    export GUM_SPIN_SPINNER_FOREGROUND="$C_ACCENT" GUM_SPIN_TITLE_FOREGROUND="$C_DIM"
+    export GUM_FILTER_INDICATOR_FOREGROUND="$C_ACCENT" GUM_FILTER_MATCH_FOREGROUND="$C_ACCENT"
+    export GUM_FILE_CURSOR_FOREGROUND="$C_ACCENT" GUM_FILE_SELECTED_FOREGROUND="$C_ACCENT"
+  fi
+}
+C_FG_FALLBACK="#E5E7EB"
+
+ui_ok()    { printf '%s✔%s %s\n' "$CO" "$CR" "$*"; }
+ui_info()  { printf '%s●%s %s\n' "$CA" "$CR" "$*"; }
+ui_warn()  { printf '%s▲%s %s\n' "$CW" "$CR" "$*" >&2; }
+ui_err()   { printf '%s✖%s %s\n' "$CE" "$CR" "$*" >&2; }
+ui_dim()   { printf '    %s%s%s\n' "$CD" "$*" "$CR"; }
+ui_stage() { printf '\n%s[%s/%s]%s %s%s%s\n' "$CA" "$1" "$2" "$CR" "$CB" "$3" "$CR"; }
+die()      { ui_err "$*"; exit 1; }
+
+log() { printf '[%(%F %T)T] %s\n' -1 "$*" >>"$LOG_FILE" 2>/dev/null || true; }
+debug() {
+  if (( DEBUG )); then printf '%s[debug]%s %s\n' "$CD" "$CR" "$*" >&2; fi
+  log "DEBUG $*"
+}
+
+kv() { printf '%s%-12s%s %s\n' "$CD" "$1" "$CR" "$2"; }
+
+in_list() {
+  local needle=$1 item; shift
+  for item in "$@"; do
+    if [[ $item == "$needle" ]]; then return 0; fi
+  done
+  return 1
+}
+
+# canon <value> <list...> : case-insensitive lookup, canonical spelling in $REPLY
+canon() {
+  local want=${1,,} item; shift
+  for item in "$@"; do
+    if [[ ${item,,} == "$want" ]]; then REPLY=$item; return 0; fi
+  done
+  return 1
+}
+
+fmt_hms() {
+  local s=${1%.*}
+  [[ $s =~ ^[0-9]+$ ]] || s=0
+  printf -v REPLY '%02d:%02d:%02d' $((s / 3600)) $((s % 3600 / 60)) $((s % 60))
+}
+
+fmt_num() {
+  awk -v n="$1" 'BEGIN { s = sprintf("%.3f", n); sub(/0+$/, "", s); sub(/\.$/, "", s); print s }'
+}
+
+pad_name() { printf -v REPLY '%08d.png' "$1"; }
+
+count_files() { find "$1" -maxdepth 1 -type f -printf . 2>/dev/null | wc -c || true; }
+
+ui_spin() {
+  local title=$1; shift
+  if (( HAVE_GUM )); then
+    gum spin --spinner dot --title "$title" -- "$@"
+  else
+    printf '%s\n' "$title"
+    "$@"
+  fi
+}
+
+# ------------------------------------------------------------------------------
+#  Progress rendering
+# ------------------------------------------------------------------------------
+stage_begin() { STAGE_T0=$SECONDS; LAST_PCT=-1; }
+
+finish_bar() { if [[ -t 1 ]]; then printf '\r\033[K'; fi; }
+
+draw_bar() {  # draw_bar <current> <total> <label>
+  local cur=$1 total=$2 label=$3 pct filled elapsed rate="" eta="" bar_f bar_e
+  if (( total < 1 )); then total=1; fi
+  if (( cur > total )); then cur=$total; fi
+  pct=$(( cur * 100 / total ))
+
+  if [[ ! -t 1 ]]; then
+    if (( pct % 10 == 0 && pct != LAST_PCT )); then
+      printf '%s: %d%% (%d/%d)\n' "$label" "$pct" "$cur" "$total"
+      LAST_PCT=$pct
+    fi
+    return 0
+  fi
+
+  elapsed=$(( SECONDS - STAGE_T0 ))
+  if (( elapsed > 0 && cur > 0 )); then
+    rate=$(awk -v c="$cur" -v e="$elapsed" 'BEGIN { printf "%.1f f/s", c / e }')
+    fmt_hms $(( (total - cur) * elapsed / cur ))
+    eta="ETA $REPLY"
+  fi
+  filled=$(( pct * BAR_W / 100 ))
+  printf -v bar_f '%*s' "$filled" ''; bar_f=${bar_f// /█}
+  printf -v bar_e '%*s' "$(( BAR_W - filled ))" ''; bar_e=${bar_e// /░}
+  printf '\r\033[K  %s%-13s%s %s%s%s%s%s %3d%%  %s%d/%d  %s  %s%s' \
+    "$CB" "$label" "$CR" "$CA" "$bar_f" "$CD" "$bar_e" "$CR" "$pct" \
+    "$CD" "$cur" "$total" "$rate" "$eta" "$CR"
+}
+
+show_log_tail() {
+  ui_err "The last step failed. Tail of the log ($LOG_FILE):"
+  tail -n 12 "$LOG_FILE" 2>/dev/null | sed "s/^/    ${CD}/; s/\$/${CR}/" >&2 || true
+}
+
+# ------------------------------------------------------------------------------
+#  Config persistence
+# ------------------------------------------------------------------------------
+load_config() {
+  [[ -r $CONFIG_FILE ]] || return 0
+  local k v key
+  while IFS='=' read -r k v || [[ -n $k ]]; do
+    [[ $k =~ ^[A-Z_]+$ ]] || continue
+    for key in "${CONFIG_KEYS[@]}"; do
+      if [[ $k == "$key" ]]; then printf -v "$k" '%s' "$v"; fi
+    done
+  done <"$CONFIG_FILE"
+  return 0
+}
+
+save_config() {
+  if (( ! SAVE_CONFIG )); then return 0; fi
+  local key tmp="$CONFIG_FILE.tmp"
+  {
+    printf '# %s configuration (generated)\n' "$APP"
+    for key in "${CONFIG_KEYS[@]}"; do printf '%s=%s\n' "$key" "${!key}"; done
+  } >"$tmp" 2>/dev/null && mv -f "$tmp" "$CONFIG_FILE" 2>/dev/null || true
+  return 0
+}
+
+# ------------------------------------------------------------------------------
+#  Engines
+# ------------------------------------------------------------------------------
+engine_bin() {
+  local id=$1 override="FF_BIN_${1^^}" cand
+  if [[ -n ${!override:-} ]]; then
+    if command -v "${!override}" >/dev/null 2>&1; then command -v "${!override}"; return 0; fi
+    return 1
+  fi
+  # shellcheck disable=SC2086
+  for cand in ${ENGINE_BINS[$id]:-}; do
+    if command -v "$cand" >/dev/null 2>&1; then command -v "$cand"; return 0; fi
+  done
+  return 1
+}
+
+engine_available() {
+  local id=$1
+  if [[ -n ${ENGINE_PY[$id]:-} ]] && (( ! PYTHON_ENABLED )); then return 1; fi
+  engine_bin "$id" >/dev/null
+}
+
+# resolve_engine_name <name> : accepts engine ids or family aliases (rife/flavr/cain)
+resolve_engine_name() {
+  local want=${1,,} id
+  for id in "${ENGINE_ORDER[@]}" "${ENGINE_EXPERIMENTAL[@]}" "${ENGINE_UNSUPPORTED[@]}"; do
+    if [[ ${id,,} == "$want" ]]; then REPLY=$id; return 0; fi
+  done
+  for id in "${ENGINE_ORDER[@]}"; do
+    if [[ ${ENGINE_FAMILY[$id]} == "$want" ]] && engine_available "$id"; then REPLY=$id; return 0; fi
+  done
+  for id in "${ENGINE_ORDER[@]}"; do
+    if [[ ${ENGINE_FAMILY[$id]} == "$want" ]]; then REPLY=$id; return 0; fi
+  done
+  return 1
+}
+
+print_install_hints() {
+  local id
+  ui_dim "Expected executables (looked up with command -v):"
+  for id in "${ENGINE_ORDER[@]}"; do
+    ui_dim "$(printf '%-11s %s' "$id" "${ENGINE_BINS[$id]}")"
+  done
+  ui_dim "Use FF_BIN_<ENGINE>=/path/to/binary to point to a custom location."
+}
+
+looks_like_model() {
+  local d=$1 ext
+  for ext in param pth pt pkl onnx bin; do
+    if compgen -G "$d/*.$ext" >/dev/null; then return 0; fi
+  done
+  return 1
+}
+
+list_models() {  # list_models <engine> : one model per line
+  local id=$1 family=${ENGINE_FAMILY[$1]} d bin bdir name
+  local -a found=() defaults=()
+  local -A seen=()
+  for d in "$MODELS_DIR/$family"/*/; do
+    d=${d%/}; name=${d##*/}
+    if looks_like_model "$d" && [[ -z ${seen[$name]:-} ]]; then seen[$name]=1; found+=("$name"); fi
+  done
+  if bin=$(engine_bin "$id"); then
+    bdir=$(dirname "$(readlink -f "$bin")")
+    for d in "$bdir"/*/; do
+      d=${d%/}; name=${d##*/}
+      if looks_like_model "$d" && [[ -z ${seen[$name]:-} ]]; then seen[$name]=1; found+=("$name"); fi
+    done
+  fi
+  if (( ${#found[@]} )); then
+    printf '%s\n' "${found[@]}"
+  else
+    read -ra defaults <<<"${ENGINE_MODELS[$id]}"
+    printf '%s\n' "${defaults[@]}"
+  fi
+}
+
+default_model() {  # default_model <engine>
+  local id=$1 m
+  local -a models=()
+  mapfile -t models < <(list_models "$id")
+  m=${ENGINE_DEFAULT_MODEL[$id]:-}
+  if [[ -n $m ]] && in_list "$m" "${models[@]}"; then printf '%s\n' "$m"; else printf '%s\n' "${models[0]:-}"; fi
+}
+
+resolve_model_path() {  # resolve_model_path <engine> <model> <bin> -> $REPLY
+  local id=$1 model=$2 bin=$3 family bdir
+  family=${ENGINE_FAMILY[$id]}
+  REPLY=$model
+  if [[ -z $model || -d $model ]]; then return 0; fi
+  if [[ -d $MODELS_DIR/$family/$model ]]; then REPLY="$MODELS_DIR/$family/$model"; return 0; fi
+  bdir=$(dirname "$(readlink -f "$bin")")
+  if [[ -d $bdir/$model ]]; then REPLY="$bdir/$model"; fi
+  return 0
+}
+
+select_engine() {  # select_engine <strict 0|1>
+  local strict=${1:-0} id
+  if [[ -n $AI ]]; then
+    if resolve_engine_name "$AI"; then
+      AI=$REPLY
+    elif (( strict )); then
+      ui_err "Unknown AI engine: $AI"; return 1
+    else
+      AI=""
+    fi
+  fi
+  if [[ -n $AI ]]; then
+    if in_list "$AI" "${ENGINE_UNSUPPORTED[@]}"; then
+      if (( strict )); then ui_err "$AI (VapourSynth) is not implemented in this build. Use RifeNcnn."; return 1; fi
+      AI=""
+    elif in_list "$AI" "${ENGINE_EXPERIMENTAL[@]}" && (( ! DEBUG )); then
+      if (( strict )); then ui_err "$AI is experimental; enable it with --debug."; return 1; fi
+      AI=""
+    elif ! engine_available "$AI"; then
+      if (( strict )); then
+        if [[ -n ${ENGINE_PY[$AI]:-} ]] && (( ! PYTHON_ENABLED )); then
+          ui_err "$AI is a Python implementation and Python is disabled (-np). Use -py."
+        else
+          ui_err "Engine $AI was not found in PATH."
+        fi
+        print_install_hints
+        return 1
+      fi
+      ui_warn "Engine $AI is not available; falling back to auto-detection."
+      AI=""
+    fi
+  fi
+  if [[ -z $AI ]]; then
+    for id in "${ENGINE_ORDER[@]}"; do
+      if engine_available "$id"; then AI=$id; break; fi
+    done
+  fi
+  if [[ -n $AI && -z $MODEL ]]; then MODEL=$(default_model "$AI"); fi
+  return 0
+}
+
+# ------------------------------------------------------------------------------
+#  Output configuration
+# ------------------------------------------------------------------------------
+encoder_args() {  # encoder_args <encoder> <out_array_name>
+  # NOTE: locals are underscore-prefixed to avoid nameref collisions with the caller.
+  local -n _ea=$2
+  local _enc=$1 _crf=${FF_CRF:-}
+  case $_enc in
+    X264)     _ea=(-c:v libx264 -preset medium -crf "${_crf:-18}") ;;
+    X265)     _ea=(-c:v libx265 -preset medium -crf "${_crf:-20}") ;;
+    SvtAv1)   _ea=(-c:v libsvtav1 -preset 6 -crf "${_crf:-28}") ;;
+    VpxVp9)   _ea=(-c:v libvpx-vp9 -b:v 0 -crf "${_crf:-28}" -row-mt 1) ;;
+    Nvenc264) _ea=(-c:v h264_nvenc -preset p5 -rc vbr -cq "${_crf:-19}" -b:v 0) ;;
+    Nvenc265) _ea=(-c:v hevc_nvenc -preset p5 -rc vbr -cq "${_crf:-21}" -b:v 0) ;;
+    NvencAv1) _ea=(-c:v av1_nvenc -preset p5 -rc vbr -cq "${_crf:-28}" -b:v 0) ;;
+    Amf264)   _ea=(-c:v h264_amf -quality quality -rc cqp -qp_i "${_crf:-20}" -qp_p "${_crf:-20}") ;;
+    Amf265)   _ea=(-c:v hevc_amf -quality quality -rc cqp -qp_i "${_crf:-22}" -qp_p "${_crf:-22}") ;;
+    Qsv264)   _ea=(-c:v h264_qsv -global_quality "${_crf:-20}") ;;
+    Qsv265)   _ea=(-c:v hevc_qsv -global_quality "${_crf:-22}") ;;
+    ProResKs) _ea=(-c:v prores_ks -profile:v 3 -vendor apl0) ;;
+    Gif)      _ea=(-c:v gif) ;;
+    Png)      _ea=(-c:v png) ;;
+    Jpeg)     _ea=(-c:v mjpeg -q:v 2 -strict -1) ;;
+    Webp)     _ea=(-c:v libwebp -quality 90) ;;
+    Tiff)     _ea=(-c:v tiff) ;;
+    Exr)      _ea=(-c:v exr) ;;
+    Ffv1)     _ea=(-c:v ffv1 -level 3 -coder 1 -context 1 -g 1) ;;
+    Huffyuv)  _ea=(-c:v huffyuv) ;;
+    Magicyuv) _ea=(-c:v magicyuv) ;;
+    Rawvideo) _ea=(-c:v rawvideo) ;;
+    *)        return 1 ;;
+  esac
+}
+
+audio_args() {  # audio_args <format> <source_codec> <out_array_name>
+  local fmt=$1 codec=$2; local -n _aa=$3
+  case $fmt in
+    mkv)    _aa=(-c:a copy) ;;
+    mp4|mov) if in_list "$codec" aac mp3 ac3 eac3; then _aa=(-c:a copy); else _aa=(-c:a aac -b:a 192k); fi ;;
+    webm)   if in_list "$codec" opus vorbis; then _aa=(-c:a copy); else _aa=(-c:a libopus -b:a 160k); fi ;;
+    avi)    if in_list "$codec" mp3 ac3; then _aa=(-c:a copy); else _aa=(-c:a libmp3lame -b:a 192k); fi ;;
+    *)      _aa=() ;;
+  esac
+}
+
+image_ext() {
+  case $1 in
+    Png) echo png ;; Jpeg) echo jpg ;; Webp) echo webp ;; Tiff) echo tiff ;; Exr) echo exr ;; *) echo png ;;
+  esac
+}
+
+# normalize_output <strict 0|1> : validates/repairs format, encoder and pixel format
+normalize_output() {
+  local strict=${1:-0}
+  local -a encs=() pfs=()
+
+  if canon "$VIDEO_FORMAT" "${FORMAT_LIST[@]}"; then
+    VIDEO_FORMAT=$REPLY
+  elif (( strict )); then
+    ui_err "Unknown video format: $VIDEO_FORMAT (options: ${FORMAT_LIST[*]})"; return 1
+  else
+    VIDEO_FORMAT="Mp4"
+  fi
+  if [[ $VIDEO_FORMAT == Realtime ]]; then return 0; fi
+
+  read -ra encs <<<"${FORMAT_ENCODERS[${VIDEO_FORMAT,,}]}"
+  if [[ -n $VIDEO_ENCODER ]]; then
+    if ! canon "$VIDEO_ENCODER" "${ALL_ENCODERS[@]}"; then
+      if (( strict )); then ui_err "Unknown video encoder: $VIDEO_ENCODER (options: ${ALL_ENCODERS[*]})"; return 1; fi
+      VIDEO_ENCODER=""
+    else
+      VIDEO_ENCODER=$REPLY
+      if ! in_list "$VIDEO_ENCODER" "${encs[@]}"; then
+        if (( strict )); then
+          ui_err "Encoder $VIDEO_ENCODER cannot be used with $VIDEO_FORMAT (supported: ${encs[*]})"; return 1
+        fi
+        VIDEO_ENCODER=""
+      fi
+    fi
+  fi
+  if [[ -z $VIDEO_ENCODER ]]; then VIDEO_ENCODER=${encs[0]}; fi
+
+  read -ra pfs <<<"${ENCODER_PIXFMTS[$VIDEO_ENCODER]}"
+  if [[ -n $PIXEL_FORMAT ]]; then
+    if ! canon "$PIXEL_FORMAT" "${ALL_PIXFMTS[@]}"; then
+      if (( strict )); then ui_err "Unknown pixel format: $PIXEL_FORMAT (options: ${ALL_PIXFMTS[*]})"; return 1; fi
+      PIXEL_FORMAT=""
+    else
+      PIXEL_FORMAT=$REPLY
+      if ! in_list "$PIXEL_FORMAT" "${pfs[@]}"; then
+        if (( strict )); then
+          ui_warn "Pixel format $PIXEL_FORMAT is unusual for $VIDEO_ENCODER (expected: ${pfs[*]}); trying anyway."
+        else
+          PIXEL_FORMAT=""
+        fi
+      fi
+    fi
+  fi
+  if [[ -z $PIXEL_FORMAT ]]; then PIXEL_FORMAT=${pfs[0]}; fi
+  return 0
+}
+
+ffmpeg_has_encoder() {  # ffmpeg_has_encoder <codec_name>
+  if [[ -z $FFMPEG_ENCODERS ]]; then FFMPEG_ENCODERS=$(ffmpeg -hide_banner -encoders 2>/dev/null || true); fi
+  grep -Eq "^ [A-Z.]{6} $1( |\$)" <<<"$FFMPEG_ENCODERS"
+}
+
+# ------------------------------------------------------------------------------
+#  Validation
+# ------------------------------------------------------------------------------
+validate_all() {
+  local -a ea=()
+  if (( ${#INPUTS[@]} == 0 )); then ui_err "No valid input file(s)."; return 1; fi
+
+  [[ $FACTOR =~ ^[0-9]+$ ]] && (( FACTOR >= 2 && FACTOR <= 32 )) \
+    || { ui_err "Interpolation factor must be an integer between 2 and 32."; return 1; }
+  [[ $MAX_HEIGHT =~ ^[0-9]+$ ]] || { ui_err "Max height must be a non-negative integer."; return 1; }
+  [[ $MAX_FPS =~ ^[0-9]+([.][0-9]+)?$ ]] || { ui_err "Max FPS must be a number (0 = unlimited)."; return 1; }
+  [[ $SCENE_SENS =~ ^[0-9]*[.]?[0-9]+$ ]] && awk -v s="$SCENE_SENS" 'BEGIN { exit !(s > 0 && s < 1) }' \
+    || { ui_err "Scene change sensitivity must be between 0 and 1 (e.g. 0.18)."; return 1; }
+
+  if [[ -n $OUTPUT_DIR ]]; then
+    mkdir -p -- "$OUTPUT_DIR" 2>/dev/null && [[ -w $OUTPUT_DIR ]] \
+      || { ui_err "Output folder is not writable: $OUTPUT_DIR"; return 1; }
+    OUTPUT_DIR=$(readlink -f -- "$OUTPUT_DIR")
+  fi
+
+  select_engine "$AI_FROM_CLI" || return 1
+  if [[ -z $AI ]]; then
+    ui_err "No supported interpolation engine (RIFE, FLAVR, CAIN) was found in PATH."
+    print_install_hints
+    return 1
+  fi
+
+  normalize_output "$OUTPUT_FROM_CLI" || return 1
+  if [[ $VIDEO_FORMAT == Realtime ]]; then
+    if ! command -v mpv >/dev/null 2>&1 && ! command -v ffplay >/dev/null 2>&1; then
+      ui_err "Realtime mode needs mpv or ffplay."; return 1
+    fi
+  else
+    encoder_args "$VIDEO_ENCODER" ea
+    if ! ffmpeg_has_encoder "${ea[1]}"; then
+      ui_err "This ffmpeg build has no '${ea[1]}' encoder (needed for $VIDEO_ENCODER)."; return 1
+    fi
+  fi
+  return 0
+}
+
+# ------------------------------------------------------------------------------
+#  Probing
+# ------------------------------------------------------------------------------
+valid_rat() { [[ $1 =~ ^([0-9]+)/([0-9]+)$ ]] && (( BASH_REMATCH[1] > 0 && BASH_REMATCH[2] > 0 )); }
+
+set_fps_vars() {
+  FPS_RAT="$FPS_NUM/$FPS_DEN"
+  FPS_DEC=$(awk -v n="$FPS_NUM" -v d="$FPS_DEN" 'BEGIN { printf "%.5f", n / d }')
+}
+
+load_probe() {
+  IFS='|' read -r V_W V_H FPS_NUM FPS_DEN V_FRAMES V_DUR A_CODEC <<<"${PROBE_CACHE[$1]}"
+  set_fps_vars
+}
+
+probe_video() {  # probe_video <file> ; fills V_* / FPS_* / A_CODEC
+  local f=$1 raw k v w="" h="" avg="" rfr="" nbf="" nbp="" dur="" fps frames codec
+  if [[ -n ${PROBE_CACHE[$f]:-} ]]; then load_probe "$f"; return 0; fi
+
+  raw=$(ffprobe -v error -select_streams v:0 -count_packets \
+          -show_entries stream=width,height,avg_frame_rate,r_frame_rate,nb_frames,nb_read_packets:format=duration \
+          -of flat "$f" 2>/dev/null) || return 1
+  while IFS='=' read -r k v; do
+    v=${v//\"/}
+    case $k in
+      *.width)           w=$v ;;
+      *.height)          h=$v ;;
+      *.avg_frame_rate)  avg=$v ;;
+      *.r_frame_rate)    rfr=$v ;;
+      *.nb_frames)       nbf=$v ;;
+      *.nb_read_packets) nbp=$v ;;
+      format.duration)   dur=$v ;;
+    esac
+  done <<<"$raw"
+
+  [[ $w =~ ^[0-9]+$ && $h =~ ^[0-9]+$ ]] || return 1
+  if valid_rat "$avg"; then fps=$avg; elif valid_rat "$rfr"; then fps=$rfr; else return 1; fi
+  [[ $dur =~ ^[0-9]+([.][0-9]+)?$ ]] || dur=0
+
+  if [[ $nbp =~ ^[0-9]+$ ]]; then
+    frames=$nbp
+  elif [[ $nbf =~ ^[0-9]+$ ]]; then
+    frames=$nbf
+  else
+    frames=$(awk -v d="$dur" -v n="${fps%/*}" -v q="${fps#*/}" 'BEGIN { printf "%d", d * n / q + 0.5 }')
+  fi
+  codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name \
+            -of default=nw=1:nk=1 "$f" 2>/dev/null | head -n1 || true)
+
+  PROBE_CACHE[$f]="$w|$h|${fps%/*}|${fps#*/}|$frames|$dur|$codec"
+  load_probe "$f"
+}
+
+# ------------------------------------------------------------------------------
+#  Pipeline
+# ------------------------------------------------------------------------------
+run_ffmpeg_progress() {  # run_ffmpeg_progress <total_frames> <label> <ffmpeg args...>
+  local total=$1 label=$2 k v rc=0
+  shift 2
+  stage_begin
+  debug "ffmpeg $*"
+  log "FFMPEG: $*"
+  if ! ffmpeg -nostdin -y -hide_banner -loglevel error -nostats -progress pipe:1 "$@" 2>>"$LOG_FILE" \
+      | while IFS='=' read -r k v; do
+          if [[ $k == frame ]]; then draw_bar "$v" "$total" "$label"; fi
+        done; then
+    rc=1
+  fi
+  finish_bar
+  return "$rc"
+}
+
+# Worker executed in a child shell (gum spin); prints the first frame index of every scene cut.
+scene_scan_worker() {  # <input> <fps_rat> <sensitivity> <fps_dec> <out_file>
+  set -o pipefail
+  ffmpeg -nostdin -hide_banner -nostats -i "$1" -map 0:v:0 -an -sn \
+    -vf "fps=$2,scale=-2:360,select='gt(scene,$3)',showinfo" -f null - 2>&1 \
+    | awk -v fps="$4" '
+        /pts_time:/ {
+          if (match($0, /pts_time:[0-9.]+/)) {
+            t = substr($0, RSTART + 9, RLENGTH - 9)
+            printf "%d\n", t * fps + 0.5
+          }
+        }' >"$5"
+}
+export -f scene_scan_worker
+
+detect_scenes() {
+  local input=$1 out=$WORK/scenes.txt
+  : >"$out"
+  ui_spin "Detecting scene changes (sensitivity $SCENE_SENS)…" \
+    bash -c 'scene_scan_worker "$@"' _ "$input" "$FPS_RAT" "$SCENE_SENS" "$FPS_DEC" "$out" || return 1
+  mapfile -t CUTS < <(sort -nu "$out")
+  ui_ok "Found ${#CUTS[@]} scene change(s)"
+}
+
+extract_frames() {  # extract_frames <input>
+  local input=$1 vf="fps=$FPS_RAT"
+  if (( MAX_HEIGHT > 0 )); then
+    vf+=",scale=-2:'min(ih,$MAX_HEIGHT)'"
+  else
+    vf+=",scale='trunc(iw/2)*2':'trunc(ih/2)*2'"
+  fi
+  # Engines operate on 8-bit RGB frames; PNG level 1 keeps extraction fast.
+  run_ffmpeg_progress "$V_FRAMES" "Extracting" -i "$input" -map 0:v:0 -an -sn -dn \
+    -vf "$vf" -pix_fmt rgb24 -compression_level 1 -start_number 1 "$IN_DIR/%08d.png"
+}
+
+run_engine() {  # run_engine <seg_in> <seg_out> <done_base> <total_out> <label>
+  local in=$1 out=$2 base=$3 total=$4 label=$5 bin model_path n target rc=0 cur
+  local -a cmd=() extra=()
+  bin=$(engine_bin "$AI") || { ui_err "Engine binary for $AI disappeared from PATH."; return 1; }
+  resolve_model_path "$AI" "$MODEL" "$bin"; model_path=$REPLY
+  n=$(count_files "$in")
+  target=$(( n * FACTOR ))
+
+  mkdir -p "$out" || return 1
+  cmd=("$bin" -i "$in" -o "$out" -n "$target")
+  if [[ -n $model_path ]]; then cmd+=(-m "$model_path"); fi
+  if [[ -n ${FF_GPU_ID:-} ]]; then cmd+=(-g "$FF_GPU_ID"); fi
+  if [[ -n ${FF_ENGINE_ARGS:-} ]]; then read -ra extra <<<"$FF_ENGINE_ARGS"; cmd+=("${extra[@]}"); fi
+
+  debug "engine: ${cmd[*]}"
+  log "ENGINE: ${cmd[*]}"
+  "${cmd[@]}" >>"$LOG_FILE" 2>&1 </dev/null &
+  ENGINE_PID=$!
+  while kill -0 "$ENGINE_PID" 2>/dev/null; do
+    cur=$(( base + $(count_files "$out") ))
+    draw_bar "$cur" "$total" "$label"
+    sleep 0.4
+  done
+  wait "$ENGINE_PID" || rc=$?
+  ENGINE_PID=""
+  draw_bar $(( base + $(count_files "$out") )) "$total" "$label"
+  return "$rc"
+}
+
+interpolate_all() {  # interpolate_all <total_out>
+  local total_out=$1 i s e len first k f
+  local -a bounds=(0 "${CUTS[@]}" "$N_IN")
+  stage_begin
+  OUT_IDX=0
+
+  if (( ${#CUTS[@]} == 0 )); then
+    run_engine "$IN_DIR" "$FINAL_DIR" 0 "$total_out" "Interpolating" || { finish_bar; return 1; }
+    finish_bar
+    return 0
+  fi
+
+  local seg_in=$WORK/seg_in seg_out=$WORK/seg_out
+  for (( i = 0; i < ${#bounds[@]} - 1; i++ )); do
+    s=${bounds[i]}; e=${bounds[i + 1]}; len=$(( e - s )); first=$(( s + 1 ))
+    if (( len == 1 )); then
+      # A one-frame scene cannot be interpolated: hold the frame instead.
+      pad_name "$first"
+      for (( k = 0; k < FACTOR; k++ )); do
+        OUT_IDX=$(( OUT_IDX + 1 )); pad_name "$OUT_IDX"; local dst=$REPLY
+        pad_name "$first"; cp "$IN_DIR/$REPLY" "$FINAL_DIR/$dst" || return 1
+      done
+      continue
+    fi
+    rm -rf "$seg_in" "$seg_out"; mkdir -p "$seg_in" "$seg_out" || return 1
+    for (( k = 0; k < len; k++ )); do
+      pad_name $(( first + k )); local src=$REPLY
+      pad_name $(( k + 1 ));     mv "$IN_DIR/$src" "$seg_in/$REPLY" || return 1
+    done
+    run_engine "$seg_in" "$seg_out" "$OUT_IDX" "$total_out" "Scene $(( i + 1 ))/$(( ${#bounds[@]} - 1 ))" \
+      || { finish_bar; return 1; }
+    for f in "$seg_out"/*.png; do
+      OUT_IDX=$(( OUT_IDX + 1 )); pad_name "$OUT_IDX"
+      mv "$f" "$FINAL_DIR/$REPLY" || return 1
+    done
+  done
+  finish_bar
+  return 0
+}
+
+unique_path() {  # unique_path <stem> <ext_with_dot_or_empty> -> $REPLY
+  local stem=$1 ext=$2 cand n=1
+  cand="$stem$ext"
+  while [[ -e $cand ]]; do cand="${stem}_$n$ext"; n=$(( n + 1 )); done
+  REPLY=$cand
+}
+
+plan_output() {  # plan_output <input>
+  local input=$1 dir base stem
+  OUT_FPS_RAT="$(( FPS_NUM * FACTOR ))/$FPS_DEN"
+  OUT_FPS_DEC=$(awk -v n="$FPS_NUM" -v d="$FPS_DEN" -v f="$FACTOR" 'BEGIN { printf "%.5f", n * f / d }')
+  FINAL_FPS_DEC=$OUT_FPS_DEC; REDUCE_FPS=0
+  if awk -v a="$OUT_FPS_DEC" -v m="$MAX_FPS" 'BEGIN { exit !(m > 0 && a > m + 0.001) }'; then
+    FINAL_FPS_DEC=$MAX_FPS; REDUCE_FPS=1
+  fi
+  dir=${OUTPUT_DIR:-$(dirname "$input")}
+  base=${input##*/}; base=${base%.*}
+  stem="$dir/${base}-Interpolated-${FACTOR}x-$(fmt_num "$FINAL_FPS_DEC")FPS-${AI}"
+  case ${VIDEO_FORMAT,,} in
+    realtime) OUT_PATH="" ;;
+    images)   unique_path "$stem-frames" ""; OUT_PATH=$REPLY ;;
+    *)        unique_path "$stem" ".${VIDEO_FORMAT,,}"; OUT_PATH=$REPLY ;;
+  esac
+}
+
+play_realtime() {
+  ui_info "Previewing at $(fmt_num "$FINAL_FPS_DEC") fps (close the player window to continue)"
+  if command -v mpv >/dev/null 2>&1; then
+    mpv --really-quiet --mf-fps="$FINAL_FPS_DEC" "mf://$FINAL_DIR/*.png" || true
+  else
+    ffplay -hide_banner -loglevel error -framerate "$FINAL_FPS_DEC" -autoexit -i "$FINAL_DIR/%08d.png" || true
+  fi
+}
+
+encode_output() {  # encode_output <input> <total_frames>
+  local input=$1 total=$2 fmt=${VIDEO_FORMAT,,} iext
+  local -a args=() enc=() aud=() vf=()
+  local vf_str=""
+
+  if [[ $fmt == realtime ]]; then play_realtime; return 0; fi
+
+  args+=(-framerate "$OUT_FPS_RAT" -start_number 1 -i "$FINAL_DIR/%08d.png")
+  local use_audio=0
+  if [[ -n $A_CODEC && $fmt =~ ^(mp4|mkv|webm|mov|avi)$ ]]; then
+    use_audio=1
+    args+=(-i "$input")
+  fi
+  args+=(-map 0:v:0)
+  if (( use_audio )); then
+    audio_args "$fmt" "$A_CODEC" aud
+    args+=(-map 1:a:0 "${aud[@]}")
+  fi
+
+  if (( REDUCE_FPS )); then
+    vf+=("fps=$MAX_FPS")
+    total=$(awk -v t="$total" -v o="$OUT_FPS_DEC" -v m="$MAX_FPS" 'BEGIN { printf "%d", t * m / o }')
+  fi
+  if [[ $fmt == gif ]]; then vf+=("split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse"); fi
+  if (( ${#vf[@]} )); then
+    local IFS=,; vf_str="${vf[*]}"; unset IFS
+    args+=(-vf "$vf_str")
+  fi
+
+  encoder_args "$VIDEO_ENCODER" enc || return 1
+  args+=("${enc[@]}")
+  if [[ $fmt != gif ]]; then args+=(-pix_fmt "${PIXEL_FORMAT,,}"); fi
+  if [[ $fmt =~ ^(mp4|mov)$ ]]; then
+    if in_list "$VIDEO_ENCODER" X265 Nvenc265 Amf265 Qsv265; then args+=(-tag:v hvc1); fi
+    args+=(-movflags +faststart)
+  fi
+
+  if [[ $fmt == images ]]; then
+    iext=$(image_ext "$VIDEO_ENCODER")
+    mkdir -p "$OUT_PATH" || return 1
+    run_ffmpeg_progress "$total" "Encoding" "${args[@]}" -start_number 1 "$OUT_PATH/frame_%08d.$iext"
+  else
+    run_ffmpeg_progress "$total" "Encoding" "${args[@]}" "$OUT_PATH"
+  fi
+}
+
+ui_result() {  # ui_result <elapsed_seconds> <frames_in> <frames_out>
+  local size="" body
+  if [[ -n $OUT_PATH && -e $OUT_PATH ]]; then size=$(du -sh -- "$OUT_PATH" 2>/dev/null | cut -f1 || true); fi
+  fmt_hms "$1"
+  body="$(kv "Output" "${OUT_PATH:-(realtime preview)}")
+$(kv "Frames" "$2 → $3")
+$(kv "Frame rate" "$(fmt_num "$FINAL_FPS_DEC") fps")
+$(kv "Size" "${size:--}")
+$(kv "Elapsed" "$REPLY")"
+  if (( HAVE_GUM )); then
+    gum style --border rounded --border-foreground "$C_OK" --padding "0 2" --margin "1 0 0 0" \
+      "${CO}${CB}Done${CR}" "" "$body"
+  else
+    printf '\n%sDone%s\n%s\n' "$CO" "$CR" "$body"
+  fi
+}
+
+cleanup_work() {
+  if [[ -n $WORK && -d $WORK ]]; then
+    if (( DEBUG )); then ui_dim "Debug: work directory kept at $WORK"; else rm -rf "$WORK"; fi
+  fi
+  WORK=""
+}
+
+run_pipeline() {  # run_pipeline <input>
+  local input=$1 n c total_out n_out k
+  local -a valid=()
+
+  ui_stage 1 4 "Analyzing input"
+  ui_dim "${V_W}x${V_H} · $(fmt_num "$FPS_DEC") fps · ~${V_FRAMES} frames"
+  ui_dim "$AI (${MODEL:-default model}) · ${FACTOR}x → $(fmt_num "$OUT_FPS_DEC") fps"
+  CUTS=()
+  if (( FIX_SCENES )); then
+    detect_scenes "$input" || ui_warn "Scene detection failed; continuing without it."
+  else
+    ui_dim "Scene change handling disabled"
+  fi
+
+  ui_stage 2 4 "Extracting frames"
+  extract_frames "$input" || { show_log_tail; return 1; }
+  n=$(count_files "$IN_DIR")
+  if (( n < 2 )); then ui_err "At least 2 frames are required (extracted $n)."; show_log_tail; return 1; fi
+  N_ORIG=$n
+  ui_ok "Extracted $n frames"
+
+  for c in "${CUTS[@]}"; do
+    if (( c > 0 && c < n )); then valid+=("$c"); fi
+  done
+  CUTS=("${valid[@]}")
+
+  if (( LOOP )); then
+    pad_name $(( n + 1 ))
+    cp "$IN_DIR/00000001.png" "$IN_DIR/$REPLY" || return 1
+    n=$(( n + 1 ))
+  fi
+  N_IN=$n
+  total_out=$(( N_IN * FACTOR ))
+
+  ui_stage 3 4 "Interpolating with $AI"
+  if ! interpolate_all "$total_out"; then show_log_tail; return 1; fi
+  n_out=$(count_files "$FINAL_DIR")
+  if (( n_out == 0 )); then ui_err "The engine produced no frames."; show_log_tail; return 1; fi
+  if (( n_out != total_out )); then
+    ui_warn "Expected $total_out frames but the engine produced $n_out; timing may drift."
+  fi
+  if (( LOOP && n_out > FACTOR )); then
+    # Drop the duplicated closing frame (and its hold frames) so the loop is seamless.
+    for (( k = 0; k < FACTOR; k++ )); do
+      pad_name $(( n_out - k )); rm -f "$FINAL_DIR/$REPLY"
+    done
+    n_out=$(( n_out - FACTOR ))
+  fi
+  ui_ok "Generated $n_out frames"
+
+  ui_stage 4 4 "Encoding ($VIDEO_FORMAT${VIDEO_ENCODER:+ · $VIDEO_ENCODER})"
+  if ! encode_output "$input" "$n_out"; then show_log_tail; return 1; fi
+  ui_ok "Encoded ${OUT_PATH:-realtime preview}"
+  FRAMES_OUT=$n_out
+  return 0
+}
+
+process_file() {  # process_file <input> <index> <count>
+  local input=$1 idx=$2 cnt=$3 t0=$SECONDS rc=0
+  printf '\n%s━━ Job %s/%s ━━%s %s%s%s\n' "$CA" "$idx" "$cnt" "$CR" "$CB" "${input##*/}" "$CR"
+  log "=== JOB $idx/$cnt: $input"
+
+  if ! probe_video "$input"; then ui_err "No readable video stream in: $input"; return 1; fi
+  WORK=$(mktemp -d "${FF_TMPDIR:-${TMPDIR:-/tmp}}/flowframes.XXXXXX") \
+    || { ui_err "Cannot create a work directory (set FF_TMPDIR)."; return 1; }
+  IN_DIR=$WORK/in; FINAL_DIR=$WORK/out
+  mkdir -p "$IN_DIR" "$FINAL_DIR" || { cleanup_work; return 1; }
+  plan_output "$input"
+  debug "work dir: $WORK ($(df -h --output=avail "$WORK" 2>/dev/null | tail -n1 | tr -d ' ') free)"
+
+  FRAMES_OUT=0
+  if ! run_pipeline "$input"; then rc=1; fi
+  cleanup_work
+  if (( rc == 0 )); then
+    RESULTS+=("$OUT_PATH")
+    ui_result $(( SECONDS - t0 )) "$N_ORIG" "$FRAMES_OUT"
+  else
+    ui_err "Job failed: ${input##*/}"
+  fi
+  return "$rc"
+}
+
+run_queue() {
+  local f i=0 ok=0 fail=0 total=${#INPUTS[@]}
+  : >"$LOG_FILE" 2>/dev/null || true
+  RESULTS=()
+  for f in "${INPUTS[@]}"; do
+    i=$(( i + 1 ))
+    if process_file "$f" "$i" "$total"; then ok=$(( ok + 1 )); else fail=$(( fail + 1 )); fi
+  done
+  printf '\n'
+  if (( fail == 0 )); then
+    ui_ok "All jobs finished ($ok/$total)"
+  else
+    ui_err "$fail of $total job(s) failed (log: $LOG_FILE)"
+  fi
+  (( fail == 0 ))
+}
+
+# ------------------------------------------------------------------------------
+#  Dashboard (gum)
+# ------------------------------------------------------------------------------
+ui_banner() {
+  if (( HAVE_GUM )); then
+    gum style --border double --border-foreground "$C_ACCENT" --padding "0 4" --margin "1 0 0 0" --align center \
+      "$(gum style --bold --foreground "$C_ACCENT" 'F L O W F R A M E S')" \
+      "$(gum style --foreground "$C_DIM" "AI frame interpolation · RIFE · FLAVR · CAIN · v$VERSION")"
+  else
+    printf '%sFLOWFRAMES%s CLI v%s\n' "$CB$CA" "$CR" "$VERSION"
+  fi
+}
+
+panel() {  # panel <title> <width> <body>
+  gum style --border rounded --border-foreground "$C_DIM" --padding "0 2" --width "$2" \
+    "${CB}${CA}$1${CR}" "" "$3"
+}
+
+build_input_body() {
+  local n=${#INPUTS[@]}
+  if (( n == 0 )); then
+    printf '%sNo file selected.%s\nChoose "Input file(s)" to add videos.' "$CD" "$CR"
+    return 0
+  fi
+  kv "Queue" "$n file(s)"
+  kv "File" "${INPUTS[0]##*/}"
+  if probe_video "${INPUTS[0]}"; then
+    kv "Resolution" "${V_W}x${V_H}"
+    kv "Frame rate" "$(fmt_num "$FPS_DEC") fps"
+    kv "Frames" "~$V_FRAMES"
+    fmt_hms "$V_DUR"; kv "Duration" "$REPLY"
+  else
+    printf '%sUnreadable video stream%s' "$CE" "$CR"
+  fi
+}
+
+build_settings_body() {
+  local out_fps=""
+  if (( ${#INPUTS[@]} )) && probe_video "${INPUTS[0]}"; then
+    out_fps=" → $(fmt_num "$(awk -v f="$FPS_DEC" -v x="$FACTOR" 'BEGIN { print f * x }')") fps"
+  fi
+  kv "Engine" "${AI:-none}"
+  kv "Model" "${MODEL:--}"
+  kv "Factor" "${FACTOR}x$out_fps"
+  if [[ $VIDEO_FORMAT == Realtime ]]; then
+    kv "Output" "Realtime preview"
+  else
+    kv "Output" "$VIDEO_FORMAT · $VIDEO_ENCODER · $PIXEL_FORMAT"
+  fi
+  if (( FIX_SCENES )); then kv "Scene cuts" "skipped @ $SCENE_SENS"; else kv "Scene cuts" "interpolated"; fi
+  if (( LOOP )); then kv "Loop" "seamless"; else kv "Loop" "off"; fi
+  if (( MAX_HEIGHT > 0 )); then kv "Max height" "${MAX_HEIGHT}p"; else kv "Max height" "original"; fi
+  if [[ $MAX_FPS != 0 ]]; then kv "Max FPS" "$MAX_FPS"; else kv "Max FPS" "unlimited"; fi
+  kv "Save to" "${OUTPUT_DIR:-same folder as input}"
+}
+
+build_engines_body() {
+  local fam id bin lbl first
+  for fam in rife flavr cain; do
+    first=1
+    for id in "${ENGINE_ORDER[@]}"; do
+      [[ ${ENGINE_FAMILY[$id]} == "$fam" ]] || continue
+      if (( first )); then lbl=${fam^^}; first=0; else lbl=""; fi
+      if engine_available "$id"; then
+        bin=$(engine_bin "$id")
+        printf '%s%-6s%s %s✔%s %-11s %s%s%s\n' "$CB" "$lbl" "$CR" "$CO" "$CR" "$id" "$CD" "${bin##*/}" "$CR"
+      elif [[ -n ${ENGINE_PY[$id]:-} ]] && (( ! PYTHON_ENABLED )); then
+        printf '%s%-6s%s %s✘%s %-11s %spython disabled%s\n' "$CB" "$lbl" "$CR" "$CE" "$CR" "$id" "$CD" "$CR"
+      else
+        printf '%s%-6s%s %s✘%s %-11s %snot found%s\n' "$CB" "$lbl" "$CR" "$CE" "$CR" "$id" "$CD" "$CR"
+      fi
+    done
+  done
+}
+
+render_dashboard() {
+  local cols w
+  cols=$(tput cols 2>/dev/null || echo 80)
+  w=$(( (cols - 4) / 2 )); if (( w > 60 )); then w=60; fi
+  if (( cols >= 100 )); then
+    gum join --horizontal --align top \
+      "$(panel "INPUT" "$w" "$(build_input_body)")" \
+      "$(panel "SETTINGS" "$w" "$(build_settings_body)")"
+  else
+    panel "INPUT" $(( cols - 4 )) "$(build_input_body)"
+    panel "SETTINGS" $(( cols - 4 )) "$(build_settings_body)"
+  fi
+  panel "ENGINES" $(( cols >= 100 ? w * 2 + 2 : cols - 4 )) "$(build_engines_body)"
+}
+
+# ------------------------------------------------------------------------------
+#  Interactive menus
+# ------------------------------------------------------------------------------
+pause_menu() {
+  gum confirm --affirmative "Back to menu" --negative "Quit" "$1" || QUIT=1
+}
+
+ask_bool() {  # ask_bool <prompt> <current 0|1> -> $REPLY
+  local prompt=$1 cur=$2 def=false rc=0
+  if [[ $cur == 1 ]]; then def=true; fi
+  gum confirm --default="$def" --affirmative "Enabled" --negative "Disabled" "$prompt" || rc=$?
+  case $rc in
+    0) REPLY=1 ;;
+    1) REPLY=0 ;;
+    *) REPLY=$cur ;;
+  esac
+}
+
+add_input() {  # add_input <path>
+  local p=$1 abs
+  p="${p#"${p%%[![:space:]]*}"}"; p="${p%"${p##*[![:space:]]}"}"
+  p=${p#\'}; p=${p%\'}; p=${p#\"}; p=${p%\"}
+  p=${p/#\~/$HOME}; p=${p//\\ / }
+  [[ -n $p ]] || return 0
+  if [[ ! -f $p ]]; then ui_warn "Not a file: $p"; return 1; fi
+  abs=$(readlink -f -- "$p")
+  if ! probe_video "$abs"; then ui_warn "No video stream found: $p"; return 1; fi
+  if in_list "$abs" "${INPUTS[@]}"; then return 0; fi
+  INPUTS+=("$abs")
+}
+
+menu_input() {
+  local action dir f part
+  local -a picked=() parts=()
+  action=$(gum choose --header "Input file(s)" \
+    "Search videos in a folder" "Browse filesystem" "Type or paste path(s)" "Clear queue" "Back") || return 0
+  case $action in
+    "Search videos"*)
+      dir=$(gum input --header "Folder to search (3 levels deep)" --value "$PWD") || return 0
+      dir=${dir/#\~/$HOME}
+      mapfile -t picked < <(find "$dir" -maxdepth 3 -type f \( -iname '*.mp4' -o -iname '*.mkv' -o -iname '*.mov' \
+        -o -iname '*.avi' -o -iname '*.webm' -o -iname '*.gif' -o -iname '*.m4v' -o -iname '*.ts' -o -iname '*.flv' \) \
+        2>/dev/null | sort | gum filter --no-limit --height 15 --placeholder "type to filter · tab selects several" || true)
+      for f in "${picked[@]}"; do add_input "$f" || true; done ;;
+    "Browse"*)
+      f=$(gum file --height 15 "$PWD") || return 0
+      add_input "$f" || { sleep 1.5; } ;;
+    "Type"*)
+      f=$(gum input --placeholder "/path/video.mp4 ; /path/other.mkv" --header "Separate several paths with ';'") || return 0
+      IFS=';' read -ra parts <<<"$f"
+      for part in "${parts[@]}"; do add_input "$part" || sleep 1.2; done ;;
+    "Clear"*) INPUTS=() ;;
+  esac
+  return 0
+}
+
+menu_engine() {
+  local id choice bin
+  local -a ids=() items=() models=()
+  ids=("${ENGINE_ORDER[@]}")
+  if (( DEBUG )); then ids+=("${ENGINE_EXPERIMENTAL[@]}"); fi
+  for id in "${ids[@]}"; do
+    if engine_available "$id"; then
+      bin=$(engine_bin "$id"); items+=("$(printf '%-12s ✔ %s' "$id" "${bin##*/}")")
+    else
+      items+=("$(printf '%-12s ✘ not available' "$id")")
+    fi
+  done
+  choice=$(gum choose --header "AI engine" --height 10 "${items[@]}") || return 0
+  id=${choice%% *}
+  if ! engine_available "$id"; then
+    ui_warn "$id is not available on this system."; sleep 1.5; return 0
+  fi
+  if [[ $id != "$AI" ]]; then AI=$id; MODEL=""; fi
+  if [[ -z $MODEL ]]; then MODEL=$(default_model "$AI"); fi
+  mapfile -t models < <(list_models "$AI")
+  choice=$(gum choose --header "Model for $AI" --height 12 --selected "$MODEL" "${models[@]}") || return 0
+  MODEL=$choice
+}
+
+menu_interpolation() {
+  local choice
+  choice=$(gum choose --header "Interpolation factor" --height 12 --selected "${FACTOR}x" \
+    2x 3x 4x 5x 6x 8x 10x 12x 16x) || return 0
+  FACTOR=${choice%x}
+  ask_bool "Loop output (interpolate last → first frame)?" "$LOOP"; LOOP=$REPLY
+  ask_bool "Do not interpolate scene cuts (avoids artifacts)?" "$FIX_SCENES"; FIX_SCENES=$REPLY
+  if (( FIX_SCENES )); then
+    choice=$(gum input --header "Scene change sensitivity (lower = more sensitive)" --value "$SCENE_SENS" --placeholder "0.18") || return 0
+    if [[ $choice =~ ^[0-9]*[.]?[0-9]+$ ]] && awk -v s="$choice" 'BEGIN { exit !(s > 0 && s < 1) }'; then
+      SCENE_SENS=$choice
+    else
+      ui_warn "Invalid sensitivity, keeping $SCENE_SENS"; sleep 1.5
+    fi
+  fi
+}
+
+menu_output() {
+  local choice prev_enc
+  local -a encs=() pfs=()
+  choice=$(gum choose --header "Output format" --selected "$VIDEO_FORMAT" "${FORMAT_LIST[@]}") || return 0
+  if [[ $choice != "$VIDEO_FORMAT" ]]; then VIDEO_FORMAT=$choice; VIDEO_ENCODER=""; PIXEL_FORMAT=""; fi
+  normalize_output 0 || true
+  if [[ $VIDEO_FORMAT == Realtime ]]; then return 0; fi
+
+  read -ra encs <<<"${FORMAT_ENCODERS[${VIDEO_FORMAT,,}]}"
+  if (( ${#encs[@]} > 1 )); then
+    prev_enc=$VIDEO_ENCODER
+    choice=$(gum choose --header "Video encoder" --height 14 --selected "$VIDEO_ENCODER" "${encs[@]}") || return 0
+    VIDEO_ENCODER=$choice
+    if [[ $VIDEO_ENCODER != "$prev_enc" ]]; then PIXEL_FORMAT=""; fi
+  fi
+  normalize_output 0 || true
+  read -ra pfs <<<"${ENCODER_PIXFMTS[$VIDEO_ENCODER]}"
+  if (( ${#pfs[@]} > 1 )); then
+    choice=$(gum choose --header "Pixel format" --height 12 --selected "$PIXEL_FORMAT" "${pfs[@]}") || return 0
+    PIXEL_FORMAT=$choice
+  fi
+}
+
+menu_advanced() {
+  local choice
+  choice=$(gum choose --header "Max video height (larger videos are downscaled)" --height 10 \
+    "Original" 2160 1440 1080 720 480 360) || return 0
+  if [[ $choice == Original ]]; then MAX_HEIGHT=0; else MAX_HEIGHT=$choice; fi
+
+  choice=$(gum input --header "Maximum output FPS (0 = unlimited)" --value "$MAX_FPS" --placeholder "60") || return 0
+  if [[ $choice =~ ^[0-9]+([.][0-9]+)?$ ]]; then MAX_FPS=$choice; else ui_warn "Invalid FPS, keeping $MAX_FPS"; sleep 1.2; fi
+
+  choice=$(gum choose --header "Output folder" "Same folder as input" "Browse…" "Type a path") || return 0
+  case $choice in
+    Same*)   OUTPUT_DIR="" ;;
+    Browse*) choice=$(gum file --directory --height 15 "${OUTPUT_DIR:-$PWD}") || return 0
+             if [[ -d $choice ]]; then OUTPUT_DIR=$choice; fi ;;
+    Type*)   choice=$(gum input --header "Output folder" --value "$OUTPUT_DIR" --placeholder "/path/to/folder") || return 0
+             OUTPUT_DIR=${choice/#\~/$HOME} ;;
+  esac
+
+  ask_bool "Enable Python implementations (RifeCuda, FlavrCuda, …)?" "$PYTHON_ENABLED"; PYTHON_ENABLED=$REPLY
+  select_engine 0 || true
+}
+
+download_model() {  # download_model <family> <name> <url>
+  local fam=$1 name=$2 url=$3 dest="$MODELS_DIR/$1" tmp file
+  tmp=$(mktemp -d) || return 1
+  file="$tmp/${url##*/}"
+  mkdir -p "$dest"
+  if ! ui_spin "Downloading $name…" curl -fsSL --retry 3 -o "$file" "$url"; then
+    ui_err "Download failed: $url"; rm -rf "$tmp"; return 1
+  fi
+  case $file in
+    *.zip)            unzip -q -o "$file" -d "$dest" ;;
+    *.tar.gz|*.tgz)   tar -xzf "$file" -C "$dest" ;;
+    *.tar.xz)         tar -xJf "$file" -C "$dest" ;;
+    *.7z)             7z x -y -o"$dest" "$file" >/dev/null ;;
+    *)                mv "$file" "$dest/" ;;
+  esac || { ui_err "Could not extract $name"; rm -rf "$tmp"; return 1; }
+  rm -rf "$tmp"
+  ui_ok "Installed $name → $dest"
+}
+
+model_downloader() {
+  local row fam name url sel
+  local -a rows=() picks=()
+  local -A urls=()
+  if ! command -v curl >/dev/null 2>&1; then ui_err "curl is required for the model downloader."; sleep 2; return 0; fi
+  if [[ ! -s $MANIFEST_FILE ]]; then
+    {
+      printf '# Model manifest — tab separated: family<TAB>name<TAB>url\n'
+      printf '# Supported archives: .zip .tar.gz .tgz .tar.xz .7z (extracted into %s/<family>/)\n' "$MODELS_DIR"
+      printf '# rife\trife-v4.6\thttps://example.com/rife-v4.6.zip\n'
+    } >"$MANIFEST_FILE"
+  fi
+  while true; do
+    clear; ui_banner
+    mapfile -t rows < <(grep -vE '^[[:space:]]*(#|$)' "$MANIFEST_FILE" || true)
+    if (( ${#rows[@]} == 0 )); then
+      gum style --foreground "$C_WARN" --margin "1 2" "The model manifest is empty." "Add lines (family<TAB>name<TAB>url) to:" "$MANIFEST_FILE"
+      pause_menu "Return to the main menu?"; return 0
+    fi
+    urls=(); picks=()
+    for row in "${rows[@]}"; do
+      IFS=$'\t' read -r fam name url <<<"$row"
+      [[ -n $fam && -n $name && -n $url ]] || continue
+      urls["$(printf '%-8s %s' "$fam" "$name")"]="$fam"$'\t'"$name"$'\t'"$url"
+    done
+    mapfile -t picks < <(printf '%s\n' "${!urls[@]}" | sort | gum choose --no-limit --height 14 \
+      --header "Model downloader · space toggles · enter downloads · esc goes back" || true)
+    if (( ${#picks[@]} == 0 )); then return 0; fi
+    for sel in "${picks[@]}"; do
+      IFS=$'\t' read -r fam name url <<<"${urls[$sel]}"
+      download_model "$fam" "$name" "$url" || true
+    done
+    if (( CLOSE_DOWNLOADER )); then sleep 1; return 0; fi
+    gum confirm --affirmative "Download more" --negative "Done" "Downloads finished." || return 0
+  done
+}
+
+menu_start() {
+  if ! validate_all; then pause_menu "Fix the issue above and try again."; return 0; fi
+  if ! gum confirm --affirmative "Start" --negative "Cancel" \
+      "Interpolate ${#INPUTS[@]} file(s) with $AI (${MODEL:-default}) at ${FACTOR}x?"; then
+    return 0
+  fi
+  save_config
+  clear; ui_banner
+  run_queue || true
+  if (( ${#RESULTS[@]} )) && [[ -f ${RESULTS[0]} ]] && { command -v mpv >/dev/null 2>&1 || command -v ffplay >/dev/null 2>&1; }; then
+    if gum confirm --affirmative "Play" --negative "Skip" "Play the first result?"; then
+      if command -v mpv >/dev/null 2>&1; then mpv --really-quiet "${RESULTS[0]}" || true
+      else ffplay -hide_banner -loglevel error -autoexit "${RESULTS[0]}" || true; fi
+    fi
+  fi
+  pause_menu "Job finished."
+}
+
+interactive_main() {
+  local choice
+  if (( ! HAVE_GUM )); then
+    die "Interactive mode needs gum (https://github.com/charmbracelet/gum) and a terminal. Use -a with file(s) for plain CLI mode."
+  fi
+  select_engine 0 || true
+  normalize_output 0 || true
+  if (( OPEN_DOWNLOADER )); then model_downloader; fi
+
+  local -a menu=(
+    "▶  Start interpolation"
+    "◧  Input file(s)"
+    "◈  AI engine & model"
+    "≋  Interpolation settings"
+    "▣  Output settings"
+    "⚙  Advanced settings"
+    "⇩  Model downloader"
+    "≡  View last log"
+    "✖  Quit"
+  )
+  while (( ! QUIT )); do
+    clear
+    ui_banner
+    render_dashboard
+    choice=$(gum choose --header "  ↑/↓ move · enter select · esc quit" --height 12 "${menu[@]}") || choice="Quit"
+    case $choice in
+      *"Start interpolation") menu_start ;;
+      *"Input file(s)")       menu_input ;;
+      *"AI engine & model")   menu_engine ;;
+      *"Interpolation settings") menu_interpolation ;;
+      *"Output settings")     menu_output ;;
+      *"Advanced settings")   menu_advanced ;;
+      *"Model downloader")    model_downloader ;;
+      *"View last log")
+        if [[ -s $LOG_FILE ]]; then gum pager --soft-wrap <"$LOG_FILE" || true; else ui_info "The log is empty."; sleep 1.2; fi ;;
+      *)                      QUIT=1 ;;
+    esac
+    normalize_output 0 || true
+  done
+  save_config
+  printf '\n%sBye!%s\n' "$CD" "$CR"
+}
+
+# ------------------------------------------------------------------------------
+#  Command line
+# ------------------------------------------------------------------------------
+usage() {
+  cat <<EOF
+Flowframes CLI v$VERSION — AI frame interpolation (RIFE · FLAVR · CAIN)
+
+Usage:
+  $SCRIPT_NAME <OPTIONS> <FILE(S)>
+
+  Without -a/--autorun the interactive gum interface is opened.
+
+Options:
+  -d,   --debug                       : Enable debug/developer features and experimental or deprecated options
+  -np,  --no_python                   : Disable Python implementations
+  -py,  --enable_python               : Enable Python implementations
+  -md,  --open_model_downloader       : Open model downloader on startup
+  -mdc, --close_model_downloader      : Close model downloader after downloads have finished
+  -nc,  --no_config_save              : Do not save anything in config during this session
+  -a,   --autorun                     : Start interpolation automatically if valid parameters are provided and exit afterwards
+  -f,   --factor                      : Interpolation factor (integer >= 2)
+  -ai                                 : Interpolation AI implementation to use
+                                        (Options: RifeCuda, RifeNcnnVs, RifeNcnn, FlavrCuda, CainNcnn, DainNcnn, XvfiCuda, IfrnetNcnn;
+                                         aliases: rife, flavr, cain)
+  -m,   --model                       : AI model to use
+  -vf,  --video_format                : Output video format to use (Options: Mp4, Mkv, Webm, Mov, Avi, Gif, Images, Realtime)
+  -ve,  --video_encoder               : Output video encoder to use
+                                        (Options: X264, X265, SvtAv1, VpxVp9, Nvenc264, Nvenc265, NvencAv1, Amf264, Amf265,
+                                         Qsv264, Qsv265, ProResKs, Gif, Png, Jpeg, Webp, Tiff, Exr, Ffv1, Huffyuv, Magicyuv, Rawvideo)
+  -pf,  --pixel_format                : Output pixel format to use
+                                        (Options: Yuv420P, Yuva420P, Yuv420P10Le, Yuv422P, Yuv422P10Le, Yuv444P, Yuv444P10Le,
+                                         Yuva444P10Le, Yuv444P12Le, Yuv444P16Le, P010Le, P016Le, Rgb24, Rgba, Rgb48Le, Rgb48Be,
+                                         Rgba64Le, Rgba64Be, Pal8, Gbrpf32Le, Gbrapf32Le)
+  -mh,  --max_height                  : Max video size in height pixels. Larger videos will be downscaled. (Example: 720)
+  -l,   --loop                        : Enable loop output mode
+  -scn, --fix_scene_changes           : Do not interpolate scene cuts to avoid artifacts
+  -scnv,--scene_change_sensitivity    : Scene change sensitivity, lower is more sensitive (e.g. 0.18)
+  -fps, --max_fps                     : Maximum FPS of output video; higher results are reduced to this value
+  -o,   --output_dir                  : Output folder to save the interpolated video in
+  <Loose Arguments>                   : Input file(s)
+  -h,   --help                        : Show help
+        --version                     : Show version
+
+Examples:
+  $SCRIPT_NAME                                    # interactive mode
+  $SCRIPT_NAME clip.mp4                           # interactive, file preloaded
+  $SCRIPT_NAME -a -f 4 -ai rife -vf Mkv clip.mp4  # plain CLI, 4x with RIFE into MKV
+EOF
+}
+
+parse_args() {
+  local arg val has_val
+  while (( $# )); do
+    arg=$1; val=""; has_val=0
+    if [[ $arg == --*=* ]]; then val=${arg#*=}; arg=${arg%%=*}; has_val=1; fi
+    case $arg in
+      -d|--debug)                   DEBUG=1 ;;
+      -np|--no_python)              PYTHON_ENABLED=0 ;;
+      -py|--enable_python)          PYTHON_ENABLED=1 ;;
+      -md|--open_model_downloader)  OPEN_DOWNLOADER=1 ;;
+      -mdc|--close_model_downloader) CLOSE_DOWNLOADER=1 ;;
+      -nc|--no_config_save)         SAVE_CONFIG=0 ;;
+      -a|--autorun)                 AUTORUN=1 ;;
+      -l|--loop)                    LOOP=1 ;;
+      -scn|--fix_scene_changes)     FIX_SCENES=1 ;;
+      -h|--help)                    usage; exit 0 ;;
+      --version)                    printf '%s %s\n' "$APP" "$VERSION"; exit 0 ;;
+      -f|--factor|-ai|--ai|-m|--model|-vf|--video_format|-ve|--video_encoder|-pf|--pixel_format|\
+      -mh|--max_height|-scnv|--scene_change_sensitivity|-fps|--max_fps|-o|--output_dir)
+        if (( ! has_val )); then
+          if (( $# < 2 )); then die "Option $arg requires a value."; fi
+          val=$2; shift
+        fi
+        case $arg in
+          -f|--factor)                      FACTOR=$val ;;
+          -ai|--ai)                         AI=$val; AI_FROM_CLI=1 ;;
+          -m|--model)                       MODEL=$val ;;
+          -vf|--video_format)               VIDEO_FORMAT=$val; OUTPUT_FROM_CLI=1 ;;
+          -ve|--video_encoder)              VIDEO_ENCODER=$val; OUTPUT_FROM_CLI=1 ;;
+          -pf|--pixel_format)               PIXEL_FORMAT=$val; OUTPUT_FROM_CLI=1 ;;
+          -mh|--max_height)                 MAX_HEIGHT=$val ;;
+          -scnv|--scene_change_sensitivity) SCENE_SENS=$val; FIX_SCENES=1 ;;
+          -fps|--max_fps)                   MAX_FPS=$val ;;
+          -o|--output_dir)                  OUTPUT_DIR=$val ;;
+        esac ;;
+      --) shift; while (( $# )); do INPUTS+=("$1"); shift; done; break ;;
+      -*) die "Unknown option: $arg (see --help)" ;;
+      *)  INPUTS+=("$1") ;;
+    esac
+    shift
+  done
+}
+
+check_dependencies() {
+  local c
+  local -a missing=()
+  for c in ffmpeg ffprobe awk find; do
+    if ! command -v "$c" >/dev/null 2>&1; then missing+=("$c"); fi
+  done
+  if (( ${#missing[@]} )); then die "Missing required tool(s): ${missing[*]}"; fi
+}
+
+cleanup() {
+  if [[ -n $ENGINE_PID ]] && kill -0 "$ENGINE_PID" 2>/dev/null; then kill "$ENGINE_PID" 2>/dev/null || true; fi
+  if [[ -t 1 ]]; then tput cnorm 2>/dev/null || true; fi
+  cleanup_work
+}
+
+main() {
+  setup_colors
+  trap cleanup EXIT
+  trap 'printf "\n"; ui_warn "Interrupted."; exit 130' INT TERM
+
+  init_paths
+  load_config
+  parse_args "$@"
+  init_ui
+  check_dependencies
+
+  # Re-validate every loose argument as a real video file.
+  local f
+  local -a raw=("${INPUTS[@]}")
+  INPUTS=()
+  for f in "${raw[@]}"; do add_input "$f" || true; done
+
+  if (( AUTORUN )); then
+    if validate_all; then
+      if (( HAVE_GUM )); then ui_banner; render_dashboard; fi
+      if run_queue; then save_config; exit 0; else exit 1; fi
+    fi
+    if (( HAVE_GUM )); then
+      ui_warn "Autorun parameters are incomplete; opening the interactive interface instead."
+      sleep 2
+    else
+      exit 1
+    fi
+  elif (( ! IS_TTY )); then
+    usage >&2
+    die "Interactive mode needs a terminal. Use -a with file(s) for non-interactive use."
+  fi
+
+  interactive_main
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

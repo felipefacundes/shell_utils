@@ -1,0 +1,419 @@
+#!/usr/bin/env bash
+# hypr-dropdown - Quake-style dropdown terminal for Hyprland.
+#
+# The terminal window is found by a forced TITLE (or class/app-id): put the
+# {title} placeholder wherever your terminal takes a title, and the script
+# replaces it with the title it will look for. Examples for -t / TERMINAL:
+#   terminator -T {title}            kitty --title {title}
+#   alacritty --title {title}        foot --title {title}
+#   ghostty --title={title}          wezterm start --class {title}
+#   foot --app-id {title}            (class/app-id also works as a match)
+#
+# Dependencies: hyprctl, jq   (optional: socat for `watch`, notify-send for alerts)
+#
+# Works with Hyprland 0.55+ Lua configs (dispatchers are sent as hl.dsp.*
+# expressions) and legacy hyprlang configs. The mode is auto-detected; force it
+# with DROPDOWN_MODE=lua or DROPDOWN_MODE=legacy.
+#
+# Usage:
+#   hypr-dropdown [options] [toggle|show|hide|init|kill|watch|log]
+#
+# Options:
+#   -t, --terminal CMD   terminal command, with {title} (default: terminator -T {title})
+#   -T, --title TITLE    title to force and match (default: QuakeTerminal)
+#   -w, --width PCT      width in % of the monitor work area (default: 100)
+#   -H, --height PCT     height in % of the monitor work area (default: 40)
+#   -n, --name NAME      instance name, allows several dropdowns (default: dropdown)
+#       --no-animate     disable the slide animation
+#   -d, --debug          log every dispatch to the log file
+#   -h, --help           show this help
+#
+# Log file: ${XDG_STATE_HOME:-~/.local/state}/hypr-dropdown/hypr-dropdown.log
+# (`hypr-dropdown log` prints it). Errors are also sent with notify-send.
+#
+# Config precedence: defaults < config file < DROPDOWN_* env vars < CLI flags.
+# Config file: ${XDG_CONFIG_HOME:-~/.config}/hypr-dropdown/config (plain bash), e.g.:
+#   TERMINAL="kitty --title {title}"
+#   WIDTH=80
+#   HEIGHT=50
+
+set -Eeuo pipefail
+
+# ---------------------------------------------------------------- defaults --
+NAME="dropdown"
+TERMINAL="terminator -T {title}"
+TITLE=""
+WIDTH=100
+HEIGHT=40
+ANIMATE=1
+DEBUG=0
+SPAWN_TIMEOUT=5   # seconds to wait for the terminal window to appear
+ACTION="toggle"
+
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/hypr-dropdown/config"
+if [[ -f $CONFIG_FILE ]]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+fi
+
+TERMINAL="${DROPDOWN_TERMINAL:-$TERMINAL}"
+TITLE="${DROPDOWN_TITLE:-$TITLE}"
+WIDTH="${DROPDOWN_WIDTH:-$WIDTH}"
+HEIGHT="${DROPDOWN_HEIGHT:-$HEIGHT}"
+NAME="${DROPDOWN_NAME:-$NAME}"
+ANIMATE="${DROPDOWN_ANIMATE:-$ANIMATE}"
+DEBUG="${DROPDOWN_DEBUG:-$DEBUG}"
+
+# ----------------------------------------------------------------- logging --
+LOG_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/hypr-dropdown/hypr-dropdown.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+# Keep the log small: trim it when it grows past ~256 KB.
+if [[ -f $LOG_FILE && $(stat -c %s "$LOG_FILE") -gt 262144 ]]; then
+    tail -n 300 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+fi
+
+log() { printf '%s [%s] %s\n' "$(date '+%F %T')" "$NAME" "$*" >> "$LOG_FILE"; }
+
+die() {
+    log "ERROR: $*"
+    printf 'hypr-dropdown: %s\n' "$*" >&2
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -u critical "hypr-dropdown" "$* (see $LOG_FILE)" || true
+    fi
+    exit 1
+}
+
+# Any unexpected failure (set -e) is recorded instead of dying silently.
+trap 'log "unexpected failure at line $LINENO: $BASH_COMMAND"' ERR
+
+usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; }
+
+need() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
+
+# ----------------------------------------------------------- argument parse --
+while (($#)); do
+    case $1 in
+        -t|--terminal) TERMINAL=${2:?missing value for $1}; shift 2 ;;
+        -T|--title)    TITLE=${2:?missing value for $1};    shift 2 ;;
+        -w|--width)    WIDTH=${2:?missing value for $1};    shift 2 ;;
+        -H|--height)   HEIGHT=${2:?missing value for $1};   shift 2 ;;
+        -n|--name)     NAME=${2:?missing value for $1};     shift 2 ;;
+        --no-animate)  ANIMATE=0; shift ;;
+        -d|--debug)    DEBUG=1; shift ;;
+        -h|--help)     usage; exit 0 ;;
+        toggle|show|hide|init|kill|watch|log) ACTION=$1; shift ;;
+        *) die "unknown argument: $1 (see --help)" ;;
+    esac
+done
+
+if [[ $ACTION == log ]]; then
+    cat "$LOG_FILE" 2>/dev/null || true
+    exit 0
+fi
+
+if [[ -z $TITLE ]]; then
+    if [[ $NAME == dropdown ]]; then TITLE="QuakeTerminal"; else TITLE="QuakeTerminal-$NAME"; fi
+fi
+
+need hyprctl
+need jq
+
+SPECIAL="special:dd-$NAME"
+
+# ----------------------------------------------------------- dispatch layer --
+# Hyprland 0.55+ with a hyprland.lua config parses `hyprctl dispatch` as Lua
+# (hl.dsp.*), while hyprlang configs still use the classic dispatcher syntax.
+detect_mode() {
+    if [[ -n ${DROPDOWN_MODE:-} ]]; then
+        printf '%s' "$DROPDOWN_MODE"
+    elif [[ $(command hyprctl dispatch 'hl.dsp.no_op()' 2>&1) == ok* ]]; then
+        printf 'lua'
+    else
+        printf 'legacy'
+    fi
+}
+MODE=$(detect_mode)
+log "action=$ACTION mode=$MODE title=$TITLE terminal=[$TERMINAL]"
+
+# Wrap hyprctl so every dispatch result is checked: failures are always logged,
+# successes only with --debug. Output is passed through for the callers.
+hyprctl() {
+    if [[ ${1:-} == dispatch ]]; then
+        local out
+        out=$(command hyprctl "$@" 2>&1) || true
+        if [[ $out != ok* ]]; then
+            log "dispatch FAILED: ${*:2} -> $out"
+        elif [[ $DEBUG == 1 ]]; then
+            log "dispatch ok: ${*:2}"
+        fi
+        printf '%s\n' "$out"
+    else
+        command hyprctl "$@"
+    fi
+}
+
+# Quote a bash string as a Lua string literal.
+lua_str() {
+    local s=${1//\\/\\\\}
+    s=${s//\"/\\\"}
+    printf '"%s"' "$s"
+}
+
+dsp_exec() {   # CMD
+    if [[ $MODE == lua ]]; then
+        hyprctl dispatch "hl.dsp.exec_cmd($(lua_str "$1"))" >/dev/null
+    else
+        hyprctl dispatch exec "$1" >/dev/null
+    fi
+}
+
+dsp_move_ws() {   # WORKSPACE(id or name) ADDRESS - silent, focus does not follow
+    if [[ $MODE == lua ]]; then
+        local ws=$1
+        [[ $ws =~ ^-?[0-9]+$ ]] || ws=$(lua_str "$ws")
+        hyprctl dispatch "hl.dsp.window.move({ workspace = $ws, follow = false, window = \"address:$2\" })" >/dev/null
+    else
+        hyprctl dispatch movetoworkspacesilent "$1,address:$2" >/dev/null
+    fi
+}
+
+dsp_float() {   # ADDRESS - force floating (set, never toggle)
+    if [[ $MODE == lua ]]; then
+        hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$1\" })" >/dev/null
+    else
+        hyprctl dispatch setfloating "address:$1" >/dev/null
+    fi
+}
+
+dsp_resize() {   # ADDRESS W H - exact size in pixels
+    if [[ $MODE == lua ]]; then
+        hyprctl dispatch "hl.dsp.window.resize({ x = $2, y = $3, relative = false, window = \"address:$1\" })" >/dev/null
+    else
+        hyprctl dispatch resizewindowpixel "exact $2 $3,address:$1" >/dev/null
+    fi
+}
+
+dsp_move_xy() {   # ADDRESS X Y - exact position in layout pixels
+    if [[ $MODE == lua ]]; then
+        hyprctl dispatch "hl.dsp.window.move({ x = $2, y = $3, relative = false, window = \"address:$1\" })" >/dev/null
+    else
+        hyprctl dispatch movewindowpixel "exact $2 $3,address:$1" >/dev/null
+    fi
+}
+
+dsp_focus() {   # ADDRESS
+    if [[ $MODE == lua ]]; then
+        hyprctl dispatch "hl.dsp.focus({ window = \"address:$1\" })" >/dev/null
+    else
+        hyprctl dispatch focuswindow "address:$1" >/dev/null
+    fi
+}
+
+dsp_top() {   # ADDRESS - raise in the z-order
+    if [[ $MODE == lua ]]; then
+        hyprctl dispatch "hl.dsp.window.alter_zorder({ mode = \"top\", window = \"address:$1\" })" >/dev/null
+    else
+        hyprctl dispatch alterzorder "top,address:$1" >/dev/null
+    fi
+}
+
+dsp_close() {   # ADDRESS
+    if [[ $MODE == lua ]]; then
+        hyprctl dispatch "hl.dsp.window.close(\"address:$1\")" >/dev/null
+    else
+        hyprctl dispatch closewindow "address:$1" >/dev/null
+    fi
+}
+
+# ----------------------------------------------------------- window helpers --
+# Print "true"/"false": whether the window is currently floating.
+window_floating() {   # ADDRESS
+    hyprctl clients -j | jq -r --arg a "$1" '.[] | select(.address == $a) | .floating'
+}
+
+# Make sure the window is floating. The state is verified and the dispatch
+# retried, because it can lag right after a workspace move.
+ensure_floating() {   # ADDRESS
+    local addr=$1 i
+    for i in 1 2 3 4 5; do
+        [[ $(window_floating "$addr") == true ]] && return 0
+        dsp_float "$addr"
+        sleep 0.05
+    done
+    log "WARNING: window $addr is still not floating after retries"
+}
+
+# Print the address of the window carrying our title (empty if none). The
+# initial title is matched too, because shells may rewrite the live title.
+find_window() {
+    hyprctl clients -j | jq -r --arg t "$TITLE" '
+        [.[] | select(.initialTitle == $t or .title == $t
+                      or .class == $t or .initialClass == $t)][0].address // empty'
+}
+
+# True when the window sits on the currently active workspace.
+is_visible() {
+    local win_ws cur_ws
+    win_ws=$(hyprctl clients -j | jq -r --arg a "$1" '.[] | select(.address == $a) | .workspace.id')
+    cur_ws=$(hyprctl activeworkspace -j | jq -r '.id')
+    [[ $win_ws == "$cur_ws" ]]
+}
+
+# Terminal command with {title} expanded (shell-quoted). Terminator also needs
+# --no-dbus, otherwise it hands the window to an already running instance.
+build_exec() {
+    local cmd=$TERMINAL bin
+    if [[ $cmd != *"{title}"* ]]; then
+        log "WARNING: terminal command has no {title} placeholder; the window may not be found"
+    fi
+    cmd=${cmd//\{title\}/$(printf '%q' "$TITLE")}
+    bin=${cmd%% *}; bin=${bin##*/}
+    if [[ $bin == terminator ]]; then
+        [[ $cmd == *--no-dbus* || $cmd == *" -u"* ]] || cmd+=" --no-dbus"
+    fi
+    printf '%s' "$cmd"
+}
+
+# Launch the terminal and print the address of its window once it appears.
+spawn() {
+    local cmd addr i
+    cmd=$(build_exec)
+    # Legacy mode: exec rules open the window directly on the hidden workspace
+    # (no flash). In Lua mode ensure_window() moves it away right after it maps.
+    [[ $MODE == legacy ]] && cmd="[float;workspace $SPECIAL silent] $cmd"
+    log "spawning: $cmd"
+    dsp_exec "$cmd"
+
+    for ((i = 0; i < SPAWN_TIMEOUT * 10; i++)); do
+        sleep 0.1
+        addr=$(find_window)
+        if [[ -n $addr ]]; then
+            log "window found: $addr"
+            printf '%s' "$addr"
+            return 0
+        fi
+    done
+
+    log "no window matched title/class '$TITLE'; current windows were:"
+    hyprctl clients -j | jq -r '.[] | "    class=\(.class) initialClass=\(.initialClass) title=\(.title) initialTitle=\(.initialTitle)"' >> "$LOG_FILE" || true
+    return 1
+}
+
+# Find the window, or spawn the terminal; print the address.
+ensure_window() {
+    local addr
+    addr=$(find_window)
+    if [[ -n $addr ]]; then
+        printf '%s' "$addr"
+        return 0
+    fi
+    addr=$(spawn) || die "no window titled '$TITLE' appeared within ${SPAWN_TIMEOUT}s - does the terminal command pass the title (use {title})?"
+    ensure_floating "$addr"
+    dsp_move_ws "$SPECIAL" "$addr"   # park it hidden until show_window()
+    printf '%s' "$addr"
+}
+
+# Print "W H X Y" in layout pixels for the focused monitor's work area
+# (reserved areas such as bars are respected).
+geometry() {
+    hyprctl monitors -j | jq -r --argjson w "$WIDTH" --argjson h "$HEIGHT" '
+        .[] | select(.focused)
+        | (.width  / .scale) as $mw
+        | (.height / .scale) as $mh
+        | ($mw - .reserved[0] - .reserved[2]) as $aw
+        | ($mh - .reserved[1] - .reserved[3]) as $ah
+        | (($aw * $w / 100) | floor) as $ww
+        | (($ah * $h / 100) | floor) as $wh
+        | [$ww, $wh,
+           (.x + .reserved[0] + ((($aw - $ww) / 2) | floor)),
+           (.y + .reserved[1])]
+        | map(floor) | @tsv'
+}
+
+show_window() {
+    local addr=${1:-} W H X Y ws startY
+    [[ -n $addr ]] || die "show_window called without a window address"
+    read -r W H X Y < <(geometry)
+    ws=$(hyprctl activeworkspace -j | jq -r '.id')
+
+    startY=$Y
+    [[ $ANIMATE == 1 ]] && startY=$((Y - H))
+
+    # Bring the window to the current workspace, float it, size it and park
+    # it above the screen edge (or directly in place when not animating).
+    dsp_move_ws "$ws" "$addr"
+    ensure_floating "$addr"
+    dsp_resize "$addr" "$W" "$H"
+    dsp_move_xy "$addr" "$X" "$startY"
+
+    if [[ $ANIMATE == 1 ]]; then
+        sleep 0.05   # let Hyprland register the start position, then slide in
+    fi
+
+    dsp_move_xy "$addr" "$X" "$Y"
+    dsp_focus "$addr"
+    dsp_top "$addr"
+
+    if [[ $DEBUG == 1 ]]; then
+        sleep 0.3
+        log "target: ${W}x${H} at $X,$Y | after show: $(hyprctl clients -j | jq -c --arg a "$addr" '.[] | select(.address == $a) | {at, size, floating, workspace: .workspace.name}')"
+    fi
+}
+
+hide_window() {
+    local addr=$1 W H X Y
+    if [[ $ANIMATE == 1 ]]; then
+        read -r W H X Y < <(geometry)
+        dsp_move_xy "$addr" "$X" "$((Y - H))"
+        sleep 0.2
+    fi
+    dsp_move_ws "$SPECIAL" "$addr"
+}
+
+# -------------------------------------------------------------------- watch --
+# Optional: hide the dropdown whenever focus moves to another window.
+cmd_watch() {
+    need socat
+    local sock="${XDG_RUNTIME_DIR:?}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:?not running under Hyprland}/.socket2.sock"
+    local line focused addr
+    socat -u "UNIX-CONNECT:$sock" - | while IFS= read -r line; do
+        [[ $line == activewindowv2'>>'* ]] || continue
+        focused="0x${line#activewindowv2>>}"
+        addr=$(find_window)
+        [[ -n $addr ]] || continue
+        if [[ $focused != "$addr" ]] && is_visible "$addr"; then
+            hide_window "$addr"
+        fi
+    done
+}
+
+# ------------------------------------------------------------------ actions --
+case $ACTION in
+    toggle)
+        addr=$(find_window)
+        if [[ -n $addr ]]; then
+            if is_visible "$addr"; then hide_window "$addr"; else show_window "$addr"; fi
+        else
+            addr=$(ensure_window)
+            show_window "$addr"
+        fi
+        ;;
+    show)
+        addr=$(ensure_window)
+        show_window "$addr"
+        ;;
+    hide)
+        addr=$(find_window)
+        if [[ -n $addr ]] && is_visible "$addr"; then hide_window "$addr"; fi
+        ;;
+    init)   # pre-spawn the terminal hidden, so the first toggle is instant
+        ensure_window >/dev/null
+        ;;
+    kill)
+        addr=$(find_window)
+        [[ -z $addr ]] || dsp_close "$addr"
+        ;;
+    watch)
+        cmd_watch
+        ;;
+esac
