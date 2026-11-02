@@ -43,6 +43,7 @@ local defaults = {
 	qs_cmd = "qs -c alttab_hypr",-- quickshell command with the overlay config
 	autostart_overlay = true,
 	transport = "both",          -- "both" | "ipc" | "file"
+    min_windows_all = 1,         -- minimum windows to start the "all" scope (the "workspace" scope always needs 2)
 	events_file = '"${XDG_RUNTIME_DIR:-/tmp}/alttab.events"',
 
 	-- How to detect that the modifier was released
@@ -283,14 +284,18 @@ local function finish(do_focus, reason)
 	S.shown = false
 	if was_shown then pcall(send, "hide") end
 
-	if do_focus and S.index ~= 1 then
+	if do_focus then
 		local addr = S.list[S.index]
-		local ok, err = pcall(function()
-			if addr and hl.get_window("address:" .. addr) then
-				hl.dispatch(hl.dsp.focus({ window = "address:" .. addr }))
-			end
-		end)
-		if not ok then log("erro ao focar: " .. tostring(err)) end
+		-- the chosen window lives on another workspace than the one the session started on
+		local other_ws = addr and S.ws_of[addr] and S.ws_of[addr] ~= S.ws_id
+		if S.index ~= 1 or other_ws then
+			local ok, err = pcall(function()
+				if addr and hl.get_window("address:" .. addr) then
+					hl.dispatch(hl.dsp.focus({ window = "address:" .. addr }))
+				end
+			end)
+			if not ok then log("erro ao focar: " .. tostring(err)) end
+		end
 	end
 end
 
@@ -316,6 +321,11 @@ local function mod_is_down()
 	return false
 end
 
+-- Minimum number of windows needed to start a session in each scope.
+local function min_windows(scope)
+	return scope == "all" and cfg.min_windows_all or 2
+end
+
 local function start(dir, scope, mod)
 	if S.active then
 		-- session in progress: only the same scope cycles (the other is ignored)
@@ -332,10 +342,12 @@ local function start(dir, scope, mod)
 			#list, fmt_by_ws(stats.by_ws), stats.total, stats.unmapped, stats.hidden, stats.special, stats.other_ws),
 			"info", 6000)
 	end
-	if #list < 2 then
+
+	local need = min_windows(scope)
+	if #list < need then
 		if debug_on then
 			notify("só achei " .. #list .. " janela(s) ("
-				.. (scope == "all" and "todas as workspaces" or "workspace ativa") .. "); preciso de 2+", "warning")
+				.. (scope == "all" and "todas as workspaces" or "workspace ativa") .. "); preciso de " .. need .. "+", "warning")
 		end
 		return
 	end
@@ -523,8 +535,8 @@ function M.setup(opts)
 		end
 		if S.index > #S.list then S.index = 1 end
 
-		if #S.list < 2 then
-			finish(false, "sobrou menos de 2 janelas")
+		if #S.list < min_windows(S.scope) then
+			finish(false, "janelas insuficientes (" .. #S.list .. ")")
 		elseif S.shown then
 			send("show", encode_list(), S.index)
 		end
