@@ -19,7 +19,7 @@
 #   hypr-dropdown [options] [toggle|show|hide|init|kill|watch|log]
 #
 # Options:
-#   -t, --terminal CMD   terminal command, with {title} (default: terminator -T {title})
+#   -t, --terminal CMD   terminal command, with {title} (default: alacritty --title {title})
 #   -T, --title TITLE    title to force and match (default: QuakeTerminal)
 #   -w, --width PCT      width in % of the monitor work area (default: 100)
 #   -H, --height PCT     height in % of the monitor work area (default: 40)
@@ -41,7 +41,7 @@ set -Eeuo pipefail
 
 # ---------------------------------------------------------------- defaults --
 NAME="dropdown"
-TERMINAL="terminator -T {title}"
+TERMINAL="alacritty --title {title}"
 TITLE=""
 WIDTH=100
 HEIGHT=40

@@ -179,15 +179,13 @@ alttab.setup({
 })
 
 -- Extra shortcuts (same ALT modifier, so releasing ALT ends the session)
-hl.bind(mainAlt .. " + right", function() alttab.next() end, { repeating = true, description = "alttab: next (extra)" })
-hl.bind(mainAlt .. " + left", function() alttab.prev() end, { repeating = true, description = "alttab: previous (extra)" })
 hl.bind(mainAlt .. " + Tab", function() alttab.next() end, { repeating = true, description = "alttab: next (extra)" })
 hl.bind(mainAlt .. " + " .. mainSft .. " + Tab", function() alttab.prev() end, { repeating = true, description = "alttab: previous (extra)" })
 
 -- Extra shortcut for the all-workspaces mode
 -- hl.bind("SUPER + grave", function() alttab.next("all") end, { repeating = true })
-hl.bind(mainAlt .. " + " .. mainMod .. " + right", function() alttab.next("all") end, { repeating = true, description = "alttab: next (extra)" })
-hl.bind(mainAlt .. " + " .. mainMod .. " + left", function() alttab.prev("all") end, { repeating = true, description = "alttab: previous (extra)" })
+hl.bind(mainAlt .. " + " .. mainCtr .. " + right", function() alttab.next("all") end, { repeating = true, description = "alttab: next (extra)" })
+hl.bind(mainAlt .. " + " .. mainCtr .. " + left", function() alttab.prev("all") end, { repeating = true, description = "alttab: previous (extra)" })
 hl.bind(mainMod .. " + Tab", function() alttab.next("all") end, { repeating = true, description = "alttab: previous (extra)" })
 hl.bind(mainMod .. " + " .. mainSft .. " + Tab", function() alttab.prev("all") end, { repeating = true, description = "alttab: previous (extra)" })
 
@@ -287,7 +285,7 @@ hl.bind(mainMod .. " + S", scroll.down)
 -- hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("wlrctl pointer scroll -10 0"))
 -- hl.bind(mainMod .. " + S", hl.dsp.exec_cmd("wlrctl pointer scroll 10 0"))
 
-hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("terminator"))
+hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("alacritty"))
 
 hl.bind(mainCtr .. " + " .. mainAlt .. " + C", hl.dsp.exec_cmd([[bash -c 'pkill -9 wofi; cliphist list | wofi --show dmenu | cliphist decode | wl-copy']]))
 
@@ -328,7 +326,7 @@ hl.bind(mainCtr .. " + " .. mainAlt .. " + E", hl.dsp.exit())
 
 hl.bind(mainCtr .. " + " .. mainAlt .. " + Backspace", hl.dsp.exec_cmd([[bash -c 'pkill -9 -u ]] .. os.getenv("USER") .. [[']]))
 
-hl.bind(mainCtr .. " + F1", hl.dsp.exec_cmd([[terminator -e bash -c 'ccat --color=always ~/.config/openbox/rc.xml | less -i -R -N --use-color --color=HBCEMNPRSWsu']]))
+hl.bind(mainCtr .. " + F1", hl.dsp.exec_cmd([[alacritty -e bash -c 'ccat --color=always ~/.config/openbox/rc.xml | less -i -R -N --use-color --color=HBCEMNPRSWsu']]))
 
 hl.bind(mainMod .. " + X", hl.dsp.exec_cmd("~/.config/rofi/rofimenu2.sh"))
 
@@ -350,11 +348,11 @@ hl.bind(mainCtr .. " + " .. mainAlt .. " + W", hl.dsp.exec_cmd('~/.shell_utils/s
 hl.bind("Print", hl.dsp.exec_cmd('~/.shell_utils/scripts/print-screen -p -msg -beep'))
 
 -- LGTV Control
-hl.bind(mainMod .. " + " .. mainSft .. " + P", hl.dsp.exec_cmd([[bash -c 'stat=/tmp/lgtv_play.st; if [ ! -f "${stat}" ]; then ~/.local/bin/lgtv media.controls pause > /dev/null; touch "${stat}"; elif [ -f "${stat}" ]; then ~/.local/bin/lgtv media.controls play > /dev/null; rm -f "${stat}"; fi']]))
+-- hl.bind(mainMod .. " + " .. mainSft .. " + P", hl.dsp.exec_cmd([[bash -c 'stat=/tmp/lgtv_play.st; if [ ! -f "${stat}" ]; then ~/.local/bin/lgtv media.controls pause > /dev/null; touch "${stat}"; elif [ -f "${stat}" ]; then ~/.local/bin/lgtv media.controls play > /dev/null; rm -f "${stat}"; fi']]))
 
-hl.bind(mainCtr .. " + " .. mainAlt .. " + " .. mainSft .. " + Prior", hl.dsp.exec_cmd([[bash -c "pkill -9 osd_cat; sleep 0.2; xrefresh; echo WebOS Vol: `~/.local/bin/lgtv audio volumeUp | ~/.local/bin/lgtv_current_volume.sh` | osd_cat -d 1 -s 1 -A center -l 1 -p middle -o 60 -c green -f '-*-helvetica-bold-*-*-*-44-*-*-*-*-*-*'" ]]))
+-- hl.bind(mainCtr .. " + " .. mainAlt .. " + " .. mainSft .. " + Prior", hl.dsp.exec_cmd([[bash -c "pkill -9 osd_cat; sleep 0.2; xrefresh; echo WebOS Vol: `~/.local/bin/lgtv audio volumeUp | ~/.local/bin/lgtv_current_volume.sh` | osd_cat -d 1 -s 1 -A center -l 1 -p middle -o 60 -c green -f '-*-helvetica-bold-*-*-*-44-*-*-*-*-*-*'" ]]))
 
-hl.bind(mainCtr .. " + " .. mainAlt .. " + " .. mainSft .. " + Next", hl.dsp.exec_cmd([[bash -c "pkill -9 osd_cat; sleep 0.2; xrefresh; echo WebOS Vol: `~/.local/bin/lgtv audio volumeDown | ~/.local/bin/lgtv_current_volume.sh` | osd_cat -d 1 -s 1 -A center -l 1 -p middle -o 60 -c green -f '-*-helvetica-bold-*-*-*-44-*-*-*-*-*-*'" ]]))
+-- hl.bind(mainCtr .. " + " .. mainAlt .. " + " .. mainSft .. " + Next", hl.dsp.exec_cmd([[bash -c "pkill -9 osd_cat; sleep 0.2; xrefresh; echo WebOS Vol: `~/.local/bin/lgtv audio volumeDown | ~/.local/bin/lgtv_current_volume.sh` | osd_cat -d 1 -s 1 -A center -l 1 -p middle -o 60 -c green -f '-*-helvetica-bold-*-*-*-44-*-*-*-*-*-*'" ]]))
 
 -- Volume
 hl.bind(mainMod .. " + P", hl.dsp.exec_cmd("pavucontrol"))
@@ -400,9 +398,11 @@ hl.bind(mainMod .. " + " .. mainCtr .. " + right", hl.dsp.exec_cmd("wlrctl point
 hl.bind(mainMod .. " + j", hl.dsp.focus({ direction = "left" }))
 hl.bind(mainMod .. " + l", hl.dsp.focus({ direction = "right" }))
 hl.bind(mainMod .. " + i", hl.dsp.focus({ direction = "up" }))
-hl.bind(mainAlt .. " + up", hl.dsp.focus({ direction = "up" }))
 hl.bind(mainMod .. " + k", hl.dsp.focus({ direction = "down" }))
-hl.bind(mainAlt .. " + down", hl.dsp.focus({ direction = "down" }))
+hl.bind(mainAlt .. " + " .. mainMod .. " + right", hl.dsp.focus({ direction = "right" }))
+hl.bind(mainAlt .. " + " .. mainMod .. " + left", hl.dsp.focus({ direction = "left" }))
+hl.bind(mainAlt .. " + " .. mainMod .. " + up", hl.dsp.focus({ direction = "up" }))
+hl.bind(mainAlt .. " + " .. mainMod .. " + down", hl.dsp.focus({ direction = "down" }))
 
 -- Workspaces com mainMod + [0-9]
 hl.bind(mainMod .. " + 1", hl.dsp.focus({ workspace = 1 }))
@@ -443,9 +443,9 @@ hl.bind(mainMod .. " + R", hl.dsp.window.resize())
 hl.on("hyprland.start", function()
     -- QuakeTerminal no workspace especial
     -- ATENÇÃO: a sintaxe original "[workspace special; ...]" não é um comando válido do Hyprland.
-    -- Abaixo está a forma recomendada: inicia o terminator e depois o move para o especial.
-    -- hl.exec_cmd("terminator -T QuakeTerminal")
-    -- hl.exec_cmd([[bash -c 'sleep 1 && hyprctl dispatch movetoworkspacesilent "special:quake,class:terminator"']])
+    -- Abaixo está a forma recomendada: inicia o alacritty e depois o move para o especial.
+    -- hl.exec_cmd("alacritty -T QuakeTerminal")
+    -- hl.exec_cmd([[bash -c 'sleep 1 && hyprctl dispatch movetoworkspacesilent "special:quake,class:alacritty"']])
 
     hl.exec_cmd("~/.shell_utils/scripts/hypr-dropdown init &")    -- optional: pre-spawn hidden
     hl.exec_cmd("~/.shell_utils/scripts/hypr-dropdown watch &")   -- optional: hide on focus loss (needs socat)
@@ -460,7 +460,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd([[bash -c 'sleep 2 && hyprctl keyword monitor "eDP-1, disable"']])
 
     -- Wallpaper aleatório
-    hl.exec_cmd('~/.shell_utils/scripts/random-wallpaper -l &')
+    hl.exec_cmd('~/.shell_utils/scripts/random-wallpaper -lo &')
 
     -- Variáveis de ambiente para systemd/dbus
     hl.exec_cmd([[systemctl --user import-environment WAYLAND_DISPLAY & dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE]])
@@ -478,7 +478,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd([[xprop -root -f _XWAYLAND_GLOBAL_OUTPUT_SCALE 32c -set _XWAYLAND_GLOBAL_OUTPUT_SCALE 2]])
 
     -- GNOME Keyring
-    hl.exec_cmd([[bash -c "${HOME}/.local/bin/gnome-keyring-fix"]])
+    hl.exec_cmd([[bash -c "~/.shell_utils/scripts/gnome-keyring-fix &"]])
 
     -- Clipboard
     hl.exec_cmd([[bash -c 'wl-paste --type image --watch cliphist store & wl-paste --type text --watch cliphist -max-dedupe-search 750 -max-items 750 store']])

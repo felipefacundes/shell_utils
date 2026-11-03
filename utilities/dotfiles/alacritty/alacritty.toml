@@ -6,13 +6,13 @@ draw_bold_text_with_bright_colors = true
 
 [colors.bright]
 black = "#707070" #"#414868"
-red = "#f77676" #"#f7768e"
-green = "#75f0af" #"#9ece6a"
-yellow = "#f2f285" #"#f2f285"
-blue = "#0559f5" #"#1b69fa"
-magenta = "#d9a2f5" 
-cyan = "#76d5f5" #"#7dcfff"
-white = "#e1e5f5" #"#c0caf5"
+red = "#f10e38" #"#f77676" #"#f7768e"
+green = "#00ff00" #"#75f0af" #"#9ece6a"
+yellow = "#ffff00" #"#f2f285" #"#f2f285"
+blue = "#0000ff" #"#0559f5" #"#1b69fa"
+magenta = "#ff55ff" #"#d9a2f5" 
+cyan = "#33ccff" #"#76d5f5" #"#7dcfff"
+white = "#bac1de" #"#e1e5f5" #"#c0caf5"
 
 [colors.normal]
 black = "#707070"
@@ -20,9 +20,9 @@ red = "#f10e38"
 green = "#00ff00"
 yellow = "#ffff00"
 blue = "#0000ff"
-magenta = "#cc66ff"
-cyan = "#33ccff"
-white = "#bac1de"
+magenta = "#ff55ff" #"#cc66ff"
+cyan = "#7dcfff" #"#33ccff"
+white = "#d9dded" #"#bac1de"
 
 [colors.primary]
 background = "#24283b"
