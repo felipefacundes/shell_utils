@@ -16,6 +16,18 @@ hl.env("MOZ_ENABLE_WAYLAND", 1)
 hl.env("GDK_BACKEND", "wayland")
 hl.env("WB_AUTOSTART_ENVIRONMENT", "GNOME:KDE")
 
+-- Prioriza a Intel (00:02.0) para o compositor e deixa a Nvidia (01:00.0) livre
+-- Rode: lspci -d ::03xx -nn && ls -l /dev/dri/by-path
+-- ln -sf /dev/dri/by-path/pci-0000:00:02.0-card $HOME/.config/hypr/card-intel
+-- ln -sf /dev/dri/by-path/pci-0000:01:00.0-card $HOME/.config/hypr/card-nvidia
+-- hl.env("AQ_DRM_DEVICES", os.getenv("HOME") .. "/.config/hypr/card-intel:" .. os.getenv("HOME") .. "/.config/hypr/card-nvidia")
+--
+-- Ou use dri:
+-- ls /dev/dri/
+-- hl.env("AQ_DRM_DEVICES", "/dev/dri/card1:/dev/dri/card0")
+--
+-- Para ver o consumo da GPU: sudo lsof /dev/nvidia*
+
 -- ============================================================
 -- Monitores
 -- ============================================================
@@ -262,7 +274,7 @@ local scroll = require("mouse_scroll")
 -- =============================================================================
 -- Mouse scroll
 scroll.config.device = "/dev/input/by-id/usb-SUNSONNY_GAMING_KEYBOARD-if01-event-kbd"
-scroll.config.interval = "0.05"
+scroll.config.interval = "0.1"
 
 hl.bind(mainMod .. " + W", scroll.up)
 hl.bind(mainMod .. " + S", scroll.down)
