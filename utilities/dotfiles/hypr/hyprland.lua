@@ -297,6 +297,41 @@ hl.bind(mainMod .. " + S", scroll.down)
 -- hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("wlrctl pointer scroll -10 0"))
 -- hl.bind(mainMod .. " + S", hl.dsp.exec_cmd("wlrctl pointer scroll 10 0"))
 
+
+
+------------------------------------------------------------ |
+-- change container layout (stacked, tabbed, toggle split)
+-- Sway: bindsym $sup+v layout toggle split
+hl.bind("SUPER + V", hl.dsp.layout("togglesplit"))
+
+-- Sway: bindsym $sup+Shift+s layout toggle split
+hl.bind("SUPER + SHIFT + S", hl.dsp.layout("togglesplit"))
+
+-- Sway: bindsym $sup+a layout toggle tabbed split
+-- Hyprland não possui um comando nativo "toggle tabbed split", geralmente é necessário alternar via layoutmsg ou substituir pelo layout do workspace
+-- Se você usa o layout master, pode tentar:
+-- hl.bind("SUPER + A", hl.dsp.layout("orientationcycle")) -- Apenas exemplo, o comportamento real depende do layout
+
+-- Sway: bindsym $sup+Shift+w layout tabbed
+-- Hyprland não possui um comando de layout tabbed nativo, precisa usar plugins ou layouts personalizados
+-- Se estiver usando o layout dwindle, pode tentar ativar o modo de grupo:
+-- hl.bind("SUPER + SHIFT + W", hl.dsp.group("toggle"))
+
+-- Sway: bindsym $sup+Shift+a layout toggle tabbed stacking split
+-- Similarmente, sem correspondência direta, precisa implementar via script ou layout personalizado
+
+-- Sway: bindsym $sup+Shift+Space layout toggle tabbed stacking split
+-- Idem
+-- hl.bind("SUPER + SHIFT + SPACE", function()
+--     -- É necessário escrever lógica personalizada aqui, ou chamar um script externo
+--     -- Por exemplo, alternar o layout do workspace atual
+-- end)
+------------------------------------------------------------ |
+
+
+
+-- Others binds
+
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("alacritty"))
 
 hl.bind(mainCtr .. " + " .. mainAlt .. " + C", hl.dsp.exec_cmd([[bash -c 'pkill -9 wofi; cliphist list | wofi --show dmenu | cliphist decode | wl-copy']]))

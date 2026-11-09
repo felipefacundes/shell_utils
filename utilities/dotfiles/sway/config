@@ -365,6 +365,7 @@ bindsym $alt+$sup+Left exec bash -c '~/.shell_utils/scripts/sway-window-preview 
 bindsym $alt+F11 fullscreen toggle
 
 # change container layout (stacked, tabbed, toggle split)
+bindsym $sup+v layout toggle split
 bindsym $sup+Shift+s layout toggle split
 bindsym $sup+a layout toggle tabbed split
 bindsym $sup+Shift+w layout tabbed
@@ -431,7 +432,6 @@ bindsym $ctrl+$alt+l exec bash -c 'swaylock &'
 bindsym Print exec bash -c '~/.shell_utils/scripts/print-screen -p -msg &'
 bindsym $alt+Print exec bash -c '~/.shell_utils/scripts/print-screen -ap -msg &'
 bindsym Shift+Print exec bash -c '~/.shell_utils/scripts/print-screen -sp -msg &'
-bindsym $sup+v exec bash -c '~/.shell_utils/scripts/print-screen -d &'
 
 # Screen Recorder
 #bindsym $ctrl+$alt+r exec bash -c '$term -e ffmpeg -video_size 1360x768 -framerate 25 -f x11grab -i :0.0 -f pulse -ac 2 -i default ${HOME}/Videos/Tela_$(date +%d-%m-%Y_%H:%M:%S).mkv'
