@@ -21,6 +21,9 @@ INDEX_FILE="${CACHE_DIR}/current_index"
 WALLPAPER_LIST_FILE="${CACHE_DIR}/wallpaper_list.txt"
 SWAYBG_PID_FILE="${CACHE_DIR}/swaybg.pid"
 
+# Force list update
+[[ -f "$WALLPAPER_LIST_FILE" ]] && rm -f "$WALLPAPER_LIST_FILE"
+
 # Wallpaper directory
 WALLPAPER_DIR="${XDG_PICTURES_DIR:-${HOME}/Pictures}/Wallpapers"
 

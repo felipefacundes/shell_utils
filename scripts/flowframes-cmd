@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+#
 # ==============================================================================
 #  flowframes.sh — AI frame interpolation for the terminal (TUI + CLI)
 # ------------------------------------------------------------------------------
@@ -15,8 +18,8 @@
 #    * CLI: pass -a/--autorun with file(s) and the options below.
 #
 #  Engine contract (every backend is called the same way):
-#    <engine> -i <input_frames_dir> -o <output_frames_dir> -n <target_frames> [-m <model>]
-#  Input/output frames are 8-digit PNGs (00000001.png, ...). This is the native
+#    <engine> -i <input_frames_dir> -o <output_frames_dir> -n <target_frames> -f webp [-m <model>]
+#  Frames are 8-digit lossless WebP files (00000001.webp, ...); the engine also gets -f webp. This is the native
 #  CLI of the *-ncnn-vulkan tools; for Python/CUDA implementations provide a thin
 #  wrapper that honours the same contract.
 #
@@ -26,6 +29,7 @@
 #    FF_TMPDIR         Scratch directory for extracted frames (default: ~/.cache/flowframes-cli)
 #    FF_GPU_ID         GPU id forwarded to the engine with -g
 #    FF_ENGINE_ARGS    Extra arguments appended to the engine command line
+#    FF_FRAME_FORMAT   Intermediate frame format: webp (default, lossless) or png
 #    FF_CRF            Override the default quality value of the selected encoder
 #    FF_PRESET         Override the encoder preset / speed (x264, x265, SvtAv1, Aom)
 #    FF_SVT_PARAMS     Extra libsvtav1 parameters, e.g. "tune=0:film-grain=0"
@@ -98,6 +102,14 @@ QUIT=0
 
 CONFIG_KEYS=(FACTOR AI MODEL VIDEO_FORMAT VIDEO_ENCODER PIXEL_FORMAT MAX_HEIGHT LOOP
              FIX_SCENES SCENE_SENS MAX_FPS OUTPUT_DIR PYTHON_ENABLED)
+
+# Intermediate frame format (lossless WebP by default; FF_FRAME_FORMAT=png restores PNG)
+FRAME_EXT=${FF_FRAME_FORMAT:-webp}
+case $FRAME_EXT in
+  webp) FRAME_ENC_ARGS=(-c:v libwebp -lossless 1 -compression_level 1 -pix_fmt bgra) ;;
+  png)  FRAME_ENC_ARGS=(-c:v png -compression_level 1 -pix_fmt rgb24) ;;
+  *)    printf 'flowframes: FF_FRAME_FORMAT must be webp or png.\n' >&2; exit 1 ;;
+esac
 
 # Runtime state
 WORK=""
@@ -276,7 +288,7 @@ fmt_num() {
   awk -v n="$1" 'BEGIN { s = sprintf("%.3f", n); sub(/0+$/, "", s); sub(/\.$/, "", s); print s }'
 }
 
-pad_name() { printf -v REPLY '%08d.png' "$1"; }
+pad_name() { printf -v REPLY '%08d.%s' "$1" "$FRAME_EXT"; }
 
 count_files() { find "$1" -maxdepth 1 -type f -printf . 2>/dev/null | wc -c || true; }
 
@@ -751,11 +763,11 @@ human_size() { numfmt --to=iec --suffix=B "$1" 2>/dev/null || printf '%s bytes' 
 
 # Estimates the scratch space needed (input frames + interpolated frames) from one sample frame.
 check_disk_space() {  # check_disk_space <input>
-  local input=$1 sample=$WORK/sample.png size need avail
+  local input=$1 sample=$WORK/sample.$FRAME_EXT size need avail
   if [[ -n ${FF_SKIP_DISK_CHECK:-} ]]; then return 0; fi
   build_extract_vf
   ffmpeg -nostdin -y -hide_banner -loglevel error -ss "$(awk -v d="$V_DUR" 'BEGIN { printf "%.3f", d / 2 }')" \
-    -i "$input" -map 0:v:0 -frames:v 1 -vf "$REPLY" -pix_fmt rgb24 -compression_level 1 "$sample" 2>>"$LOG_FILE" || return 0
+    -i "$input" -map 0:v:0 -frames:v 1 -vf "$REPLY" "${FRAME_ENC_ARGS[@]}" "$sample" 2>>"$LOG_FILE" || return 0
   size=$(stat -c %s "$sample" 2>/dev/null) || return 0
   rm -f "$sample"
   need=$(awk -v s="$size" -v n="$V_FRAMES" -v f="$FACTOR" 'BEGIN { printf "%.0f", s * n * (1 + f) * 1.1 }')
@@ -775,9 +787,9 @@ check_disk_space() {  # check_disk_space <input>
 extract_frames() {  # extract_frames <input>
   local input=$1
   build_extract_vf
-  # Engines operate on 8-bit RGB frames; PNG level 1 keeps extraction fast.
+  # Engines operate on 8-bit RGB frames; lossless WebP keeps them bit-exact at a fraction of the PNG size.
   run_ffmpeg_progress "$V_FRAMES" "Extracting" -i "$input" -map 0:v:0 -an -sn -dn \
-    -vf "$REPLY" -pix_fmt rgb24 -compression_level 1 -start_number 1 "$IN_DIR/%08d.png"
+    -vf "$REPLY" "${FRAME_ENC_ARGS[@]}" -start_number 1 "$IN_DIR/%08d.$FRAME_EXT"
 }
 
 run_engine() {  # run_engine <seg_in> <seg_out> <done_base> <total_out> <label>
@@ -789,7 +801,7 @@ run_engine() {  # run_engine <seg_in> <seg_out> <done_base> <total_out> <label>
   target=$(( n * FACTOR ))
 
   mkdir -p "$out" || return 1
-  cmd=("$bin" -i "$in" -o "$out" -n "$target")
+  cmd=("$bin" -i "$in" -o "$out" -n "$target" -f "$FRAME_EXT")
   if [[ -n $model_path ]]; then cmd+=(-m "$model_path"); fi
   if [[ -n ${FF_GPU_ID:-} ]]; then cmd+=(-g "$FF_GPU_ID"); fi
   if [[ -n ${FF_ENGINE_ARGS:-} ]]; then read -ra extra <<<"$FF_ENGINE_ARGS"; cmd+=("${extra[@]}"); fi
@@ -840,7 +852,7 @@ interpolate_all() {  # interpolate_all <total_out>
     done
     run_engine "$seg_in" "$seg_out" "$OUT_IDX" "$total_out" "Scene $(( i + 1 ))/$(( ${#bounds[@]} - 1 ))" \
       || { finish_bar; return 1; }
-    for f in "$seg_out"/*.png; do
+    for f in "$seg_out"/*."$FRAME_EXT"; do
       OUT_IDX=$(( OUT_IDX + 1 )); pad_name "$OUT_IDX"
       mv "$f" "$FINAL_DIR/$REPLY" || return 1
     done
@@ -877,9 +889,9 @@ plan_output() {  # plan_output <input>
 play_realtime() {
   ui_info "Previewing at $(fmt_num "$FINAL_FPS_DEC") fps (close the player window to continue)"
   if command -v mpv >/dev/null 2>&1; then
-    mpv --really-quiet --mf-fps="$FINAL_FPS_DEC" "mf://$FINAL_DIR/*.png" || true
+    mpv --really-quiet --mf-fps="$FINAL_FPS_DEC" "mf://$FINAL_DIR/*.$FRAME_EXT" || true
   else
-    ffplay -hide_banner -loglevel error -framerate "$FINAL_FPS_DEC" -autoexit -i "$FINAL_DIR/%08d.png" || true
+    ffplay -hide_banner -loglevel error -framerate "$FINAL_FPS_DEC" -autoexit -i "$FINAL_DIR/%08d.$FRAME_EXT" || true
   fi
 }
 
@@ -890,7 +902,7 @@ encode_output() {  # encode_output <input> <total_frames>
 
   if [[ $fmt == realtime ]]; then play_realtime; return 0; fi
 
-  args+=(-framerate "$OUT_FPS_RAT" -start_number 1 -i "$FINAL_DIR/%08d.png")
+  args+=(-framerate "$OUT_FPS_RAT" -start_number 1 -i "$FINAL_DIR/%08d.$FRAME_EXT")
   local use_audio=0
   if [[ -n $A_CODEC && $fmt =~ ^(mp4|mkv|webm|mov|avi)$ ]]; then
     use_audio=1
@@ -981,8 +993,9 @@ run_pipeline() {  # run_pipeline <input>
   CUTS=("${valid[@]}")
 
   if (( LOOP )); then
+    pad_name 1; local first_frame=$REPLY
     pad_name $(( n + 1 ))
-    cp "$IN_DIR/00000001.png" "$IN_DIR/$REPLY" || return 1
+    cp "$IN_DIR/$first_frame" "$IN_DIR/$REPLY" || return 1
     n=$(( n + 1 ))
   fi
   N_IN=$n
