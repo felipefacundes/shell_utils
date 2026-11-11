@@ -72,6 +72,11 @@ max_secs="${SCROLLHOLD_MAX:-60}"
 state="/tmp/scrollhold-${key}.active"
 dlog="/tmp/scrollhold-debug.log"
 
+if ! command -v evtest >/dev/null 2>&1; then
+    notify-send -i dialog-error "Missing dependency" "evtest is not installed. Please install it to continue."
+    exit 1
+fi
+
 # Appends a timestamped line to the debug log, only when SCROLLHOLD_DEBUG is set
 dbg() {
     [ -n "$SCROLLHOLD_DEBUG" ] && printf '%s %s\n' "$(date +%T.%3N)" "$*" >> "$dlog"

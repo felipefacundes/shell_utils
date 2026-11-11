@@ -334,7 +334,7 @@ hl.bind("SUPER + SHIFT + S", hl.dsp.layout("togglesplit"))
 
 hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("alacritty"))
 
-hl.bind(mainCtr .. " + " .. mainAlt .. " + C", hl.dsp.exec_cmd([[bash -c 'pkill -9 wofi; cliphist list | wofi --show dmenu | cliphist decode | wl-copy']]))
+hl.bind(mainCtr .. " + " .. mainAlt .. " + C", hl.dsp.exec_cmd([[bash -c 'pkill -9 rofi; cliphist list | rofi -dmenu -i -p "Clipboard" | cliphist decode | wl-copy']]))
 
 hl.bind(mainMod .. " + " .. mainCtr .. " + F", hl.dsp.exec_cmd([[bash -c 'firefox=`pidof firefox`; if [ -n "$firefox" ]; then xdotool search "Mozilla Firefox" windowactivate    300  --sync key --clearmodifiers ctrl+l; else nohup firefox; /dev/null; sleep 4; exec xdotool key alt+3; fi']]))
 
