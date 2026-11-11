@@ -119,6 +119,20 @@ hl.config({
 })
 
 -- ============================================================
+-- Windows rules
+-- ============================================================
+
+-- Rofi rules
+hl.window_rule({
+    match = { initial_class = "^(Rofi|rofi)$" },
+    float = true,
+    center = true,
+    pin = true,          -- se quiser que fique visível em todas as workspaces
+    no_blur = true,      -- evita blur atrás do launcher (mais leve)
+    no_anim = true,      -- se preferir abrir instantaneamente
+})
+
+-- ============================================================
 -- Se apertar a Workspace desejada mais de uma vez, retorna para a anterior
 -- ============================================================
 
@@ -337,7 +351,7 @@ hl.bind(mainMod .. " + T", hl.dsp.exec_cmd("alacritty"))
 -- hl.bind(mainCtr .. " + " .. mainAlt .. " + C", hl.dsp.exec_cmd([[bash -c 'pkill -9 rofi; cliphist list | rofi -dmenu -i -p "Clipboard" | cliphist decode | wl-copy' || true]]))
 hl.bind(mainCtr .. " + " .. mainAlt .. " + C", hl.dsp.exec_cmd([[bash -c '
   pkill -9 rofi
-  sel=$(cliphist list | rofi -dmenu -i -p "Clipboard")
+  sel=$(cliphist list | rofi -dmenu -i -p "Clipboard" -theme ~/.config/rofi/clipboard.rasi)
   [ -n "$sel" ] && printf "%s" "$sel" | cliphist decode | wl-copy
 ']]))
 
@@ -378,7 +392,7 @@ hl.bind(mainCtr .. " + " .. mainAlt .. " + E", hl.dsp.exit())
 
 hl.bind(mainCtr .. " + " .. mainAlt .. " + Backspace", hl.dsp.exec_cmd([[bash -c 'pkill -9 -u ]] .. os.getenv("USER") .. [[']]))
 
-hl.bind(mainCtr .. " + F1", hl.dsp.exec_cmd([[alacritty -e bash -c 'ccat --color=always ~/.config/openbox/rc.xml | less -i -R -N --use-color --color=HBCEMNPRSWsu']]))
+hl.bind(mainCtr .. " + F1", hl.dsp.exec_cmd([[alacritty -e bash -c 'ccat --color=always ~/.config/hypr/hyprland.lua | less -i -R -N --use-color --color=HBCEMNPRSWsu']]))
 
 hl.bind(mainMod .. " + X", hl.dsp.exec_cmd("~/.config/rofi/rofimenu2.sh"))
 

@@ -1,0 +1,188 @@
+/*
+ * Tema: clipboard.rasi
+ * Uso: rofi -dmenu -i -p "Clipboard" -theme ~/.config/rofi/clipboard.rasi
+ * Compatível com cliphist (list | decode)
+ */
+
+configuration {
+    /* Comportamento */
+    modi:                 "";
+    show-icons:           false;
+    display-drun:         "";
+    display-run:          "";
+    display-window:       "";
+    display-filebrowser:  "";
+    display-combi:        "";
+
+    /* Performance / UX */
+    disable-history:      true;
+    lazy-grab:            true;
+    drun-match-fields:    "";
+    matching:             "fuzzy";
+    sort:                 false;
+
+    /* Aparência do input */
+    case-sensitive:       false;
+    cycle:                true;
+    filter:               "";
+
+    /* Evita que o rofi recolha a janela ao clicar fora (útil em dmenu) */
+    click-to-exit:        false;
+}
+
+/* ============================================================
+ * Janela principal
+ * ============================================================ */
+window {
+    width:            720px;
+    height:           480px;
+    location:         center;
+    anchor:           center;
+    transparency:     "real";
+    fullscreen:       false;
+
+    background-color: @bg;
+    border:           1px;
+    border-color:     @border;
+    border-radius:    14px;
+
+    padding:          0px;
+    spacing:          0px;
+    children:         [ mainbox ];
+}
+
+/* ============================================================
+ * Layout principal
+ * ============================================================ */
+mainbox {
+    background-color: transparent;
+    orientation:      vertical;
+    spacing:          0px;
+    padding:          0px;
+    children:         [ inputbar, listview ];
+}
+
+/* ============================================================
+ * Barra de input (topo)
+ * ============================================================ */
+inputbar {
+    background-color: @bg-input;
+    border:           0px;
+    border-radius:    14px 14px 0px 0px;
+    padding:          14px 18px;
+    spacing:          10px;
+    children:         [ prompt, entry ];
+}
+
+prompt {
+    background-color: transparent;
+    text-color:       @accent;
+    font:             "JetBrainsMono Nerd Font Bold 12";
+    padding:          0px 4px 0px 0px;
+    vertical-align:   0.5;
+}
+
+entry {
+    background-color: transparent;
+    text-color:       @fg;
+    placeholder:      "Search clipboard…";
+    placeholder-color: @fg-dim;
+    font:             "JetBrainsMono Nerd Font 12";
+    cursor:           text;
+    vertical-align:   0.5;
+}
+
+/* ============================================================
+ * Lista de itens
+ * ============================================================ */
+listview {
+    background-color: transparent;
+    columns:          1;
+    lines:            10;
+    spacing:          2px;
+    cycle:            true;
+    dynamic:          true;
+    scrollbar:        false;
+    border:           0px;
+    padding:          8px;
+    margin:           0px;
+}
+
+/* Item padrão */
+element {
+    background-color: transparent;
+    text-color:       @fg;
+    padding:          10px 12px;
+    spacing:          8px;
+    border-radius:    10px;
+    border:           0px;
+}
+
+/* Item selecionado */
+element selected {
+    background-color: @accent-bg;
+    text-color:       @fg;
+    border:           0px;
+    border-radius:    10px;
+}
+
+/* Item alternado (linhas ímpares) — descomente se quiser zebra */
+/*
+element alternate {
+    background-color: @bg-alt;
+}
+*/
+
+/* Texto do item */
+element-text {
+    background-color: transparent;
+    text-color:       inherit;
+    font:             "JetBrainsMono Nerd Font 11";
+    vertical-align:   0.5;
+    padding:          0px;
+}
+
+/* Ícone do item (não usado, mas deixamos consistente) */
+element-icon {
+    background-color: transparent;
+    size:             0px;
+}
+
+/* ============================================================
+ * Scrollbar (oculta, mas estilizada caso apareça)
+ * ============================================================ */
+scrollbar {
+    background-color: transparent;
+    width:            4px;
+    border:           0px;
+}
+
+handle {
+    background-color: @accent;
+    border-radius:    2px;
+    size:             4px;
+}
+
+/* ============================================================
+ * Cores e variáveis
+ * ============================================================ */
+* {
+    /* Fundo */
+    bg:           #1e1e2eF2;   /* Catppuccin Mocha base, ~95% opaco */
+    bg-input:     #181825F2;   /* mantle */
+    bg-alt:       #31324480;   /* surface0 com alpha */
+
+    /* Texto */
+    fg:           #cdd6f4;     /* text */
+    fg-dim:       #6c7086;     /* overlay0 */
+
+    /* Destaque */
+    accent:       #89b4fa;     /* blue */
+    accent-bg:    #89b4fa33;   /* blue ~20% */
+
+    /* Borda */
+    border:       #313244CC;   /* surface0 */
+
+    /* Cursor */
+    cursor:       text;
+}
