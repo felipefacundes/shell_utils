@@ -30,6 +30,18 @@ done
 sourced() {
     local source_dir="$1"
     local output_file="${source_dir}.sh"
+
+    [[ -d "$source_dir" ]] || { rm -f -- "$output_file"; return; }
+
+    find "$source_dir" -type f -name '*.sh' -exec printf '. %q\n' {} + \
+        >| "$output_file" 2>/dev/null
+
+    [[ -s "$output_file" ]] || rm -f -- "$output_file"
+}
+
+__sourced() {
+    local source_dir="$1"
+    local output_file="${source_dir}.sh"
     local tmp
     #tmp=$(mktemp "${output_file}.XXXXXX") || return
     tmp=$(mktemp "${TMPDIR:-/tmp}/sourced.XXXXXX") || return
@@ -116,7 +128,7 @@ if [[ $- == *i* ]]; then
 fi
 
 ########################################
-unset -f sourced load_path 2>/dev/null
+unset -f __sourced sourced load_path 2>/dev/null
 unset shell_utils shell_utils_users shell_utils_configs 2>/dev/null
 
 #shellcheck source=/dev/null
