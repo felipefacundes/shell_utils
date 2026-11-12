@@ -1,6 +1,6 @@
-. "/home/rfacundes/.shell_utils/variables/ffmpeg.sh"
-. "/home/rfacundes/.shell_utils/variables/shell_colors.sh"
-. "/home/rfacundes/.shell_utils/variables/shell_colors_indexed_array.sh"
-. "/home/rfacundes/.shell_utils/variables/environment/commons.sh"
-. "/home/rfacundes/.shell_utils/variables/environment/go.sh"
-. "/home/rfacundes/.shell_utils/variables/environment/user.sh"
+. /home/rfacundes/.shell_utils/variables/ffmpeg.sh
+. /home/rfacundes/.shell_utils/variables/shell_colors.sh
+. /home/rfacundes/.shell_utils/variables/shell_colors_indexed_array.sh
+. /home/rfacundes/.shell_utils/variables/environment/commons.sh
+. /home/rfacundes/.shell_utils/variables/environment/go.sh
+. /home/rfacundes/.shell_utils/variables/environment/user.sh
