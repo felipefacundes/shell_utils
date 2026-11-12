@@ -27,7 +27,7 @@ for d in priority variables functions aliases scripts/helps/markdowns scripts/ut
 done
 
 # Loops through all .sh files in the source directory and its subdirectories
-sourced() {
+__sourced() {
     local source_dir="$1"
     local output_file="${source_dir}.sh"
 
@@ -39,7 +39,7 @@ sourced() {
     [[ -s "$output_file" ]] || rm -f -- "$output_file"
 }
 
-__sourced() {
+sourced() {
     local source_dir="$1"
     local output_file="${source_dir}.sh"
     local tmp
