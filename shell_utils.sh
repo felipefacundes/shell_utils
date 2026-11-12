@@ -31,11 +31,12 @@ sourced() {
     local source_dir="$1"
     local output_file="${source_dir}.sh"
     local tmp
-    tmp=$(mktemp "${output_file}.XXXXXX") || return
+    #tmp=$(mktemp "${output_file}.XXXXXX") || return
+    tmp=$(mktemp "${TMPDIR:-/tmp}/sourced.XXXXXX") || return
 
     [[ -d "$source_dir" ]] || { rm -f -- "$output_file" "$tmp"; return; }
 
-    find "$source_dir" -type f -name '*.sh' -exec printf '. %q\n' {} + > "$tmp" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log"
+    ( set +C; find "$source_dir" -type f -name '*.sh' -exec printf '. %q\n' {} + >| "$tmp" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log" )
 
     if [[ -s "$tmp" ]]; then
         cmp -s "$tmp" "$output_file" || { rm -f -- "$output_file" && cp -f -- "$tmp" "$output_file" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log"; }
