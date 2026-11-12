@@ -13,7 +13,7 @@ CONFIG_FILE="${CONFIG_DIR}/history-security.conf"
 if [[ ! -f "$CONFIG_FILE" ]]; then
     mkdir -p "$CONFIG_DIR"
     touch "$CONFIG_FILE"
-    cat <<EOF > "$CONFIG_FILE"
+    cat <<EOF >| "$CONFIG_FILE"
 # History Security Configuration
 # Set HISTORY_SECURITY to 1 to enable history sanitization.
 # Set to 0 to disable.
@@ -56,7 +56,7 @@ sanitize_file() {
             -e 's#cmd: doas mv #cmd: mv_locked #g' \
             -e 's|/dev/sd[abcdefghij][123456789]|/dev/sdX|g' \
             -e 's|/dev/sd[abcdefghij]|/dev/sdX|g' \
-            "$file" > "$tmp_file"
+            "$file" >| "$tmp_file"
     else
         # Default logic for zsh and bash
         sed -e 's#;rm #;rm_locked #g' \
@@ -73,12 +73,12 @@ sanitize_file() {
             -e 's#;doas mv #;mv_locked #g' \
             -e 's|/dev/sd[abcdefghij][123456789]|/dev/sdX|g' \
             -e 's|/dev/sd[abcdefghij]|/dev/sdX|g' \
-            "$file" > "$tmp_file"
+            "$file" >| "$tmp_file"
     fi
 
     # Replace original file with the sanitized version
     if [[ -s "$tmp_file" ]]; then
-        mv -- "$tmp_file" "$file"
+        mv -f -- "$tmp_file" "$file"
     else
         rm -f -- "$tmp_file"
     fi
