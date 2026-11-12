@@ -1,4 +1,3 @@
-tmpdir="${TMPDIR:-/tmp}"
 zsh_history=~/.zsh_history
 bash_history=~/.bash_history
 shell_utils=~/.shell_utils
@@ -32,14 +31,14 @@ sourced() {
     local source_dir="$1"
     local output_file="${source_dir}.sh"
     local tmp
-    tmp=$(mktemp "${tmpdir}/sourced.XXXXXX") || return
+    tmp=$(mktemp "${TMPDIR:-/tmp}/sourced.XXXXXX") || return
 
     [[ -d "$source_dir" ]] || { rm -f -- "$output_file" "$tmp"; return; }
 
-    find "$source_dir" -type f -name '*.sh' -exec printf '. %q\n' {} + > "$tmp" 2>>"${tmpdir}/shell_utils_sourced.log"
+    find "$source_dir" -type f -name '*.sh' -exec printf '. %q\n' {} + > "$tmp" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log"
 
     if [[ -s "$tmp" ]]; then
-        cmp -s "$tmp" "$output_file" || mv -- "$tmp" "$output_file" 2>>"${tmpdir}/shell_utils_sourced.log"
+        cmp -s "$tmp" "$output_file" || mv -- "$tmp" "$output_file" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log"
     else
         rm -f -- "$output_file"
     fi
@@ -117,7 +116,7 @@ fi
 
 ########################################
 unset -f sourced load_path 2>/dev/null
-unset shell_utils shell_utils_users shell_utils_configs tmpdir 2>/dev/null
+unset shell_utils shell_utils_users shell_utils_configs 2>/dev/null
 
 #shellcheck source=/dev/null
 if [[ -n "$BASH_VERSION" ]]; then
