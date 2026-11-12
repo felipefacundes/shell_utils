@@ -38,7 +38,7 @@ sourced() {
     find "$source_dir" -type f -name '*.sh' -exec printf '. %q\n' {} + > "$tmp" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log"
 
     if [[ -s "$tmp" ]]; then
-        cmp -s "$tmp" "$output_file" || mv -- "$tmp" "$output_file" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log"
+        cmp -s "$tmp" "$output_file" || { rm -f -- "$output_file" && mv -- "$tmp" "$output_file" 2>>"${TMPDIR:-/tmp}/shell_utils_sourced.log"; }
     else
         rm -f -- "$output_file"
     fi
