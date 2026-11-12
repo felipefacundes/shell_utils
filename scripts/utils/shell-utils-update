@@ -14,6 +14,7 @@ CONFIG_DIR="${HOME}/.shell_utils_configs"
 CONFIG_FILE="${CONFIG_DIR}/shell_utils_update.conf"
 GITHUB_REPO="felipefacundes/shell_utils"
 LOCAL_PATH="${HOME}/.shell_utils"
+LAST_UPDATE_FILE="${TMPDIR}/shell_utils_last_update"
 UPDATE_LOCK_FILE="${TMPDIR}/shell_utils_update.lock"
 ARGUMENT="$1"
 YELLOW='\033[1;33m'
@@ -36,6 +37,7 @@ if [[ "${LANG,,}" =~ pt_ ]]; then
         ["rebase_abort"]="SHELL_UTILS: executando 'git rebase --abort'..."
         ["was_an_error"]="${RED}Houve um erro de atualização.${NC}"
         ["updated"]="${YELLOW}O SHELL_UTILS foi atualizado, não há nada a fazer!${NC}"
+        ["stash_conflict"]="${YELLOW}Aviso: Suas alterações locais não puderam ser reaplicadas automaticamente devido a um conflito.${NC}\n${YELLOW}Elas estão salvas no stash. Use 'git stash list' e 'git stash pop' manualmente.${NC}"
         ["help"]=$(
     cat <<EOF
 SHELL_UTILS CHECK UPDATE
@@ -106,6 +108,7 @@ elif [[ "${LANG,,}" =~ es_ ]]; then
         ["rebase_abort"]="SHELL_UTILS: ejecutando 'git rebase --abort'..."
         ["was_an_error"]="${RED}Hubo un error de actualización.${NC}"
         ["updated"]="${YELLOW}El SHELL_UTILS ha sido actualizado, no hay nada que hacer!${NC}"
+        ["stash_conflict"]="${YELLOW}Advertencia: Sus cambios locales no se pudieron reaplicar automáticamente debido a un conflicto.${NC}\n${YELLOW}Están guardados en el stash. Use 'git stash list' y 'git stash pop' manualmente.${NC}"
         ["help"]=$(
     cat <<EOF
 VERIFICACIÓN DE ACTUALIZACIÓN DE SHELL_UTILS
@@ -176,6 +179,7 @@ else
         ["rebase_abort"]="SHELL_UTILS: running 'git rebase --abort'..."
         ["was_an_error"]="${RED}There was an error updating.${NC}"
         ["updated"]="${YELLOW}The SHELL_UTILS has been updated, there is nothing to do!${NC}"
+        ["stash_conflict"]="${YELLOW}Warning: Your local changes could not be reapplied automatically due to a conflict.${NC}\n${YELLOW}They are saved in the stash. Use 'git stash list' and 'git stash pop' manually.${NC}"
         ["help"]=$(
     cat <<EOF
 SHELL_UTILS CHECK UPDATE
@@ -243,57 +247,81 @@ log_message() {
 
 # Function to handle git operations
 git_command() {
-    command git --git-dir="$LOCAL_PATH/.git" --work-tree="$LOCAL_PATH" "$@"
+    ( cd "$LOCAL_PATH" || return 1; command git "$@" )
 }
 
 # Function to perform update
 perform_update() {
-    current_hash=$(git_command rev-parse HEAD)
-    
-    # Backup local configurations if necessary
-    if [ -f "config.local" ]; then
-        cp config.local config.local.backup
-    fi
+    (
+        local current_hash
+        current_hash=$(git_command rev-parse HEAD)
+        local stash_success=0
 
-    # Attempt to update with rebase
-    if ! git_command pull --rebase --stat origin main; then
-        log_message "${MESSAGES[rebase_error]}"
-        printf '%s\n' "${MESSAGES[rebase_abort]}"
-        git_command rebase --abort
-        git_command reset --hard "$current_hash"
-        if ! git_command pull; then
-            git_command reset --hard "$current_hash"
-            echo -e "${MESSAGES[was_an_error]}"
-            return 1
+        # Backup local configurations
+        if [ -f "config.local" ]; then
+            cp config.local config.local.backup
         fi
-    fi
 
-    # Restore local configurations if necessary
-    if [ -f "config.local.backup" ]; then
-        [[ -f "config.local" ]] && rm config.local
-        mv config.local.backup config.local
-    fi
+        # Tenta salvar alterações locais antes de atualizar
+        git_command stash push -m "shell_utils auto-update backup" &>/dev/null
 
-    # Run post-update script if exists
-    if [ -f "post_update.sh" ]; then
-        bash post_update.sh
-    fi
+        # Trap isolado no subshell
+        trap '
+            if [ "${stash_success:-0}" -eq 0 ]; then
+                git_command stash pop 2>/dev/null
+                git_command rebase --abort 2>/dev/null
+                rm -f config.local.backup
+            fi
+        ' EXIT
 
-    return 0
+        # Tenta atualizar com rebase
+        if ! git_command pull --rebase --stat origin main; then
+            log_message "${MESSAGES[rebase_error]}"
+            printf '%s\n' "${MESSAGES[rebase_abort]}"
+            git_command rebase --abort
+            git_command reset --hard "$current_hash" -- ':!*'
+
+            if ! git_command pull --stat origin main; then
+                git_command stash pop 2>/dev/null
+                echo -e "${MESSAGES[was_an_error]}"
+                exit 1
+            fi
+        fi
+
+        # Restaura as alterações locais do usuário
+        if ! git_command stash pop 2>/dev/null; then
+            echo -e "${MESSAGES[stash_conflict]}"
+        fi
+        stash_success=1
+
+        # Restore local configurations
+        if [ -f "config.local.backup" ]; then
+            [[ -f "config.local" ]] && rm config.local
+            mv config.local.backup config.local
+        fi
+
+        # Run post-update script if exists
+        if [ -f "post_update.sh" ]; then
+            bash post_update.sh
+        fi
+
+        exit 0
+    )
 }
 
 check_update() {
     # Check for updates efficiently
-    git_command remote update &> /dev/null
+    # git_command remote update &> /dev/null
+    git_command fetch origin main &> /dev/null
 
     LOCAL=$(git_command rev-parse HEAD); export LOCAL
-    REMOTE=$(git_command rev-parse @{u}); export REMOTE
+    REMOTE=$(git_command rev-parse origin/main); export REMOTE
 }
 
 # Check if the local directory exists
 if [ ! -d "$LOCAL_PATH" ]; then
     log_message "${MESSAGES[framework_not_found]}"
-    if ! git clone "https://github.com/$GITHUB_REPO.git" "$LOCAL_PATH"; then
+    if ! git clone --depth 1 "https://github.com/$GITHUB_REPO.git" "$LOCAL_PATH"; then
         log_message "${MESSAGES["repo_clone_error"]}"
         exit 1
     fi
@@ -336,7 +364,8 @@ if [[ "$SHELL_UTILS_AUTO_UPDATE" != 1 ]]; then
 fi
 
 # Check network
-if ! timeout .8 ping -c 1 8.8.8.8 &>/dev/null; then
+# if ! timeout .8 ping -c 1 8.8.8.8 &>/dev/null; then
+if ! git ls-remote "https://github.com/$GITHUB_REPO.git" HEAD &>/dev/null; then
     echo -e "${MESSAGES["error_no_internet"]}"
     exit 1
 fi
@@ -359,6 +388,7 @@ if [ -f "$UPDATE_LOCK_FILE" ]; then
 fi
 
 # Create lock file
+rm -f "$UPDATE_LOCK_FILE"
 touch "$UPDATE_LOCK_FILE"
 
 # Ensure cleanup on script exit
@@ -368,7 +398,6 @@ trap 'rm -f "$UPDATE_LOCK_FILE"' EXIT
 cd "$LOCAL_PATH" || exit 1
 
 # Check for last update
-LAST_UPDATE_FILE="${TMPDIR}/shell_utils_last_update"
 if [ -f "$LAST_UPDATE_FILE" ]; then
     LAST_UPDATE=$(cat "$LAST_UPDATE_FILE")
     NOW=$(date +%s)
