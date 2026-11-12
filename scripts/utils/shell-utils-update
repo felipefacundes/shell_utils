@@ -318,15 +318,6 @@ check_update() {
     REMOTE=$(git_command rev-parse origin/main); export REMOTE
 }
 
-# Check if the local directory exists
-if [ ! -d "$LOCAL_PATH" ]; then
-    log_message "${MESSAGES[framework_not_found]}"
-    if ! git clone --depth 1 "https://github.com/$GITHUB_REPO.git" "$LOCAL_PATH"; then
-        log_message "${MESSAGES["repo_clone_error"]}"
-        exit 1
-    fi
-fi
-
 if [[ ! -d "$CONFIG_DIR" ]]; then
     mkdir -p "$CONFIG_DIR"
 fi
@@ -343,8 +334,28 @@ if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 fi
 
+if [[ "$SHELL_UTILS_AUTO_UPDATE" != 1 ]]; then
+    if [[ "$ARGUMENT" != "-c" && "$ARGUMENT" != "--check" && "$ARGUMENT" != "-h" && "$ARGUMENT" != "--help" ]]; then
+        exit 0
+    fi
+fi
+
+# Check if the local directory exists
+if [ ! -d "$LOCAL_PATH" ]; then
+    log_message "${MESSAGES[framework_not_found]}"
+    if ! git clone --depth 1 "https://github.com/$GITHUB_REPO.git" "$LOCAL_PATH"; then
+        log_message "${MESSAGES["repo_clone_error"]}"
+        exit 1
+    fi
+fi
+
 case "$ARGUMENT" in
     "-c"|"--check")
+        # Force a network check only if it is a manual update
+        if ! git ls-remote "https://github.com/$GITHUB_REPO.git" HEAD &>/dev/null; then
+            echo -e "${MESSAGES["error_no_internet"]}"
+            exit 1
+        fi
         check_update
         if [[ "$LOCAL" == "$REMOTE" ]]; then
             log_message "${MESSAGES[updated]}"
@@ -356,12 +367,9 @@ case "$ARGUMENT" in
     ;;
     "-h"|"--help")
         printf '%s\n' "${MESSAGES[help]}" | less -i
+        exit 0
     ;;
 esac
-
-if [[ "$SHELL_UTILS_AUTO_UPDATE" != 1 ]]; then
-    exit 0
-fi
 
 # Check network
 # if ! timeout .8 ping -c 1 8.8.8.8 &>/dev/null; then
@@ -421,4 +429,4 @@ if [ "$LOCAL" != "$REMOTE" ]; then
 fi
 
 # Update the timestamp of the last check
-date +%s > "$LAST_UPDATE_FILE"
+date +%s >| "$LAST_UPDATE_FILE"
