@@ -31,7 +31,7 @@ sourced() {
     local source_dir="$1"
     local output_file="${source_dir}.sh"
     local tmp
-    tmp=$(mktemp "${TMPDIR:-/tmp}/sourced.XXXXXX") || return
+    tmp=$(mktemp "${output_file}.XXXXXX") || return
 
     [[ -d "$source_dir" ]] || { rm -f -- "$output_file" "$tmp"; return; }
 
