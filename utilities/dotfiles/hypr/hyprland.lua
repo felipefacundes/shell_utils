@@ -515,6 +515,15 @@ hl.on("hyprland.start", function()
 
     hl.exec_cmd("~/.shell_utils/scripts/hypr-dropdown init &")    -- optional: pre-spawn hidden
     hl.exec_cmd("~/.shell_utils/scripts/hypr-dropdown watch &")   -- optional: hide on focus loss (needs socat)
+    
+    -- Alarm
+    hl.exec_cmd([[bash -c '~/.shell_utils/scripts/alarm-daemon-multilingual -r &']])
+
+    -- Kernel Update
+    hl.exec_cmd([[bash -c '~/.shell_utils/scripts/kernel-check-update -d &']])
+
+    -- Simple Battery Manager
+    hl.exec_cmd([[bash -c '~/.shell_utils/scripts/simple-battery-manager &']])
 
     -- Script de correção de cursor/GTK
     hl.exec_cmd([[bash -c '~/.shell_utils/scripts/cursor-gtk-theme-fix -t &']])
@@ -525,11 +534,15 @@ hl.on("hyprland.start", function()
     -- Desabilita a tela interna após 2s
     hl.exec_cmd([[bash -c 'sleep 2 && hyprctl keyword monitor "eDP-1, disable"']])
 
+    -- Notifications
+    -- hl.exec_cmd([[bash -c 'mako &']])
+
     -- Wallpaper aleatório
     hl.exec_cmd('~/.shell_utils/scripts/random-wallpaper -lo &')
 
     -- Variáveis de ambiente para systemd/dbus
     hl.exec_cmd([[systemctl --user import-environment WAYLAND_DISPLAY & dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE]])
+    hl.exec_cmd([[bash -c 'systemctl --user start xdg-desktop-portal 2>/dev/null &']])
 
     -- Portais XDG
     hl.exec_cmd([[bash -c 'LANG=en /usr/lib/xdg-desktop-portal-gtk & LANG=en /usr/lib/xdg-desktop-portal-gnome']])
@@ -550,7 +563,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd([[bash -c 'wl-paste --type image --watch cliphist store & wl-paste --type text --watch cliphist -max-dedupe-search 750 -max-items 750 store']])
 
     -- PulseAudio
-    hl.exec_cmd([[bash -c '~/.shell_utils/scripts/fix-pulseaudio']])
+    hl.exec_cmd([[bash -c '~/.shell_utils/scripts/fix-pulseaudio &']])
 
     -- swayidle (DPMS + lock)
     hl.exec_cmd([[swayidle -w timeout 300 'imv-wayland -x -t 1 -f /usr/share/backgrounds/sway/Sway_Wallpaper_Blue_1920x1080.png & sleep 0.25 ; swaymsg "output * dpms off"' resume 'swaymsg "output * dpms on"' timeout 315 'swaylock -f' before-sleep 'swaylock -f ; sleep 1'']])
