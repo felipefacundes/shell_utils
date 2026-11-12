@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# History Security Sanitizer
+# Sanitizes zsh, bash, and fish history files by obfuscating dangerous commands.
+
+# Define configuration directory and file
+CONFIG_DIR="${shell_utils_configs:-$HOME/.shell_utils_configs}"
+CONFIG_FILE="${CONFIG_DIR}/history-security.conf"
+
+# Create configuration file if it doesn't exist
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    mkdir -p "$CONFIG_DIR"
+    touch "$CONFIG_FILE"
+    cat <<EOF > "$CONFIG_FILE"
+# History Security Configuration
+# Set HISTORY_SECURITY to 1 to enable history sanitization.
+# Set to 0 to disable.
+HISTORY_SECURITY=1
+EOF
+fi
+
+# Source the configuration file
+# shellcheck source=/dev/null
+source "$CONFIG_FILE"
+
+# Exit early if sanitization is disabled
+if [[ "${HISTORY_SECURITY:-1}" != "1" ]]; then
+    exit 0
+fi
+
+# Define history file paths
+ZSH_HIST="${ZSH_HISTORY:-$HOME/.zsh_history}"
+BASH_HIST="${BASH_HISTORY:-$HOME/.bash_history}"
+FISH_HIST="${XDG_DATA_HOME:-$HOME/.local/share}/fish/fish_history"
+
+# Function to sanitize a specific history file safely
+sanitize_file() {
+    local file="$1"
+    local shell_type="$2"
+    local tmp_file
+
+    # Skip if the file does not exist or is empty
+    [[ -s "$file" ]] || return 0
+
+    # Create a temporary file in the same directory to ensure atomic replacement
+    tmp_file=$(mktemp "${file}.XXXXXX") || return 1
+
+    if [[ "$shell_type" == "fish" ]]; then
+        sed -e 's#cmd: rm #cmd: rm_locked #g' \
+            -e 's#cmd: sudo rm #cmd: rm_locked #g' \
+            -e 's#cmd: doas rm #cmd: rm_locked #g' \
+            -e 's#cmd: mv #cmd: mv_locked #g' \
+            -e 's#cmd: sudo mv #cmd: mv_locked #g' \
+            -e 's#cmd: doas mv #cmd: mv_locked #g' \
+            -e 's|/dev/sd[abcdefghij][123456789]|/dev/sdX|g' \
+            -e 's|/dev/sd[abcdefghij]|/dev/sdX|g' \
+            "$file" > "$tmp_file"
+    else
+        # Default logic for zsh and bash
+        sed -e 's#;rm #;rm_locked #g' \
+            -e 's#^rm #rm_locked #g' \
+            -e 's#^sudo rm #rm_locked #g' \
+            -e 's#^doas rm #rm_locked #g' \
+            -e 's#;sudo rm #;rm_locked #g' \
+            -e 's#;doas rm #;rm_locked #g' \
+            -e 's#^mv #mv_locked #g' \
+            -e 's#^sudo mv #mv_locked #g' \
+            -e 's#^doas mv #mv_locked #g' \
+            -e 's#;mv #;mv_locked #g' \
+            -e 's#;sudo mv #;mv_locked #g' \
+            -e 's#;doas mv #;mv_locked #g' \
+            -e 's|/dev/sd[abcdefghij][123456789]|/dev/sdX|g' \
+            -e 's|/dev/sd[abcdefghij]|/dev/sdX|g' \
+            "$file" > "$tmp_file"
+    fi
+
+    # Replace original file with the sanitized version
+    if [[ -s "$tmp_file" ]]; then
+        mv -- "$tmp_file" "$file"
+    else
+        rm -f -- "$tmp_file"
+    fi
+}
+
+# Run sanitization
+sanitize_file "$ZSH_HIST" "zsh"
+sanitize_file "$BASH_HIST" "bash"
+sanitize_file "$FISH_HIST" "fish"

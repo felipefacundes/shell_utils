@@ -22,6 +22,18 @@ if [ ! -d "$shell_utils_configs" ]; then
 fi
 
 # Loops through all .sh files in the source directory and its subdirectories
+__sourced() {
+    local source_dir="$1"
+    local output_file="${source_dir}.sh"
+
+    [[ -d "$source_dir" ]] || { rm -f -- "$output_file"; return; }
+
+    find "$source_dir" -type f -name '*.sh' -exec printf '. %q\n' {} + \
+        >| "$output_file" 2>/dev/null
+
+    [[ -s "$output_file" ]] || rm -f -- "$output_file"
+}
+
 sourced() {
     local source_dir="$1"
     local output_file="${source_dir}.sh"
