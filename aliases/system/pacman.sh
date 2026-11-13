@@ -1,3 +1,5 @@
+alias up="u"
+
 if command -v pacman &>/dev/null && test -d /var/cache/pacman/pkg/; then
 
 	alias p='pacman'
@@ -15,8 +17,6 @@ if command -v pacman &>/dev/null && test -d /var/cache/pacman/pkg/; then
     alias pacman_history_installed_today='last_update'
     alias pacman_history_installed_today2='last_update2'
 
-	alias u='sudo pacman -Syyu --noconfirm'
-	alias up="u"
 	alias autoremove='sudo pacman -Rcs $(pacman -Qtdq)'
 
 	alias undevel_packages='sudo pacman -Rcs autoconf texinfo pkgconf patch make m4 groff flex binutils automake autoconf gcc'

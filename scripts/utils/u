@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# Professional Bilingual System Update Tool
+: <<'DOCUMENTATION'
+${SCRIPT_NAME} — Professional Bilingual System Update Automation
+
+Purpose
+-------
+${SCRIPT_NAME} is a production-oriented Bash utility designed to eliminate the
+friction of remembering distribution-specific update commands. It detects the
+running operating system (Linux distributions, FreeBSD, OpenBSD, macOS) and
+executes the native package manager's full system upgrade sequence with
+non-interactive confirmation where supported.
+
+Motivation
+----------
+System administrators and power users frequently work across heterogeneous
+environments. Manually recalling whether a host requires `pacman -Syyu`,
+`apt full-upgrade`, `dnf upgrade`, `pkg upgrade`, or `softwareupdate` introduces
+cognitive overhead and human error. ${SCRIPT_NAME} provides a single, consistent
+entry point that abstracts those differences while preserving the native
+behavior of each platform's package manager.
+
+Design Principles
+-----------------
+1. Detection-first: The script inspects `/etc/os-release`, command availability,
+   and platform-specific release files before taking action.
+2. Least surprise: It uses the system's native update mechanism rather than
+   wrapping or reimplementing package management logic.
+3. Non-interactive where safe: Flags such as `--noconfirm` (Arch), `-y` (APT/DNF),
+   and `--quiet` (FreeBSD pkg) are applied to minimize prompts during automated
+   or unattended runs. Users are always informed of the exact command executed.
+4. Bilingual output: All user-facing messages flow through the `MESSAGES`
+   associative array, selected by the `LANG` environment variable. Adding a new
+   language requires only extending that array.
+5. Documentation as code: This heredoc block is embedded in the script itself
+   and is extractable via the `-d` / `--doc` flag, ensuring the rationale and
+   maintenance notes travel with the artifact.
+
+Supported Platforms
+-------------------
+Linux (via native package managers):
+  - Arch Linux / Manjaro and derivatives (pacman)
+  - Debian / Ubuntu / Linux Mint and derivatives (apt)
+  - Fedora / RHEL / CentOS / Rocky / Alma (dnf or yum)
+  - openSUSE / SLES (zypper)
+  - Alpine Linux (apk)
+
+BSD / Unix-like:
+  - FreeBSD (pkg)
+  - OpenBSD (pkg_add)
+  - macOS (softwareupdate)
+
+Extensibility
+-------------
+New platforms are added by introducing a detection branch in `detect_and_update`
+and a corresponding message key in `MESSAGES`. The detection logic prefers
+authoritative sources: `/etc/os-release` `ID` field, then fallback to
+`command -v` checks for the package manager binary.
+
+Safety Considerations
+---------------------
+- The script requires `sudo` for most platforms; it does not assume root and
+  will fail gracefully if privileges are insufficient.
+- No package removal or configuration file overwriting is performed beyond what
+  the native package manager itself does during a standard upgrade.
+- Users are encouraged to review the printed command before execution in
+  environments where unattended upgrades are not desired.
+
+Author Notes
+------------
+This documentation block is intentionally verbose. It exists to reduce
+institutional knowledge loss when the script changes hands. The `show_doc`
+function extracts everything between the `: <<'DOCUMENTATION'` marker and the
+closing `DOCUMENTATION` line, so future maintainers should preserve that
+structure when editing.
+DOCUMENTATION
+
+set -euo pipefail
+
+SCRIPT_NAME="${0##*/}"
+
+# ---------------------------------------------------------------------------
+# Internationalization - Bilingual Support
+# ---------------------------------------------------------------------------
+declare -A MESSAGES
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        [detecting]="Detectando o sistema operacional..."
+        [detected]="Sistema detectado"
+        [command]="Comando a ser executado"
+        [confirm]="Pressione ENTER para continuar ou Ctrl+C para abortar"
+        [unsupported]="Sistema operacional ou gerenciador de pacotes não suportado"
+        [need_sudo]="Este script requer privilégios de superusuário (sudo)"
+        [starting]="Iniciando atualização do sistema..."
+        [done]="Atualização concluída com sucesso."
+        [error]="Ocorreu um erro durante a atualização."
+        [help_usage]="Uso"
+        [help_desc]="Ferramenta profissional de atualização de sistema bilíngue."
+        [help_opt_h]="Exibe esta ajuda."
+        [help_opt_d]="Exibe a documentação completa do script."
+        [help_opt_v]="Exibe a versão do script."
+        [version]="Versão"
+        [no_pkgmgr]="Nenhum gerenciador de pacotes conhecido foi encontrado."
+    )
+else
+    MESSAGES=(
+        [detecting]="Detecting operating system..."
+        [detected]="Detected system"
+        [command]="Command to execute"
+        [confirm]="Press ENTER to continue or Ctrl+C to abort"
+        [unsupported]="Unsupported operating system or package manager"
+        [need_sudo]="This script requires superuser privileges (sudo)"
+        [starting]="Starting system update..."
+        [done]="System update completed successfully."
+        [error]="An error occurred during the update."
+        [help_usage]="Usage"
+        [help_desc]="Professional bilingual system update tool."
+        [help_opt_h]="Show this help."
+        [help_opt_d]="Show full script documentation."
+        [help_opt_v]="Show script version."
+        [version]="Version"
+        [no_pkgmgr]="No known package manager found."
+    )
+fi
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+COLOR_RED='\033[0;31m'
+COLOR_GREEN='\033[0;32m'
+COLOR_YELLOW='\033[1;33m'
+COLOR_BLUE='\033[0;34m'
+COLOR_CYAN='\033[0;36m'
+COLOR_NC='\033[0m'
+
+info()  { echo -e "${COLOR_BLUE}[INFO]${COLOR_NC} $*"; }
+ok()    { echo -e "${COLOR_GREEN}[OK]${COLOR_NC} $*"; }
+warn()  { echo -e "${COLOR_YELLOW}[WARN]${COLOR_NC} $*"; }
+error() { echo -e "${COLOR_RED}[ERROR]${COLOR_NC} $*" >&2; }
+
+# ---------------------------------------------------------------------------
+# Help / Documentation
+# ---------------------------------------------------------------------------
+show_help() {
+    cat << EOF | { echo -e "$(cat)"; }
+${COLOR_CYAN}${MESSAGES[help_usage]}:${COLOR_NC} ${SCRIPT_NAME} [OPTIONS]
+
+${MESSAGES[help_desc]}
+
+${COLOR_YELLOW}Options:${COLOR_NC}
+  -h, --help      ${MESSAGES[help_opt_h]}
+  -d, --doc       ${MESSAGES[help_opt_d]}
+  -v, --version   ${MESSAGES[help_opt_v]}
+
+${COLOR_YELLOW}Examples:${COLOR_NC}
+  ${SCRIPT_NAME}
+  ${SCRIPT_NAME} --doc
+EOF
+    exit 0
+}
+
+show_doc() {
+    local doc
+    doc=$(
+        sed -n "/: <<'DOCUMENTATION'/,/^DOCUMENTATION$/p" "$0" |
+        sed '1d;$d'
+    )
+    SCRIPT_NAME="${SCRIPT_NAME}" envsubst '${SCRIPT_NAME}' <<<"$doc"
+    exit 0
+}
+
+show_version() {
+    echo "${SCRIPT_NAME} ${MESSAGES[version]} 1.0.0"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Detection and Update
+# ---------------------------------------------------------------------------
+detect_and_update() {
+    info "${MESSAGES[detecting]}"
+
+    local os_name=""
+    local update_cmd=""
+
+    # ----- Linux: /etc/os-release preferred, fallback to command checks -----
+    if [[ -f /etc/os-release ]]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        os_name="${NAME:-${ID:-Linux}}"
+
+        case "${ID,,}" in
+            arch|manjaro|endeavouros|garuda)
+                update_cmd="sudo pacman -Syyu --noconfirm"
+                ;;
+            debian|ubuntu|linuxmint|pop|raspbian|kali)
+                update_cmd="sudo apt update && sudo apt full-upgrade -y"
+                ;;
+            fedora|rhel|centos|rocky|almalinux)
+                if command -v dnf >/dev/null 2>&1; then
+                    update_cmd="sudo dnf upgrade -y"
+                else
+                    update_cmd="sudo yum update -y"
+                fi
+                ;;
+            opensuse*|sles|suse)
+                update_cmd="sudo zypper --non-interactive update"
+                ;;
+            alpine)
+                update_cmd="sudo apk update && sudo apk upgrade"
+                ;;
+        esac
+    fi
+
+    # ----- FreeBSD -----
+    if [[ -z "$update_cmd" && "$(uname -s)" == "FreeBSD" ]]; then
+        os_name="FreeBSD"
+        if command -v pkg >/dev/null 2>&1; then
+            update_cmd="sudo pkg update && sudo pkg upgrade -y"
+        elif command -v freebsd-update >/dev/null 2>&1; then
+            update_cmd="sudo freebsd-update fetch install"
+        fi
+    fi
+
+    # ----- OpenBSD -----
+    if [[ -z "$update_cmd" && "$(uname -s)" == "OpenBSD" ]]; then
+        os_name="OpenBSD"
+        if command -v pkg_add >/dev/null 2>&1; then
+            update_cmd="sudo pkg_add -u"
+        fi
+    fi
+
+    # ----- macOS -----
+    if [[ -z "$update_cmd" && "$(uname -s)" == "Darwin" ]]; then
+        os_name="macOS"
+        if command -v softwareupdate >/dev/null 2>&1; then
+            update_cmd="sudo softwareupdate --install --all"
+        fi
+    fi
+
+    # ----- Fallback: command availability (covers edge cases) -----
+    if [[ -z "$update_cmd" ]]; then
+        if command -v pacman >/dev/null 2>&1; then
+            os_name="${os_name:-Arch-based}"
+            update_cmd="sudo pacman -Syyu --noconfirm"
+        elif command -v apt >/dev/null 2>&1; then
+            os_name="${os_name:-Debian-based}"
+            update_cmd="sudo apt update && sudo apt full-upgrade -y"
+        elif command -v dnf >/dev/null 2>&1; then
+            os_name="${os_name:-Fedora-based}"
+            update_cmd="sudo dnf upgrade -y"
+        elif command -v yum >/dev/null 2>&1; then
+            os_name="${os_name:-RHEL-based}"
+            update_cmd="sudo yum update -y"
+        elif command -v zypper >/dev/null 2>&1; then
+            os_name="${os_name:-SUSE-based}"
+            update_cmd="sudo zypper --non-interactive update"
+        elif command -v apk >/dev/null 2>&1; then
+            os_name="${os_name:-Alpine}"
+            update_cmd="sudo apk update && sudo apk upgrade"
+        fi
+    fi
+
+    if [[ -z "$update_cmd" ]]; then
+        error "${MESSAGES[unsupported]}"
+        error "${MESSAGES[no_pkgmgr]}"
+        exit 1
+    fi
+
+    ok "${MESSAGES[detected]}: ${os_name}"
+    info "${MESSAGES[command]}: ${update_cmd}"
+
+    echo ""
+    warn "${MESSAGES[confirm]}"
+    read -r -p "> " _
+    echo ""
+
+    info "${MESSAGES[starting]}"
+    if eval "$update_cmd"; then
+        ok "${MESSAGES[done]}"
+    else
+        error "${MESSAGES[error]}"
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+case "${1:-}" in
+    -h|--help)    show_help ;;
+    -d|--doc)     show_doc ;;
+    -v|--version) show_version ;;
+    "")           detect_and_update ;;
+    *)
+        error "Unknown option: $1"
+        show_help
+        ;;
+esac
