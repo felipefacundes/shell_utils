@@ -2,7 +2,6 @@
 # License: GPLv3
 # Credits: Felipe Facundes
 
-# Professional Bilingual System Update Tool
 : <<'DOCUMENTATION'
 ${SCRIPT_NAME} — Professional Bilingual System Update Automation
 
@@ -10,8 +9,8 @@ Purpose
 -------
 ${SCRIPT_NAME} is a production-oriented Bash utility designed to eliminate the
 friction of remembering distribution-specific update commands. It detects the
-running operating system (Linux distributions, FreeBSD, OpenBSD, macOS) and
-executes the native package manager's full system upgrade sequence with
+running operating system (Linux distributions, FreeBSD, OpenBSD, macOS, Termux)
+and executes the native package manager's full system upgrade sequence with
 non-interactive confirmation where supported.
 
 Motivation
@@ -25,8 +24,8 @@ behavior of each platform's package manager.
 
 Design Principles
 -----------------
-1. Detection-first: The script inspects `/etc/os-release`, command availability,
-   and platform-specific release files before taking action.
+1. Detection-first: The script inspects `TERMUX_VERSION`, `/etc/os-release`,
+   command availability, and platform-specific release files before acting.
 2. Least surprise: It uses the system's native update mechanism rather than
    wrapping or reimplementing package management logic.
 3. Non-interactive where safe: Flags such as `--noconfirm` (Arch), `-y` (APT/DNF),
@@ -35,12 +34,18 @@ Design Principles
 4. Bilingual output: All user-facing messages flow through the `MESSAGES`
    associative array, selected by the `LANG` environment variable. Adding a new
    language requires only extending that array.
-5. Documentation as code: This heredoc block is embedded in the script itself
+5. No `eval`: Commands are stored as arrays (`update_cmd`, `update_cmd2`) and
+   executed via `"${array[@]}"`. This eliminates double expansion, word
+   splitting, and any risk of injection if a command source ever changes.
+6. Documentation as code: This heredoc block is embedded in the script itself
    and is extractable via the `-d` / `--doc` flag, ensuring the rationale and
    maintenance notes travel with the artifact.
 
 Supported Platforms
 -------------------
+Mobile / containerized:
+  - Termux (apt, no sudo)
+
 Linux (via native package managers):
   - Arch Linux / Manjaro and derivatives (pacman)
   - Debian / Ubuntu / Linux Mint and derivatives (apt)
@@ -49,7 +54,7 @@ Linux (via native package managers):
   - Alpine Linux (apk)
 
 BSD / Unix-like:
-  - FreeBSD (pkg)
+  - FreeBSD (pkg / freebsd-update)
   - OpenBSD (pkg_add)
   - macOS (softwareupdate)
 
@@ -57,13 +62,20 @@ Extensibility
 -------------
 New platforms are added by introducing a detection branch in `detect_and_update`
 and a corresponding message key in `MESSAGES`. The detection logic prefers
-authoritative sources: `/etc/os-release` `ID` field, then fallback to
-`command -v` checks for the package manager binary.
+authoritative sources: `TERMUX_VERSION`, then `/etc/os-release` `ID` field,
+then `uname -s`, then `command -v` checks for the package manager binary.
+
+The two-array design (`update_cmd` and `update_cmd2`) exists because several
+package managers split the operation into two steps (e.g. `apt update` followed
+by `apt full-upgrade`, `apk update` followed by `apk upgrade`, `pkg update`
+followed by `pkg upgrade`). `update_cmd2` is optional and only runs after
+`update_cmd` succeeds.
 
 Safety Considerations
 ---------------------
-- The script requires `sudo` for most platforms; it does not assume root and
-  will fail gracefully if privileges are insufficient.
+- The script requires `sudo` on most platforms; it does not assume root and
+  will fail gracefully if privileges are insufficient. Termux is the exception
+  and runs without `sudo`.
 - No package removal or configuration file overwriting is performed beyond what
   the native package manager itself does during a standard upgrade.
 - Users are encouraged to review the printed command before execution in
@@ -184,107 +196,127 @@ detect_and_update() {
     info "${MESSAGES[detecting]}"
 
     local os_name=""
-    local update_cmd=""
+    local -a update_cmd=()
+    local -a update_cmd2=()
+
+    # ----- Termux (must come before generic Debian detection) -----
+    if [[ -n "${TERMUX_VERSION:-}" ]]; then
+        os_name="Termux"
+        update_cmd=(apt update)
+        update_cmd2=(apt full-upgrade -y)
+    fi
 
     # ----- Linux: /etc/os-release preferred, fallback to command checks -----
-    if [[ -f /etc/os-release ]]; then
+    if [[ ${#update_cmd[@]} -eq 0 && -f /etc/os-release ]]; then
         # shellcheck disable=SC1091
         . /etc/os-release
         os_name="${NAME:-${ID:-Linux}}"
 
         case "${ID,,}" in
             arch|manjaro|endeavouros|garuda)
-                update_cmd="sudo pacman -Syyu --noconfirm"
+                update_cmd=(sudo pacman -Syyu --noconfirm)
                 ;;
             debian|ubuntu|linuxmint|pop|raspbian|kali)
-                update_cmd="sudo apt update && sudo apt full-upgrade -y"
+                update_cmd=(sudo apt update)
+                update_cmd2=(sudo apt full-upgrade -y)
                 ;;
             fedora|rhel|centos|rocky|almalinux)
                 if command -v dnf >/dev/null 2>&1; then
-                    update_cmd="sudo dnf upgrade -y"
+                    update_cmd=(sudo dnf upgrade -y)
                 else
-                    update_cmd="sudo yum update -y"
+                    update_cmd=(sudo yum update -y)
                 fi
                 ;;
             opensuse*|sles|suse)
-                update_cmd="sudo zypper --non-interactive update"
+                update_cmd=(sudo zypper --non-interactive update)
                 ;;
             alpine)
-                update_cmd="sudo apk update && sudo apk upgrade"
+                update_cmd=(sudo apk update)
+                update_cmd2=(sudo apk upgrade)
                 ;;
         esac
     fi
 
     # ----- FreeBSD -----
-    if [[ -z "$update_cmd" && "$(uname -s)" == "FreeBSD" ]]; then
+    if [[ ${#update_cmd[@]} -eq 0 && "$(uname -s)" == "FreeBSD" ]]; then
         os_name="FreeBSD"
         if command -v pkg >/dev/null 2>&1; then
-            update_cmd="sudo pkg update && sudo pkg upgrade -y"
+            update_cmd=(sudo pkg update)
+            update_cmd2=(sudo pkg upgrade -y)
         elif command -v freebsd-update >/dev/null 2>&1; then
-            update_cmd="sudo freebsd-update fetch install"
+            update_cmd=(sudo freebsd-update fetch install)
         fi
     fi
 
     # ----- OpenBSD -----
-    if [[ -z "$update_cmd" && "$(uname -s)" == "OpenBSD" ]]; then
+    if [[ ${#update_cmd[@]} -eq 0 && "$(uname -s)" == "OpenBSD" ]]; then
         os_name="OpenBSD"
         if command -v pkg_add >/dev/null 2>&1; then
-            update_cmd="sudo pkg_add -u"
+            update_cmd=(sudo pkg_add -u)
         fi
     fi
 
     # ----- macOS -----
-    if [[ -z "$update_cmd" && "$(uname -s)" == "Darwin" ]]; then
+    if [[ ${#update_cmd[@]} -eq 0 && "$(uname -s)" == "Darwin" ]]; then
         os_name="macOS"
         if command -v softwareupdate >/dev/null 2>&1; then
-            update_cmd="sudo softwareupdate --install --all"
+            update_cmd=(sudo softwareupdate --install --all)
         fi
     fi
 
     # ----- Fallback: command availability (covers edge cases) -----
-    if [[ -z "$update_cmd" ]]; then
+    if [[ ${#update_cmd[@]} -eq 0 ]]; then
         if command -v pacman >/dev/null 2>&1; then
             os_name="${os_name:-Arch-based}"
-            update_cmd="sudo pacman -Syyu --noconfirm"
+            update_cmd=(sudo pacman -Syyu --noconfirm)
         elif command -v apt >/dev/null 2>&1; then
             os_name="${os_name:-Debian-based}"
-            update_cmd="sudo apt update && sudo apt full-upgrade -y"
+            update_cmd=(sudo apt update)
+            update_cmd2=(sudo apt full-upgrade -y)
         elif command -v dnf >/dev/null 2>&1; then
             os_name="${os_name:-Fedora-based}"
-            update_cmd="sudo dnf upgrade -y"
+            update_cmd=(sudo dnf upgrade -y)
         elif command -v yum >/dev/null 2>&1; then
             os_name="${os_name:-RHEL-based}"
-            update_cmd="sudo yum update -y"
+            update_cmd=(sudo yum update -y)
         elif command -v zypper >/dev/null 2>&1; then
             os_name="${os_name:-SUSE-based}"
-            update_cmd="sudo zypper --non-interactive update"
+            update_cmd=(sudo zypper --non-interactive update)
         elif command -v apk >/dev/null 2>&1; then
             os_name="${os_name:-Alpine}"
-            update_cmd="sudo apk update && sudo apk upgrade"
+            update_cmd=(sudo apk update)
+            update_cmd2=(sudo apk upgrade)
         fi
     fi
 
-    if [[ -z "$update_cmd" ]]; then
+    if [[ ${#update_cmd[@]} -eq 0 ]]; then
         error "${MESSAGES[unsupported]}"
         error "${MESSAGES[no_pkgmgr]}"
         exit 1
     fi
 
     ok "${MESSAGES[detected]}: ${os_name}"
-    info "${MESSAGES[command]}: ${update_cmd}"
+    if [[ ${#update_cmd2[@]} -gt 0 ]]; then
+        info "${MESSAGES[command]}: ${update_cmd[*]} && ${update_cmd2[*]}"
+    else
+        info "${MESSAGES[command]}: ${update_cmd[*]}"
+    fi
 
     echo ""
     warn "${MESSAGES[confirm]}"
-    read -r -p "> " _
+    read -r -p "> " _ || exit 1
     echo ""
 
     info "${MESSAGES[starting]}"
-    if eval "$update_cmd"; then
-        ok "${MESSAGES[done]}"
-    else
+    if ! "${update_cmd[@]}"; then
         error "${MESSAGES[error]}"
         exit 1
     fi
+    if [[ ${#update_cmd2[@]} -gt 0 ]] && ! "${update_cmd2[@]}"; then
+        error "${MESSAGES[error]}"
+        exit 1
+    fi
+    ok "${MESSAGES[done]}"
 }
 
 # ---------------------------------------------------------------------------
