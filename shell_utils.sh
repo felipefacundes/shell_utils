@@ -7,6 +7,26 @@ shell_utils_configs=~/.shell_utils_configs
 # DEBUG log on/off
 # exec 2>/tmp/shell_utils_debug
 
+declare -A MESSAGES
+
+# Check the system language and assign messages accordingly
+if [[ "${LANG,,}" =~ pt_ ]]; then
+    MESSAGES=(
+        ["user_load_error"]="Aviso: Erro ao carregar o arquivo do usuário: %s"
+        ["clone_error"]="shell_utils: erro no clone — pulando carga"
+    )
+elif [[ "${LANG,,}" =~ es_ ]]; then
+    MESSAGES=(
+        ["user_load_error"]="Advertencia: Error al cargar el archivo del usuario: %s"
+        ["clone_error"]="shell_utils: error al clonar — omitiendo carga"
+    )
+else
+    MESSAGES=(
+        ["user_load_error"]="Warning: Error loading user file: %s"
+        ["clone_error"]="shell_utils: clone error — skipping load"
+    )
+fi
+
 if [[ -n "$TERMUX_VERSION" ]]; then
     USER=$(id -un); export USER
 fi
@@ -14,7 +34,7 @@ fi
 # Path to your shell_utils installation.
 if [ ! -d "$shell_utils" ]; then
     git clone --depth 1 https://github.com/felipefacundes/shell_utils "$shell_utils" \
-        || { echo "shell_utils: clone error — pulando carga" >&2; return 1 2>/dev/null || exit 1; }
+        || { echo "${MESSAGES[clone_error]}" >&2; return 1 2>/dev/null || exit 1; }
 fi
 
 # Path to your shell_utils configs
@@ -50,14 +70,18 @@ load_path() {
     sourced "${shell_utils}/${name}"
     
     # shellcheck source=/dev/null
-    [[ -f "${shell_utils}/${name}.sh" ]] && . "${shell_utils}/${name}.sh"
+    if [[ -f "${shell_utils}/${name}.sh" ]]; then
+        . "${shell_utils}/${name}.sh" || true
+    fi
 
     [[ -d "${shell_utils_users}/${name}" ]] || mkdir -p "${shell_utils_users}/${name}"
 
     sourced "${shell_utils_users}/${name}"
 
     # shellcheck source=/dev/null
-    [[ -f "${shell_utils_users}/${name}.sh" ]] && . "${shell_utils_users}/${name}.sh"
+    if [[ -f "${shell_utils_users}/${name}.sh" ]]; then 
+        . "${shell_utils_users}/${name}.sh" || printf "${MESSAGES[user_load_error]}%s\n" "${name}.sh" >&2
+    fi
 }
 
 # Priority
@@ -89,13 +113,15 @@ fi
 
 ########################################
 unset -f sourced load_path 2>/dev/null
-unset shell_utils shell_utils_users shell_utils_configs 2>/dev/null
+unset shell_utils shell_utils_users shell_utils_configs MESSAGES 2>/dev/null
 
 #shellcheck source=/dev/null
 if [[ -n "$BASH_VERSION" ]]; then
-	source ~/.shell_utils/scripts/utils/install-bash-smartcd
+	. ~/.shell_utils/scripts/utils/install-bash-smartcd || true
 fi
 
 if [[ -n "$TERMUX_VERSION" ]]; then
-   [[ -d /sdcard ]] && { cd /sdcard || true; }
+    if [[ -d /sdcard ]]; then
+        cd /sdcard || true
+    fi
 fi

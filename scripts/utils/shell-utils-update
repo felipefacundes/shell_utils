@@ -251,7 +251,7 @@ git_command() {
 }
 
 # Function to perform update
-perform_update() {
+perform_update_user() {
     (
         local current_hash
         current_hash=$(git_command rev-parse HEAD)
@@ -293,6 +293,42 @@ perform_update() {
             echo -e "${MESSAGES[stash_conflict]}"
         fi
         stash_success=1
+
+        # Restore local configurations
+        if [ -f "config.local.backup" ]; then
+            [[ -f "config.local" ]] && rm config.local
+            mv config.local.backup config.local
+        fi
+
+        # Run post-update script if exists
+        if [ -f "post_update.sh" ]; then
+            bash post_update.sh
+        fi
+
+        exit 0
+    )
+}
+
+perform_update() {
+    (
+        # Backup local configurations
+        if [ -f "config.local" ]; then
+            cp config.local config.local.backup
+        fi
+
+        # Busca as atualizações do GitHub
+        if ! git_command fetch origin main; then
+            echo -e "${MESSAGES[was_an_error]}"
+            exit 1
+        fi
+
+        # Força o repositório local a ser idêntico ao do GitHub.
+        # Isso apaga qualquer modificação do usuário em arquivos rastreados,
+        # mas PRESERVA os arquivos novos (untracked) criados por ele.
+        if ! git_command reset --hard origin/main; then
+            echo -e "${MESSAGES[was_an_error]}"
+            exit 1
+        fi
 
         # Restore local configurations
         if [ -f "config.local.backup" ]; then
