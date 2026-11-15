@@ -22,6 +22,7 @@ FEATURES:
 • Maintains history database with size limit
 • All searches are restricted to the current working directory
 • Handles filenames with spaces without requiring escaping
+• Removes invalid commands from shell history (via PROMPT_COMMAND / precmd)
 
 USAGE:
   Just type any filename as a command - smartfile will intercept it
@@ -52,6 +53,7 @@ export SMARTFILE_HIST_IGNORE=${SMARTFILE_HIST_IGNORE:-".git|*.tmp|*.log|*.swp"}
 export SMARTFILE_CONFIG_FOLDER=${SMARTFILE_CONFIG_FOLDER:-"$HOME/.shell_utils_configs/smartfile"}
 export SMARTFILE_CONFIG="$SMARTFILE_CONFIG_FOLDER/smartfile.conf"
 export SMARTFILE_HIST_FILE=${SMARTFILE_HIST_FILE:-"file_history.db"}
+export SMARTFILE_CNF_FLAG=${SMARTFILE_CNF_FLAG:-"${TMPDIR:-/tmp}/.smartfile_cnf_${USER}_$$"}
 
 [[ ! -d "$SMARTFILE_CONFIG_FOLDER" ]] && mkdir -p "$SMARTFILE_CONFIG_FOLDER" >/dev/null 2>&1
 
@@ -72,6 +74,48 @@ if ! command -v fzf &> /dev/null; then
 fi
 
 # Smartfile functions
+
+# Called from PROMPT_COMMAND (bash) / precmd (zsh), i.e. OUTSIDE the
+# command-not-found handler subshell, so history modifications actually stick.
+function __smartfile_hist_cleanup() {
+    [[ ! -f "$SMARTFILE_CNF_FLAG" ]] && return 0
+
+    # Consume the flag first to avoid re-entrancy
+    rm -f "$SMARTFILE_CNF_FLAG" 2>/dev/null
+
+    if [[ -n "$BASH_VERSION" ]]; then
+        # The invalid command is the last entry in the in-memory history.
+        history -d -1 2>/dev/null || true
+        # If it was already persisted (history -a / PROMPT_COMMAND), drop the
+        # matching last line from HISTFILE.
+        if [[ -n "$HISTFILE" && -f "$HISTFILE" ]]; then
+            local last_line
+            last_line=$(tail -n 1 "$HISTFILE" 2>/dev/null)
+            if [[ -n "$last_line" && "$last_line" != "$(history 1 2>/dev/null | sed 's/^ *[0-9]* *//')" ]]; then
+                # Last file line differs from current last memory entry:
+                # it is the invalid command that was persisted. Remove it.
+                sed -i '$ d' "$HISTFILE" 2>/dev/null || true
+            fi
+        fi
+    elif [[ -n "$ZSH_VERSION" ]]; then
+        # In zsh the command may already be in memory/history file.
+        if (( $+functions[hist] )); then
+            hist -fs delete -1 2>/dev/null || true
+        else
+            fc -d -1 2>/dev/null || true
+        fi
+        if [[ -n "$HISTFILE" && -f "$HISTFILE" ]]; then
+            local last_line
+            last_line=$(tail -n 1 "$HISTFILE" 2>/dev/null)
+            if [[ -n "$last_line" && "$last_line" != "$(fc -ln -1 2>/dev/null)" ]]; then
+                sed -i '$ d' "$HISTFILE" 2>/dev/null || true
+            fi
+        fi
+    fi
+
+    return 0
+}
+
 function __smartfile_open() {
     local lookUpPath="${*}"
     local selectedEntry=""
@@ -362,6 +406,10 @@ function smartfile() {
 # Command not found hook for bash
 if [[ -n "$BASH_VERSION" ]]; then
     command_not_found_handle() {
+        # Signal (outside this subshell) that the last typed command was invalid,
+        # so __smartfile_hist_cleanup can remove it from history via PROMPT_COMMAND.
+        : > "$SMARTFILE_CNF_FLAG" 2>/dev/null
+
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
         # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
         if [[ "$*" =~ ^[a-zA-Z0-9._/\\\ -]+$ ]]; then
@@ -391,6 +439,9 @@ if [[ -n "$BASH_VERSION" ]]; then
             return 127
         fi
     }
+
+    # Run history cleanup in the main shell (not the handler subshell)
+    PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
     
     # Key binding for Alt+f
     bind -r '\ef' 2>/dev/null || true
@@ -400,6 +451,10 @@ fi
 # Command not found hook for zsh
 if [[ -n "$ZSH_VERSION" ]]; then
     command_not_found_handler() {
+        # Signal (outside this handler) that the last typed command was invalid,
+        # so __smartfile_hist_cleanup can remove it from history via precmd.
+        : > "$SMARTFILE_CNF_FLAG" 2>/dev/null
+
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
         # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
         if [[ "$*" =~ ^[a-zA-Z0-9._/\\\ -]+$ ]]; then
@@ -424,6 +479,10 @@ if [[ -n "$ZSH_VERSION" ]]; then
             return 127
         fi
     }
+
+    # Run history cleanup in the main shell (not the handler)
+    autoload -Uz add-zsh-hook 2>/dev/null
+    add-zsh-hook precmd __smartfile_hist_cleanup 2>/dev/null || true
     
     # Key binding for Alt+f
     bindkey -s '^[f' 'smartfile --\n' 2>/dev/null || true
