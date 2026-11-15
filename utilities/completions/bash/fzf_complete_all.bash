@@ -47,7 +47,7 @@ _fzf_complete_all() {
 
         # Keep backslash-escaped sequences intact (e.g., "\ " stays as "\ ")
         if [[ "$prev_char" == '\' ]]; then
-            current_word+="\\$char"
+            current_word+="$char"
             prev_char="$char"
             ((i++))
             continue
@@ -846,7 +846,7 @@ _fzf_complete_all__working() {
 
         # Keep backslash-escaped sequences intact (e.g., "\ " stays as "\ ")
         if [[ "$prev_char" == '\' ]]; then
-            current_word+="\\$char"
+            current_word+="$char"
             prev_char="$char"
             ((i++))
             continue
