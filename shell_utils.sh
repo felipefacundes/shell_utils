@@ -7,35 +7,71 @@ shell_utils_configs=~/.shell_utils_configs
 # DEBUG log on/off
 # exec 2>/tmp/shell_utils_debug
 
-declare -A MESSAGES
+typeset -A MESSAGES
 
-# Check the system language and assign messages accordingly
-if [[ "${LANG,,}" =~ pt_ ]]; then
-    MESSAGES=(
-        ["user_load_error"]="Aviso: Erro ao carregar o arquivo do usuário: %s"
-        ["clone_error"]="shell_utils: erro no clone — pulando carga"
-    )
-elif [[ "${LANG,,}" =~ es_ ]]; then
-    MESSAGES=(
-        ["user_load_error"]="Advertencia: Error al cargar el archivo del usuario: %s"
-        ["clone_error"]="shell_utils: error al clonar — omitiendo carga"
-    )
+if [[ -n "$ZSH_VERSION" ]]; then
+
+    lang_lc=${LANG:l}
+
+    if [[ "$lang_lc" == pt_* ]]; then
+        MESSAGES=(
+            user_load_error "Aviso: Erro ao carregar o arquivo do usuário: %s"
+            clone_error     "shell_utils: erro no clone — pulando carga"
+        )
+    elif [[ "$lang_lc" == es_* ]]; then
+        MESSAGES=(
+            user_load_error "Advertencia: Error al cargar el archivo del usuario: %s"
+            clone_error     "shell_utils: error al clonar — omitiendo carga"
+        )
+    else
+        MESSAGES=(
+            user_load_error "Warning: Error loading user file: %s"
+            clone_error     "shell_utils: clone error — skipping load"
+        )
+    fi
+
+elif [[ -n "$BASH_VERSION" ]]; then
+
+    # Check the system language and assign messages accordingly
+    if [[ "${LANG,,}" == pt_* ]]; then
+        MESSAGES=(
+            ["user_load_error"]="Aviso: Erro ao carregar o arquivo do usuário: %s"
+            ["clone_error"]="shell_utils: erro no clone — pulando carga"
+        )
+    elif [[ "${LANG,,}" == es_* ]]; then
+        MESSAGES=(
+            ["user_load_error"]="Advertencia: Error al cargar el archivo del usuario: %s"
+            ["clone_error"]="shell_utils: error al clonar — omitiendo carga"
+        )
+    else
+        MESSAGES=(
+            ["user_load_error"]="Warning: Error loading user file: %s"
+            ["clone_error"]="shell_utils: clone error — skipping load"
+        )
+    fi
+
 else
-    MESSAGES=(
-        ["user_load_error"]="Warning: Error loading user file: %s"
-        ["clone_error"]="shell_utils: clone error — skipping load"
-    )
+    printf '%s\n' 'Supported only in Bash or Zsh.' >&2
+    return 1 2>/dev/null || exit 1
 fi
 
 if [[ -n "$TERMUX_VERSION" ]]; then
-    USER=$(id -un); export USER
+    USER=$(id -un) || USER=$LOGNAME
+    export USER
 fi
 
 # Path to your shell_utils installation.
-if [ ! -d "$shell_utils" ]; then
-    git clone --depth 1 https://github.com/felipefacundes/shell_utils "$shell_utils" \
-        || { echo "${MESSAGES[clone_error]}" >&2; return 1 2>/dev/null || exit 1; }
-fi
+clone_shell_utils() {
+    if [[ -d "$shell_utils" ]]; then
+        return 0
+    fi
+    if ! git clone --depth 1 https://github.com/felipefacundes/shell_utils "$shell_utils"; then
+        printf '%s\n' "${MESSAGES[clone_error]}" >&2
+        return 1
+    fi
+}
+
+clone_shell_utils || { return 1 2>/dev/null || exit 1; }
 
 # Path to your shell_utils configs
 if [ ! -d "$shell_utils_configs" ]; then
@@ -48,7 +84,9 @@ done
 
 # Loops through all .sh files in the source directory and its subdirectories
 sourced() {
-    local source_dir="$1"
+    local source_dir="${1:-}"
+    [[ -n "$source_dir" ]] || return
+
     local output_file="${source_dir}.sh"
     local tmp; tmp=$(mktemp "${TMPDIR:-/tmp}/sourced.XXXXXX") || return
 
@@ -65,7 +103,8 @@ sourced() {
 }
 
 load_path() {
-    local name="$1"
+    local name="${1:-}"
+    [[ -n "$name" ]] || return
 
     sourced "${shell_utils}/${name}"
     
@@ -80,7 +119,8 @@ load_path() {
 
     # shellcheck source=/dev/null
     if [[ -f "${shell_utils_users}/${name}.sh" ]]; then 
-        . "${shell_utils_users}/${name}.sh" || printf "${MESSAGES[user_load_error]}%s\n" "${name}.sh" >&2
+        . "${shell_utils_users}/${name}.sh" \
+            || { printf '%s\n' "${MESSAGES[user_load_error]//%s/${name}.sh}" >&2; }
     fi
 }
 
@@ -97,23 +137,27 @@ load_path functions
 load_path aliases
 
 ##### History
-[[ ! -f "$zsh_history" ]] && touch "$zsh_history"
-[[ ! -f "$bash_history" ]] && touch "$bash_history"
+[[ -f "$zsh_history" ]] || touch "$zsh_history"
+[[ -f "$bash_history" ]] || touch "$bash_history"
 
 ##### SECURITY
-"$shell_utils/scripts/utils/shell-history-security"
+"$shell_utils/scripts/utils/shell-history-security" || true
 
-if [[ $- == *i* ]]; then
+if [[ "$-" == *i* ]]; then
     # Load ASCII Theme Art
-    "$shell_utils/scripts/utils/ascii-theme-select"
+    "$shell_utils/scripts/utils/ascii-theme-select" || true
 
     # SHELL_UTILS AUTO UPDATE
-    "$shell_utils/scripts/utils/shell-utils-update"
+    "$shell_utils/scripts/utils/shell-utils-update" || true
 fi
 
 ########################################
+# NOTE: MESSAGES is unset before sourcing external scripts so each
+# sourced script can define its own localized MESSAGES array without
+# colliding with this one.
 unset -f sourced load_path 2>/dev/null
-unset shell_utils shell_utils_users shell_utils_configs MESSAGES 2>/dev/null
+unset shell_utils shell_utils_users shell_utils_configs lang_lc MESSAGES 2>/dev/null
+########################################
 
 #shellcheck source=/dev/null
 if [[ -n "$BASH_VERSION" ]]; then
