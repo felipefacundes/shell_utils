@@ -23,6 +23,7 @@ FEATURES:
 • All searches are restricted to the current working directory
 • Handles filenames with spaces without requiring escaping
 • Removes invalid commands from shell history (via PROMPT_COMMAND / precmd)
+• "command not found" is shown only when smartfile truly cannot open a file
 
 USAGE:
   Just type any filename as a command - smartfile will intercept it
@@ -116,6 +117,10 @@ function __smartfile_hist_cleanup() {
     return 0
 }
 
+# Return codes for __smartfile_open:
+#   0 = a file was successfully opened
+#   1 = nothing was opened (no match, user cancelled, or open failed)
+#   2 = invalid input (empty / not a plausible filename) - handler prints error
 function __smartfile_open() {
     local lookUpPath="${*}"
     local selectedEntry=""
@@ -159,9 +164,13 @@ function __smartfile_open() {
     
     if [[ -n "${selectedEntry}" ]]; then
         __smartfile_open_path "${selectedEntry}"
-    else
-        return 1
+        return $?
     fi
+
+    # Nothing was selected/opened. If the input was a plausible filename,
+    # the caller (command-not-found hook) will decide whether to print the
+    # "command not found" message. Return 1 to indicate "not opened".
+    return 1
 }
 
 function __smartfile_choose_file() {
@@ -417,15 +426,17 @@ if [[ -n "$BASH_VERSION" ]]; then
             local original_error
             original_error=$(LC_ALL=C bash -c "type $*" 2>&1 || true)
             
-            # Try to open as file
+            # Try to open as file. __smartfile_open returns:
+            #   0 = file was opened successfully
+            #   1 = nothing was opened (no match / user cancelled / open failed)
+            #   2 = invalid input
             smartfile "$@" 2>/dev/null
             local smartfile_result=$?
             
-            # If smartfile failed (not a file), print the original bash error message
+            # Only report "command not found" when smartfile could not open
+            # anything at all (no file matched/selected/opened).
             if [[ $smartfile_result -ne 0 ]]; then
-                # Get the error message in the system language
                 if [[ -f /usr/share/bash-completion/bash_completion ]]; then
-                    # Generate the error message as bash would
                     printf "bash: %s: command not found\n" "$*" >&2
                 else
                     echo "$original_error" >&2
@@ -462,13 +473,16 @@ if [[ -n "$ZSH_VERSION" ]]; then
             local original_error
             original_error=$(LC_ALL=C zsh -c "type $*" 2>&1 || true)
             
-            # Try to open as file
+            # Try to open as file. __smartfile_open returns:
+            #   0 = file was opened successfully
+            #   1 = nothing was opened (no match / user cancelled / open failed)
+            #   2 = invalid input
             smartfile "$@" 2>/dev/null
             local smartfile_result=$?
             
-            # If smartfile failed (not a file), print the original zsh error message
+            # Only report "command not found" when smartfile could not open
+            # anything at all (no file matched/selected/opened).
             if [[ $smartfile_result -ne 0 ]]; then
-                # Generate the error message as zsh would
                 printf "zsh: command not found: %s\n" "$*" >&2
                 return 127
             fi
