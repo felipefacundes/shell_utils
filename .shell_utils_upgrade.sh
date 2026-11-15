@@ -1,4 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
 # Safe Git sync script for ~/.shell_utils
 # Includes pre-flight checks to avoid operating on a corrupted or empty repo
 
