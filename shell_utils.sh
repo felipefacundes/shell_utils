@@ -145,7 +145,7 @@ load_path aliases
 
 if [[ "$-" == *i* ]]; then
     # Load ASCII Theme Art
-    "$shell_utils/scripts/utils/ascii-theme-select" || true
+    ( "$shell_utils/scripts/utils/ascii-theme-select" & disown ) || true
 
     # SHELL_UTILS AUTO UPDATE
     "$shell_utils/scripts/utils/shell-utils-update" || true
