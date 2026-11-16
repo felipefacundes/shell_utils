@@ -22,7 +22,8 @@ FEATURES:
 • Maintains history database with size limit
 • All searches are restricted to the current working directory
 • Handles filenames with spaces without requiring escaping
-• Removes invalid commands from shell history (via PROMPT_COMMAND / precmd)
+• Removes invalid commands from shell history on Linux (via PROMPT_COMMAND / precmd)
+• On Termux, keeps every command in history (valid or invalid)
 • "command not found" is shown only when smartfile truly cannot open a file
 
 USAGE:
@@ -46,6 +47,12 @@ DATABASE BEHAVIOR:
   • All file searches are restricted to the current working directory
 
 DOCUMENTATION
+
+# Guard against multiple sourcing (prevents duplicated PROMPT_COMMAND entries)
+if [[ -n "$_SMARTFILE_LOADED" ]]; then
+    return 0
+fi
+_SMARTFILE_LOADED=1
 
 # Smartfile configuration
 export SMARTFILE_LOG=~/.smartfile.log
@@ -74,7 +81,7 @@ if ! command -v fzf &> /dev/null; then
     return 2>/dev/null
 fi
 
-# Detect Termux once (used by open_path and dependency checks)
+# Detect Termux once (used by open_path, history cleanup and dependency checks)
 if [[ -n "$TERMUX_VERSION" ]] || [[ -d "/data/data/com.termux" ]]; then
     SMARTFILE_IS_TERMUX=1
 else
@@ -98,11 +105,21 @@ fi
 
 # Called from PROMPT_COMMAND (bash) / precmd (zsh), i.e. OUTSIDE the
 # command-not-found handler subshell, so history modifications actually stick.
+#
+# On Linux: removes the invalid command from the history.
+# On Termux: does NOT touch the history - every command (valid or invalid)
+# is kept, which matches the user's requirement there. The flag is still
+# consumed so it does not leak into the next prompt.
 function __smartfile_hist_cleanup() {
     [[ ! -f "$SMARTFILE_CNF_FLAG" ]] && return 0
 
     # Consume the flag first to avoid re-entrancy
     rm -f "$SMARTFILE_CNF_FLAG" 2>/dev/null
+
+    # Termux: keep every entry in history, nothing to remove
+    if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
+        return 0
+    fi
 
     if [[ -n "$BASH_VERSION" ]]; then
         # The invalid command is the last entry in the in-memory history.
@@ -453,8 +470,10 @@ function smartfile() {
 # Command not found hook for bash
 if [[ -n "$BASH_VERSION" ]]; then
     command_not_found_handle() {
-        # Signal (outside this subshell) that the last typed command was invalid,
-        # so __smartfile_hist_cleanup can remove it from history via PROMPT_COMMAND.
+        # Signal (outside this subshell) that the last typed command was invalid.
+        # On Linux this makes __smartfile_hist_cleanup remove it from history.
+        # On Termux the flag is still created but the cleanup ignores it, so the
+        # invalid command stays in history (user's requirement).
         : >| "$SMARTFILE_CNF_FLAG" 2>/dev/null
 
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
@@ -498,12 +517,17 @@ if [[ -n "$BASH_VERSION" ]]; then
 
     # Run history cleanup in the main shell (not the handler subshell).
     # On Termux, bash only flushes history on explicit exit, so valid commands
-    # are lost when the app is closed from the notification. Appending with
+    # are lost when the app is closed from the notification. Prepending
     # `history -a` after every command keeps the history file up to date.
+    # Idempotent checks avoid duplicated entries if this file is sourced twice.
     if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
-        PROMPT_COMMAND="history -a; __smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+        [[ "$PROMPT_COMMAND" != *"history -a"* ]] && \
+            PROMPT_COMMAND="history -a${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+        [[ "$PROMPT_COMMAND" != *"__smartfile_hist_cleanup"* ]] && \
+            PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
     else
-        PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+        [[ "$PROMPT_COMMAND" != *"__smartfile_hist_cleanup"* ]] && \
+            PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
     fi
     
     # Key binding for Alt+f
@@ -514,8 +538,8 @@ fi
 # Command not found hook for zsh
 if [[ -n "$ZSH_VERSION" ]]; then
     command_not_found_handler() {
-        # Signal (outside this handler) that the last typed command was invalid,
-        # so __smartfile_hist_cleanup can remove it from history via precmd.
+        # Signal (outside this handler) that the last typed command was invalid.
+        # Same semantics as bash: Linux removes it from history, Termux keeps it.
         : >| "$SMARTFILE_CNF_FLAG" 2>/dev/null
 
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
