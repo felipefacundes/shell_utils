@@ -417,7 +417,7 @@ if [[ -n "$BASH_VERSION" ]]; then
     command_not_found_handle() {
         # Signal (outside this subshell) that the last typed command was invalid,
         # so __smartfile_hist_cleanup can remove it from history via PROMPT_COMMAND.
-        : > "$SMARTFILE_CNF_FLAG" 2>/dev/null
+        : >| "$SMARTFILE_CNF_FLAG" 2>/dev/null
 
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
         # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
@@ -464,7 +464,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
     command_not_found_handler() {
         # Signal (outside this handler) that the last typed command was invalid,
         # so __smartfile_hist_cleanup can remove it from history via precmd.
-        : > "$SMARTFILE_CNF_FLAG" 2>/dev/null
+        : >| "$SMARTFILE_CNF_FLAG" 2>/dev/null
 
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
         # If it contains special chars like =, :, etc., it's probably a variable expansion - show it
