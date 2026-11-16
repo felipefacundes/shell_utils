@@ -74,7 +74,7 @@ export SMARTCD_AUTOEXEC_FILE=${SMARTCD_AUTOEXEC_FILE:-"autoexec.db"}
 [[ ! -d "$SMARTCD_CONFIG_FOLDER" ]] && mkdir -p "$SMARTCD_CONFIG_FOLDER" >/dev/null 2>&1
 
 if [[ ! -f "$SMARTCD_CONFIG" ]]; then
-cat <<'EOF' | tee "$SMARTCD_CONFIG" &>/dev/null
+cat <<'EOF' >| "$SMARTCD_CONFIG"
 # 0 = disable smartcd, 1 = enable smartcd without fuzzy search, 2 = enable with fuzzy search
 export SMARTCD=2
 EOF
@@ -100,8 +100,8 @@ if [[ -n "$ZSH_VERSION" ]]; then
 		
 		# If no argument, go to HOME
 		if [ $# -eq 0 ]; then
-			builtin cd || true
-			return $?
+			builtin cd || return 1
+			return 0
 		fi
 		
 		# Join all arguments
@@ -132,7 +132,7 @@ elif [[ -n "$BASH_VERSION" ]]; then
         [[ $dir == "~"* ]] && dir="${dir/#\~/$HOME}"
 
         # Use printf '%q' to correctly escape spaces and special characters
-        builtin cd "$(printf '%b' "$dir")" 2>/dev/null || builtin cd "$dir"
+        builtin cd "$(printf '%b' "$dir")" 2>/dev/null || builtin cd "$dir" || return 1
     }
 
     alias cd='smartcd'
@@ -143,12 +143,12 @@ fi
 
 # Check dependencies
 if ! command -v fzf &> /dev/null; then
-	echo "Can't use smartcd : missing fzf" | tee "$SMARTCD_LOG" >/dev/null
+	echo "Can't use smartcd : missing fzf" >| "$SMARTCD_LOG"
 	return #1
 fi
 
 if ! command -v md5sum &> /dev/null; then
-	echo "Can't use smartcd : missing md5sum" | tee "$SMARTCD_LOG" >/dev/null
+	echo "Can't use smartcd : missing md5sum" >| "$SMARTCD_LOG"
 	return #1
 fi
 

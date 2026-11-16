@@ -4,13 +4,14 @@
 BASHRC_FILE="$HOME/.bashrc"
 
 # Line to look for
-TARGET_LINE="source ~/.shell_utils/scripts/smartcd-with-fzf"
+TARGET_LINE=". ~/.shell_utils/utilities/sources/smartcd-with-fzf"
 
 # Check if the line already exists in the file
-grep -Fxq "$TARGET_LINE" "$BASHRC_FILE" && return
-if ! grep -Fxq "$TARGET_LINE" "$BASHRC_FILE"; then
+if ! grep -Fq "$TARGET_LINE" "$BASHRC_FILE"; then
     echo "Adding the line 'smartcd' to ~/.bashrc"
     echo " " >> "$BASHRC_FILE"
     echo "$TARGET_LINE" >> "$BASHRC_FILE"
     echo "Line added successfully!"
 fi
+
+unset TARGET_LINE BASHRC_FILE

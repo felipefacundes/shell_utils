@@ -42,17 +42,17 @@ BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
 BLE_PATH="$HOME/.local/share/blesh/ble.sh"
 BLE_REPO="$HOME/.ble.sh"
 
-ble-enable() {
+ble_enable() {
     local BLE_CONF="$HOME/.shell_utils_configs/ble_bash.conf"
 
     _ble_comment() {
-        echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" | tee "$BLE_CONF" &>/dev/null
-        echo "# and if set to 2, it enables an alternative, simple but functional version of ble." | tee -a "$BLE_CONF" &>/dev/null
+        echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" >| "$BLE_CONF"
+        echo "# and if set to 2, it enables an alternative, simple but functional version of ble." >> "$BLE_CONF"
     }
     
     _show_help() {
         cat <<'EOF'
-Usage: ble-enable <mode>
+Usage: ble_enable <mode>
 
 Manages the BLE_BASH_ENABLED variable that controls which line editor is active.
 Changes take effect on the next terminal session.
@@ -60,12 +60,12 @@ Changes take effect on the next terminal session.
 Modes:
   0   Disable all line editors (use default bash readline)
   1   Enable ble.sh (official, from akinomyoga's GitHub repository)
-  2   Enable ble-simple (alternative minimal version at ~/.shell_utils/scripts/ble-simple)
+  2   Enable ble-simple (alternative minimal version at ~/.shell_utils/utilities/sources/ble-simple)
 
 Examples:
-  ble-enable 0   # Disable
-  ble-enable 1   # Enable ble.sh
-  ble-enable 2   # Enable ble-simple
+  ble_enable 0   # Disable
+  ble_enable 1   # Enable ble.sh
+  ble_enable 2   # Enable ble-simple
 EOF
     }
 
@@ -77,28 +77,28 @@ EOF
     local mode="$1"
 
     if [[ "$mode" != "0" && "$mode" != "1" && "$mode" != "2" ]]; then
-        printf 'ble-enable: invalid mode "%s". Valid values: 0, 1, 2\n' "$mode" >&2
+        printf 'ble_enable: invalid mode "%s". Valid values: 0, 1, 2\n' "$mode" >&2
         _show_help
         return 1
     fi
 
     mkdir -p "$(dirname "$BLE_CONF")" 2>/dev/null
     _ble_comment
-    printf 'BLE_BASH_ENABLED=%s\n' "$mode" | tee -a "$BLE_CONF" &>/dev/null
+    printf 'BLE_BASH_ENABLED=%s\n' "$mode" >> "$BLE_CONF"
 
     case "$mode" in
-        0) printf 'ble-enable: mode set to 0 — all line editors disabled.\n' ;;
-        1) printf 'ble-enable: mode set to 1 — ble.sh will be loaded on next session.\n' ;;
-        2) printf 'ble-enable: mode set to 2 — ble-simple will be loaded on next session.\n' ;;
+        0) printf 'ble_enable: mode set to 0 — all line editors disabled.\n' ;;
+        1) printf 'ble_enable: mode set to 1 — ble.sh will be loaded on next session.\n' ;;
+        2) printf 'ble_enable: mode set to 2 — ble-simple will be loaded on next session.\n' ;;
     esac
 
     printf 'Restart your terminal or run: source ~/.bashrc\n'
 }
 
 _ble_comment() {
-    echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" | tee "$BLE_CONF" &>/dev/null
-    echo "# and if set to 2, it enables an alternative, simple but functional version of ble." | tee -a "$BLE_CONF" &>/dev/null
-    echo "BLE_BASH_ENABLED=0" | tee -a "$BLE_CONF" &>/dev/null
+    echo "# If BLE_BASH_ENABLED is set to 0, it disables; if set to 1, it enables ble.sh from akinomyoga's GitHub repository;" >| "$BLE_CONF"
+    echo "# and if set to 2, it enables an alternative, simple but functional version of ble." >> "$BLE_CONF"
+    echo "BLE_BASH_ENABLED=0" >> "$BLE_CONF"
 }
 
 if [[ ! -f "$BLE_CONF" ]]; then
@@ -185,7 +185,7 @@ fi
 ##### STARTUP
 ##### INPUTRC
 if [ ! -f ~/.inputrc ]; then
-    cat <<'EOF' | tee ~/.inputrc &>/dev/null
+    cat <<'EOF' >| ~/.inputrc
 $include /etc/inputrc
 set completion-ignore-case On
 set show-all-if-ambiguous On
@@ -276,9 +276,9 @@ PROMPT_COMMAND="_prompt_command $PROMPT_COMMAND"
 
 # Bash SmartCD and SmartFile
 # shellcheck source=/dev/null
-source ~/.shell_utils/scripts/smartcd-with-fzf
+. ~/.shell_utils/utilities/sources/smartcd-with-fzf || true
 # shellcheck source=/dev/null
-source ~/.shell_utils/scripts/smartfile-with-fzf
+. ~/.shell_utils/utilities/sources/smartfile-with-fzf || true
 
 # Load local bash completions from user directory
 # This allows installing shell completions without sudo/root access
@@ -570,7 +570,6 @@ bind '"\C-e": reverse-search-history'
 # complete -o default -o filenames codium
 
 if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
-    echo
     # shellcheck source=/dev/null
-    source ~/.shell_utils/scripts/ble-simple
-fi 
+    source ~/.shell_utils/utilities/sources/ble-simple
+fi  

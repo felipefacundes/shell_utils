@@ -161,7 +161,7 @@ unset shell_utils shell_utils_users shell_utils_configs lang_lc MESSAGES 2>/dev/
 
 #shellcheck source=/dev/null
 if [[ -n "$BASH_VERSION" ]]; then
-	. ~/.shell_utils/scripts/utils/install-bash-smartcd || true
+	. ~/.shell_utils/utilities/sources/install-bash-smartcd || true
 fi
 
 if [[ -n "$TERMUX_VERSION" ]]; then

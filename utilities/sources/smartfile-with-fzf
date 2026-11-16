@@ -66,7 +66,7 @@ export SMARTFILE_CNF_FLAG=${SMARTFILE_CNF_FLAG:-"${TMPDIR:-/tmp}/.smartfile_cnf_
 [[ ! -d "$SMARTFILE_CONFIG_FOLDER" ]] && mkdir -p "$SMARTFILE_CONFIG_FOLDER" >/dev/null 2>&1
 
 if [[ ! -f "$SMARTFILE_CONFIG" ]]; then
-cat <<'EOF' | tee "$SMARTFILE_CONFIG" &>/dev/null
+cat <<'EOF' >| "$SMARTFILE_CONFIG"
 # 0 = disable smartfile, 1 = enable smartfile without fuzzy search, 2 = enable with fuzzy search
 export SMARTFILE=2
 EOF
@@ -77,7 +77,7 @@ fi
 
 # Check dependencies
 if ! command -v fzf &> /dev/null; then
-    echo "Can't use smartfile : missing fzf" | tee "$SMARTFILE_LOG" >/dev/null
+    echo "Can't use smartfile : missing fzf" >| "$SMARTFILE_LOG"
     return 2>/dev/null
 fi
 
@@ -91,12 +91,12 @@ fi
 # Check the opener dependency (xdg-open on Linux, termux-open on Termux)
 if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
     if ! command -v termux-open &> /dev/null; then
-        echo "Can't use smartfile : missing termux-open (install termux-tools)" | tee "$SMARTFILE_LOG" >/dev/null
+        echo "Can't use smartfile : missing termux-open (install termux-tools)" >| "$SMARTFILE_LOG"
         return 2>/dev/null
     fi
 else
     if ! command -v xdg-open &> /dev/null; then
-        echo "Can't use smartfile : missing xdg-open" | tee "$SMARTFILE_LOG" >/dev/null
+        echo "Can't use smartfile : missing xdg-open" >| "$SMARTFILE_LOG"
         return 2>/dev/null
     fi
 fi
@@ -423,11 +423,11 @@ function __smartfile_database_cleanup() {
                 fi
             done
 
-            [[ "${bIgnore}" = "false" ]] && echo "${line}" | tee -a "${fTmp}" &>/dev/null
+            [[ "${bIgnore}" = "false" ]] && echo "${line}" >> "${fTmp}"
         fi
     done < "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
 
-    awk '!seen[$0]++' "${fTmp}" | tee "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" &>/dev/null
+    awk '!seen[$0]++' "${fTmp}" >| "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
     sed -i '/^[[:blank:]]*$/ d' "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
     [[ $(wc -l < "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}") -eq 0 ]] && __smartfile_database_reset
     rm -f "${fTmp}"
@@ -435,7 +435,7 @@ function __smartfile_database_cleanup() {
 
 function __smartfile_database_reset() {
     mkdir -p "${SMARTFILE_CONFIG_FOLDER}" >/dev/null 2>&1
-    echo "" | tee "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" &>/dev/null
+    echo "" >| "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}"
 }
 
 # Main smartfile function
