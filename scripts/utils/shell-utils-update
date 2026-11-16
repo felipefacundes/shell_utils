@@ -5,7 +5,17 @@
 : <<'DOCUMENTATION'
 SHELL_UTILS CHECK UPDATE
 Enhanced with better error handling, index corruption recovery,
-and defenses against local tampering with the framework repository.
+repository integrity verification, and defenses against local
+tampering with the framework repository.
+
+Design contract:
+  - The core of the framework (~/.shell_utils) must always match the
+    official upstream (felipefacundes/shell_utils).
+  - Users are expected to place their own overrides in a separate
+    directory that is sourced last by the framework, never inside the
+    core tree.
+  - Therefore, discarding local modifications to tracked files with
+    'git reset --hard origin/main' is intentional and safe.
 DOCUMENTATION
 
 # ---------------------------------------------------------------------------
@@ -33,7 +43,9 @@ NC='\033[0m'
 declare -A MESSAGES
 
 # ---------------------------------------------------------------------------
-# Locale-aware messages
+# Locale-aware messages. ANSI escape sequences are stored literally as
+# "\033[...m" and are interpreted later by printf '%b' in log_message().
+# Using '%s' would print them verbatim instead of coloring the text.
 # ---------------------------------------------------------------------------
 if [[ "${LANG,,}" =~ pt_ ]]; then
     MESSAGES=(
@@ -67,7 +79,7 @@ OPÇÕES DISPONÍVEIS:
 
 CONFIGURAÇÃO AUTOMÁTICA:
     Para permitir atualizações automáticas da framework SHELL_UTILS, é necessário definir a seguinte configuração:
-    
+
     Arquivo de configuração:
         ~/.shell_utils_configs/shell_utils_update.conf
 
@@ -132,7 +144,7 @@ OPCIONES DISPONIBLES:
 
 CONFIGURACIÓN AUTOMÁTICA:
     Para permitir actualizaciones automáticas de la framework SHELL_UTILS, es necesario definir la siguiente configuración:
-    
+
     Archivo de configuración:
         ~/.shell_utils_configs/shell_utils_update.conf
 
@@ -197,7 +209,7 @@ AVAILABLE OPTIONS:
 
 AUTOMATIC CONFIGURATION:
     To allow automatic updates of the SHELL_UTILS framework, the following configuration must be set:
-    
+
     Configuration file:
         ~/.shell_utils_configs/shell_utils_update.conf
 
@@ -233,23 +245,29 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
-# Logging helper using printf for portability
+# Logging helper.
+# '%b' interprets the ANSI escape sequences embedded in MESSAGES[...],
+# producing real colors instead of printing them as literal text.
+# '%s' would NOT interpret them. Timestamp has no escapes, so it stays
+# uncolored regardless of '%b' or '%s'.
 # ---------------------------------------------------------------------------
 log_message() {
-    printf '%b [%s] %b\n' "[$(date '+%Y-%m-%d %H:%M:%S')]" "$1" >&2
+    printf '%b\n' "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >&2
 }
 
 # ---------------------------------------------------------------------------
-# Git wrapper: runs git inside LOCAL_PATH without polluting caller's cwd
+# Git wrapper: runs git inside LOCAL_PATH without leaking the cd to callers.
 # ---------------------------------------------------------------------------
 git_command() {
     ( cd "$LOCAL_PATH" || return 1; command git "$@" )
 }
 
 # ---------------------------------------------------------------------------
-# Verify that LOCAL_PATH is a valid Git repository and that its origin
-# points to the official repository. This is the primary defense against
-# a user replacing the framework with their own repo or a malicious fork.
+# Verify that LOCAL_PATH is a valid Git repository and that its 'origin'
+# remote points to the official repository. This is the primary defense
+# against a user replacing the framework with a fork or a malicious repo:
+# if origin is redirected, the script aborts before any destructive step.
+# Accepts both HTTPS and SSH forms of the official URL.
 # ---------------------------------------------------------------------------
 verify_repository_integrity() {
     if [ ! -d "$LOCAL_PATH/.git" ]; then
@@ -260,7 +278,6 @@ verify_repository_integrity() {
     local origin_url
     origin_url=$(git_command config --get remote.origin.url 2>/dev/null) || origin_url=""
 
-    # Accept both SSH and HTTPS forms pointing to the official repo
     case "$origin_url" in
         "https://github.com/$GITHUB_REPO.git"|"https://github.com/$GITHUB_REPO"|"git@github.com:$GITHUB_REPO.git") ;;
         *)
@@ -275,9 +292,11 @@ verify_repository_integrity() {
 
 # ---------------------------------------------------------------------------
 # Detect and repair a corrupted Git index.
-# This prevents the "fatal: unknown index entry format 0x706f0000"
-# error from becoming permanent: once corrupted, every subsequent run
-# would fail the same way without this recovery step.
+# Prevents the "fatal: unknown index entry format 0x706f0000" error from
+# becoming permanent: once corrupted, every subsequent run would fail the
+# same way without this recovery step. The repair (rm index + git reset)
+# only rebuilds the local cache from HEAD; tracked working-tree files are
+# left untouched.
 # ---------------------------------------------------------------------------
 repair_index_if_needed() {
     if git_command status >/dev/null 2>&1; then
@@ -287,9 +306,9 @@ repair_index_if_needed() {
     log_message "${MESSAGES[index_repaired]}"
 
     rm -f "$LOCAL_PATH/.git/index" "$LOCAL_PATH/.git/index.lock" 2>/dev/null
-    git_command reset >/dev/null 2>&1 || return 1
+    # Visible output: git reports what it is doing while rebuilding the index.
+    git_command reset || return 1
 
-    # Re-check after repair
     if ! git_command status >/dev/null 2>&1; then
         log_message "${MESSAGES[was_an_error]}"
         return 1
@@ -298,51 +317,58 @@ repair_index_if_needed() {
 }
 
 # ---------------------------------------------------------------------------
-# Enforce that the working tree matches origin/main exactly, discarding
-# any local modifications to tracked files. User's untracked files (his
-# personal folder) are preserved.
-# ---------------------------------------------------------------------------
-enforce_official_state() {
-    if ! git_command reset --hard origin/main >/dev/null 2>&1; then
-        log_message "${MESSAGES[repo_tampered]}"
-        return 1
-    fi
-    return 0
-}
-
-# ---------------------------------------------------------------------------
 # Primary update path: fetch, hard reset to origin/main, restore config.
-# This is the destructive-but-intended path consistent with the design:
-# the core is always the official version; user overrides live elsewhere.
+#
+# 'git reset --hard origin/main' is intentional: the framework core must
+# always match the official version. Local modifications to tracked files
+# are discarded, but untracked files (the user's personal folder) are
+# preserved because 'reset --hard' does not touch untracked paths.
+#
+# Git output is deliberately left visible (no '>/dev/null') so the user
+# can see exactly which commit was applied. This does not affect security:
+# the commit content is already local after 'fetch'.
 # ---------------------------------------------------------------------------
 perform_update() {
     (
-        # Backup local configuration before touching anything
+        local old_hash new_hash
+        old_hash=$(git_command rev-parse HEAD 2>/dev/null) || old_hash=""
+
+        # Backup local configuration before touching anything.
         if [ -f "config.local" ]; then
             cp config.local config.local.backup
         fi
 
-        # Fetch the latest from the official repository
+        # Fetch the latest from the official repository.
+        # 'fetch' output shows what was downloaded.
         if ! git_command fetch origin main; then
             log_message "${MESSAGES[was_an_error]}"
             exit 1
         fi
 
         # Force the local repository to match origin/main exactly.
-        # This discards user modifications to tracked files but preserves
-        # new (untracked) files — the user's personal folder is safe.
+        # Git prints "HEAD is now at <hash> <subject>" — the update summary.
         if ! git_command reset --hard origin/main; then
             log_message "${MESSAGES[was_an_error]}"
             exit 1
         fi
 
-        # Restore local configuration
+        new_hash=$(git_command rev-parse HEAD 2>/dev/null) || new_hash=""
+
+        # Explicit before/after summary and the list of applied commits.
+        # Purely informational; no security impact.
+        if [ -n "$old_hash" ] && [ -n "$new_hash" ] && [ "$old_hash" != "$new_hash" ]; then
+            printf '%b  %s -> %s\n' "${YELLOW}" "${old_hash:0:12}" "${new_hash:0:12}" >&2
+            git_command --no-pager log --oneline "${old_hash}..${new_hash}" >&2 || true
+        fi
+
+        # Restore local configuration.
         if [ -f "config.local.backup" ]; then
             [ -f "config.local" ] && rm config.local
             mv config.local.backup config.local
         fi
 
-        # Run post-update script if present
+        # Run post-update script if present. Failures here must not abort
+        # the update, because the core is already in the desired state.
         if [ -f "post_update.sh" ]; then
             bash post_update.sh || true
         fi
@@ -354,7 +380,9 @@ perform_update() {
 # ---------------------------------------------------------------------------
 # "Gentle" update path: stash, rebase, fallback to hard reset.
 # Kept for compatibility with the original script; not used by the
-# default flow, but retained for callers that invoke it explicitly.
+# default flow. The trap uses '|| true' so a failing stash pop or rebase
+# abort inside the trap cannot bring the script down under 'set -e'
+# (should -e ever be enabled in the future).
 # ---------------------------------------------------------------------------
 perform_update_user() {
     (
@@ -378,10 +406,11 @@ perform_update_user() {
 
         if ! git_command pull --rebase --stat origin main; then
             log_message "${MESSAGES[rebase_error]}"
-            printf '%s\n' "${MESSAGES[rebase_abort]}"
+            printf '%s\n' "${MESSAGES[rebase_abort]}" >&2
             git_command rebase --abort 2>/dev/null || true
 
-            # Restore the exact previous state of tracked files
+            # Restore the exact previous state of tracked files.
+            # (Previously used '-- ":!*"' which is a no-op pathspec.)
             git_command reset --hard "$current_hash" 2>/dev/null || true
 
             if ! git_command pull --stat origin main; then
@@ -410,8 +439,11 @@ perform_update_user() {
 }
 
 # ---------------------------------------------------------------------------
-# Compare local HEAD with origin/main. Returns non-zero on fetch failure
-# so callers don't silently operate on stale remote refs.
+# Compare local HEAD with origin/main.
+# Returns non-zero on fetch failure so callers do not silently operate on
+# stale remote refs (which could otherwise lead to a reset to an old commit).
+# Hash variables use the '_SU_' prefix to avoid colliding with generic
+# names like LOCAL/REMOTE in the caller's shell.
 # ---------------------------------------------------------------------------
 check_update() {
     if ! git_command fetch origin main &>/dev/null; then
@@ -425,7 +457,7 @@ check_update() {
 }
 
 # ---------------------------------------------------------------------------
-# Config directory / file bootstrap
+# Config directory / file bootstrap.
 # ---------------------------------------------------------------------------
 if [ ! -d "$CONFIG_DIR" ]; then
     mkdir -p "$CONFIG_DIR"
@@ -440,13 +472,15 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Sanitized config loading: only whitelisted keys are accepted, and only
-# numeric values for UPDATE_CHECK_INTERVAL. This blocks arbitrary code
-# execution through a tampered config file.
+# Sanitized config loading.
+# Replaces a blind 'source "$CONFIG_FILE"' (which would execute arbitrary
+# code placed there) with a whitelist parser:
+#   - SHELL_UTILS_AUTO_UPDATE accepts only 0 or 1
+#   - UPDATE_CHECK_INTERVAL accepts only digits
+# Unknown keys are silently ignored.
 # ---------------------------------------------------------------------------
 if [ -f "$CONFIG_FILE" ]; then
     while IFS='=' read -r key value; do
-        # Skip blank lines and comments
         [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
         key="${key//[[:space:]]/}"
         value="${value//[[:space:]]/}"
@@ -458,14 +492,14 @@ if [ -f "$CONFIG_FILE" ]; then
                 [[ "$value" =~ ^[0-9]+$ ]] && UPDATE_CHECK_INTERVAL="$value"
                 ;;
             *)
-                # Ignore unknown keys silently
+                # Ignore unknown keys silently.
                 ;;
         esac
     done < "$CONFIG_FILE"
 fi
 
 # ---------------------------------------------------------------------------
-# Early exit when automatic updates are disabled and no relevant flag given
+# Early exit when automatic updates are disabled and no relevant flag given.
 # ---------------------------------------------------------------------------
 if [ "$SHELL_UTILS_AUTO_UPDATE" != "1" ]; then
     case "$ARGUMENT" in
@@ -475,7 +509,7 @@ if [ "$SHELL_UTILS_AUTO_UPDATE" != "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Clone the framework on first run
+# Clone the framework on first run.
 # ---------------------------------------------------------------------------
 if [ ! -d "$LOCAL_PATH" ]; then
     log_message "${MESSAGES[framework_not_found]}"
@@ -486,7 +520,7 @@ if [ ! -d "$LOCAL_PATH" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Argument handling
+# Argument handling.
 # ---------------------------------------------------------------------------
 case "$ARGUMENT" in
     -c|--check)
@@ -512,7 +546,7 @@ case "$ARGUMENT" in
 esac
 
 # ---------------------------------------------------------------------------
-# Connectivity check
+# Connectivity check.
 # ---------------------------------------------------------------------------
 if ! git ls-remote "https://github.com/$GITHUB_REPO.git" HEAD &>/dev/null; then
     log_message "${MESSAGES[error_no_internet]}"
@@ -520,16 +554,16 @@ if ! git ls-remote "https://github.com/$GITHUB_REPO.git" HEAD &>/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
-# Repository integrity: must be a Git repo and origin must be official.
-# Runs *before* any destructive operation, so a tampered origin can never
-# be used to pull arbitrary content over the framework.
+# Repository integrity: must be a Git repo and 'origin' must be official.
+# Runs BEFORE any destructive operation, so a tampered origin can never be
+# used to pull arbitrary content over the framework.
 # ---------------------------------------------------------------------------
 if ! verify_repository_integrity; then
     exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# Index health check + auto repair
+# Index health check + auto repair (the '0x706f0000' fix).
 # ---------------------------------------------------------------------------
 if ! repair_index_if_needed; then
     log_message "${MESSAGES[was_an_error]}"
@@ -537,7 +571,7 @@ if ! repair_index_if_needed; then
 fi
 
 # ---------------------------------------------------------------------------
-# Concurrent-run lock (5-minute window)
+# Concurrent-run lock (5-minute window).
 # ---------------------------------------------------------------------------
 if [ -f "$UPDATE_LOCK_FILE" ]; then
     if stat_output=$(stat -c %Y "$UPDATE_LOCK_FILE" 2>/dev/null); then
@@ -548,6 +582,7 @@ if [ -f "$UPDATE_LOCK_FILE" ]; then
             exit 0
         fi
     else
+        # If stat fails, the file may have been removed; continue normally.
         rm -f "$UPDATE_LOCK_FILE" 2>/dev/null || true
     fi
 fi
@@ -557,7 +592,7 @@ touch "$UPDATE_LOCK_FILE"
 trap 'rm -f "$UPDATE_LOCK_FILE"' EXIT
 
 # ---------------------------------------------------------------------------
-# Respect the last-check timestamp
+# Respect the last-check timestamp.
 # ---------------------------------------------------------------------------
 if [ -f "$LAST_UPDATE_FILE" ]; then
     LAST_UPDATE=$(cat "$LAST_UPDATE_FILE")
@@ -568,7 +603,7 @@ if [ -f "$LAST_UPDATE_FILE" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Main update flow
+# Main update flow.
 # ---------------------------------------------------------------------------
 if ! check_update; then
     log_message "${MESSAGES[was_an_error]}"
@@ -578,7 +613,8 @@ fi
 if [ "$_SU_LOCAL_HASH" != "$_SU_REMOTE_HASH" ]; then
     log_message "${MESSAGES[updates_found]}"
 
-    # Re-verify integrity right before the destructive step
+    # Re-verify integrity right before the destructive step, shrinking the
+    # window between the check and the reset.
     if ! verify_repository_integrity; then
         exit 1
     fi
@@ -591,5 +627,5 @@ if [ "$_SU_LOCAL_HASH" != "$_SU_REMOTE_HASH" ]; then
     fi
 fi
 
-# Record last successful check
+# Record last successful check.
 date +%s >| "$LAST_UPDATE_FILE"
