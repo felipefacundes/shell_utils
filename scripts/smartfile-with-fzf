@@ -500,8 +500,8 @@ if [[ -n "$BASH_VERSION" ]]; then
     # On Termux, bash only flushes history on explicit exit, so valid commands
     # are lost when the app is closed from the notification. Appending with
     # `history -a` after every command keeps the history file up to date.
-    if [[ -n "$TERMUX_VERSION" ]]; then
-        PROMPT_COMMAND="history -a; __smartfile_hist_cleanup"
+    if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
+        PROMPT_COMMAND="history -a; __smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
     else
         PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
     fi
