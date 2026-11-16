@@ -1,4 +1,8 @@
 #!/bin/zsh
+
+# Debug the issue:
+# exec 2> /tmp/zsh_error.log
+
 #################################
 ###### Xterm Transparency #######
 [[ "$XTERM_VERSION" ]] && command -v transset-df >/dev/null 2>&1 && transset-df -x 0.7 -m 0.7 --id "$WINDOWID" >/dev/null
