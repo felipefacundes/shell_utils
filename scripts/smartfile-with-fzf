@@ -18,7 +18,7 @@ FEATURES:
 • Alt+f shows only files previously opened from current directory (regional database)
 • Single database file stores all directories history
 • Regional database: each directory shows only its own opened files
-• Opens files with xdg-open
+• Opens files with xdg-open (or termux-open on Termux)
 • Maintains history database with size limit
 • All searches are restricted to the current working directory
 • Handles filenames with spaces without requiring escaping
@@ -72,6 +72,26 @@ fi
 if ! command -v fzf &> /dev/null; then
     echo "Can't use smartfile : missing fzf" | tee "$SMARTFILE_LOG" >/dev/null
     return 2>/dev/null
+fi
+
+# Detect Termux once (used by open_path and dependency checks)
+if [[ -n "$TERMUX_VERSION" ]] || [[ -d "/data/data/com.termux" ]]; then
+    SMARTFILE_IS_TERMUX=1
+else
+    SMARTFILE_IS_TERMUX=0
+fi
+
+# Check the opener dependency (xdg-open on Linux, termux-open on Termux)
+if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
+    if ! command -v termux-open &> /dev/null; then
+        echo "Can't use smartfile : missing termux-open (install termux-tools)" | tee "$SMARTFILE_LOG" >/dev/null
+        return 2>/dev/null
+    fi
+else
+    if ! command -v xdg-open &> /dev/null; then
+        echo "Can't use smartfile : missing xdg-open" | tee "$SMARTFILE_LOG" >/dev/null
+        return 2>/dev/null
+    fi
 fi
 
 # Smartfile functions
@@ -231,7 +251,27 @@ function __smartfile_open_path() {
     # Normalize path
     file=$(realpath "${file}" 2>/dev/null || echo "${file}")
 
-    if [[ -f "${file}" ]] && [[ -r "${file}" ]]; then
+    if [[ ! -f "${file}" ]] || [[ ! -r "${file}" ]]; then
+        echo "smartfile: file '${file}' does not exist or is not readable" >&2
+        __smartfile_database_delete_path "${file}"
+        return 1
+    fi
+
+    if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
+        # Termux: run termux-open synchronously so the real exit status is
+        # captured (termux-open hands the file to an Android app and returns
+        # immediately; backgrounding it would hide failures).
+        if termux-open "${file}" &>/dev/null; then
+            __smartfile_database_save_path "${file}"
+            return 0
+        else
+            __smartfile_database_delete_path "${file}"
+            echo "smartfile: failed to open '${file}' with 'termux-open'" >&2
+            return 1
+        fi
+    else
+        # Linux: keep the original asynchronous behavior so the shell is not
+        # blocked while the graphical application starts.
         if { xdg-open "${file}" 2>/dev/null & disown; } &>/dev/null; then
             __smartfile_database_save_path "${file}"
             return 0
@@ -239,10 +279,6 @@ function __smartfile_open_path() {
             __smartfile_database_delete_path "${file}"
             return 1
         fi
-    else
-        echo "smartfile: file '${file}' does not exist or is not readable" >&2
-        __smartfile_database_delete_path "${file}"
-        return 1
     fi
 }
 
