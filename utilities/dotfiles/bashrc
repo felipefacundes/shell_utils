@@ -174,8 +174,7 @@ fi
 
 # shellcheck source=/dev/null
 if [[ "$BLE_BASH_ENABLED" == 0 ]]; then
-    echo
-    source ~/.shell_utils/scripts/bash-ghost-text
+    . ~/.shell_utils/utilities/sources/bash-ghost-text || true
 fi
 
 # Bash-it
@@ -571,5 +570,5 @@ bind '"\C-e": reverse-search-history'
 
 if [[ "$BLE_BASH_ENABLED" == 2 ]]; then
     # shellcheck source=/dev/null
-    source ~/.shell_utils/utilities/sources/ble-simple
+    . ~/.shell_utils/utilities/sources/ble-simple || true
 fi  
