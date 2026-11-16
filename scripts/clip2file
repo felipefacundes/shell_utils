@@ -55,10 +55,10 @@ fi
 FILENAME="$1"
 
 # Check if filename has extension
-if [[ ! "$FILENAME" =~ \..+$ ]]; then
-    echo -e "${YELLOW}Warning: Filename has no extension. Using .txt as default.${NC}"
-    FILENAME="${FILENAME}.txt"
-fi
+# if [[ ! "$FILENAME" =~ \..+$ ]]; then
+#     echo -e "${YELLOW}Warning: Filename has no extension. Using .txt as default.${NC}"
+#     FILENAME="${FILENAME}.txt"
+# fi
 
 # Extract extension for informational purposes
 EXTENSION="${FILENAME##*.}"

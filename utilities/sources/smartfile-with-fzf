@@ -46,6 +46,17 @@ DATABASE BEHAVIOR:
   • History persists across sessions
   • All file searches are restricted to the current working directory
 
+CONFIGURATION:
+  SMARTFILE (0/1/2):
+    0 = disabled (the command-not-found hook is not installed)
+    1 = enabled, no fuzzy search (exact basename match, else single candidate)
+    2 = enabled with fuzzy fzf picker (default)
+
+  SMARTFILE_HIST_KEEP_INVALID (0/1):
+    0 = remove invalid commands from history on Linux (default)
+    1 = keep invalid commands (default bash/zsh behavior)
+    On Termux invalid commands are always kept and this flag is ignored.
+
 DOCUMENTATION
 
 # Guard against multiple sourcing (prevents duplicated PROMPT_COMMAND entries)
@@ -62,18 +73,33 @@ export SMARTFILE_CONFIG_FOLDER=${SMARTFILE_CONFIG_FOLDER:-"$HOME/.shell_utils_co
 export SMARTFILE_CONFIG="$SMARTFILE_CONFIG_FOLDER/smartfile.conf"
 export SMARTFILE_HIST_FILE=${SMARTFILE_HIST_FILE:-"file_history.db"}
 export SMARTFILE_CNF_FLAG=${SMARTFILE_CNF_FLAG:-"${TMPDIR:-/tmp}/.smartfile_cnf_${USER}_$$"}
+export SMARTFILE_HIST_KEEP_INVALID=${SMARTFILE_HIST_KEEP_INVALID:-0}
 
 [[ ! -d "$SMARTFILE_CONFIG_FOLDER" ]] && mkdir -p "$SMARTFILE_CONFIG_FOLDER" >/dev/null 2>&1
 
 if [[ ! -f "$SMARTFILE_CONFIG" ]]; then
 cat <<'EOF' >| "$SMARTFILE_CONFIG"
-# 0 = disable smartfile, 1 = enable smartfile without fuzzy search, 2 = enable with fuzzy search
+# SMARTFILE modes:
+#   0 = disable smartfile (hook is not installed)
+#   1 = enable smartfile WITHOUT fuzzy search (exact / filesystem match only)
+#   2 = enable smartfile WITH fuzzy search (default, uses fzf)
 export SMARTFILE=2
+
+# SMARTFILE_HIST_KEEP_INVALID:
+#   1 = keep invalid commands in shell history (default bash/zsh behavior)
+#   0 = remove invalid commands from shell history on Linux
+#       (on Termux the invalid command is always kept, this flag is ignored)
+export SMARTFILE_HIST_KEEP_INVALID=0
 EOF
 fi
 
+[[ -z "$SMARTFILE" || "$SMARTFILE" == 0 ]] && return 0
+
 # shellcheck source=/dev/null
 [[ -f "$SMARTFILE_CONFIG" ]] && source "$SMARTFILE_CONFIG"
+
+# Re-check after sourcing the config, in case it disabled smartfile
+[[ -z "$SMARTFILE" || "$SMARTFILE" == 0 ]] && return 0
 
 # Check dependencies
 if ! command -v fzf &> /dev/null; then
@@ -106,10 +132,11 @@ fi
 # Called from PROMPT_COMMAND (bash) / precmd (zsh), i.e. OUTSIDE the
 # command-not-found handler subshell, so history modifications actually stick.
 #
-# On Linux: removes the invalid command from the history.
 # On Termux: does NOT touch the history - every command (valid or invalid)
-# is kept, which matches the user's requirement there. The flag is still
-# consumed so it does not leak into the next prompt.
+# is kept, which matches the user's requirement there.
+# On Linux: removes the invalid command from history, UNLESS the user set
+# SMARTFILE_HIST_KEEP_INVALID=1 (then default bash/zsh behavior is preserved).
+# The flag is consumed in both cases so it does not leak into the next prompt.
 function __smartfile_hist_cleanup() {
     [[ ! -f "$SMARTFILE_CNF_FLAG" ]] && return 0
 
@@ -118,6 +145,11 @@ function __smartfile_hist_cleanup() {
 
     # Termux: keep every entry in history, nothing to remove
     if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
+        return 0
+    fi
+
+    # User opted into the default bash/zsh behavior: keep invalid commands
+    if [[ "$SMARTFILE_HIST_KEEP_INVALID" -eq 1 ]]; then
         return 0
     fi
 
@@ -173,7 +205,7 @@ function __smartfile_open() {
         __smartfile_open_path "${PWD}/${lookUpPath}"
         return $?
     fi
-    
+
     # Check if it's an absolute path
     if [[ -f "${lookUpPath}" ]] && [[ -r "${lookUpPath}" ]]; then
         __smartfile_open_path "${lookUpPath}"
@@ -182,23 +214,39 @@ function __smartfile_open() {
 
     # Fuzzy search mode (only for interactive mode with --)
     if [[ "${lookUpPath}" = "--" ]]; then
-        # For interactive mode, show only files from current directory (regional database)
+        # Interactive mode always uses fzf (it IS the picker).
         local current_dir="${PWD}"
         selectedEntry=$(__smartfile_database_search_by_dir "${current_dir}" | __smartfile_choose_file)
     else
         # Only search filesystem in CURRENT DIRECTORY, NOT database
         local fs_results
         fs_results=$(__smartfile_filesystem_search "${lookUpPath}" 2>/dev/null)
-        
+
         if [[ -n "$fs_results" ]]; then
             local line_count; line_count=$(echo "$fs_results" | wc -l)
-            local fzfSelect1=""
-            [[ $line_count -eq 1 ]] && fzfSelect1="--select-1"
-            
-            selectedEntry=$(echo "$fs_results" | __smartfile_choose_file "$fzfSelect1")
+
+            if [[ "$SMARTFILE" -eq 1 ]]; then
+                # Mode 1: no fuzzy. Prefer an exact basename match, otherwise
+                # only open if there is a single candidate. Never invoke fzf.
+                local exact_match=""
+                while IFS= read -r cand; do
+                    [[ "${cand##*/}" == "${lookUpPath##*/}" ]] && { exact_match="$cand"; break; }
+                done <<< "$fs_results"
+
+                if [[ -n "$exact_match" ]]; then
+                    selectedEntry="$exact_match"
+                elif [[ "$line_count" -eq 1 ]]; then
+                    selectedEntry="$fs_results"
+                fi
+            else
+                # Mode 2 (default): fuzzy picker via fzf.
+                local fzfSelect1=""
+                [[ $line_count -eq 1 ]] && fzfSelect1="--select-1"
+                selectedEntry=$(echo "$fs_results" | __smartfile_choose_file "$fzfSelect1")
+            fi
         fi
     fi
-    
+
     if [[ -n "${selectedEntry}" ]]; then
         __smartfile_open_path "${selectedEntry}"
         return $?
@@ -214,9 +262,9 @@ function __smartfile_choose_file() {
     local fzfSelect1="${1}"
     local fzfPreview=""
     local cmdPreview; cmdPreview=$(command -v bat batcat cat 2>/dev/null | awk 'NR==1 {print}')
-    
+
     local errMessage="no such file [ {} ]'\n\n'hint: run '\033[1m'smartfile --cleanup'\033[22m'"
-    
+
     case "${cmdPreview}" in
         */bat|*/batcat)
             fzfPreview='[ -f {} ] && '${cmdPreview}' --color=always --line-range :50 {} || echo -e '"${errMessage}"''
@@ -225,19 +273,19 @@ function __smartfile_choose_file() {
             fzfPreview='[ -f {} ] && echo "=== File: {} ===" ; '${cmdPreview}' {} || echo -e '"${errMessage}"''
             ;;
     esac
-    
+
     # Read all input lines
     local input_lines=()
     while IFS= read -r line; do
         input_lines+=("$line")
     done
-    
+
     # Create display list with only basenames using ##*/ parameter expansion
     local display_list=()
     for fullpath in "${input_lines[@]}"; do
         display_list+=("${fullpath##*/}")
     done
-    
+
     # Use fzf to select from display list
     local selected_display
     if [[ -n "$TERMUX_VERSION" ]]; then
@@ -246,7 +294,7 @@ function __smartfile_choose_file() {
         selected_display=$(printf '%s\n' "${display_list[@]}" | fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
             --preview="${fzfPreview}" 2>/dev/tty)
     fi
-    
+
     # Find the corresponding full path
     if [[ -n "$selected_display" ]]; then
         for i in "${!display_list[@]}"; do
@@ -307,15 +355,15 @@ function __smartfile_filesystem_search() {
     # On Termux, /sdcard is a FUSE mount; using the raw $PWD can make
     # fd/find return nothing, so we normalize it first.
     local searchPath; searchPath=$(realpath "${PWD}" 2>/dev/null || echo "${PWD}")
-    
+
     # Don't search if searchString is empty or just dots
     if [[ -z "${searchString}" || "${searchString}" =~ ^\.+$ ]]; then
         return 0
     fi
-    
+
     # Remove leading path if user typed a path, we only want the filename part
     searchString=$(basename -- "${searchString}")
-    
+
     case "${cmdFinder}" in
         */fd*)
             "${cmdFinder}" --hidden --no-ignore-vcs "${searchString}" --color=never --follow --max-depth=1 --type=file --exclude ".git/" "${searchPath}" --exec realpath --no-symlinks 2>/dev/null
@@ -328,17 +376,17 @@ function __smartfile_filesystem_search() {
 
 function __smartfile_database_search() {
     local searchString="${1}"
-    
+
     # If search string is empty, return all history
     if [[ -z "${searchString}" ]]; then
         cat "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
         return 0
     fi
-    
+
     # Escape special regex characters
     local escaped_string
     escaped_string=$(echo "${searchString}" | sed -e 's/\./\\./g' -e 's/\//\\//g')
-    
+
     # Only create pattern if escaped_string is not empty
     if [[ -n "${escaped_string}" ]]; then
         grep -i "${escaped_string}" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
@@ -350,10 +398,10 @@ function __smartfile_database_search() {
 function __smartfile_database_search_by_dir() {
     local target_dir="${1}"
     local escaped_dir
-    
+
     # Escape special characters for grep
     escaped_dir=$(echo "${target_dir}" | sed 's/[.[\*^$()+?{|]/\\&/g')
-    
+
     # Return files that are in the specified directory (regional database)
     grep "^${escaped_dir}/[^/]*$" "${SMARTFILE_CONFIG_FOLDER}/${SMARTFILE_HIST_FILE}" 2>/dev/null
 }
@@ -471,7 +519,8 @@ function smartfile() {
 if [[ -n "$BASH_VERSION" ]]; then
     command_not_found_handle() {
         # Signal (outside this subshell) that the last typed command was invalid.
-        # On Linux this makes __smartfile_hist_cleanup remove it from history.
+        # On Linux this makes __smartfile_hist_cleanup remove it from history,
+        # unless SMARTFILE_HIST_KEEP_INVALID=1.
         # On Termux the flag is still created but the cleanup ignores it, so the
         # invalid command stays in history (user's requirement).
         : >| "$SMARTFILE_CNF_FLAG" 2>/dev/null
@@ -529,7 +578,7 @@ if [[ -n "$BASH_VERSION" ]]; then
         [[ "$PROMPT_COMMAND" != *"__smartfile_hist_cleanup"* ]] && \
             PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
     fi
-    
+
     # Key binding for Alt+f
     bind -r '\ef' 2>/dev/null || true
     bind '"\ef":"smartfile --\n"' 2>/dev/null || true
@@ -539,7 +588,8 @@ fi
 if [[ -n "$ZSH_VERSION" ]]; then
     command_not_found_handler() {
         # Signal (outside this handler) that the last typed command was invalid.
-        # Same semantics as bash: Linux removes it from history, Termux keeps it.
+        # Same semantics as bash: Linux removes it from history (unless
+        # SMARTFILE_HIST_KEEP_INVALID=1), Termux keeps it.
         : >| "$SMARTFILE_CNF_FLAG" 2>/dev/null
 
         # If the input contains only alphanumeric, underscores, dots, slashes, spaces, or hyphens, it might be a file
@@ -578,7 +628,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
     # Run history cleanup in the main shell (not the handler)
     autoload -Uz add-zsh-hook 2>/dev/null
     add-zsh-hook precmd __smartfile_hist_cleanup 2>/dev/null || true
-    
+
     # Key binding for Alt+f
     bindkey -s '^[f' 'smartfile --\n' 2>/dev/null || true
 fi
