@@ -60,7 +60,7 @@ OM_ZSHC=~/.shell_utils/frameworks/oh-my-zsh-config.sh && [[ -f "$OM_ZSHC" ]] && 
 fzf_zsh() {
     file=~/.fzf.zsh
     if ! test -f "$file" && command -v fzf &>/dev/null; then
-        fzf --zsh | tee "$file" &>/dev/null
+        fzf --zsh >| "$file"
     fi
     test -f "$file" && source "$file"
     return 0
