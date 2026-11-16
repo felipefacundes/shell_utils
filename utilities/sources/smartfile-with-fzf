@@ -93,12 +93,11 @@ export SMARTFILE_HIST_KEEP_INVALID=0
 EOF
 fi
 
-[[ -z "$SMARTFILE" || "$SMARTFILE" == 0 ]] && return 0
 
 # shellcheck source=/dev/null
 [[ -f "$SMARTFILE_CONFIG" ]] && source "$SMARTFILE_CONFIG"
 
-# Re-check after sourcing the config, in case it disabled smartfile
+# Check after sourcing the config, in case it disabled smartfile
 [[ -z "$SMARTFILE" || "$SMARTFILE" == 0 ]] && return 0
 
 # Check dependencies
