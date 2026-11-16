@@ -286,8 +286,10 @@ function __smartfile_filesystem_search() {
     local searchString="${1}"
     local cmdFinder; cmdFinder=$(command -v fdfind fd find 2>/dev/null | awk 'NR==1 {print}')
 
-    # Always search only in current directory (PWD)
-    local searchPath="${PWD}"
+    # Resolve /sdcard and other symlinked paths to their real location.
+    # On Termux, /sdcard is a FUSE mount; using the raw $PWD can make
+    # fd/find return nothing, so we normalize it first.
+    local searchPath; searchPath=$(realpath "${PWD}" 2>/dev/null || echo "${PWD}")
     
     # Don't search if searchString is empty or just dots
     if [[ -z "${searchString}" || "${searchString}" =~ ^\.+$ ]]; then
@@ -494,8 +496,15 @@ if [[ -n "$BASH_VERSION" ]]; then
         fi
     }
 
-    # Run history cleanup in the main shell (not the handler subshell)
-    PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+    # Run history cleanup in the main shell (not the handler subshell).
+    # On Termux, bash only flushes history on explicit exit, so valid commands
+    # are lost when the app is closed from the notification. Appending with
+    # `history -a` after every command keeps the history file up to date.
+    if [[ "$SMARTFILE_IS_TERMUX" -eq 1 ]]; then
+        PROMPT_COMMAND="history -a; __smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+    else
+        PROMPT_COMMAND="__smartfile_hist_cleanup${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+    fi
     
     # Key binding for Alt+f
     bind -r '\ef' 2>/dev/null || true
