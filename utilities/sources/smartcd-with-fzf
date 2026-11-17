@@ -115,13 +115,17 @@ fi
 # ---------------------------------------------------------------------------
 __smartcd::basic() {
     local dir arg
-
     # Pass real cd options straight through
     case "$1" in
-        -|-L|-P|-e|-@) builtin cd "$@"; return ;;
+        -|-L|-P|-e|-@) 
+            # shellcheck disable=SC2164
+            builtin cd "$@"
+            return $?
+            ;;
         --) shift ;;
     esac
 
+    # shellcheck disable=SC2164
     if [[ $# -eq 0 ]]; then
         builtin cd
         return
@@ -134,10 +138,12 @@ __smartcd::basic() {
     # Remove surrounding quotes, expand ~
     dir=${dir#[\"\']}
     dir=${dir%[\"\']}
+    # shellcheck disable=SC2088
     if [[ "$dir" == "~" || "$dir" == "~/"* ]]; then
         dir="${HOME}${dir:1}"
     fi
 
+    # shellcheck disable=SC2164
     builtin cd -- "$dir"
 }
 
@@ -360,6 +366,7 @@ function __smartcd::enterPath() {
         __smartcd::autoexecRun .on_leave.smartcd.sh
     fi
 
+    # shellcheck disable=SC2164
     if [[ "${directory}" = "-" ]]; then
         builtin cd -
     else
@@ -433,7 +440,10 @@ function smartcd() {
             ;;
         --cleanup) __smartcd::databaseCleanup ;;
         --reset)   __smartcd::databaseReset ;;
-        -L|-P|-e|-@) builtin cd "$@" ;;
+        -L|-P|-e|-@) 
+            # shellcheck disable=SC2164
+            builtin cd "$@" 
+            ;;
         *)
             # Join all arguments with spaces (cd my folder just works).
             # Done by hand instead of "$*" so we never touch IFS, which would
