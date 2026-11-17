@@ -161,10 +161,13 @@ fi
 # from the history, keeping only valid commands and successfully-opened files.
 # The flag is consumed so it does not leak into the next prompt.
 function __smartfile_hist_cleanup() {
+
     [[ ! -f "$SMARTFILE_CNF_FLAG" ]] && return 0
 
     # Consume the flag first to avoid re-entrancy
     rm -f "$SMARTFILE_CNF_FLAG" 2>/dev/null
+    
+    [[ "$SMARTFILE_HIST_CLEANUP_ACTIVE" -eq 0 ]] && return 0
 
     if [[ -n "$BASH_VERSION" ]]; then
         # The invalid command is the last entry in the in-memory history.
