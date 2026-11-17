@@ -3,776 +3,1553 @@
 # Credits: Felipe Facundes
 
 : <<'DOCUMENTATION'
-Script: aur_helper_in_shell
-Description: Search and install packages from AUR on Arch Linux
-Usage: ./aur-helper-shell <options> <term>
+Script: aur-helper-shell (v2)
+Description: Search, inspect, audit, build, install and upgrade AUR packages
+             on Arch Linux, with recursive AUR dependency resolution,
+             PKGBUILD review/diff, a quick security audit, fzf interactive
+             mode, API caching, history log and shell completion.
+Usage: ./aur-helper-shell [options] <command | term>
+Requires: pacman, git, jq, curl (or wget), base-devel. Optional: fzf, column.
 DOCUMENTATION
 
+set -o pipefail
+export LC_NUMERIC=C   # keep printf '%.2f' sane on pt_BR and friends
+
+readonly VERSION="2.0.0"
+readonly AUR_BASE="https://aur.archlinux.org"
+readonly AUR_RPC="$AUR_BASE/rpc/"
+
+SELF=$(readlink -f "${BASH_SOURCE[0]}")
 SCRIPT=${0##*/}
 SCRIPT_REAL_NAME="${SCRIPT%%.*}"
-CACHE=~/.cache/$SCRIPT_REAL_NAME
 
-# Configurations
-AUR_API_URL="https://aur.archlinux.org/rpc/?v=5&type=search&arg="
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/$SCRIPT_REAL_NAME"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/$SCRIPT_REAL_NAME"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/$SCRIPT_REAL_NAME"
+BUILD_ROOT="$CACHE/build"
+API_CACHE="$CACHE/api"
+REVIEW_DIR="$STATE_DIR/reviewed"
+HISTORY_FILE="$STATE_DIR/history.log"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# ----------------------------------------------------------------------------
+# Defaults (overridable in $CONFIG_DIR/config, then by command-line flags)
+# ----------------------------------------------------------------------------
+CFG_API_TTL=300            # seconds an API response stays cached
+CFG_SEARCH_LIMIT=20
+CFG_DETAIL_LIMIT=5
+CFG_SORT=popularity        # popularity | votes | name | updated | relevance
+CFG_REVIEW=1               # 1 = review PKGBUILD before building
+CFG_NOCONFIRM=0
+CFG_CLONE_PROTO=https      # https | ssh (ssh falls back to https)
+CFG_MAKEPKG_FLAGS=""
+CFG_IGNORE=""              # space separated package names
+CFG_DEVEL=0                # include -git/-svn/... packages when upgrading
+CFG_REVERSE=0              # print best result last (closest to the prompt)
 
-# Language support
-declare -A MESSAGES
+# Per-run options
+OPT_BY=name-desc
+OPT_JSON=0
+OPT_MIN_VOTES=0
+OPT_NO_OOD=0
+OPT_LIMIT=""
+OPT_DEPTH=6
+OPT_OUTPUT=""
+OPT_DETAILS=0
+OPT_BUILD_ONLY=0
+OPT_FORCE=0
+OPT_FRESH=0
+OPT_RMDEPS=0
+OPT_ORPHANS=0
+OPT_IGNORE=""
+UPGRADE_MODE=0
 
-if [[ "${LANG,,}" =~ pt_ ]]; then
-    # Portuguese messages
-    MESSAGES=(
-        ["warning_no_curl_wget"]="Aviso: Nem curl nem wget foram encontrados."
-        ["installing_curl"]="Instalando curl..."
-        ["please_install_curl"]="Por favor, instale curl ou wget manualmente."
-        ["searching_for"]="Pesquisando por:"
-        ["error_cannot_connect"]="Erro: Não foi possível conectar ao AUR."
-        ["no_packages_found"]="Nenhum pacote encontrado para:"
-        ["found_packages"]="Encontrados %s pacotes"
-        ["showing_all_results"]="Mostrando TODOS os resultados:"
-        ["showing_results"]="Mostrando %s resultados:"
-        ["tips"]="Dicas:"
-        ["install_aur_package"]="1. Para instalar um pacote do AUR, use um helper como:"
-        ["yay_recommended"]="   - yay (recomendado)"
-        ["paru"]="   - paru"
-        ["aura"]="   - aura"
-        ["example_yay"]="2. Exemplo com yay: yay -S nome-do-pacote"
-        ["installed"]="✓ instalado"
-        ["available"]="○ disponível nos repositórios"
-        ["not_installed"]="✗ não instalado"
-        ["details_of_results"]="Detalhes dos %s resultados:"
-        ["result"]="Resultado %s:"
-        ["description"]="Descrição:"
-        ["version"]="Versão:"
-        ["votes"]="Votos:"
-        ["popularity"]="Popularidade:"
-        ["maintainer"]="Mantenedor:"
-        ["status_outdated"]="Status: Fora de data"
-        ["status_updated"]="Status: Atualizado"
-        ["installed_status"]="Instalado:"
-        ["save_results"]="Deseja salvar os resultados em um arquivo? (s/n):"
-        ["results_saved"]="Resultados salvos em:"
-        ["processing_installation"]="Processando instalação de:"
-        ["package_exists_cache"]="O pacote já existe no diretório:"
-        ["remove_and_generate"]="Deseja remover e gerar um novo pacote? (s/n):"
-        ["removing_existing_dir"]="Removendo diretório existente..."
-        ["directory_removed"]="Diretório removido."
-        ["using_existing_package"]="Usando pacote existente no diretório."
-        ["cloning_aur_repo"]="Clonando repositório do AUR..."
-        ["ssh_clone_success"]="Clone via SSH bem-sucedido!"
-        ["ssh_failed_trying_https"]="Falha no clone SSH, tentando HTTPS..."
-        ["https_clone_success"]="Clone via HTTPS bem-sucedido!"
-        ["error_cannot_clone"]="Erro: Não foi possível clonar o repositório."
-        ["check_package_name"]="Verifique se o nome do pacote está correto: %s"
-        ["edit_pkgbuild"]="Deseja editar o PKGBUILD? (s/n):"
-        ["no_editor_found"]="Nenhum editor encontrado!"
-        ["set_editor"]="Por favor, defina um editor no seu arquivo de configuração do shell:"
-        ["export_editor"]="  export EDITOR=seu_editor_favorito"
-        ["add_to_config"]="Adicione essa linha no ~/.bashrc ou ~/.zshrc"
-        ["available_editors"]="Editores disponíveis: neovim, vim, nano, vi"
-        ["opening_pkgbuild"]="Abrindo PKGBUILD com %s..."
-        ["build_options"]="Opções de construção:"
-        ["generate_only"]="1. Gerar pacote apenas (makepkg -s)"
-        ["generate_and_install"]="2. Gerar e instalar (makepkg -si)"
-        ["generate_force_install"]="3. Gerar, forçar e instalar (makepkg -sfi)"
-        ["choose_option"]="Escolha uma opção (1/2/3):"
-        ["generating_package"]="Gerando pacote..."
-        ["generating_installing"]="Gerando e instalando pacote..."
-        ["generating_force_installing"]="Gerando, forçando e instalando pacote..."
-        ["invalid_option"]="Opção inválida. Saindo."
-        ["process_completed"]="Processo concluído!"
-        ["build_failed"]="O processo não conseguiu construir o pacote."
-        ["package_location"]="O pacote está em: %s"
-        ["see_detailed_info"]="Deseja ver informações detalhadas dos primeiros pacotes? (s/n):"
-        ["error_no_search_term"]="Erro: Nenhum termo de pesquisa fornecido."
-        ["usage_search"]="Uso: %s -s <termo-de-pesquisa> [full|número]"
-        ["error_no_package_name"]="Erro: Nome do pacote não fornecido."
-        ["usage_install"]="Uso: %s -i <nome-do-pacote>"
-        ["usage_info"]="Uso: %s --info <nome-do-pacote>"
-        ["example_info"]="Exemplo: %s --info neovim"
-        ["usage_remove"]="Uso: %s -R, --remove <nome-do-pacote>"
-        ["example_remove"]="Exemplo: %s -R neovim"
-        ["usage_remove_all"]="Uso: %s -Rcs, --remove-all <nome-do-pacote>"
-        ["example_remove_all"]="Exemplo: %s -Rcs neovim"
-        ["warning_arg_ignored"]="Aviso: Argumento '%s' ignorado. Pesquisando apenas por '%s'"
-        ["error_no_curl_wget"]="Erro: curl ou wget não estão disponíveis."
-        ["script_title"]="AUR Helper in Shell"
-        ["script_description"]="Script para pesquisar e instalar pacotes no Arch User Repository (AUR)"
-        ["packages_installed"]="Você atualmente tem pacotes instalados"
-        ["usage"]="Uso:"
-        ["default_search"]="  %s <termo-de-pesquisa>                      - Pesquisa pacotes no AUR (padrão: 20 resultados)"
-        ["search_with_limit"]="  %s <termo-de-pesquisa> <full|número>        - Pesquisa com limite personalizado"
-        ["search_option"]="  %s -s, --search <termo>                     - Pesquisa pacotes no AUR (padrão: 20 resultados)"
-        ["search_option_limit"]="  %s -s <termo> <full|número>                 - Pesquisa com limite personalizado"
-        ["detailed_option"]="  %s -d, --detailed <termo>                   - Pesquisa com detalhes (padrão: 5 resultados)"
-        ["detailed_option_limit"]="  %s -d <termo> <full|número>                 - Pesquisa detalhada com limite personalizado"
-        ["install_option"]="  %s -i, --install <nome-do-pacote>           - Instala um pacote do AUR"
-        ["info_option"]="  %s -Qi, --info, --query-info <pacote>       - Mostra informações detalhadas do pacote instalado"
-        ["remove_option"]="  %s -R, --remove <nome-do-pacote>            - Remove um pacote instalado"
-        ["remove_debug_option"]="  %s -R-d, --remove-debug                     - Remove todos os pacotes debug instalados"
-        ["remove_all_option"]="  %s -Rcs, --remove-all, --purge <pacote>     - Remove um pacote e suas dependências"
-        ["remove_orphans_option"]="  %s -R-o, --remove-orphans                   - Remove pacotes órfãos (dependências não usadas)"
-        ["remove_unused_option"]="  %s --remove-unused                   - Remove pacotes órfãos (dependências não usadas)"
-        ["help_option"]="  %s -h, --help                               - Mostra esta ajuda"
-        ["examples"]="Exemplos:"
-        ["example1"]="  %s neovim"
-        ["example2"]="  %s neovim 30                                # Mostra até 30 resultados"
-        ["example3"]="  %s neovim full                              # Mostra todos os resultados"
-        ["example4"]="  %s --search visual-studio-code"
-        ["example5"]="  %s -s neovim full                           # Mostra todos os pacotes relacionados a neovim"
-        ["example6"]="  %s -s neovim 50                             # Mostra até 50 pacotes"
-        ["example7"]="  %s -d neovim                                # Mostra detalhes dos 5 primeiros"
-        ["example8"]="  %s -d neovim full                           # Mostra detalhes de TODOS os pacotes"
-        ["example9"]="  %s -d neovim 15                             # Mostra detalhes de 15 pacotes"
-        ["example10"]="  %s --install yay"
-        ["example11"]="  %s -i google-chrome"
-        ["example12"]="  %s --info neovim                            # Mostra informações do neovim instalado"
-        ["example13"]="  %s -Qi neovim                               # Mostra informações do neovim instalado"
-        ["example14"]="  %s -R neovim                                # Remove o neovim instalado"
-        ["example15"]="  %s --remove-all neovim                      # Remove neovim e suas dependências"
-        ["example16"]="  %s --remove-debug                           # Remove todos os pacotes debug instalados"
-        ["example17"]="  %s --remove-orphans                         # Remove todos os pacotes órfãos/dependências não usadas"
-        ["dependencies"]="Dependências:"
-        ["deps_curl_wget"]="  - curl ou wget (será instalado automaticamente se necessário)"
-        ["deps_git"]="  - git (para clonar repositórios)"
-        ["deps_makepkg"]="  - makepkg (para construir pacotes)"
-        ["cache"]="Cache:"
-        ["cache_location"]="  Os pacotes serão baixados em: ~/.cache/%s/"
-        ["search_format"]="Formato da pesquisa:"
-        ["format_description"]="  nome_do_pacote versão descrição"
-    )
-else
-    # English messages (default)
-    MESSAGES=(
-        ["warning_no_curl_wget"]="Warning: Neither curl nor wget were found."
-        ["installing_curl"]="Installing curl..."
-        ["please_install_curl"]="Please install curl or wget manually."
-        ["searching_for"]="Searching for:"
-        ["error_cannot_connect"]="Error: Could not connect to AUR."
-        ["no_packages_found"]="No packages found for:"
-        ["found_packages"]="Found %s packages"
-        ["showing_all_results"]="Showing ALL results:"
-        ["showing_results"]="Showing %s results:"
-        ["tips"]="Tips:"
-        ["install_aur_package"]="1. To install an AUR package, use a helper like:"
-        ["yay_recommended"]="   - yay (recommended)"
-        ["paru"]="   - paru"
-        ["aura"]="   - aura"
-        ["example_yay"]="2. Example with yay: yay -S package-name"
-        ["installed"]="✓ installed"
-        ["available"]="○ available in repositories"
-        ["not_installed"]="✗ not installed"
-        ["details_of_results"]="Details of %s results:"
-        ["result"]="Result %s:"
-        ["description"]="Description:"
-        ["version"]="Version:"
-        ["votes"]="Votes:"
-        ["popularity"]="Popularity:"
-        ["maintainer"]="Maintainer:"
-        ["status_outdated"]="Status: Out of date"
-        ["status_updated"]="Status: Updated"
-        ["installed_status"]="Installed:"
-        ["save_results"]="Do you want to save the results to a file? (y/n):"
-        ["results_saved"]="Results saved in:"
-        ["processing_installation"]="Processing installation of:"
-        ["package_exists_cache"]="Package already exists in directory:"
-        ["remove_and_generate"]="Do you want to remove and generate a new package? (y/n):"
-        ["removing_existing_dir"]="Removing existing directory..."
-        ["directory_removed"]="Directory removed."
-        ["using_existing_package"]="Using existing package in directory."
-        ["cloning_aur_repo"]="Cloning AUR repository..."
-        ["ssh_clone_success"]="SSH clone successful!"
-        ["ssh_failed_trying_https"]="SSH clone failed, trying HTTPS..."
-        ["https_clone_success"]="HTTPS clone successful!"
-        ["error_cannot_clone"]="Error: Could not clone repository."
-        ["check_package_name"]="Check if package name is correct: %s"
-        ["edit_pkgbuild"]="Do you want to edit PKGBUILD? (y/n):"
-        ["no_editor_found"]="No editor found!"
-        ["set_editor"]="Please define an editor in your shell configuration file:"
-        ["export_editor"]="  export EDITOR=your_favorite_editor"
-        ["add_to_config"]="Add this line to ~/.bashrc or ~/.zshrc"
-        ["available_editors"]="Available editors: neovim, vim, nano, vi"
-        ["opening_pkgbuild"]="Opening PKGBUILD with %s..."
-        ["build_options"]="Build options:"
-        ["generate_only"]="1. Generate package only (makepkg -s)"
-        ["generate_and_install"]="2. Generate and install (makepkg -si)"
-        ["generate_force_install"]="3. Generate, force and install (makepkg -sfi)"
-        ["choose_option"]="Choose an option (1/2/3):"
-        ["generating_package"]="Generating package..."
-        ["generating_installing"]="Generating and installing package..."
-        ["generating_force_installing"]="Generating, forcing and installing package..."
-        ["invalid_option"]="Invalid option. Exiting."
-        ["process_completed"]="Process completed!"
-        ["build_failed"]="The process failed to build the package"
-        ["package_location"]="Package is located at: %s"
-        ["see_detailed_info"]="Do you want to see detailed information of first packages? (y/n):"
-        ["error_no_search_term"]="Error: No search term provided."
-        ["usage_search"]="Usage: %s -s <search-term> [full|number]"
-        ["error_no_package_name"]="Error: No package name provided."
-        ["usage_install"]="Usage: %s -i <package-name>"
-        ["usage_info"]="Usage: %s --info <package-name>"
-        ["example_info"]="Example: %s --info neovim"
-        ["usage_remove"]="Usage: %s -R, --remove <package-name>"
-        ["example_remove"]="Example: %s -R neovim"
-        ["usage_remove_all"]="Usage: %s -Rcs, --remove-all <package-name>"
-        ["example_remove_all"]="Example: %s -Rcs neovim"
-        ["warning_arg_ignored"]="Warning: Argument '%s' ignored. Searching only for '%s'"
-        ["error_no_curl_wget"]="Error: curl or wget are not available."
-        ["script_title"]="AUR Helper in Shell"
-        ["script_description"]="Script to search and install packages from Arch User Repository (AUR)"
-        ["packages_installed"]="You currently have packages installed"
-        ["usage"]="Usage:"
-        ["default_search"]="  %s <search-term>                            - Search packages in AUR (default: 20 results)"
-        ["search_with_limit"]="  %s <search-term> <full|number>              - Search with custom limit"
-        ["search_option"]="  %s -s, --search <term>                      - Search packages in AUR (default: 20 results)"
-        ["search_option_limit"]="  %s -s <term> <full|number>                  - Search with custom limit"
-        ["detailed_option"]="  %s -d, --detailed <term>                    - Search with details (default: 5 results)"
-        ["detailed_option_limit"]="  %s -d <term> <full|number>                  - Detailed search with custom limit"
-        ["install_option"]="  %s -i, --install <package-name>             - Install an AUR package"
-        ["info_option"]="  %s -Qi, --info, --query-info <package>      - Show detailed information of installed package"
-        ["remove_option"]="  %s -R, --remove <package-name>              - Remove an installed package"
-        ["remove_debug_option"]="  %s -R-d, --remove-debug                     - Remove all installed debug packages"
-        ["remove_all_option"]="  %s -Rcs, --remove-all, --purge <package>    - Remove a package and its dependencies"
-        ["remove_orphans_option"]="  %s -R-o, --remove-orphans                   - Remove orphaned packages (unused dependencies)"
-        ["remove_unused_option"]="  %s --remove-unused                   - Remove orphaned packages (unused dependencies)"
-        ["help_option"]="  %s -h, --help                               - Show this help"
-        ["examples"]="Examples:"
-        ["example1"]="  %s neovim"
-        ["example2"]="  %s neovim 30                                # Show up to 30 results"
-        ["example3"]="  %s neovim full                              # Show all results"
-        ["example4"]="  %s --search visual-studio-code"
-        ["example5"]="  %s -s neovim full                           # Show all packages related to neovim"
-        ["example6"]="  %s -s neovim 50                             # Show up to 50 packages"
-        ["example7"]="  %s -d neovim                                # Show details of first 5 packages"
-        ["example8"]="  %s -d neovim full                           # Show details of ALL packages"
-        ["example9"]="  %s -d neovim 15                             # Show details of 15 packages"
-        ["example10"]="  %s --install yay"
-        ["example11"]="  %s -i google-chrome"
-        ["example12"]="  %s --info neovim                            # Show information of installed neovim"
-        ["example13"]="  %s -Qi neovim                               # Show information of installed neovim"
-        ["example14"]="  %s -R neovim                                # Remove installed neovim"
-        ["example15"]="  %s --remove-all neovim                      # Remove neovim and its dependencies"
-        ["example16"]="  %s --remove-debug                           # Remove all installed debug packages"
-        ["example17"]="  %s --remove-orphans                         # Remove all orphaned packages/unused dependencies"
-        ["dependencies"]="Dependencies:"
-        ["deps_curl_wget"]="  - curl or wget (will be installed automatically if needed)"
-        ["deps_git"]="  - git (to clone repositories)"
-        ["deps_makepkg"]="  - makepkg (to build packages)"
-        ["cache"]="Cache:"
-        ["cache_location"]="  Packages will be downloaded in: ~/.cache/%s/"
-        ["search_format"]="Search format:"
-        ["format_description"]="  package_name version description"
-    )
-fi
+CMD=""
+ARGS=()
 
-# Function to install necessary dependencies
-check_dependencies() {
-    if ! command -v curl &> /dev/null && ! command -v wget &> /dev/null; then
-        echo -e "${YELLOW}${MESSAGES["warning_no_curl_wget"]}${NC}"
-        echo "${MESSAGES["installing_curl"]}"
-        
-        if command -v pacman &> /dev/null; then
-            sudo pacman -S --needed curl
-        elif command -v apt &> /dev/null; then
-            sudo apt install curl
+# ----------------------------------------------------------------------------
+# Colors
+# ----------------------------------------------------------------------------
+setup_colors() {
+    if { [[ -t 1 ]] || [[ ${AUR_COLOR:-} == always ]]; } && [[ -z ${NO_COLOR:-} ]]; then
+        RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'
+        BLUE=$'\033[0;34m'; CYAN=$'\033[0;36m'; BOLD=$'\033[1m'
+        DIM=$'\033[2m'; NC=$'\033[0m'
+    else
+        RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; BOLD=''; DIM=''; NC=''
+    fi
+}
+
+# ----------------------------------------------------------------------------
+# i18n: m key "english" "portuguese"  /  t key [printf args...]
+# ----------------------------------------------------------------------------
+declare -A MSG_EN MSG_PT
+LANG_CODE=en
+_lang_src="${AUR_HELPER_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}"
+[[ ${_lang_src,,} == pt* ]] && LANG_CODE=pt
+unset _lang_src
+
+m() { MSG_EN[$1]=$2; MSG_PT[$1]=$3; }
+t() {
+    local key="$1" fmt=""; shift
+    [[ $LANG_CODE == pt ]] && fmt=${MSG_PT[$key]-}
+    [[ -z $fmt ]] && fmt=${MSG_EN[$key]-$key}
+    # shellcheck disable=SC2059
+    printf -- "$fmt" "$@"
+}
+L() { if [[ $LANG_CODE == pt ]]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
+
+# --- general
+m need_arch        "This helper requires Arch Linux (pacman not found)." "Este helper requer Arch Linux (pacman não encontrado)."
+m missing_tools    "Missing required tools: %s" "Ferramentas necessárias ausentes: %s"
+m install_tools_q  "Install them now with pacman?" "Instalar agora com o pacman?"
+m not_root         "Do not run this as root: makepkg refuses to build as root." "Não execute como root: o makepkg se recusa a compilar como root."
+m no_fetcher       "Error: curl or wget are not available." "Erro: curl ou wget não estão disponíveis."
+m cannot_connect   "Error: could not reach the AUR." "Erro: não foi possível conectar ao AUR."
+m api_error        "AUR API error: %s" "Erro da API do AUR: %s"
+m unknown_option   "Unknown option: %s" "Opção desconhecida: %s"
+m missing_value    "Option %s requires a value." "A opção %s requer um valor."
+m bad_value        "Invalid value for %s: %s" "Valor inválido para %s: %s"
+m err_no_term      "Error: No search term provided." "Erro: Nenhum termo de pesquisa fornecido."
+m err_no_pkg       "Error: No package name provided." "Erro: Nome do pacote não fornecido."
+m pkg_not_found    "Package not found in the AUR: %s" "Pacote não encontrado no AUR: %s"
+m in_repos         "%s is in the official repositories — installing with pacman -S." "%s está nos repositórios oficiais — instalando com pacman -S."
+# --- search
+m searching_for    "Searching for:" "Pesquisando por:"
+m no_packages      "No packages found for:" "Nenhum pacote encontrado para:"
+m found_packages   "Found %s packages" "Encontrados %s pacotes"
+m showing_results  "Showing %s results (sorted by %s):" "Mostrando %s resultados (ordenados por %s):"
+m installed_tag    "installed: %s" "instalado: %s"
+m ood_tag          "out of date" "desatualizado"
+m orphan_tag       "orphan" "órfão"
+m prompt_select    ":: Install (e.g. 1 2 5-7 ^3) | d<n> details | p<n> PKGBUILD | s save | Enter to skip" ":: Instalar (ex.: 1 2 5-7 ^3) | d<n> detalhes | p<n> PKGBUILD | s salvar | Enter para pular"
+m invalid_selection "Invalid selection: %s" "Seleção inválida: %s"
+m results_saved    "Results saved in:" "Resultados salvos em:"
+m no_fzf           "fzf not found — falling back to the regular search." "fzf não encontrado — usando a pesquisa normal."
+m fzf_header       "TAB: select | ENTER: install | ALT-P: PKGBUILD | ALT-I: info" "TAB: selecionar | ENTER: instalar | ALT-P: PKGBUILD | ALT-I: info"
+# --- info card
+m f_name "Name" "Nome"; m f_version "Version" "Versão"; m f_desc "Description" "Descrição"
+m f_url "Upstream URL" "URL do projeto"; m f_aur "AUR page" "Página no AUR"; m f_base "Package base" "Pacote-base"
+m f_license "Licenses" "Licenças"; m f_keywords "Keywords" "Palavras-chave"; m f_groups "Groups" "Grupos"
+m f_provides "Provides" "Provê"; m f_depends "Depends on" "Depende de"; m f_makedeps "Make deps" "Deps de build"
+m f_checkdeps "Check deps" "Deps de teste"; m f_optdeps "Optional deps" "Deps opcionais"
+m f_conflicts "Conflicts" "Conflita com"; m f_replaces "Replaces" "Substitui"
+m f_maintainer "Maintainer" "Mantenedor"; m f_comaint "Co-maintainers" "Co-mantenedores"
+m f_submitter "Submitter" "Autor"; m f_votes "Votes" "Votos"; m f_pop "Popularity" "Popularidade"
+m f_first "First submitted" "Primeiro envio"; m f_last "Last modified" "Última modificação"
+m f_ood "Out of date" "Desatualizado desde"; m f_installed "Installed" "Instalado"
+m none_orphan      "(none — orphaned)" "(nenhum — órfão)"
+m st_installed     "✓ installed" "✓ instalado"
+m st_repo          "○ available in repositories" "○ disponível nos repositórios"
+m st_not_installed "✗ not installed" "✗ não instalado"
+# --- plan / trust
+m resolving        "Resolving dependencies..." "Resolvendo dependências..."
+m plan_header      "AUR packages to build (%s):" "Pacotes do AUR a compilar (%s):"
+m tag_target       "target" "alvo"
+m tag_dep          "dependency" "dependência"
+m trust_line       "%s: %s votes, popularity %s, maintainer %s, updated %s" "%s: %s votos, popularidade %s, mantenedor %s, atualizado %s"
+m warn_orphan      "%s is orphaned (no maintainer)." "%s está órfão (sem mantenedor)."
+m warn_ood         "%s is flagged out of date." "%s está marcado como desatualizado."
+m warn_new         "%s was first submitted only %s day(s) ago — review it carefully." "%s foi enviado há apenas %s dia(s) — revise com cuidado."
+m warn_votes       "%s has very few votes (%s)." "%s tem pouquíssimos votos (%s)."
+m unresolved       "Unresolved dependency: %s (required by %s)" "Dependência não resolvida: %s (exigida por %s)"
+m unresolved_hint  "It may be a virtual 'provides' or a package that no longer exists. Install it manually first." "Pode ser um 'provides' virtual ou um pacote que não existe mais. Instale-o manualmente antes."
+m proceed_q        "Proceed with the build?" "Prosseguir com a compilação?"
+m aborted          "Aborted." "Cancelado."
+# --- repo / review / audit
+m processing       "Processing: %s" "Processando: %s"
+m cloning          "Cloning AUR repository for %s..." "Clonando repositório do AUR de %s..."
+m clone_failed     "Error: could not clone '%s'." "Erro: não foi possível clonar '%s'."
+m check_name       "Check that the package name is correct." "Verifique se o nome do pacote está correto."
+m updating_repo    "Updating repository..." "Atualizando repositório..."
+m fetch_failed     "Could not fetch updates; using the local copy." "Não foi possível buscar atualizações; usando a cópia local."
+m discard_local    "Local edits in '%s' conflict with the update. Discard them?" "Edições locais em '%s' conflitam com a atualização. Descartá-las?"
+m no_pkgbuild      "No PKGBUILD found in the repository (empty or deleted package)." "Nenhum PKGBUILD no repositório (pacote vazio ou removido)."
+m review_unchanged "PKGBUILD unchanged since your last review." "PKGBUILD inalterado desde a sua última revisão."
+m review_skipped   "Review skipped (non-interactive / --noconfirm): the PKGBUILD was NOT inspected by you." "Revisão ignorada (não interativo / --noconfirm): o PKGBUILD NÃO foi inspecionado por você."
+m review_menu      ":: %s — [v]iew  [e]dit  [c]ontinue  [a]bort > " ":: %s — [v]er  [e]ditar  [c]ontinuar  [a]bortar > "
+m diff_since       "Changes since your last review (%s):" "Mudanças desde a sua última revisão (%s):"
+m extra_files      "Files in the repository:" "Arquivos no repositório:"
+m no_editor_found  "No editor found!" "Nenhum editor encontrado!"
+m set_editor       "Please set an editor in your shell config file:" "Por favor, defina um editor no seu arquivo de configuração do shell:"
+m export_editor    "  export EDITOR=your_favorite_editor" "  export EDITOR=seu_editor_favorito"
+m audit_header     "Suspicious patterns found in the build files:" "Padrões suspeitos encontrados nos arquivos de build:"
+m audit_clean      "Quick scan found nothing suspicious (this is NOT a security guarantee — read the PKGBUILD)." "A varredura rápida não achou nada suspeito (isso NÃO é garantia de segurança — leia o PKGBUILD)."
+m audit_hosts      "Hosts referenced:" "Hosts referenciados:"
+m audit_pipe       "downloads and pipes straight into a shell" "baixa e envia direto para um shell"
+m audit_b64        "decodes base64 (possible obfuscation)" "decodifica base64 (possível ofuscação)"
+m audit_eval       "uses eval" "usa eval"
+m audit_net        "opens raw network sockets / netcat" "abre sockets de rede / netcat"
+m audit_perm       "sets broad or setuid permissions" "define permissões amplas ou setuid"
+m audit_sudo       "calls sudo/su inside the build files" "chama sudo/su dentro dos arquivos de build"
+m audit_http       "plain-HTTP URL (no TLS)" "URL HTTP simples (sem TLS)"
+m audit_rm         "recursive removal of an absolute/home path" "remoção recursiva de caminho absoluto/home"
+m audit_svc        ".install script enables services / creates users / cron" "script .install habilita serviços / cria usuários / cron"
+# --- build
+m build_options    "Build options:" "Opções de construção:"
+m mode_1           "1. Build only (makepkg -s)" "1. Gerar pacote apenas (makepkg -s)"
+m mode_2           "2. Build and install (default)" "2. Gerar e instalar (padrão)"
+m mode_3           "3. Force rebuild and install" "3. Forçar reconstrução e instalar"
+m choose_option    "Choose an option (1/2/3):" "Escolha uma opção (1/2/3):"
+m invalid_option   "Invalid option. Exiting." "Opção inválida. Saindo."
+m reuse_built      "A built package already exists. Reuse it without rebuilding?" "Já existe um pacote compilado. Reutilizá-lo sem recompilar?"
+m building         "Building %s..." "Compilando %s..."
+m build_failed     "The process failed to build %s" "O processo não conseguiu construir %s"
+m package_location "Package files are in: %s" "Os arquivos do pacote estão em: %s"
+m no_files         "makepkg produced no package for '%s'." "O makepkg não gerou pacote para '%s'."
+m installing       "Installing: %s" "Instalando: %s"
+m process_done     "Process completed!" "Processo concluído!"
+m need_basedevel   "base-devel (makepkg/fakeroot) is required to build packages." "base-devel (makepkg/fakeroot) é necessário para compilar pacotes."
+m pgp_missing      "Missing PGP keys required by the sources:" "Chaves PGP ausentes exigidas pelas fontes:"
+m pgp_import_q     "Import them now?" "Importá-las agora?"
+m pgp_retry        "Retrying the build..." "Tentando compilar novamente..."
+m skipped_after    "Skipped (not built): %s" "Ignorados (não compilados): %s"
+# --- upgrade / foreign
+m checking_upgrades "Checking AUR for upgrades..." "Verificando atualizações no AUR..."
+m no_foreign       "No foreign (AUR/manual) packages installed." "Nenhum pacote estrangeiro (AUR/manual) instalado."
+m all_updated      "All AUR packages are up to date." "Todos os pacotes do AUR estão atualizados."
+m upgrades_header  "%s AUR package(s) can be upgraded:" "%s pacote(s) do AUR podem ser atualizados:"
+m tag_devel        "devel: rebuild" "devel: recompilar"
+m ignored_note     "Ignored (IgnorePkg/--ignore): %s" "Ignorados (IgnorePkg/--ignore): %s"
+m missing_in_aur   "%s installed package(s) were not found in the AUR (use --missing)." "%s pacote(s) instalado(s) não foram encontrados no AUR (use --missing)."
+m upgrade_select   ":: Upgrade (e.g. 1 2 5-7 ^3) | Enter = all | n = none" ":: Atualizar (ex.: 1 2 5-7 ^3) | Enter = todos | n = nenhum"
+m outdated_header  "Installed packages flagged out of date on the AUR:" "Pacotes instalados marcados como desatualizados no AUR:"
+m missing_header   "Installed foreign packages NOT found in the AUR:" "Pacotes estrangeiros instalados NÃO encontrados no AUR:"
+m now_in_repo      "now in repo: %s" "agora no repo: %s"
+m nothing_outdated "None of your AUR packages is flagged out of date." "Nenhum dos seus pacotes do AUR está marcado como desatualizado."
+m nothing_missing  "All foreign packages still exist in the AUR." "Todos os pacotes estrangeiros ainda existem no AUR."
+m foreign_header   "Foreign packages (%s):" "Pacotes estrangeiros (%s):"
+# --- tree
+m tree_legend      "Legend: installed / repo / AUR / missing   (*) = already shown above" "Legenda: installed / repo / AUR / missing   (*) = já mostrado acima"
+# --- removal / clean
+m removing_debug   "Removing all debug packages..." "Removendo todos os pacotes de debug..."
+m no_debug         "No debug packages installed." "Nenhum pacote de debug instalado."
+m removing_orphans "Removing orphaned packages (unused dependencies)..." "Removendo pacotes órfãos (dependências não usadas)..."
+m no_orphans       "No orphaned packages." "Nenhum pacote órfão."
+m cache_usage      "Cache usage:" "Uso do cache:"
+m clean_stale      "Build directories of packages that are no longer installed:" "Diretórios de build de pacotes que não estão mais instalados:"
+m clean_stale_q    "Remove them?" "Removê-los?"
+m clean_artifacts_q "Also delete build artifacts (src/, pkg/, built packages) of installed packages?" "Também apagar artefatos de build (src/, pkg/, pacotes gerados) dos pacotes instalados?"
+m clean_all_q      "Delete the ENTIRE cache (builds, API responses)?" "Apagar TODO o cache (builds, respostas da API)?"
+m clean_done       "Cache cleaned." "Cache limpo."
+m nothing_to_clean "Nothing to clean." "Nada para limpar."
+# --- misc commands
+m stats_title      "AUR helper statistics" "Estatísticas do AUR helper"
+m s_foreign        "Foreign (AUR/manual) packages" "Pacotes estrangeiros (AUR/manual)"
+m s_explicit       "Explicitly installed packages" "Pacotes instalados explicitamente"
+m s_builds         "Cached build directories" "Diretórios de build em cache"
+m s_reviewed       "Reviewed PKGBUILDs" "PKGBUILDs revisados"
+m s_cache_size     "Cache size" "Tamanho do cache"
+m s_last           "Last recorded action" "Última ação registrada"
+m no_history       "No history yet." "Sem histórico ainda."
+m config_exists    "Config already exists: %s" "A configuração já existe: %s"
+m config_created   "Config created: %s" "Configuração criada: %s"
+m sysupgrade_start "Upgrading official packages first (pacman -Syu)..." "Atualizando pacotes oficiais primeiro (pacman -Syu)..."
+m got_repo         "Cloned '%s' into %s" "Clonado '%s' em %s"
+
+# ----------------------------------------------------------------------------
+# Small helpers
+# ----------------------------------------------------------------------------
+info() { printf '%s::%s %s\n' "$BLUE" "$NC" "$*"; }
+ok()   { printf '%s✓%s %s\n' "$GREEN" "$NC" "$*"; }
+warn() { printf '%s⚠%s %s\n' "$YELLOW" "$NC" "$*" >&2; }
+err()  { printf '%s✗%s %s\n' "$RED" "$NC" "$*" >&2; }
+die()  { err "$*"; exit 1; }
+
+have() { command -v "$1" &>/dev/null; }
+is_interactive() { [[ -t 0 && -t 1 ]]; }
+urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
+fmt_date() { date -d "@$1" '+%Y-%m-%d %H:%M' 2>/dev/null || printf '%s' "$1"; }
+trunc() { local s="$1" max="$2"; (( max < 4 )) && max=4; (( ${#s} > max )) && s="${s:0:max-1}…"; printf '%s' "$s"; }
+term_width() { local w=${COLUMNS:-0}; (( w )) || w=$(tput cols 2>/dev/null) || w=100; printf '%s' "$w"; }
+
+# confirm "prompt" [y|n]  -> default applies on Enter, --noconfirm and non-tty
+confirm() {
+    local prompt="$1" default="${2:-n}" reply hint
+    if [[ $default == y ]]; then hint=$(L 'Y/n' 'S/n'); else hint=$(L 'y/N' 's/N'); fi
+    if (( CFG_NOCONFIRM )) || [[ ! -t 0 ]]; then [[ $default == y ]]; return; fi
+    read -rp "$prompt [$hint] " reply || return 1
+    [[ -z $reply ]] && reply=$default
+    [[ $reply =~ ^[SsYy]$ ]]
+}
+
+need_args() {
+    if (( ${#ARGS[@]} < ${1:-1} )); then err "$(t err_no_pkg)"; return 1; fi
+}
+
+log_event() { # action pkg version
+    mkdir -p "$STATE_DIR"
+    printf '%s\t%s\t%s\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" "$2" "${3:-}" >> "$HISTORY_FILE"
+}
+
+load_config() {
+    local f="$CONFIG_DIR/config"
+    # shellcheck source=/dev/null
+    [[ -r $f ]] && source "$f"
+}
+
+ensure_deps() {
+    have pacman || die "$(t need_arch)"
+    local -a missing=()
+    have jq  || missing+=(jq)
+    have git || missing+=(git)
+    { have curl || have wget; } || missing+=(curl)
+    if (( ${#missing[@]} )); then
+        warn "$(t missing_tools "${missing[*]}")"
+        if confirm "$(t install_tools_q)" y; then
+            "${SUDO[@]}" pacman -S --needed "${missing[@]}" || exit 1
         else
-            echo "${MESSAGES["please_install_curl"]}"
             exit 1
         fi
     fi
 }
 
-# Function to perform search
-search_aur() {
-    local search_term="$1"
-    local limit="${2:-20}"
-    
-    echo -e "${BLUE}${MESSAGES["searching_for"]}${NC} ${GREEN}$search_term${NC}"
-    echo "========================================"
-    
-    # Try curl first, then wget
-    if command -v curl &> /dev/null; then
-        response=$(curl -s "${AUR_API_URL}$search_term")
-    elif command -v wget &> /dev/null; then
-        response=$(wget -qO- "${AUR_API_URL}$search_term")
-    else
-        echo -e "${RED}${MESSAGES["error_no_curl_wget"]}${NC}"
-        exit 1
-    fi
-    
-    # Check if response is empty
-    if [ -z "$response" ]; then
-        echo -e "${RED}${MESSAGES["error_cannot_connect"]}${NC}"
-        exit 1
-    fi
-    
-    # Extract results
-    result_count=$(echo "$response" | grep -o '"resultcount":[0-9]*' | cut -d: -f2)
-    
-    if [ "$result_count" -eq 0 ]; then
-        echo -e "${YELLOW}${MESSAGES["no_packages_found"]} $search_term${NC}"
-        exit 0
-    fi
-    
-    # Set limit based on parameter
-    if [ "$limit" = "full" ]; then
-        display_limit="$result_count"
-        echo -e "${GREEN}$(printf "${MESSAGES["found_packages"]}%s\n" "$result_count")${NC}"
-        echo -e "${BLUE}${MESSAGES["showing_all_results"]}${NC}"
-    else
-        if [ "$limit" -gt "$result_count" ]; then
-            display_limit="$result_count"
-        else
-            display_limit="$limit"
-        fi
-        echo -e "${GREEN}$(printf "${MESSAGES["found_packages"]}%s\n" "$result_count")${NC}"
-        echo -e "${BLUE}$(printf "${MESSAGES["showing_results"]}%s\n" "$display_limit")${NC}"
-    fi
-    
-    echo ""
-    
-    # Extract and sort data correctly using a simpler method
-    # Extract names, versions and descriptions separately and then combine
-    names=$(echo "$response" | grep -o '"Name":"[^"]*"' | cut -d'"' -f4)
-    versions=$(echo "$response" | grep -o '"Version":"[^"]*"' | cut -d'"' -f4)
-    descriptions=$(echo "$response" | grep -o '"Description":"[^"]*"' | cut -d'"' -f4)
-    
-    # Combine results line by line
-    paste -d' ' <(echo "$names") <(echo "$versions") <(echo "$descriptions") | head -n "$display_limit" | \
-    awk '{
-        # Format output with fixed widths
-        printf "%-35s %-20s %s\n", $1, $2, substr($0, index($0,$3))
-    }'
-    
-    echo ""
-    echo "========================================"
-    echo -e "${BLUE}${MESSAGES["tips"]}${NC}"
-    echo "${MESSAGES["install_aur_package"]}"
-    echo "${MESSAGES["yay_recommended"]}"
-    echo "${MESSAGES["paru"]}"
-    echo "${MESSAGES["aura"]}"
-    echo ""
-    echo "${MESSAGES["example_yay"]}"
-}
-
-_is_installed() {
-    local pkg="$1"
-    
-    if pacman -Qi "$pkg" &>/dev/null; then
-        local version; version=$(LANG=c pacman -Qi "$pkg" | grep -i 'version' | head -1 | cut -d: -f2-5 | xargs)
-        echo -e "${GREEN}${MESSAGES["installed"]}${NC} (v${version})"
-    else
-        if pacman -Si "$pkg" &>/dev/null; then
-            echo -e "${YELLOW}${MESSAGES["available"]}${NC}"
-        else
-            echo -e "${RED}${MESSAGES["not_installed"]}${NC}"
-        fi
+ensure_build_tools() {
+    (( EUID == 0 )) && die "$(t not_root)"
+    if ! have makepkg || ! have fakeroot; then
+        warn "$(t need_basedevel)"
+        confirm "$(t install_tools_q)" y || return 1
+        "${SUDO[@]}" pacman -S --needed base-devel || return 1
     fi
 }
 
-# Function for detailed search (optional)
-detailed_search() {
-    local response="$1"
-    local limit="${2:-5}"
-    
-    # Set limit based on parameter
-    if [ "$limit" = "full" ]; then
-        detail_limit=$(echo "$response" | grep -o '"Name":"[^"]*"' | wc -l)
-    else
-        detail_limit="$limit"
+mkdirs() { mkdir -p "$CACHE" "$BUILD_ROOT" "$API_CACHE" "$STATE_DIR" "$REVIEW_DIR"; }
+
+# ----------------------------------------------------------------------------
+# Installed-package map
+# ----------------------------------------------------------------------------
+declare -A INSTALLED=()
+INSTALLED_LOADED=0
+load_installed() {
+    (( INSTALLED_LOADED )) && return 0
+    local n v
+    while read -r n v; do INSTALLED[$n]=$v; done < <(pacman -Q 2>/dev/null)
+    INSTALLED_LOADED=1
+}
+
+# ----------------------------------------------------------------------------
+# AUR RPC layer (cached)
+# ----------------------------------------------------------------------------
+rpc_url() { # type key=value ...
+    local type="$1" url kv; shift
+    url="${AUR_RPC}?v=5&type=${type}"
+    for kv in "$@"; do url+="&${kv%%=*}=$(urlencode "${kv#*=}")"; done
+    printf '%s' "$url"
+}
+
+fetch() { # url -> JSON on stdout (cached)
+    local url="$1" cache_file age body rc
+    mkdir -p "$API_CACHE"
+    cache_file="$API_CACHE/$(printf '%s' "$url" | md5sum | cut -d' ' -f1).json"
+    if [[ -s $cache_file ]]; then
+        age=$(( $(date +%s) - $(stat -c %Y "$cache_file") ))
+        if (( age < CFG_API_TTL )); then cat "$cache_file"; return 0; fi
     fi
-    
-    echo ""
-    echo -e "${BLUE}$(printf "${MESSAGES["details_of_results"]}%s\n" "$detail_limit")${NC}"
-    echo "========================================"
-    
-    # Extract package names
-    package_names=$(echo "$response" | grep -o '"Name":"[^"]*"' | cut -d'"' -f4 | head -n "$detail_limit")
-    
-    count=1
-    for pkg in $package_names; do
-        detail_url="https://aur.archlinux.org/rpc/?v=5&type=info&arg=$pkg"
-        
-        if command -v curl &> /dev/null; then
-            pkg_info=$(curl -s "$detail_url")
+    if have curl; then
+        body=$(curl -fsSgL --max-time 20 --retry 2 -A "$SCRIPT_REAL_NAME/$VERSION" "$url" 2>/dev/null); rc=$?
+    elif have wget; then
+        body=$(wget -qO- -T 20 -U "$SCRIPT_REAL_NAME/$VERSION" "$url" 2>/dev/null); rc=$?
+    else
+        err "$(t no_fetcher)"; return 1
+    fi
+    if (( rc != 0 )) || [[ -z $body ]] || ! jq -e . <<<"$body" &>/dev/null; then
+        err "$(t cannot_connect)"; return 1
+    fi
+    if [[ $(jq -r '.type // empty' <<<"$body") == error ]]; then
+        err "$(t api_error "$(jq -r '.error // "unknown"' <<<"$body")")"; return 1
+    fi
+    printf '%s' "$body" > "$cache_file.tmp" && mv -f "$cache_file.tmp" "$cache_file"
+    printf '%s' "$body"
+}
+
+aur_search() { # by term -> results array
+    local body
+    body=$(fetch "$(rpc_url search "by=$1" "arg=$2")") || return 1
+    jq -c '.results' <<<"$body"
+}
+
+aur_info() { # names... -> merged results array (batches of 50)
+    local -a names=("$@"); local -a args; local i n body
+    for (( i=0; i<${#names[@]}; i+=50 )); do
+        args=()
+        for n in "${names[@]:i:50}"; do args+=("arg[]=$n"); done
+        body=$(fetch "$(rpc_url info "${args[@]}")") || return 1
+        jq -c '.results' <<<"$body"
+    done | jq -sc 'add // []'
+}
+
+declare -A AUR_INFO=() AUR_BASE_OF=() AUR_MISS=()
+cache_info() { # names... -> fills AUR_INFO / AUR_BASE_OF / AUR_MISS
+    local -a need=(); local n json name base obj
+    for n in "$@"; do
+        [[ -z ${AUR_INFO[$n]:-} && -z ${AUR_MISS[$n]:-} ]] && need+=("$n")
+    done
+    (( ${#need[@]} )) || return 0
+    json=$(aur_info "${need[@]}") || return 1
+    while IFS=$'\x1f' read -r name base obj; do
+        AUR_INFO[$name]=$obj; AUR_BASE_OF[$name]=$base
+    done < <(jq -r '.[] | [.Name, .PackageBase, tostring] | join("\u001f")' <<<"$json")
+    for n in "${need[@]}"; do [[ -z ${AUR_INFO[$n]:-} ]] && AUR_MISS[$n]=1; done
+    return 0
+}
+
+# ----------------------------------------------------------------------------
+# Selection parser: "1 3 5-7 ^4" -> SELECTED=(indices)
+# ----------------------------------------------------------------------------
+SELECTED=()
+parse_selection() {
+    local max="$1" tok neg lo hi i has_inc=0
+    local -a toks=(); local -A inc=() exc=()
+    read -ra toks <<<"${2//,/ }"
+    SELECTED=()
+    for tok in "${toks[@]}"; do
+        neg=0
+        if [[ $tok == ^* ]]; then neg=1; tok=${tok#^}; fi
+        if   [[ $tok =~ ^(a|all)$ ]];            then lo=1; hi=$max
+        elif [[ $tok =~ ^([0-9]+)-([0-9]+)$ ]];  then lo=${BASH_REMATCH[1]}; hi=${BASH_REMATCH[2]}
+        elif [[ $tok =~ ^[0-9]+$ ]];             then lo=$tok; hi=$tok
+        else err "$(t invalid_selection "$tok")"; return 1; fi
+        if (( lo < 1 || hi > max || lo > hi )); then err "$(t invalid_selection "$tok")"; return 1; fi
+        for (( i=lo; i<=hi; i++ )); do
+            if (( neg )); then exc[$i]=1; else inc[$i]=1; has_inc=1; fi
+        done
+    done
+    if (( ! has_inc )); then for (( i=1; i<=max; i++ )); do inc[$i]=1; done; fi
+    for (( i=1; i<=max; i++ )); do
+        [[ -n ${inc[$i]:-} && -z ${exc[$i]:-} ]] && SELECTED+=("$i")
+    done
+    (( ${#SELECTED[@]} > 0 ))
+}
+
+# ----------------------------------------------------------------------------
+# Info card
+# ----------------------------------------------------------------------------
+declare -A CARD=()
+card_field() { # label_key json_key
+    [[ -n ${CARD[$2]:-} ]] && printf '%s%-18s%s %s\n' "$BOLD" "$(t "$1")" "$NC" "${CARD[$2]}"
+}
+
+installed_status() { # pkg -> colored status line
+    local pkg="$1" v
+    if v=$(pacman -Q "$pkg" 2>/dev/null); then
+        printf '%s (%s)' "${GREEN}$(t st_installed)${NC}" "${v#* }"
+    elif pacman -Si "$pkg" &>/dev/null; then
+        printf '%s' "${YELLOW}$(t st_repo)${NC}"
+    else
+        printf '%s' "${RED}$(t st_not_installed)${NC}"
+    fi
+}
+
+print_card_obj() { # json object
+    local obj="$1" k v
+    CARD=()
+    while IFS=$'\x1f' read -r k v; do CARD[$k]=$v; done < <(
+        jq -r 'to_entries[] | select(.value != null)
+               | .key + "\u001f" + (if (.value|type)=="array" then (.value|join("  ")) else (.value|tostring) end)' <<<"$obj")
+    [[ -z ${CARD[Maintainer]:-} ]] && CARD[Maintainer]=$(t none_orphan)
+    CARD[AurPage]="$AUR_BASE/packages/${CARD[Name]}"
+    [[ ${CARD[PackageBase]:-} == "${CARD[Name]:-}" ]] && unset 'CARD[PackageBase]'
+    [[ -n ${CARD[FirstSubmitted]:-} ]] && CARD[FirstSubmitted]=$(fmt_date "${CARD[FirstSubmitted]}")
+    [[ -n ${CARD[LastModified]:-}   ]] && CARD[LastModified]=$(fmt_date "${CARD[LastModified]}")
+    [[ -n ${CARD[OutOfDate]:-}      ]] && CARD[OutOfDate]="${RED}$(fmt_date "${CARD[OutOfDate]}")${NC}"
+    CARD[Installed]=$(installed_status "${CARD[Name]}")
+    printf '%s%s%s\n' "$GREEN" "$(printf '%0.s─' {1..60})" "$NC"
+    card_field f_name Name;           card_field f_version Version
+    card_field f_desc Description;    card_field f_url URL
+    card_field f_aur AurPage;         card_field f_base PackageBase
+    card_field f_license License;     card_field f_keywords Keywords
+    card_field f_groups Groups;       card_field f_provides Provides
+    card_field f_depends Depends;     card_field f_makedeps MakeDepends
+    card_field f_checkdeps CheckDepends; card_field f_optdeps OptDepends
+    card_field f_conflicts Conflicts; card_field f_replaces Replaces
+    card_field f_maintainer Maintainer; card_field f_comaint CoMaintainers
+    card_field f_submitter Submitter
+    card_field f_votes NumVotes;      card_field f_pop Popularity
+    card_field f_first FirstSubmitted; card_field f_last LastModified
+    card_field f_ood OutOfDate;       card_field f_installed Installed
+}
+
+print_cards() { # names...
+    local json obj
+    json=$(aur_info "$@") || return 1
+    if [[ $(jq 'length' <<<"$json") -eq 0 ]]; then err "$(t pkg_not_found "$*")"; return 1; fi
+    if (( OPT_JSON )); then jq . <<<"$json"; return 0; fi
+    while IFS= read -r obj; do print_card_obj "$obj"; done < <(jq -c '.[]' <<<"$json")
+}
+
+# ----------------------------------------------------------------------------
+# Security audit of build files
+# ----------------------------------------------------------------------------
+AUDIT_KEYS=(audit_pipe audit_b64 audit_eval audit_net audit_perm audit_sudo audit_http audit_rm audit_svc)
+AUDIT_SCOPE=(any any any any any any any any install)
+AUDIT_REGEX=(
+    '(curl|wget)[^#]*\|[[:space:]]*(sudo[[:space:]]+)?(ba|z|da)?sh([[:space:]]|$)'
+    'base64[[:space:]]+(-d|--decode)'
+    '(^|[;&|[:space:]])eval[[:space:]]'
+    '/dev/(tcp|udp)/|(^|[[:space:]])(nc|ncat|socat)[[:space:]]'
+    'chmod[[:space:]]+(-R[[:space:]]+)?(0?777|[ugoa]*\+s|[2467][0-7]{3})([[:space:]]|$)'
+    '(^|[;&|[:space:]])(sudo|su)[[:space:]]'
+    'http://'
+    'rm[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*(/|~|\$HOME)([[:space:]]|$)'
+    'systemctl[[:space:]]+(enable|start)|useradd|adduser|crontab'
+)
+AUDIT_HITS=0
+
+audit_files() { # files...
+    local f i line lineno content base
+    AUDIT_HITS=0
+    for f in "$@"; do
+        [[ -f $f ]] || continue
+        base=${f##*/}
+        for (( i=0; i<${#AUDIT_KEYS[@]}; i++ )); do
+            [[ ${AUDIT_SCOPE[i]} == install && $f != *.install ]] && continue
+            while IFS= read -r line; do
+                (( AUDIT_HITS == 0 )) && warn "$(t audit_header)"
+                AUDIT_HITS=$(( AUDIT_HITS + 1 ))
+                lineno=${line%%:*}; content=${line#*:}
+                printf '   %s%s:%s%s%s %s\n      %s%s%s\n' "$YELLOW" "$base" "$lineno" "$NC" "" \
+                    "$(t "${AUDIT_KEYS[i]}")" "$DIM" "$(trunc "${content#"${content%%[![:space:]]*}"}" 110)" "$NC" >&2
+            done < <(grep -nE -- "${AUDIT_REGEX[i]}" "$f" 2>/dev/null)
+        done
+    done
+    local hosts
+    hosts=$(grep -ohE "https?://[^/\"' )]+" "$@" 2>/dev/null | sort -u | tr '\n' ' ')
+    [[ -n $hosts ]] && printf '   %s%s%s %s\n' "$DIM" "$(t audit_hosts)" "$NC" "$hosts" >&2
+    (( AUDIT_HITS == 0 )) && printf '%s%s%s\n' "$DIM" "$(t audit_clean)" "$NC" >&2
+    return 0
+}
+
+audit_dir() { # dir
+    local -a files=("$1/PKGBUILD")
+    local f
+    for f in "$1"/*.install; do [[ -f $f ]] && files+=("$f"); done
+    audit_files "${files[@]}"
+}
+
+# ----------------------------------------------------------------------------
+# Pager / editor / review
+# ----------------------------------------------------------------------------
+show_pager() {
+    if [[ -t 1 ]]; then
+        local -a pg; read -ra pg <<<"${PAGER:-less}"
+        LESS="${LESS:--R}" "${pg[@]}"
+    else
+        cat
+    fi
+}
+
+pick_editor() {
+    local e
+    if [[ -n ${EDITOR:-} ]]; then printf '%s' "$EDITOR"; return 0; fi
+    for e in nvim vim nano vi; do have "$e" && { printf '%s' "$e"; return 0; }; done
+    return 1
+}
+
+edit_file() {
+    local editor; local -a ed
+    if ! editor=$(pick_editor); then
+        err "$(t no_editor_found)"; echo "$(t set_editor)"; echo "$(t export_editor)"; return 1
+    fi
+    read -ra ed <<<"$editor"
+    "${ed[@]}" "$1"
+}
+
+view_files() { # dir reviewed_commit
+    local dir="$1" reviewed="$2" head f
+    head=$(git -C "$dir" rev-parse HEAD 2>/dev/null)
+    {
+        if [[ -n $reviewed && $reviewed != "$head" ]] && git -C "$dir" cat-file -e "${reviewed}^{commit}" 2>/dev/null; then
+            printf '%s%s%s\n\n' "$BOLD" "$(t diff_since "${reviewed:0:8}")" "$NC"
+            git -C "$dir" -c color.ui=always diff "$reviewed" -- . ':(exclude).SRCINFO'
         else
-            pkg_info=$(wget -qO- "$detail_url")
+            for f in "$dir"/PKGBUILD "$dir"/*.install; do
+                [[ -f $f ]] || continue
+                printf '%s── %s ──%s\n' "$BOLD" "${f##*/}" "$NC"
+                cat "$f"; printf '\n'
+            done
+            printf '%s%s%s\n' "$BOLD" "$(t extra_files)" "$NC"
+            git -C "$dir" ls-files | grep -v '^\.SRCINFO$'
         fi
-        
-        echo ""
-        echo -e "${GREEN}$(printf "${MESSAGES["result"]}%s\n" "$count")${NC} $pkg"
-        
-        # Extract specific information
-        description=$(echo "$pkg_info" | grep -o '"Description":"[^"]*"' | cut -d'"' -f4)
-        version=$(echo "$pkg_info" | grep -o '"Version":"[^"]*"' | cut -d'"' -f4)
-        votes=$(echo "$pkg_info" | grep -o '"NumVotes":[0-9]*' | cut -d: -f2)
-        popularity=$(echo "$pkg_info" | grep -o '"Popularity":[0-9.]*' | cut -d: -f2)
-        maintainer=$(echo "$pkg_info" | grep -o '"Maintainer":"[^"]*"' | cut -d'"' -f4)
-        outofdate=$(echo "$pkg_info" | grep -o '"OutOfDate":[0-9]*' | cut -d: -f2)
-        installed=$(_is_installed "$pkg")
-        
-        echo "  ${MESSAGES["description"]} $description"
-        echo "  ${MESSAGES["version"]} $version"
-        echo "  ${MESSAGES["votes"]} $votes"
-        echo "  ${MESSAGES["popularity"]} $popularity"
-        echo "  ${MESSAGES["maintainer"]} $maintainer"
-        if [ -n "$outofdate" ] && [ "$outofdate" -gt 0 ]; then
-            echo -e "  ${RED}${MESSAGES["status_outdated"]}${NC}"
-        else
-            echo -e "  ${GREEN}${MESSAGES["status_updated"]}${NC}"
-        fi
-        echo "  ${MESSAGES["installed_status"]} $installed"
-        echo "  URL: https://aur.archlinux.org/packages/$pkg"
-        
-        count=$((count + 1))
+    } | show_pager
+}
+
+mark_reviewed() { # base
+    local head
+    head=$(git -C "$BUILD_ROOT/$1" rev-parse HEAD 2>/dev/null) || return 0
+    mkdir -p "$REVIEW_DIR"; printf '%s\n' "$head" > "$REVIEW_DIR/$1"
+}
+
+review_pkgbuild() { # base -> 0 continue, 1 abort
+    local base="$1" dir="$BUILD_ROOT/$1" head reviewed="" key
+    head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || head=""
+    [[ -r $REVIEW_DIR/$base ]] && reviewed=$(<"$REVIEW_DIR/$base")
+    audit_dir "$dir"
+    (( CFG_REVIEW )) || return 0
+    if [[ -n $head && $reviewed == "$head" ]] && git -C "$dir" diff --quiet 2>/dev/null; then
+        ok "$(t review_unchanged)"; return 0
+    fi
+    if (( CFG_NOCONFIRM )) || ! is_interactive; then
+        warn "$(t review_skipped)"; return 0
+    fi
+    view_files "$dir" "$reviewed"
+    while true; do
+        printf '%s' "$(t review_menu "$base")"
+        IFS= read -rsn1 key; printf '\n'
+        case $key in
+            v|V) view_files "$dir" "$reviewed" ;;
+            e|E) edit_file "$dir/PKGBUILD"; audit_dir "$dir" ;;
+            c|C|'') mark_reviewed "$base"; return 0 ;;
+            a|A|q|Q|n|N) return 1 ;;
+        esac
     done
 }
 
-# Function to save results to file
-save_results() {
-    local response="$1"
-    echo ""
-    read -rp "${MESSAGES["save_results"]} " choice
-    
-    if [[ $choice =~ ^[SsYy]$ ]]; then
-        filename="aur_results_$(date +%Y%m%d_%H%M%S).txt"
-        
-        # Extract all formatted results
-        names=$(echo "$response" | grep -o '"Name":"[^"]*"' | cut -d'"' -f4)
-        versions=$(echo "$response" | grep -o '"Version":"[^"]*"' | cut -d'"' -f4)
-        descriptions=$(echo "$response" | grep -o '"Description":"[^"]*"' | cut -d'"' -f4)
-        
-        # Combine and format results
-        paste -d' ' <(echo "$names") <(echo "$versions") <(echo "$descriptions") | \
-        awk '{print "Nome: " $1 "\tVersão: " $2 "\tDescrição: " substr($0, index($0,$3))}' > "$filename"
-        
-        echo -e "${GREEN}${MESSAGES["results_saved"]}${NC} $filename"
+# ----------------------------------------------------------------------------
+# Git repository handling
+# ----------------------------------------------------------------------------
+clone_repo() { # base dest
+    local base="$1" dest="$2"
+    if [[ $CFG_CLONE_PROTO == ssh ]]; then
+        GIT_TERMINAL_PROMPT=0 git clone -q "ssh://aur@aur.archlinux.org/$base.git" "$dest" 2>/dev/null && return 0
     fi
+    GIT_TERMINAL_PROMPT=0 git clone -q "$AUR_BASE/$base.git" "$dest"
 }
 
-f_makepkg() {
-    local arg="$1"
-
-    if makepkg "$arg"; then
-        echo -e "${GREEN}${MESSAGES["process_completed"]}${NC}"
-        printf "${MESSAGES["package_location"]}%s\n" "$CACHE/$package_name"
+prepare_repo() { # base
+    local base="$1" dir="$BUILD_ROOT/$1" up
+    mkdir -p "$BUILD_ROOT"
+    if (( OPT_FRESH )) && [[ -d $dir ]]; then rm -rf "${BUILD_ROOT:?}/${base:?}"; fi
+    if [[ ! -d $dir/.git ]]; then
+        [[ -d $dir ]] && rm -rf "${BUILD_ROOT:?}/${base:?}"
+        info "$(t cloning "$base")"
+        if ! clone_repo "$base" "$dir"; then
+            err "$(t clone_failed "$base")"; err "$(t check_name)"; return 1
+        fi
     else
-        echo -e "${RED}${MESSAGES["build_failed"]}${NC}"
-        printf "${MESSAGES["package_location"]}%s\n" "$CACHE/$package_name"
+        info "$(t updating_repo)"
+        git -C "$dir" fetch -q origin 2>/dev/null || { warn "$(t fetch_failed)"; return 0; }
+        up=$(git -C "$dir" rev-parse '@{u}' 2>/dev/null) || return 0
+        if [[ $(git -C "$dir" rev-parse HEAD) != "$up" ]]; then
+            if ! git -C "$dir" diff --quiet 2>/dev/null; then
+                confirm "$(t discard_local "$base")" n || { warn "$(t fetch_failed)"; return 0; }
+            fi
+            git -C "$dir" reset --hard -q "$up"
+        fi
     fi
+    [[ -f $dir/PKGBUILD ]] || { err "$(t no_pkgbuild)"; return 1; }
 }
 
-# Function to install package
-install_package() {
-    local package_name="$1"
-    
-    # Create cache directory if it doesn't exist
-    mkdir -p "$CACHE"
-    
-    echo -e "${BLUE}${MESSAGES["processing_installation"]}${NC} ${GREEN}$package_name${NC}"
-    echo "========================================"
-    
-    # Check if package already exists in cache
-    if [ -d "$CACHE/$package_name" ]; then
-        echo -e "${YELLOW}${MESSAGES["package_exists_cache"]}${NC}"
-        echo "  $CACHE/$package_name"
-        
-        read -rp "${MESSAGES["remove_and_generate"]} " remove_choice
-        
-        if [[ $remove_choice =~ ^[SsYy]$ ]]; then
-            echo -e "${YELLOW}${MESSAGES["removing_existing_dir"]}${NC}"
-            rm -rf "${CACHE:?}/${package_name:?}"
-            echo -e "${GREEN}${MESSAGES["directory_removed"]}${NC}"
+# ----------------------------------------------------------------------------
+# Dependency resolution
+# ----------------------------------------------------------------------------
+declare -A DEP_STATE=()
+STATE=""
+dep_state() { # dep -> sets STATE=installed|repo|aur
+    local dep="$1" name="${1%%[<>=]*}"
+    if [[ -n ${DEP_STATE[$dep]:-} ]]; then STATE=${DEP_STATE[$dep]}; return 0; fi
+    if   pacman -T -- "$dep" &>/dev/null; then STATE=installed
+    elif pacman -Sddp --noconfirm -- "$name" </dev/null &>/dev/null; then STATE=repo
+    else STATE=aur; fi
+    DEP_STATE[$dep]=$STATE
+}
+
+declare -A VISITED=() IS_TARGET=() BASE_WANT=()
+declare -a BUILD_ORDER=() BASE_ORDER=() MISSING_DEPS=()
+
+resolve_one() { # pkgname (post-order DFS)
+    local pkg="$1" e dep name
+    [[ -n ${VISITED[$pkg]:-} ]] && return 0
+    VISITED[$pkg]=1
+    [[ -n ${AUR_INFO[$pkg]:-} ]] || return 1
+    local -a deps=() need=()
+    mapfile -t deps < <(jq -r '((.Depends // []) + (.MakeDepends // []) + (.CheckDepends // []))[]' <<<"${AUR_INFO[$pkg]}")
+    for dep in "${deps[@]}"; do
+        dep_state "$dep"
+        [[ $STATE == aur ]] && need+=("${dep%%[<>=]*}")
+    done
+    (( ${#need[@]} )) && cache_info "${need[@]}"
+    for dep in "${deps[@]}"; do
+        name=${dep%%[<>=]*}
+        dep_state "$dep"
+        [[ $STATE == aur ]] || continue
+        if [[ -n ${AUR_INFO[$name]:-} ]]; then
+            resolve_one "$name"
         else
-            echo -e "${YELLOW}${MESSAGES["using_existing_package"]}${NC}"
+            MISSING_DEPS+=("$(t unresolved "$dep" "$pkg")")
         fi
+    done
+    BUILD_ORDER+=("$pkg")
+}
+
+trust_report() { # pkg
+    local p="$1" ver votes pop maint ood first last age_days
+    IFS=$'\x1f' read -r ver votes pop maint ood first last < <(
+        jq -r '[.Version,.NumVotes,.Popularity,(.Maintainer//""),(.OutOfDate//""),.FirstSubmitted,.LastModified]
+               | map(tostring) | join("\u001f")' <<<"${AUR_INFO[$p]}")
+    age_days=$(( ( $(date +%s) - ${first:-0} ) / 86400 ))
+    if [[ -n ${IS_TARGET[$p]:-} ]]; then
+        printf '  %s%s%s\n' "$DIM" "$(t trust_line "$p" "$votes" "$(printf '%.2f' "${pop:-0}")" "${maint:-—}" "$(fmt_date "${last:-0}")")" "$NC"
     fi
-    
-    # Clone repository if directory doesn't exist
-    if [ ! -d "$CACHE/$package_name" ]; then
-        echo -e "${BLUE}${MESSAGES["cloning_aur_repo"]}${NC}"
-        
-        cd "$CACHE" || true
-        
-        # Try cloning via SSH first
-        if git clone "ssh://aur@aur.archlinux.org/$package_name.git"; then
-            echo -e "${GREEN}${MESSAGES["ssh_clone_success"]}${NC}"
-        else
-            echo -e "${YELLOW}${MESSAGES["ssh_failed_trying_https"]}${NC}"
-            if git clone "https://aur.archlinux.org/$package_name.git"; then
-                echo -e "${GREEN}${MESSAGES["https_clone_success"]}${NC}"
-            else
-                echo -e "${RED}${MESSAGES["error_cannot_clone"]}${NC}"
-                printf "${MESSAGES["check_package_name"]}%s\n" "$package_name"
-                exit 1
-            fi
-        fi
-    fi
-    
-    # Enter package directory
-    cd "$CACHE/$package_name" || true
-    
-    # Ask about editing PKGBUILD
-    read -rp "${MESSAGES["edit_pkgbuild"]} " edit_choice
-    
-    if [[ $edit_choice =~ ^[SsYy]$ ]]; then
-        # Define editor in order of preference
-        if [ -z "$EDITOR" ]; then
-            if command -v nvim &> /dev/null; then
-                EDITOR="nvim"
-            elif command -v vim &> /dev/null; then
-                EDITOR="vim"
-            elif command -v nano &> /dev/null; then
-                EDITOR="nano"
-            elif command -v vi &> /dev/null; then
-                EDITOR="vi"
-            else
-                echo -e "${RED}${MESSAGES["no_editor_found"]}${NC}"
-                echo "${MESSAGES["set_editor"]}:"
-                echo "${MESSAGES["export_editor"]}"
-                echo "${MESSAGES["add_to_config"]}"
-                echo "${MESSAGES["available_editors"]}"
-                exit 1
-            fi
-        fi
-        
-        echo -e "${BLUE}$(printf "${MESSAGES["opening_pkgbuild"]}%s\n" "$EDITOR")${NC}"
-        $EDITOR PKGBUILD
-    fi
-    
-    # Ask about how to build the package
-    echo ""
-    echo -e "${BLUE}${MESSAGES["build_options"]}${NC}"
-    echo "${MESSAGES["generate_only"]}"
-    echo "${MESSAGES["generate_and_install"]}"
-    echo "${MESSAGES["generate_force_install"]}"
-    
-    read -rp "${MESSAGES["choose_option"]} " build_choice
-    
-    case $build_choice in
-        1)
-            echo -e "${BLUE}${MESSAGES["generating_package"]}${NC}"
-            f_makepkg -s
-            ;;
-        2)
-            echo -e "${BLUE}${MESSAGES["generating_installing"]}${NC}"
-            f_makepkg -si
-            ;;
-        3)
-            echo -e "${BLUE}${MESSAGES["generating_force_installing"]}${NC}"
-            f_makepkg -sfi
-            ;;
-        *)
-            echo -e "${YELLOW}${MESSAGES["invalid_option"]}${NC}"
-            ;;
+    [[ -z $maint ]] && warn "$(t warn_orphan "$p")"
+    [[ -n $ood   ]] && warn "$(t warn_ood "$p")"
+    (( age_days < 30 )) && warn "$(t warn_new "$p" "$age_days")"
+    (( ${votes:-0} < 3 )) && warn "$(t warn_votes "$p" "$votes")"
+    return 0
+}
+
+show_plan() {
+    local p ver tag
+    printf '\n%s%s%s\n' "$BOLD" "$(t plan_header "${#BUILD_ORDER[@]}")" "$NC"
+    for p in "${BUILD_ORDER[@]}"; do
+        ver=$(jq -r '.Version' <<<"${AUR_INFO[$p]}")
+        if [[ -n ${IS_TARGET[$p]:-} ]]; then tag="${GREEN}$(t tag_target)${NC}"; else tag="${CYAN}$(t tag_dep)${NC}"; fi
+        printf '  %-32s %-18s (%s)\n' "$p" "$ver" "$tag"
+    done
+    printf '\n'
+    for p in "${BUILD_ORDER[@]}"; do trust_report "$p"; done
+    printf '\n'
+}
+
+choose_build_mode() {
+    (( OPT_BUILD_ONLY || OPT_FORCE || UPGRADE_MODE || CFG_NOCONFIRM )) && return 0
+    is_interactive || return 0
+    local choice
+    info "$(t build_options)"
+    t mode_1; printf '\n'; t mode_2; printf '\n'; t mode_3; printf '\n'
+    read -rp "$(t choose_option) " choice
+    case ${choice:-2} in
+        1) OPT_BUILD_ONLY=1 ;;
+        2) ;;
+        3) OPT_FORCE=1 ;;
+        *) warn "$(t invalid_option)"; return 1 ;;
     esac
-    
 }
 
-# Main search function
-main_search() {
-    local search_term="$1"
-    local limit="${2:-20}"
-    local detail_limit="${3:-0}"
-    
-    check_dependencies
-    
-    if command -v curl &> /dev/null; then
-        response=$(curl -s "${AUR_API_URL}$search_term")
-    elif command -v wget &> /dev/null; then
-        response=$(wget -qO- "${AUR_API_URL}$search_term")
+# ----------------------------------------------------------------------------
+# Build + install of one package base
+# ----------------------------------------------------------------------------
+offer_pgp_import() { # dir -> 0 if keys were imported
+    local dir="$1" key imported=1
+    local -a missing=()
+    [[ -r $dir/.SRCINFO ]] && have gpg || return 1
+    while read -r key; do
+        [[ -n $key ]] && ! gpg --list-keys "$key" &>/dev/null && missing+=("$key")
+    done < <(awk -F' = ' '/^[[:space:]]*validpgpkeys/ {print $2}' "$dir/.SRCINFO" | sort -u)
+    (( ${#missing[@]} )) || return 1
+    warn "$(t pgp_missing)"; printf '   %s\n' "${missing[@]}"
+    confirm "$(t pgp_import_q)" y || return 1
+    for key in "${missing[@]}"; do
+        gpg --recv-keys "$key" || gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys "$key" && imported=0
+    done
+    return $imported
+}
+
+run_makepkg() { # dir args...
+    local dir="$1" rc; shift
+    ( cd "$dir" && makepkg "$@" ); rc=$?
+    (( rc == 0 )) && return 0
+    if offer_pgp_import "$dir"; then
+        info "$(t pgp_retry)"
+        ( cd "$dir" && makepkg "$@" ); return $?
+    fi
+    return $rc
+}
+
+pkgname_of_file() { local fn="${1##*/}"; fn=${fn%.pkg.tar*}; printf '%s' "${fn%-*-*-*}"; }
+
+build_and_install() { # base
+    local base="$1" dir="$BUILD_ROOT/$1" n f name
+    local -a want=() files=() sel=() exp=() dep=() keep=() mflags=() pflags=()
+    read -ra want <<<"${BASE_WANT[$base]}"
+    local has_target=0 do_install=1 rebuild=1 all_exist=1
+    for n in "${want[@]}"; do [[ -n ${IS_TARGET[$n]:-} ]] && has_target=1; done
+    (( has_target && OPT_BUILD_ONLY )) && do_install=0
+
+    mapfile -t files < <(cd "$dir" && makepkg --packagelist 2>/dev/null)
+    for f in "${files[@]}"; do
+        name=$(pkgname_of_file "$f")
+        for n in "${want[@]}"; do [[ $n == "$name" ]] && sel+=("$f"); done
+    done
+    if (( ${#sel[@]} == 0 )); then err "$(t no_files "$base")"; return 1; fi
+
+    for f in "${sel[@]}"; do [[ -f $f ]] || all_exist=0; done
+    if (( all_exist && ! OPT_FORCE )); then
+        confirm "$(t reuse_built)" y && rebuild=0
+    fi
+
+    if (( rebuild )); then
+        info "$(t building "$base")"
+        mflags=(-s -f)
+        (( CFG_NOCONFIRM )) && mflags+=(--noconfirm)
+        (( OPT_RMDEPS )) && mflags+=(-r)
+        # shellcheck disable=SC2206
+        [[ -n $CFG_MAKEPKG_FLAGS ]] && mflags+=($CFG_MAKEPKG_FLAGS)
+        if ! run_makepkg "$dir" "${mflags[@]}"; then
+            err "$(t build_failed "$base")"
+            printf '%s\n' "$(t package_location "$dir")"
+            return 1
+        fi
+    fi
+
+    if (( do_install )); then
+        (( CFG_NOCONFIRM )) && pflags+=(--noconfirm)
+        load_installed
+        for f in "${sel[@]}"; do
+            name=$(pkgname_of_file "$f")
+            if   [[ -n ${IS_TARGET[$name]:-} ]]; then exp+=("$f")
+            elif [[ -n ${INSTALLED[$name]:-} ]]; then keep+=("$f")
+            else dep+=("$f"); fi
+        done
+        info "$(t installing "${want[*]}")"
+        if (( ${#exp[@]} )); then
+            "${SUDO[@]}" pacman -U "${pflags[@]}" --asexplicit "${exp[@]}" || return 1
+        fi
+        if (( ${#keep[@]} )); then
+            "${SUDO[@]}" pacman -U "${pflags[@]}" "${keep[@]}" || return 1
+        fi
+        if (( ${#dep[@]} )); then
+            "${SUDO[@]}" pacman -U "${pflags[@]}" --asdeps "${dep[@]}" || return 1
+        fi
+        for n in "${want[@]}"; do
+            log_event install "$n" "$(jq -r '.Version' <<<"${AUR_INFO[$n]}")"
+        done
+        INSTALLED_LOADED=0; INSTALLED=()
     else
-        echo -e "${RED}${MESSAGES["error_no_curl_wget"]}${NC}"
-        exit 1
+        ok "$(t process_done)"
+        printf '%s\n' "$(t package_location "$dir")"
     fi
-    
-    search_aur "$search_term" "$limit"
-    
-    # Extract result count
-    result_count=$(echo "$response" | grep -o '"resultcount":[0-9]*' | cut -d: -f2)
-    
-    if [ "$result_count" -gt 0 ]; then
-        # If detail_limit was specified, show details automatically
-        if [ "$detail_limit" != "0" ]; then
-            detailed_search "$response" "$detail_limit"
+    return 0
+}
+
+process_base() { # base
+    local base="$1"
+    printf '\n'; info "$(t processing "$base")"
+    prepare_repo "$base" || return 1
+    review_pkgbuild "$base" || return 1
+    build_and_install "$base"
+}
+
+# ----------------------------------------------------------------------------
+# Install flow: targets -> resolve -> plan -> build in dependency order
+# ----------------------------------------------------------------------------
+install_flow() { # names...
+    ensure_build_tools || return 1
+    mkdirs
+    VISITED=(); IS_TARGET=(); BASE_WANT=(); BUILD_ORDER=(); BASE_ORDER=(); MISSING_DEPS=()
+    local n p base failed=0
+    local -a want=() repo_targets=()
+
+    cache_info "$@" || return 1
+    for n in "$@"; do
+        if [[ -n ${AUR_INFO[$n]:-} ]]; then
+            want+=("$n"); IS_TARGET[$n]=1
+        elif pacman -Si -- "$n" &>/dev/null; then
+            repo_targets+=("$n")
         else
-            echo ""
-            read -rp "${MESSAGES["see_detailed_info"]} " detail_choice
-            
-            if [[ $detail_choice =~ ^[SsYy]$ ]]; then
-                detailed_search "$response"
-            fi
+            err "$(t pkg_not_found "$n")"; failed=1
         fi
-        
-        save_results "$response"
+    done
+    if (( ${#repo_targets[@]} )); then
+        info "$(t in_repos "${repo_targets[*]}")"
+        "${SUDO[@]}" pacman -S --needed "${repo_targets[@]}" || return 1
+    fi
+    (( ${#want[@]} )) || return $failed
+
+    info "$(t resolving)"
+    for n in "${want[@]}"; do resolve_one "$n"; done
+    if (( ${#MISSING_DEPS[@]} )); then
+        for p in "${MISSING_DEPS[@]}"; do err "$p"; done
+        err "$(t unresolved_hint)"
+        return 1
+    fi
+
+    for p in "${BUILD_ORDER[@]}"; do
+        base=${AUR_BASE_OF[$p]}
+        [[ -z ${BASE_WANT[$base]:-} ]] && BASE_ORDER+=("$base")
+        BASE_WANT[$base]+="$p "
+    done
+
+    show_plan
+    confirm "$(t proceed_q)" y || { warn "$(t aborted)"; return 1; }
+    choose_build_mode || return 1
+
+    local idx=0
+    for base in "${BASE_ORDER[@]}"; do
+        idx=$(( idx + 1 ))
+        if ! process_base "$base"; then
+            if (( idx < ${#BASE_ORDER[@]} )); then
+                warn "$(t skipped_after "${BASE_ORDER[*]:idx}")"
+            fi
+            return 1
+        fi
+    done
+    printf '\n'; ok "$(t process_done)"
+    return $failed
+}
+
+# ----------------------------------------------------------------------------
+# Commands
+# ----------------------------------------------------------------------------
+filter_results() { # stdin array -> filtered + sorted array
+    local sortexpr
+    case $CFG_SORT in
+        popularity) sortexpr='sort_by(-.Popularity)' ;;
+        votes)      sortexpr='sort_by(-.NumVotes)' ;;
+        name)       sortexpr='sort_by(.Name)' ;;
+        updated)    sortexpr='sort_by(-.LastModified)' ;;
+        *)          sortexpr='.' ;;
+    esac
+    jq -c --argjson minv "$OPT_MIN_VOTES" --argjson noood "$OPT_NO_OOD" "
+        map(select(.NumVotes >= \$minv))
+        | (if \$noood == 1 then map(select(.OutOfDate == null)) else . end)
+        | $sortexpr"
+}
+
+RESULTS_JSON='[]'
+declare -a RESULT_NAMES=()
+
+print_results() {
+    load_installed
+    local i=0 name ver votes pop ood maint desc flags entry width
+    local -a out=()
+    width=$(term_width)
+    while IFS=$'\x1f' read -r name ver votes pop ood maint desc; do
+        i=$(( i + 1 )); flags=""
+        [[ -n ${INSTALLED[$name]:-} ]] && flags+=" ${GREEN}[$(t installed_tag "${INSTALLED[$name]}")]${NC}"
+        [[ -n $ood ]]   && flags+=" ${RED}[$(t ood_tag)]${NC}"
+        [[ -z $maint ]] && flags+=" ${YELLOW}[$(t orphan_tag)]${NC}"
+        printf -v entry '%s%3d%s %saur/%s%s %s%s%s (+%s %.2f)%s\n      %s' \
+            "$YELLOW" "$i" "$NC" "$BOLD" "$name" "$NC" "$GREEN" "$ver" "$NC" "$votes" "$pop" "$flags" \
+            "$(trunc "$desc" $(( width - 8 )))"
+        out+=("$entry")
+    done < <(jq -r '.[] | [.Name,.Version,.NumVotes,.Popularity,(.OutOfDate//""),(.Maintainer//""),(.Description//"")]
+                    | map(tostring) | join("\u001f")' <<<"$RESULTS_JSON")
+    if (( CFG_REVERSE )); then
+        for (( i=${#out[@]}-1; i>=0; i-- )); do printf '%s\n' "${out[i]}"; done
+    else
+        printf '%s\n' "${out[@]}"
     fi
 }
 
-# Help menu
+save_results() {
+    local file="${OPT_OUTPUT:-aur_results_$(date +%Y%m%d_%H%M%S).txt}"
+    case $file in
+        *.json) jq . <<<"$RESULTS_JSON" > "$file" ;;
+        *.csv)  jq -r '(["name","version","votes","popularity","maintainer","description"] | @csv),
+                       (.[] | [.Name,.Version,.NumVotes,.Popularity,(.Maintainer//""),(.Description//"")] | @csv)' \
+                    <<<"$RESULTS_JSON" > "$file" ;;
+        *)      jq -r '.[] | "Name: \(.Name)\tVersion: \(.Version)\tDescription: \(.Description // "")"' \
+                    <<<"$RESULTS_JSON" > "$file" ;;
+    esac
+    ok "$(t results_saved) $file"
+}
+
+names_from_selection() { # prints names for SELECTED
+    local idx; for idx in "${SELECTED[@]}"; do printf '%s\n' "${RESULT_NAMES[idx-1]}"; done
+}
+
+search_prompt() {
+    local line rest
+    local -a names
+    while true; do
+        printf '%s\n' "$(t prompt_select)"
+        read -rp "==> " line || return 0
+        case $line in
+            ''|q|Q) return 0 ;;
+            s|S)    save_results; continue ;;
+            d*|D*)  rest=${line:1}
+                    parse_selection "${#RESULT_NAMES[@]}" "$rest" || continue
+                    mapfile -t names < <(names_from_selection)
+                    print_cards "${names[@]}"; continue ;;
+            p*|P*)  rest=${line:1}
+                    parse_selection "${#RESULT_NAMES[@]}" "$rest" || continue
+                    mapfile -t names < <(names_from_selection)
+                    ARGS=("${names[@]}"); cmd_pkgbuild; continue ;;
+        esac
+        parse_selection "${#RESULT_NAMES[@]}" "$line" || continue
+        mapfile -t names < <(names_from_selection)
+        install_flow "${names[@]}"
+        return
+    done
+}
+
+cmd_search() {
+    local limit="${OPT_LIMIT:-}" term raw total shown details_n
+    local -a words=("${ARGS[@]}")
+    if (( ${#words[@]} > 1 )); then
+        local last="${words[-1]}"
+        if [[ -z $limit ]] && [[ $last =~ ^[0-9]+$ || $last == full ]]; then
+            limit=$last; unset 'words[-1]'
+        fi
+    fi
+    term="${words[*]}"
+    if [[ -z $term ]] && (( ! OPT_ORPHANS )); then err "$(t err_no_term)"; show_usage_hint; return 1; fi
+    (( OPT_ORPHANS )) && OPT_BY=maintainer
+    if [[ -z $limit ]]; then
+        if (( OPT_DETAILS )); then limit=$CFG_DETAIL_LIMIT; else limit=$CFG_SEARCH_LIMIT; fi
+    fi
+    [[ $limit == full || $limit =~ ^[0-9]+$ ]] || { err "$(t bad_value --limit "$limit")"; return 1; }
+
+    (( OPT_JSON )) || { printf '%s%s%s %s%s%s\n' "$BLUE" "$(t searching_for)" "$NC" "$GREEN" "$term" "$NC"; }
+    raw=$(aur_search "$OPT_BY" "$term") || return 1
+    total=$(jq 'length' <<<"$raw")
+    if (( total == 0 )); then warn "$(t no_packages) $term"; return 0; fi
+
+    RESULTS_JSON=$(filter_results <<<"$raw")
+    if [[ $limit != full ]]; then RESULTS_JSON=$(jq -c ".[:$limit]" <<<"$RESULTS_JSON"); fi
+    mapfile -t RESULT_NAMES < <(jq -r '.[].Name' <<<"$RESULTS_JSON")
+    shown=${#RESULT_NAMES[@]}
+
+    if (( OPT_JSON )); then jq . <<<"$RESULTS_JSON"; return 0; fi
+    printf '%s%s%s\n%s%s%s\n\n' "$GREEN" "$(t found_packages "$total")" "$NC" \
+        "$BLUE" "$(t showing_results "$shown" "$CFG_SORT")" "$NC"
+    print_results
+    [[ -n $OPT_OUTPUT ]] && save_results
+
+    if (( OPT_DETAILS )); then
+        if [[ $limit == full ]]; then details_n=$shown; else details_n=$limit; fi
+        (( details_n > shown )) && details_n=$shown
+        print_cards "${RESULT_NAMES[@]:0:details_n}"
+    fi
+    if is_interactive && (( ! CFG_NOCONFIRM )) && [[ -z $OPT_OUTPUT ]]; then
+        printf '\n'; search_prompt
+    fi
+}
+
+cmd_fzf() {
+    local term="${ARGS[*]}" raw json sel q
+    if ! have fzf; then warn "$(t no_fzf)"; cmd_search; return; fi
+    if [[ -z $term ]]; then read -rp "$(t searching_for) " term; fi
+    [[ -n $term ]] || { err "$(t err_no_term)"; return 1; }
+    raw=$(aur_search "$OPT_BY" "$term") || return 1
+    json=$(filter_results <<<"$raw")
+    [[ $(jq 'length' <<<"$json") -gt 0 ]] || { warn "$(t no_packages) $term"; return 0; }
+    q=$(printf '%q' "$SELF")
+    local -a fargs=(--multi --ansi --reverse --height=90% --header="$(t fzf_header)"
+        --preview "AUR_COLOR=always $q --card {1}" --preview-window=right:55%:wrap
+        --bind "alt-p:change-preview(AUR_COLOR=always $q --pkgbuild {1})"
+        --bind "alt-i:change-preview(AUR_COLOR=always $q --card {1})")
+    sel=$(jq -r '.[] | [.Name, .Version, ("+" + (.NumVotes|tostring)), ((.Popularity*100|round/100)|tostring),
+                        ((.Description // "") | gsub("[\t\n]";" "))] | join("\t")' <<<"$json" \
+          | { have column && column -t -s $'\t' || cat; } | fzf "${fargs[@]}" | awk '{print $1}')
+    [[ -n $sel ]] || return 0
+    local -a names; mapfile -t names <<<"$sel"
+    install_flow "${names[@]}"
+}
+
+cmd_aurinfo() { need_args 1 || return 1; print_cards "${ARGS[@]}"; }
+cmd_pacinfo() { need_args 1 || return 1; pacman -Qi "${ARGS[@]}"; }
+
+cmd_pkgbuild() {
+    need_args 1 || return 1
+    local p base tmp url
+    cache_info "${ARGS[@]}"
+    for p in "${ARGS[@]}"; do
+        if [[ -z ${AUR_INFO[$p]:-} ]]; then err "$(t pkg_not_found "$p")"; continue; fi
+        base=${AUR_BASE_OF[$p]}
+        url="$AUR_BASE/cgit/aur.git/plain/PKGBUILD?h=$(urlencode "$base")"
+        tmp=$(mktemp -d)
+        if have curl; then curl -fsSL "$url" -o "$tmp/PKGBUILD"; else wget -qO "$tmp/PKGBUILD" "$url"; fi
+        if [[ -s $tmp/PKGBUILD ]]; then
+            audit_files "$tmp/PKGBUILD"
+            cat "$tmp/PKGBUILD" | show_pager
+        else
+            err "$(t pkg_not_found "$p")"
+        fi
+        rm -rf "$tmp"
+    done
+}
+
+cmd_get() {
+    need_args 1 || return 1
+    local p base
+    cache_info "${ARGS[@]}"
+    for p in "${ARGS[@]}"; do
+        if [[ -z ${AUR_INFO[$p]:-} ]]; then err "$(t pkg_not_found "$p")"; continue; fi
+        base=${AUR_BASE_OF[$p]}
+        if clone_repo "$base" "$PWD/$base"; then ok "$(t got_repo "$base" "$PWD/$base")"; else err "$(t clone_failed "$base")"; fi
+    done
+}
+
+print_tree() { # pkg prefix depth
+    local pkg="$1" prefix="$2" depth="$3" e dep kind name tag branch next i=0 total
+    (( depth > OPT_DEPTH )) && return 0
+    local -a entries=() need=()
+    mapfile -t entries < <(jq -r '((.Depends//[])[] | . + "\u001fdep"),
+                                  ((.MakeDepends//[])[] | . + "\u001fmake"),
+                                  ((.CheckDepends//[])[] | . + "\u001fcheck")' <<<"${AUR_INFO[$pkg]}")
+    for e in "${entries[@]}"; do
+        dep=${e%%$'\x1f'*}; dep_state "$dep"
+        [[ $STATE == aur ]] && need+=("${dep%%[<>=]*}")
+    done
+    (( ${#need[@]} )) && cache_info "${need[@]}"
+    total=${#entries[@]}
+    for e in "${entries[@]}"; do
+        i=$(( i + 1 ))
+        dep=${e%%$'\x1f'*}; kind=${e#*$'\x1f'}; name=${dep%%[<>=]*}
+        if (( i == total )); then branch='└── '; next='    '; else branch='├── '; next='│   '; fi
+        dep_state "$dep"
+        case $STATE in
+            installed) tag="${GREEN}installed${NC}" ;;
+            repo)      tag="${CYAN}repo${NC}" ;;
+            *)         if [[ -n ${AUR_INFO[$name]:-} ]]; then tag="${YELLOW}AUR${NC}"; else tag="${RED}missing${NC}"; fi ;;
+        esac
+        local seen=""
+        if [[ $STATE == aur && -n ${AUR_INFO[$name]:-} ]]; then
+            if [[ -n ${TREE_SEEN[$name]:-} ]]; then seen=" (*)"; fi
+        fi
+        printf '%s%s%s %s[%s]%s %s%s\n' "$prefix" "$branch" "$dep" "$DIM" "$kind" "$NC" "$tag" "$seen"
+        if [[ $STATE == aur && -n ${AUR_INFO[$name]:-} && -z $seen ]]; then
+            TREE_SEEN[$name]=1
+            print_tree "$name" "$prefix$next" $(( depth + 1 ))
+        fi
+    done
+}
+
+declare -A TREE_SEEN=()
+cmd_tree() {
+    need_args 1 || return 1
+    local p
+    cache_info "${ARGS[@]}"
+    for p in "${ARGS[@]}"; do
+        if [[ -z ${AUR_INFO[$p]:-} ]]; then err "$(t pkg_not_found "$p")"; continue; fi
+        TREE_SEEN=([$p]=1)
+        printf '%s%s%s %s\n' "$BOLD" "$p" "$NC" "$(jq -r '.Version' <<<"${AUR_INFO[$p]}")"
+        print_tree "$p" "" 1
+    done
+    printf '%s%s%s\n' "$DIM" "$(t tree_legend)" "$NC"
+}
+
+declare -A IGNORED=()
+build_ignore() {
+    local p
+    for p in $CFG_IGNORE ${OPT_IGNORE//,/ }; do IGNORED[$p]=1; done
+    if have pacman-conf; then
+        while read -r p; do [[ -n $p ]] && IGNORED[$p]=1; done < <(pacman-conf IgnorePkg 2>/dev/null | tr ' ' '\n')
+    fi
+}
+
+cmd_upgrade() {
+    build_ignore
+    local -A fver=(); local n v name new i
+    while read -r n v; do fver[$n]=$v; done < <(pacman -Qm 2>/dev/null)
+    if (( ${#fver[@]} == 0 )); then ok "$(t no_foreign)"; return 0; fi
+    info "$(t checking_upgrades)"
+    local -a names; mapfile -t names < <(printf '%s\n' "${!fver[@]}" | sort)
+    local json; json=$(aur_info "${names[@]}") || return 1
+
+    local -a up_name=() up_old=() up_new=() up_note=() ignored=()
+    local -A seen=()
+    local newer note
+    while IFS=$'\x1f' read -r name new; do
+        seen[$name]=1; newer=0; note=""
+        if (( $(vercmp "${fver[$name]}" "$new") < 0 )); then newer=1
+        elif (( CFG_DEVEL )) && [[ $name =~ -(git|svn|hg|bzr|darcs)$ ]]; then newer=1; note="$(t tag_devel)"; fi
+        (( newer )) || continue
+        if [[ -n ${IGNORED[$name]:-} ]]; then ignored+=("$name"); continue; fi
+        up_name+=("$name"); up_old+=("${fver[$name]}"); up_new+=("$new"); up_note+=("$note")
+    done < <(jq -r '.[] | [.Name,.Version] | join("\u001f")' <<<"$json")
+
+    local missing=0
+    for n in "${names[@]}"; do [[ -z ${seen[$n]:-} ]] && missing=$(( missing + 1 )); done
+    (( ${#ignored[@]} )) && warn "$(t ignored_note "${ignored[*]}")"
+    (( missing )) && warn "$(t missing_in_aur "$missing")"
+    if (( ${#up_name[@]} == 0 )); then ok "$(t all_updated)"; return 0; fi
+
+    printf '\n%s%s%s\n' "$BOLD" "$(t upgrades_header "${#up_name[@]}")" "$NC"
+    for (( i=0; i<${#up_name[@]}; i++ )); do
+        printf '%s%3d%s %s%-32s%s %s%s%s → %s%s%s %s%s%s\n' "$YELLOW" $(( i + 1 )) "$NC" "$BOLD" "${up_name[i]}" "$NC" \
+            "$RED" "${up_old[i]}" "$NC" "$GREEN" "${up_new[i]}" "$NC" "$CYAN" "${up_note[i]}" "$NC"
+    done
+    printf '\n'
+    local line="" sel_names=()
+    if is_interactive && (( ! CFG_NOCONFIRM )); then
+        printf '%s\n' "$(t upgrade_select)"
+        read -rp "==> " line || return 0
+        [[ $line == n || $line == N ]] && return 0
+    fi
+    parse_selection "${#up_name[@]}" "$line" || return 1
+    for i in "${SELECTED[@]}"; do sel_names+=("${up_name[i-1]}"); done
+    UPGRADE_MODE=1
+    install_flow "${sel_names[@]}"
+}
+
+cmd_sysupgrade() {
+    info "$(t sysupgrade_start)"
+    local -a pflags=(); (( CFG_NOCONFIRM )) && pflags+=(--noconfirm)
+    "${SUDO[@]}" pacman -Syu "${pflags[@]}" || return 1
+    log_event sysupgrade "-" ""
+    cmd_upgrade
+}
+
+cmd_foreign() { # mode: all|outdated|missing
+    local mode="$1" n v name
+    local -A fver=(); local -A seen=()
+    while read -r n v; do fver[$n]=$v; done < <(pacman -Qm 2>/dev/null)
+    if (( ${#fver[@]} == 0 )); then ok "$(t no_foreign)"; return 0; fi
+    local -a names; mapfile -t names < <(printf '%s\n' "${!fver[@]}" | sort)
+    local json; json=$(aur_info "${names[@]}") || return 1
+
+    case $mode in
+        all)
+            printf '%s%s%s\n' "$BOLD" "$(t foreign_header "${#names[@]}")" "$NC"
+            for n in "${names[@]}"; do printf '  %s%-34s%s %s\n' "$BOLD" "$n" "$NC" "${fver[$n]}"; done ;;
+        outdated)
+            local -a ood; mapfile -t ood < <(jq -r '.[] | select(.OutOfDate != null) | .Name' <<<"$json")
+            if (( ${#ood[@]} == 0 )); then ok "$(t nothing_outdated)"; return 0; fi
+            printf '%s%s%s\n' "$BOLD" "$(t outdated_header)" "$NC"
+            for n in "${ood[@]}"; do printf '  %s%-34s%s %s\n' "$RED" "$n" "$NC" "${fver[$n]}"; done ;;
+        missing)
+            while read -r name; do seen[$name]=1; done < <(jq -r '.[].Name' <<<"$json")
+            local found=0 repo
+            for n in "${names[@]}"; do
+                [[ -n ${seen[$n]:-} ]] && continue
+                (( found == 0 )) && printf '%s%s%s\n' "$BOLD" "$(t missing_header)" "$NC"
+                found=1
+                repo=$(pacman -Si "$n" 2>/dev/null | awk -F': *' '/^Repository/ {print $2; exit}')
+                printf '  %s%-34s%s %s' "$RED" "$n" "$NC" "${fver[$n]}"
+                [[ -n $repo ]] && printf '  %s%s%s' "$CYAN" "$(t now_in_repo "$repo")" "$NC"
+                printf '\n'
+            done
+            (( found )) || ok "$(t nothing_missing)" ;;
+    esac
+}
+
+cmd_remove() {
+    need_args 1 || return 1
+    "${SUDO[@]}" pacman "$1" "${ARGS[@]}" && for n in "${ARGS[@]}"; do log_event remove "$n" ""; done
+}
+
+cmd_remove_debug() {
+    local -a pk
+    info "$(t removing_debug)"
+    mapfile -t pk < <(pacman -Qq | grep -E -- '-debug$')
+    (( ${#pk[@]} )) || { ok "$(t no_debug)"; return 0; }
+    "${SUDO[@]}" pacman -R "${pk[@]}"
+}
+
+cmd_remove_orphans() {
+    local -a pk
+    info "$(t removing_orphans)"
+    mapfile -t pk < <(pacman -Qtdq 2>/dev/null)
+    (( ${#pk[@]} )) || { ok "$(t no_orphans)"; return 0; }
+    printf '  %s\n' "${pk[@]}"
+    "${SUDO[@]}" pacman -Rns "${pk[@]}"
+}
+
+base_installed() { # base -> 0 if any package built from it is installed
+    local dir="$BUILD_ROOT/$1" n
+    if [[ -r $dir/.SRCINFO ]]; then
+        while read -r n; do [[ -n ${INSTALLED[$n]:-} ]] && return 0; done \
+            < <(awk '/^[[:space:]]*pkgname = / {print $3}' "$dir/.SRCINFO")
+        return 1
+    fi
+    [[ -n ${INSTALLED[$1]:-} ]]
+}
+
+cmd_clean() {
+    local all="$1" d base
+    local -a stale=() kept=()
+    [[ -d $CACHE ]] || { ok "$(t nothing_to_clean)"; return 0; }
+    info "$(t cache_usage)"; du -sh "$CACHE" 2>/dev/null | awk '{print "   " $1 "  " $2}'
+    if [[ $all == 1 ]]; then
+        confirm "$(t clean_all_q)" n || return 0
+        rm -rf "${CACHE:?}"; rm -rf "${REVIEW_DIR:?}"
+        ok "$(t clean_done)"; return 0
+    fi
+    load_installed
+    for d in "$BUILD_ROOT"/*/; do
+        [[ -d $d ]] || continue
+        base=$(basename "$d")
+        if base_installed "$base"; then kept+=("$base"); else stale+=("$base"); fi
+    done
+    if (( ${#stale[@]} )); then
+        info "$(t clean_stale)"; printf '   %s\n' "${stale[@]}"
+        if confirm "$(t clean_stale_q)" y; then
+            for base in "${stale[@]}"; do rm -rf "${BUILD_ROOT:?}/${base:?}" "${REVIEW_DIR:?}/${base:?}"; done
+        fi
+    fi
+    if (( ${#kept[@]} )) && confirm "$(t clean_artifacts_q)" n; then
+        for base in "${kept[@]}"; do git -C "$BUILD_ROOT/$base" clean -fdxq 2>/dev/null; done
+    fi
+    rm -rf "${API_CACHE:?}"
+    ok "$(t clean_done)"
+}
+
+cmd_stats() {
+    local nforeign nexplicit nbuilds nrev last
+    nforeign=$(pacman -Qmq 2>/dev/null | wc -l)
+    nexplicit=$(pacman -Qeq 2>/dev/null | wc -l)
+    nbuilds=$(find "$BUILD_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    nrev=$(find "$REVIEW_DIR" -type f 2>/dev/null | wc -l)
+    last=$(tail -n1 "$HISTORY_FILE" 2>/dev/null | tr '\t' ' ')
+    printf '%s%s%s\n%s\n' "$GREEN" "$(t stats_title)" "$NC" "======================"
+    printf '%-34s %s\n' "$(t s_foreign):" "$nforeign" "$(t s_explicit):" "$nexplicit" \
+        "$(t s_builds):" "$nbuilds" "$(t s_reviewed):" "$nrev" \
+        "$(t s_cache_size):" "$(du -sh "$CACHE" 2>/dev/null | cut -f1)" "$(t s_last):" "${last:-—}"
+}
+
+cmd_history() {
+    local n="${ARGS[0]:-30}"
+    [[ -s $HISTORY_FILE ]] || { info "$(t no_history)"; return 0; }
+    tail -n "$n" "$HISTORY_FILE" | column -t -s $'\t' 2>/dev/null || tail -n "$n" "$HISTORY_FILE"
+}
+
+cmd_init_config() {
+    local f="$CONFIG_DIR/config"
+    if [[ -e $f ]]; then warn "$(t config_exists "$f")"; return 0; fi
+    mkdir -p "$CONFIG_DIR"
+    cat > "$f" <<'EOF'
+# aur-helper configuration (sourced as bash)
+CFG_API_TTL=300              # seconds an API response stays cached
+CFG_SEARCH_LIMIT=20
+CFG_DETAIL_LIMIT=5
+CFG_SORT=popularity          # popularity | votes | name | updated | relevance
+CFG_REVIEW=1                 # review PKGBUILD (with diff) before building
+CFG_NOCONFIRM=0
+CFG_CLONE_PROTO=https        # https | ssh (ssh falls back to https)
+CFG_MAKEPKG_FLAGS=""         # extra makepkg flags, e.g. "--skippgpcheck" (not recommended)
+CFG_IGNORE=""                # packages never upgraded, e.g. "foo-git bar-bin"
+CFG_DEVEL=0                  # also rebuild -git/-svn/-hg/... on upgrade
+CFG_REVERSE=0                # print best result last, closest to the prompt
+EOF
+    ok "$(t config_created "$f")"
+}
+
+cmd_completion() {
+    local shell="${ARGS[0]:-bash}"
+    [[ $shell == zsh ]] && printf '%s\n' 'autoload -U +X bashcompinit && bashcompinit'
+    cat <<'EOF'
+_aur_helper_complete() {
+    local cur prev opts
+    cur=${COMP_WORDS[COMP_CWORD]}
+    prev=${COMP_WORDS[COMP_CWORD-1]}
+    opts='-s -d -i -u -I -p -G -t -R -c -h -V -Ss -S -Si -Qi -Qm -Su -Sua -Syu -Rcs -Rns -R-d -R-o
+          --search --detailed --install --upgrade --interactive --info --aur-info --pkgbuild --get --tree
+          --foreign --outdated --missing --remove --remove-all --purge --remove-debug --remove-orphans
+          --clean --clean-all --stats --history --init-config --completion --by --sort --limit --min-votes
+          --no-outdated --orphans --reverse --votes-last --votes-first -r --json --output --no-cache --noconfirm --no-review --build-only
+          --force --fresh --devel --ignore --rmdeps --depth --lang --help --version'
+    case $prev in
+        -R|--remove|-Rcs|-Rns|--remove-all|--purge|-Qi|--info|--query-info)
+            mapfile -t COMPREPLY < <(compgen -W "$(pacman -Qq 2>/dev/null)" -- "$cur"); return ;;
+        -i|-S|--install|-Si|--aur-info|--show|-p|--pkgbuild|-G|--get|-t|--tree)
+            if (( ${#cur} >= 2 )); then
+                mapfile -t COMPREPLY < <(compgen -W "$(curl -fsm3 "https://aur.archlinux.org/rpc/?v=5&type=suggest&arg=$cur" 2>/dev/null | tr -d '[]"' | tr ',' ' ')" -- "$cur")
+            fi
+            return ;;
+        --by)         mapfile -t COMPREPLY < <(compgen -W "name name-desc maintainer depends makedepends optdepends checkdepends submitter keywords comaintainers" -- "$cur"); return ;;
+        --sort)       mapfile -t COMPREPLY < <(compgen -W "popularity votes name updated relevance" -- "$cur"); return ;;
+        --completion) mapfile -t COMPREPLY < <(compgen -W "bash zsh" -- "$cur"); return ;;
+        --lang)       mapfile -t COMPREPLY < <(compgen -W "en pt" -- "$cur"); return ;;
+    esac
+    mapfile -t COMPREPLY < <(compgen -W "$opts" -- "$cur")
+}
+EOF
+    printf 'complete -F _aur_helper_complete %s\n' "$SCRIPT"
+}
+
+# ----------------------------------------------------------------------------
+# Help
+# ----------------------------------------------------------------------------
+hsec() { printf '\n%s%s%s\n' "$BOLD" "$(L "$1" "$2")" "$NC"; }
+hopt() { printf '  %s%-38s%s %s\n' "$GREEN" "$1" "$NC" "$(L "$2" "$3")"; }
+
+show_usage_hint() { printf '%s\n' "$(L "Try: $SCRIPT --help" "Tente: $SCRIPT --help")" >&2; }
+
 show_help() {
-    local installed_count; installed_count=$(pacman -Qsq | wc -l)
-    echo -e "${GREEN}${MESSAGES["script_title"]}${NC}"
-    echo "======================"
-    echo "${MESSAGES["script_description"]}"
-    echo -e "${MESSAGES["packages_installed"]} ${YELLOW}$installed_count${NC}"
-    echo ""
-    echo "${MESSAGES["usage"]}"
-    printf "${MESSAGES["default_search"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["search_with_limit"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["search_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["search_option_limit"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["detailed_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["detailed_option_limit"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["install_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["info_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["remove_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["remove_all_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["remove_debug_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["remove_orphans_option"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["help_option"]}%s\n" "${0##*/}"
-    echo ""
-    echo "${MESSAGES["examples"]}"
-    printf "${MESSAGES["example1"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example2"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example3"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example4"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example5"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example6"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example7"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example8"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example9"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example10"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example11"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example12"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example13"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example14"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example15"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example16"]}%s\n" "${0##*/}"
-    printf "${MESSAGES["example17"]}%s\n" "${0##*/}"
-    echo ""
-    echo "${MESSAGES["dependencies"]}"
-    echo "${MESSAGES["deps_curl_wget"]}"
-    echo "${MESSAGES["deps_git"]}"
-    echo "${MESSAGES["deps_makepkg"]}"
-    echo ""
-    echo "${MESSAGES["cache"]}"
-    printf "${MESSAGES["cache_location"]}%s\n" "$SCRIPT_REAL_NAME"
-    echo ""
-    echo "${MESSAGES["search_format"]}"
-    echo "${MESSAGES["format_description"]}"
+    local n; n=$(pacman -Qmq 2>/dev/null | wc -l)
+    printf '%sAUR Helper in Shell v%s%s\n======================\n' "$GREEN" "$VERSION" "$NC"
+    L "Search, audit, build, install and upgrade packages from the Arch User Repository" \
+      "Pesquisa, audita, compila, instala e atualiza pacotes do Arch User Repository"; printf '\n'
+    printf '%s %s%s%s\n' "$(L 'Foreign (AUR/manual) packages installed:' 'Pacotes estrangeiros (AUR/manual) instalados:')" "$YELLOW" "$n" "$NC"
+
+    hsec "Search" "Pesquisa"
+    hopt "$SCRIPT <term> [full|N]"        "Search the AUR (default: 20 results)" "Pesquisa no AUR (padrão: 20 resultados)"
+    hopt "-s, -Ss, --search <term> [N]"   "Same as above" "Igual ao anterior"
+    hopt "-d, --detailed <term> [N]"      "Search with full info cards (default: 5)" "Pesquisa com fichas completas (padrão: 5)"
+    hopt "-I, --interactive <term>"       "fzf browser with live preview, multi-select" "Navegador fzf com preview, multisseleção"
+    hopt "-Si, --aur-info <pkg...>"       "Full AUR info card" "Ficha completa do AUR"
+    hopt "-p, --pkgbuild <pkg...>"        "View a PKGBUILD (with quick audit) without cloning" "Ver um PKGBUILD (com auditoria rápida) sem clonar"
+    hopt "-t, --tree <pkg>"               "Recursive dependency tree (repo/AUR/installed)" "Árvore recursiva de dependências (repo/AUR/instalado)"
+    hopt "--by <field>"                   "name|name-desc|maintainer|depends|makedepends|optdepends|checkdepends" "name|name-desc|maintainer|depends|makedepends|optdepends|checkdepends"
+    hopt "--sort <key>"                   "popularity|votes|name|updated|relevance" "popularity|votes|name|updated|relevance"
+    hopt "-n, --limit <N|full>"           "Number of results" "Número de resultados"
+    hopt "--min-votes <N>  --no-outdated" "Filter by votes / hide out-of-date" "Filtra por votos / oculta desatualizados"
+    hopt "--orphans"                      "List orphaned packages matching the term" "Lista pacotes órfãos"
+    hopt "-r, --reverse, --votes-last"    "Print the most voted result LAST (closest to the prompt)" "Mostra o mais votado por ÚLTIMO (perto do prompt)"
+    hopt "--votes-first"                  "Most voted first (default; overrides config)" "Mais votado primeiro (padrão; sobrepõe a config)"
+    hopt "--json  -o, --output <file>"    "JSON output / save results (.txt .csv .json)" "Saída JSON / salvar resultados (.txt .csv .json)"
+
+    hsec "Install & upgrade" "Instalar e atualizar"
+    hopt "-i, -S, --install <pkg...>"     "Resolve AUR deps, review, build and install" "Resolve deps do AUR, revisa, compila e instala"
+    hopt "-G, --get <pkg...>"             "Only clone the AUR repo into the current dir" "Apenas clona o repositório do AUR no diretório atual"
+    hopt "-u, -Su, -Sua, --upgrade"       "Upgrade installed AUR packages" "Atualiza os pacotes do AUR instalados"
+    hopt "-Syu"                           "pacman -Syu, then upgrade AUR packages" "pacman -Syu e depois atualiza os pacotes do AUR"
+    hopt "--devel"                        "Include -git/-svn/-hg/... on upgrade" "Inclui -git/-svn/-hg/... na atualização"
+    hopt "--ignore a,b"                   "Do not upgrade these packages" "Não atualiza estes pacotes"
+    hopt "--build-only  --force  --fresh" "Only build / force rebuild / re-clone" "Só compilar / forçar recompilação / reclonar"
+    hopt "--no-review  --noconfirm, -y"   "Skip PKGBUILD review / accept defaults" "Pula revisão do PKGBUILD / aceita padrões"
+    hopt "--rmdeps"                       "Remove make deps after the build (makepkg -r)" "Remove deps de build após compilar (makepkg -r)"
+
+    hsec "Inspect" "Inspecionar"
+    hopt "-Qi, --info, --query-info <pkg>" "Installed package info (pacman -Qi)" "Info do pacote instalado (pacman -Qi)"
+    hopt "-Qm, --foreign"                 "List foreign packages" "Lista pacotes estrangeiros"
+    hopt "--outdated"                     "Installed AUR packages flagged out of date" "Pacotes do AUR instalados marcados como desatualizados"
+    hopt "--missing"                      "Installed packages that vanished from the AUR" "Pacotes instalados que sumiram do AUR"
+    hopt "--stats  --history [N]"         "Statistics / action history" "Estatísticas / histórico de ações"
+
+    hsec "Remove & clean" "Remover e limpar"
+    hopt "-R, --remove <pkg...>"          "Remove packages (pacman -R)" "Remove pacotes (pacman -R)"
+    hopt "-Rcs, --remove-all <pkg...>"    "pacman -Rcs (cascade: also removes dependents!)" "pacman -Rcs (cascata: remove também os dependentes!)"
+    hopt "-Rns, --purge <pkg...>"         "pacman -Rns (unused deps + config files)" "pacman -Rns (deps não usadas + arquivos de configuração)"
+    hopt "-R-d, --remove-debug"           "Remove all installed -debug packages" "Remove todos os pacotes -debug instalados"
+    hopt "-R-o, --remove-orphans"         "Remove orphaned packages" "Remove pacotes órfãos"
+    hopt "-c, --clean  --clean-all"       "Clean stale builds / wipe the whole cache" "Limpa builds obsoletos / apaga todo o cache"
+
+    hsec "Setup" "Configuração"
+    hopt "--init-config"                  "Create $CONFIG_DIR/config" "Cria $CONFIG_DIR/config"
+    hopt "--completion bash|zsh"          "Print the completion script (eval \"\$($SCRIPT --completion bash)\")" "Imprime o script de completion (eval \"\$($SCRIPT --completion bash)\")"
+    hopt "--lang en|pt  --no-cache"       "Force language / ignore the API cache" "Força o idioma / ignora o cache da API"
+    hopt "-h, --help   -V, --version"     "Help / version" "Ajuda / versão"
+
+    hsec "Examples" "Exemplos"
+    printf '  %s neovim 30\n  %s -d neovim full\n  %s -I browser\n  %s --by depends --sort votes python-requests\n' "$SCRIPT" "$SCRIPT" "$SCRIPT" "$SCRIPT"
+    printf '  %s -i yay-bin paru-bin\n  %s -Syu\n  %s -t visual-studio-code-bin\n  %s --outdated\n' "$SCRIPT" "$SCRIPT" "$SCRIPT" "$SCRIPT"
+
+    hsec "Files" "Arquivos"
+    printf '  %s\n  %s\n  %s\n' "$(L "config : $CONFIG_DIR/config" "config : $CONFIG_DIR/config")" \
+        "$(L "builds : $BUILD_ROOT/" "builds : $BUILD_ROOT/")" "$(L "history: $HISTORY_FILE" "histórico: $HISTORY_FILE")"
 }
 
-# Process arguments
-if [ $# -eq 0 ]; then
-    show_help
-    exit 1
-fi
+# ----------------------------------------------------------------------------
+# Argument parsing
+# ----------------------------------------------------------------------------
+need_value() { [[ -n ${2-} ]] || { err "$(t missing_value "$1")"; exit 1; }; }
+is_uint() { [[ $1 =~ ^[0-9]+$ ]]; }
 
-case "$1" in
-    -h|--help)
-        show_help
-        exit 0
-        ;;
-    -Ss| -s|--search)
-        if [ $# -lt 2 ]; then
-            echo -e "${RED}${MESSAGES["error_no_search_term"]}${NC}"
-            printf "${MESSAGES["usage_search"]}%s\n" "${0##*/}"
-            exit 1
-        fi
-        
-        search_term="$2"
-        
-        if [ $# -ge 3 ]; then
-            # We have a third argument (full or number)
-            limit="$3"
-            main_search "$search_term" "$limit" 0
-        else
-            # Only search term
-            main_search "$search_term"
-        fi
-        ;;
-    -d|--detailed)
-        if [ $# -lt 2 ]; then
-            echo -e "${RED}${MESSAGES["error_no_search_term"]}${NC}"
-            printf "${MESSAGES["usage_search"]}%s\n" "${0##*/}"
-            exit 1
-        fi
-        
-        search_term="$2"
-        
-        if [ $# -ge 3 ]; then
-            # We have a third argument (full or number)
-            detail_limit="$3"
-            main_search "$search_term" "$detail_limit" "$detail_limit"
-        else
-            # Only search term (default: 5 detailed results)
-            main_search "$search_term" 5 5
-        fi
-        ;;
-    -i| -S|--install)
-        if [ $# -lt 2 ]; then
-            echo -e "${RED}${MESSAGES["error_no_package_name"]}${NC}"
-            printf "${MESSAGES["usage_install"]}%s\n" "${0##*/}"
-            exit 1
-        fi
-        install_package "$2"
-        ;;
-    -Qi|--info|--query-info)
-        if [ $# -lt 2 ]; then
-            echo -e "${RED}${MESSAGES["error_no_package_name"]}${NC}"
-            printf "${MESSAGES["usage_info"]}%s\n" "${0##*/}"
-            printf "${MESSAGES["example_info"]}%s\n" "${0##*/}"
-            exit 1
-        fi
-        pacman -Qi "$2"
-        ;;
-    -R|--remove)
-        if [ $# -lt 2 ]; then
-            echo -e "${RED}${MESSAGES["error_no_package_name"]}${NC}"
-            printf "${MESSAGES["usage_remove"]}%s\n" "${0##*/}"
-            printf "${MESSAGES["example_remove"]}%s\n" "${0##*/}"
-            exit 1
-        fi
-        sudo pacman -R "$2"
-        ;;
-    -Rcs|--remove-all|--purge|--remove-with-deps)
-        if [ $# -lt 2 ]; then
-            echo -e "${RED}${MESSAGES["error_no_package_name"]}${NC}"
-            printf "${MESSAGES["usage_remove_all"]}%s\n" "${0##*/}"
-            printf "${MESSAGES["example_remove_all"]}%s\n" "${0##*/}"
-            exit 1
-        fi
-        sudo pacman -Rcs "$2"
-        ;;
-    -R-d|--remove-debug)
-        echo -e "${YELLOW}Removing all debug packages...${NC}"
-        sudo pacman -R $(pacman -Qq | grep -E '\-debug$')
-        ;;
-    -R-o|--remove-orphans|--remove-unused)
-        echo -e "${YELLOW}Removing orphaned packages (unused dependencies)...${NC}"
-        sudo pacman -Rcs $(pacman -Qtdq)
-        ;;
-    *)
-        # Default mode: simple search
-        search_term="$1"
-        
-        if [ $# -ge 2 ]; then
-            # We have a second argument (full or number)
-            if [[ "$2" =~ ^[0-9]+$ ]] || [ "$2" = "full" ]; then
-                main_search "$search_term" "$2" 0
-            else
-                echo -e "${YELLOW}$(printf "${MESSAGES["warning_arg_ignored"]}%s\n" "$2" "$search_term")${NC}"
-                main_search "$search_term"
-            fi
-        else
-            # Only search term
-            main_search "$search_term"
-        fi
-        ;;
-esac
+parse_args() {
+    while (( $# )); do
+        case $1 in --*=*) set -- "${1%%=*}" "${1#*=}" "${@:2}" ;; esac
+        case $1 in
+            -h|--help)                               CMD=help ;;
+            -V|--version)                            CMD=version ;;
+            -s|-Ss|--search)                         CMD=search ;;
+            -d|--detailed)                           CMD=search; OPT_DETAILS=1 ;;
+            -i|-S|--install)                         CMD=install ;;
+            -u|-Su|-Sua|--upgrade)                   CMD=upgrade ;;
+            -Syu)                                    CMD=sysupgrade ;;
+            -I|--interactive)                        CMD=fzf ;;
+            -Qi|--info|--query-info)                 CMD=pacinfo ;;
+            -Si|--aur-info|--show|--card)            CMD=aurinfo ;;
+            -p|--pkgbuild)                           CMD=pkgbuild ;;
+            -G|--get)                                CMD=get ;;
+            -t|--tree)                               CMD=tree ;;
+            -Qm|--foreign)                           CMD=foreign ;;
+            --outdated)                              CMD=outdated ;;
+            --missing)                               CMD=missing ;;
+            -R|--remove)                             CMD=remove; REMOVE_FLAG=-R ;;
+            -Rcs|--remove-all|--remove-with-deps)    CMD=remove; REMOVE_FLAG=-Rcs ;;
+            -Rns|--purge)                            CMD=remove; REMOVE_FLAG=-Rns ;;
+            -R-d|--remove-debug)                     CMD=remove_debug ;;
+            -R-o|--remove-orphans|--remove-unused)   CMD=remove_orphans ;;
+            -c|--clean)                              CMD=clean ;;
+            --clean-all)                             CMD=clean_all ;;
+            --stats)                                 CMD=stats ;;
+            --history)                               CMD=history ;;
+            --init-config)                           CMD=init_config ;;
+            --completion)                            CMD=completion ;;
+            --by)          need_value "$@"; OPT_BY=$2; shift ;;
+            --sort)        need_value "$@"; CFG_SORT=$2; shift ;;
+            -n|--limit)    need_value "$@"; OPT_LIMIT=$2; shift ;;
+            --min-votes)   need_value "$@"; OPT_MIN_VOTES=$2; shift ;;
+            --depth)       need_value "$@"; OPT_DEPTH=$2; shift ;;
+            --ignore)      need_value "$@"; OPT_IGNORE+="${OPT_IGNORE:+,}$2"; shift ;;
+            -o|--output)   need_value "$@"; OPT_OUTPUT=$2; shift ;;
+            --lang)        need_value "$@"; LANG_CODE=$2; shift ;;
+            --no-outdated) OPT_NO_OOD=1 ;;
+            --orphans)     OPT_ORPHANS=1 ;;
+            -r|--reverse|--votes-last) CFG_REVERSE=1 ;;
+            --votes-first) CFG_REVERSE=0 ;;
+            --json)        OPT_JSON=1 ;;
+            --no-cache)    CFG_API_TTL=0 ;;
+            -y|--noconfirm) CFG_NOCONFIRM=1 ;;
+            --no-review)   CFG_REVIEW=0 ;;
+            --build-only)  OPT_BUILD_ONLY=1 ;;
+            --force)       OPT_FORCE=1 ;;
+            --fresh)       OPT_FRESH=1 ;;
+            --devel)       CFG_DEVEL=1 ;;
+            --rmdeps)      OPT_RMDEPS=1 ;;
+            --)            shift; ARGS+=("$@"); break ;;
+            -*)            err "$(t unknown_option "$1")"; show_usage_hint; exit 1 ;;
+            *)             ARGS+=("$1") ;;
+        esac
+        shift
+    done
+
+    case $OPT_BY in
+        name|name-desc|maintainer|depends|makedepends|optdepends|checkdepends|submitter|keywords|comaintainers) ;;
+        *) err "$(t bad_value --by "$OPT_BY")"; exit 1 ;;
+    esac
+    case $CFG_SORT in popularity|votes|name|updated|relevance) ;; *) err "$(t bad_value --sort "$CFG_SORT")"; exit 1 ;; esac
+    is_uint "$OPT_MIN_VOTES" || { err "$(t bad_value --min-votes "$OPT_MIN_VOTES")"; exit 1; }
+    is_uint "$OPT_DEPTH"     || { err "$(t bad_value --depth "$OPT_DEPTH")"; exit 1; }
+    [[ -z $OPT_LIMIT || $OPT_LIMIT == full ]] || is_uint "$OPT_LIMIT" || { err "$(t bad_value --limit "$OPT_LIMIT")"; exit 1; }
+}
+
+# ----------------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------------
+REMOVE_FLAG=-R
+SUDO=(sudo)
+
+main() {
+    trap 'printf "\n"; exit 130' INT
+    load_config
+    setup_colors
+    parse_args "$@"
+    setup_colors   # re-run in case a flag changed nothing, keeps AUR_COLOR/NO_COLOR logic
+
+    (( EUID == 0 )) && SUDO=()
+
+    if [[ -z $CMD ]]; then
+        if (( ${#ARGS[@]} == 0 )) && (( ! OPT_ORPHANS )); then show_help; exit 1; fi
+        CMD=search
+    fi
+
+    case $CMD in
+        help)       show_help; return 0 ;;
+        version)    printf '%s %s\n' "$SCRIPT_REAL_NAME" "$VERSION"; return 0 ;;
+        completion) cmd_completion; return 0 ;;
+        init_config) cmd_init_config; return 0 ;;
+    esac
+
+    ensure_deps
+    mkdirs
+
+    case $CMD in
+        search)         cmd_search ;;
+        install)        need_args 1 || exit 1; install_flow "${ARGS[@]}" ;;
+        upgrade)        ensure_build_tools && cmd_upgrade ;;
+        sysupgrade)     ensure_build_tools && cmd_sysupgrade ;;
+        fzf)            cmd_fzf ;;
+        pacinfo)        cmd_pacinfo ;;
+        aurinfo)        cmd_aurinfo ;;
+        pkgbuild)       cmd_pkgbuild ;;
+        get)            cmd_get ;;
+        tree)           cmd_tree ;;
+        foreign)        cmd_foreign all ;;
+        outdated)       cmd_foreign outdated ;;
+        missing)        cmd_foreign missing ;;
+        remove)         cmd_remove "$REMOVE_FLAG" ;;
+        remove_debug)   cmd_remove_debug ;;
+        remove_orphans) cmd_remove_orphans ;;
+        clean)          cmd_clean 0 ;;
+        clean_all)      cmd_clean 1 ;;
+        stats)          cmd_stats ;;
+        history)        cmd_history ;;
+    esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    main "$@"
+fi
