@@ -1,0 +1,1497 @@
+#!/usr/bin/env python
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# -*- coding: utf-8 -*-
+"""
+deepseek-cli - Use DeepSeek (or any OpenAI-compatible API) from the Linux terminal.
+
+Single file, standard library only (no pip install required).
+Config file: ~/.config/deepseek-cli/deepseek-cli.conf (auto-created on first run).
+Everything provider-specific (base URL, API key, model, endpoints, auth header,
+extra headers...) lives in that file, so switching between DeepSeek, Ollama,
+OpenRouter, etc. never requires editing this script.
+Output language follows the system locale (en / pt) and can be forced with --lang.
+"""
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from configparser import ConfigParser, Error as ConfigError
+from pathlib import Path
+
+APP = "deepseek-cli"
+VERSION = "1.1.0"
+
+SUPPORTED_LANGS = ("en", "pt")
+
+# These values are used ONLY to generate the config file template on first run
+# (and as a fallback for options missing in older config files). At runtime,
+# the program always reads the provider settings from the config file.
+TEMPLATE_DEFAULTS = {
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-chat",
+    "chat_path": "/chat/completions",
+    "models_path": "/models",
+    "balance_path": "/user/balance",
+    "auth_header": "Authorization",
+    "auth_scheme": "Bearer",
+    "reasoning_field": "reasoning_content",
+    "signup_url": "https://platform.deepseek.com/sign_up",
+    "topup_url": "https://platform.deepseek.com/top_up",
+    "keys_url": "https://platform.deepseek.com/api_keys",
+    "docs_url": "https://api-docs.deepseek.com/",
+}
+
+_xdg_config = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+_xdg_state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+CONFIG_DIR = Path(_xdg_config) / APP
+CONFIG_FILE = CONFIG_DIR / f"{APP}.conf"
+HISTORY_FILE = Path(_xdg_state) / APP / "history"
+
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_USAGE = 2
+EXIT_CONFIG = 78
+EXIT_INTERRUPT = 130
+
+
+# --------------------------------------------------------------------------- #
+# Localized messages
+# --------------------------------------------------------------------------- #
+
+MSG = {
+    "en": {
+        "usage": "usage",
+        "desc": (
+            "Talk to DeepSeek (or any OpenAI-compatible) models from your terminal.\n\n"
+            "Without a prompt, an interactive chat starts. Text can also be piped\n"
+            "through stdin and combined with a prompt and/or files."
+        ),
+        "epilog": (
+            "examples:\n"
+            "  %(p)s \"Explain what a mutex is\"\n"
+            "  %(p)s -m deepseek-reasoner -r \"Is 2^61-1 prime?\"\n"
+            "  %(p)s -f main.py \"Review this code\"\n"
+            "  git diff | %(p)s \"Write a commit message for this diff\"\n"
+            "  %(p)s -s \"Answer in one line\" -t 0.2 \"What is TCP?\"\n"
+            "  %(p)s -i                       # interactive chat\n"
+            "  %(p)s --balance                # account balance (DeepSeek)\n"
+            "  %(p)s -c ~/ollama.conf \"Hi\"    # use another config file\n"
+            "\n"
+            "configuration:\n"
+            "  File: %(cfg)s\n"
+            "  Created automatically on first run. The provider (base_url), API key,\n"
+            "  model, endpoints and extra headers all live there: the script itself\n"
+            "  has nothing hardcoded. The default points to the DeepSeek API; the\n"
+            "  comments inside the file explain how to switch to Ollama (local, free),\n"
+            "  OpenRouter and other compatible providers.\n"
+            "  Tip: keep one config file per provider and pick it with -c FILE.\n"
+            "  Priority: command-line options > config file.\n"
+            "\n"
+            "exit status:\n"
+            "  0 success | 1 runtime/API error | 2 invalid usage |\n"
+            "  78 missing/invalid configuration | 130 interrupted (Ctrl+C)\n"
+        ),
+        "grp_pos": "arguments",
+        "grp_gen": "model and generation",
+        "grp_io": "input and output",
+        "grp_acc": "account and configuration",
+        "grp_misc": "general",
+        "h_prompt": "prompt text (several words are joined; optional)",
+        "h_help": "show this help message and exit",
+        "h_version": "show the program version and exit",
+        "h_model": "model to use (overrides the config file; e.g. deepseek-reasoner)",
+        "h_system": "system prompt (sets the assistant's behavior)",
+        "h_temp": "sampling temperature, 0.0 to 2.0",
+        "h_maxtok": "maximum number of tokens in the answer",
+        "h_nostream": "wait for the complete answer instead of streaming it",
+        "h_reasoning": "show the model's reasoning (if the provider sends it) on stderr",
+        "h_usage": "print token usage after the answer",
+        "h_interactive": "start an interactive chat (default when there is no prompt)",
+        "h_file": "append a text file to the prompt (can be repeated)",
+        "h_output": "also save the answer to FILE",
+        "h_json": "print the raw JSON response (disables streaming)",
+        "h_models": "list the models available for your key and exit",
+        "h_balance": "show the account balance and exit (DeepSeek only)",
+        "h_config": "use FILE as the config file instead of the default",
+        "h_initcfg": "create the config file if missing and exit",
+        "h_editcfg": "open the config file in $VISUAL / $EDITOR",
+        "h_showcfg": "show the effective configuration (key masked) and exit",
+        "h_cfgpath": "print the config file path and exit",
+        "h_lang": "output language: auto, en or pt (default: auto)",
+        "h_nocolor": "disable colored output",
+        "m_file": "FILE", "m_text": "TEXT", "m_model": "MODEL", "m_n": "N",
+        "m_temp": "T", "m_lang": "LANG",
+        # runtime
+        "err": "error",
+        "warn": "warning",
+        "cfg_created": "Config file created: {path}",
+        "key_missing_head": (
+            "No API key found in the config file.\n"
+            "\n"
+            "  Config file: {path}"
+        ),
+        "key_missing_steps": "How to get an API key from your provider:",
+        "step_signup": "Create an account (or log in):  {url}",
+        "step_topup": "Add credit to your balance:     {url}",
+        "step_keys": "Open the API keys page:         {url}",
+        "step_create": "Create a new API key, give it a name and copy it.\n"
+                       "     Most providers show it only once!",
+        "step_paste": "Paste it in the config file, in the [api] section:\n"
+                      "       api_key = sk-...",
+        "key_missing_nokey": (
+            "If your provider needs no key (e.g. a local Ollama), set\n"
+            "  api_key_required = false\n"
+            "in the [api] section of the config file."
+        ),
+        "key_missing_tail": (
+            "Edit the file with:  {prog} --edit-config\n"
+            "This message will appear every time until a key is set."
+        ),
+        "cfg_invalid": "invalid configuration file ({path}): {detail}",
+        "cfg_bad_value": "invalid value for '{key}' in the config file: {value!r}",
+        "cfg_missing": "required option '{key}' is missing or empty in the config file ({path})",
+        "err_401": "authentication failed (HTTP 401): the API key is invalid or revoked.",
+        "err_402": "insufficient balance (HTTP 402).",
+        "hint_keys": "Check it at {url}",
+        "hint_topup": "Add credit at {url}",
+        "err_422": "invalid parameters (HTTP 422): {detail}",
+        "err_429": "rate limit reached (HTTP 429). Wait a moment and try again.",
+        "err_5xx": "server error (HTTP {code}). Try again later.",
+        "err_http": "HTTP {code}: {detail}",
+        "err_net": "network error: {detail}",
+        "err_timeout": "the request timed out",
+        "err_file": "cannot read file '{path}': {detail}",
+        "err_nostdin": "interactive mode requires a terminal (stdin is not a TTY)",
+        "err_empty": "empty prompt",
+        "err_temp": "temperature must be between 0.0 and 2.0",
+        "err_save": "cannot write to '{path}': {detail}",
+        "err_editor": "no editor found. Set the $EDITOR environment variable.",
+        "err_response": "unexpected response from the API",
+        "err_nobalance": "no balance endpoint configured (balance_path is empty in the config file); "
+                         "this feature is only available on DeepSeek",
+        "err_nomodels": "no models endpoint configured (models_path is empty in the config file)",
+        "bin_file": "'{path}' does not look like a text file",
+        "interrupted": "interrupted",
+        "usage_line": "tokens: prompt={p} completion={c} total={t}",
+        "balance_title": "Account balance",
+        "balance_unavail": "Balance is not available for API calls (is_available = false).",
+        "balance_row": "  {cur}: total {total} (topped up {top}, granted {gr})",
+        "models_title": "Available models",
+        "cfg_show_title": "Effective configuration",
+        "cfg_path_label": "config file",
+        "cfg_exists_no": "(does not exist yet)",
+        "key_set": "set",
+        "key_unset": "NOT SET",
+        "banner": "{app} {ver} - model: {model}. Type /help for commands, /exit to quit.",
+        "int_help": (
+            "Commands:\n"
+            "  /help            show this help\n"
+            "  /exit, /quit     leave the chat (Ctrl+D also works)\n"
+            "  /clear           forget the conversation so far\n"
+            "  /model [NAME]    show or change the model\n"
+            "  /system [TEXT]   show or change the system prompt\n"
+            "  /save FILE       save the conversation to FILE\n"
+            "  /usage           show cumulative token usage"
+        ),
+        "cleared": "conversation cleared",
+        "model_now": "model: {model}",
+        "system_now": "system prompt: {text}",
+        "system_none": "(none)",
+        "saved": "saved to {path}",
+        "unknown_cmd": "unknown command: {cmd} (try /help)",
+        "total_usage": "total tokens so far: prompt={p} completion={c} total={t}",
+        "you": "you",
+        "bot": "assistant",
+        "think": "thinking",
+        "cfg_template": """\
+# ============================================================================
+#  {app} - configuration file
+# ============================================================================
+#  Lines starting with '#' are comments. Remove nothing you don't understand;
+#  just fill in the values you need.
+#
+#  Everything that depends on the provider (address, key, model, endpoints,
+#  headers) is configured HERE, so you never have to edit the script to try
+#  another provider. As shipped, this file works with the DeepSeek API; you
+#  only need to fill in api_key.
+#
+#  Tip: you can keep several config files (one per provider) and choose one
+#  at run time:   {app} -c ~/.config/{app}/ollama.conf "hello"
+#  (a missing file passed with -c is created from this same template).
+#
+#  HOW TO GET YOUR DEEPSEEK API KEY
+#  ----------------------------------------------------------------------------
+#  1. Create an account (or log in) at:
+#       {signup_url}
+#  2. Add credit to your balance (the API is pay-as-you-go):
+#       {topup_url}
+#  3. Go to the API keys page:
+#       {keys_url}
+#  4. Click "Create new API key", type any name (e.g. "terminal") and confirm.
+#  5. COPY THE KEY NOW - it starts with "sk-" and is shown only once. If you
+#     lose it, just create another one and delete the old one on the same page.
+#  6. Paste it below, after "api_key =", with no quotes and no spaces.
+#
+#  Keep this file private (it is created with permission 600). Never share
+#  your key or commit this file to a repository.
+#
+#  API documentation: {docs_url}
+#
+#  ----------------------------------------------------------------------------
+#  USING OTHER PROVIDERS (any OpenAI-compatible API)
+#  ----------------------------------------------------------------------------
+#  Change only the options listed in each preset below, in this file.
+#
+#  A) OLLAMA - local and 100% free (needs Ollama installed; run once:
+#     "ollama pull deepseek-r1:8b"). Local models are smaller distilled
+#     versions, so quality depends on your hardware.
+#       [api]
+#       api_key_required = false
+#       base_url = http://localhost:11434/v1
+#       balance_path =
+#       [defaults]
+#       model = deepseek-r1:8b
+#
+#  B) OPENROUTER - has DeepSeek models, some with a free tier (suffix ":free",
+#     with daily limits). Create an account and a key at https://openrouter.ai
+#     Free model names change often: check the current list on their site.
+#       [api]
+#       api_key = sk-or-...
+#       base_url = https://openrouter.ai/api/v1
+#       balance_path =
+#       reasoning_field = reasoning
+#       [defaults]
+#       model = deepseek/deepseek-chat-v3-0324:free
+#     (optional, in the [headers] section: HTTP-Referer and X-Title)
+#
+#  C) ANY OTHER COMPATIBLE PROVIDER: set base_url (the part before
+#     /chat/completions), api_key and model. If its paths differ, adjust
+#     chat_path / models_path. Providers that use another auth header can
+#     change auth_header and auth_scheme (e.g. auth_header = x-api-key and an
+#     empty auth_scheme).
+#
+#  Notes: --balance only works with DeepSeek (the response format is theirs);
+#  leave balance_path empty on other providers. Whether --list-models and
+#  the reasoning output work depends on what the provider supports.
+# ============================================================================
+
+[api]
+# Your API key. REQUIRED unless api_key_required = false.
+# Example: api_key = sk-0123456789abcdef
+api_key =
+
+# true: refuse to run without api_key. false: allow it (e.g. local Ollama).
+api_key_required = true
+
+# API base URL (the address before /chat/completions). No trailing slash needed.
+base_url = {base_url}
+
+# Header that carries the key and the text placed before it.
+# Default result: "Authorization: Bearer <api_key>". Empty scheme = key only.
+auth_header = {auth_header}
+auth_scheme = {auth_scheme}
+
+# Endpoint paths, appended to base_url.
+chat_path = {chat_path}
+# Leave empty to disable --list-models.
+models_path = {models_path}
+# DeepSeek only. Leave empty on other providers to disable --balance.
+balance_path = {balance_path}
+
+# Name of the field where the provider sends the model's reasoning
+# (DeepSeek: reasoning_content; OpenRouter and recent Ollama: reasoning).
+# Empty = never show reasoning.
+reasoning_field = {reasoning_field}
+
+# Ask the server to report token usage while streaming: true / false.
+# Set to false if a provider rejects the "stream_options" parameter.
+stream_usage = true
+
+[headers]
+# Extra HTTP headers sent on every request, one per line: Name = value
+# Examples (OpenRouter likes these two, both optional):
+# HTTP-Referer = https://example.com
+# X-Title = {app}
+
+[help]
+# Links shown in error messages and in the "no API key" instructions.
+# Empty values are simply omitted. Change them when you change provider.
+signup_url = {signup_url}
+topup_url = {topup_url}
+keys_url = {keys_url}
+docs_url = {docs_url}
+
+[defaults]
+# Default model. Examples:
+#   deepseek-chat      - general purpose, fast (DeepSeek)
+#   deepseek-reasoner  - step-by-step reasoning, slower (DeepSeek)
+#   deepseek-r1:8b     - local model (Ollama)
+# REQUIRED.
+model = {model}
+
+# Sampling temperature, 0.0 - 2.0 (lower = more deterministic).
+# Leave empty to use the API default. Ignored by deepseek-reasoner.
+temperature =
+
+# Maximum tokens in the answer. Leave empty for the API default.
+max_tokens =
+
+# Default system prompt (the assistant's behavior). Leave empty for none.
+system_prompt =
+
+# Extra JSON object merged into every request body (advanced).
+# Example: extra_body = {{"top_p": 0.9}}
+extra_body =
+
+# Print the answer as it is generated: true / false
+stream = true
+
+# Show the model's reasoning, when sent by the provider (to stderr): true / false
+show_reasoning = false
+
+# Print token usage after each answer: true / false
+show_usage = false
+
+# Request timeout in seconds.
+timeout = 120
+
+# Output language: auto (follow the system locale), en or pt.
+language = auto
+
+# Colored output: auto (only on a terminal), true or false.
+color = auto
+""",
+    },
+    "pt": {
+        "usage": "uso",
+        "desc": (
+            "Converse com modelos DeepSeek (ou qualquer API compatível com OpenAI)\n"
+            "pelo terminal.\n\n"
+            "Sem prompt, inicia um chat interativo. Também é possível enviar texto\n"
+            "pelo stdin (pipe) e combiná-lo com um prompt e/ou arquivos."
+        ),
+        "epilog": (
+            "exemplos:\n"
+            "  %(p)s \"Explique o que é um mutex\"\n"
+            "  %(p)s -m deepseek-reasoner -r \"2^61-1 é primo?\"\n"
+            "  %(p)s -f main.py \"Revise este código\"\n"
+            "  git diff | %(p)s \"Escreva uma mensagem de commit para este diff\"\n"
+            "  %(p)s -s \"Responda em uma linha\" -t 0.2 \"O que é TCP?\"\n"
+            "  %(p)s -i                       # chat interativo\n"
+            "  %(p)s --balance                # saldo da conta (DeepSeek)\n"
+            "  %(p)s -c ~/ollama.conf \"Oi\"    # usa outro arquivo de config\n"
+            "\n"
+            "configuração:\n"
+            "  Arquivo: %(cfg)s\n"
+            "  Criado automaticamente na primeira execução. O provedor (base_url), a\n"
+            "  chave de API, o modelo, os endpoints e os headers extras ficam todos\n"
+            "  lá: o script não tem nada fixo no código. O padrão aponta para a API\n"
+            "  do DeepSeek; os comentários no arquivo explicam como trocar para\n"
+            "  Ollama (local, grátis), OpenRouter e outros provedores compatíveis.\n"
+            "  Dica: mantenha um arquivo de config por provedor e escolha com -c ARQUIVO.\n"
+            "  Prioridade: opções de linha de comando > arquivo de config.\n"
+            "\n"
+            "código de saída:\n"
+            "  0 sucesso | 1 erro de execução/API | 2 uso inválido |\n"
+            "  78 configuração ausente/inválida | 130 interrompido (Ctrl+C)\n"
+        ),
+        "grp_pos": "argumentos",
+        "grp_gen": "modelo e geração",
+        "grp_io": "entrada e saída",
+        "grp_acc": "conta e configuração",
+        "grp_misc": "geral",
+        "h_prompt": "texto do prompt (várias palavras são unidas; opcional)",
+        "h_help": "mostra esta ajuda e sai",
+        "h_version": "mostra a versão do programa e sai",
+        "h_model": "modelo a usar (sobrepõe o arquivo de config; ex.: deepseek-reasoner)",
+        "h_system": "prompt de sistema (define o comportamento do assistente)",
+        "h_temp": "temperatura de amostragem, de 0.0 a 2.0",
+        "h_maxtok": "número máximo de tokens na resposta",
+        "h_nostream": "espera a resposta completa em vez de exibi-la em streaming",
+        "h_reasoning": "mostra o raciocínio do modelo (se o provedor enviar) no stderr",
+        "h_usage": "mostra o uso de tokens após a resposta",
+        "h_interactive": "inicia um chat interativo (padrão quando não há prompt)",
+        "h_file": "anexa um arquivo de texto ao prompt (pode ser repetido)",
+        "h_output": "salva também a resposta em FILE",
+        "h_json": "imprime a resposta JSON bruta (desativa o streaming)",
+        "h_models": "lista os modelos disponíveis para sua chave e sai",
+        "h_balance": "mostra o saldo da conta e sai (somente DeepSeek)",
+        "h_config": "usa FILE como arquivo de configuração em vez do padrão",
+        "h_initcfg": "cria o arquivo de configuração se não existir e sai",
+        "h_editcfg": "abre o arquivo de configuração no $VISUAL / $EDITOR",
+        "h_showcfg": "mostra a configuração efetiva (chave mascarada) e sai",
+        "h_cfgpath": "imprime o caminho do arquivo de configuração e sai",
+        "h_lang": "idioma da saída: auto, en ou pt (padrão: auto)",
+        "h_nocolor": "desativa a saída colorida",
+        "m_file": "ARQUIVO", "m_text": "TEXTO", "m_model": "MODELO", "m_n": "N",
+        "m_temp": "T", "m_lang": "IDIOMA",
+        # runtime
+        "err": "erro",
+        "warn": "aviso",
+        "cfg_created": "Arquivo de configuração criado: {path}",
+        "key_missing_head": (
+            "Nenhuma chave de API encontrada no arquivo de configuração.\n"
+            "\n"
+            "  Arquivo de configuração: {path}"
+        ),
+        "key_missing_steps": "Como obter uma chave de API do seu provedor:",
+        "step_signup": "Crie uma conta (ou faça login):  {url}",
+        "step_topup": "Adicione crédito ao saldo:        {url}",
+        "step_keys": "Abra a página de chaves de API:   {url}",
+        "step_create": "Crie uma nova chave de API, dê um nome e copie-a.\n"
+                       "     A maioria dos provedores a exibe somente uma vez!",
+        "step_paste": "Cole-a no arquivo de configuração, na seção [api]:\n"
+                      "       api_key = sk-...",
+        "key_missing_nokey": (
+            "Se o seu provedor não exige chave (ex.: Ollama local), defina\n"
+            "  api_key_required = false\n"
+            "na seção [api] do arquivo de configuração."
+        ),
+        "key_missing_tail": (
+            "Edite o arquivo com:  {prog} --edit-config\n"
+            "Esta mensagem aparecerá toda vez até que uma chave seja definida."
+        ),
+        "cfg_invalid": "arquivo de configuração inválido ({path}): {detail}",
+        "cfg_bad_value": "valor inválido para '{key}' no arquivo de configuração: {value!r}",
+        "cfg_missing": "a opção obrigatória '{key}' está ausente ou vazia no arquivo de configuração ({path})",
+        "err_401": "falha de autenticação (HTTP 401): a chave de API é inválida ou foi revogada.",
+        "err_402": "saldo insuficiente (HTTP 402).",
+        "hint_keys": "Verifique em {url}",
+        "hint_topup": "Adicione crédito em {url}",
+        "err_422": "parâmetros inválidos (HTTP 422): {detail}",
+        "err_429": "limite de requisições atingido (HTTP 429). Aguarde um momento e tente de novo.",
+        "err_5xx": "erro no servidor (HTTP {code}). Tente novamente mais tarde.",
+        "err_http": "HTTP {code}: {detail}",
+        "err_net": "erro de rede: {detail}",
+        "err_timeout": "a requisição excedeu o tempo limite",
+        "err_file": "não foi possível ler o arquivo '{path}': {detail}",
+        "err_nostdin": "o modo interativo exige um terminal (stdin não é um TTY)",
+        "err_empty": "prompt vazio",
+        "err_temp": "a temperatura deve estar entre 0.0 e 2.0",
+        "err_save": "não foi possível gravar em '{path}': {detail}",
+        "err_editor": "nenhum editor encontrado. Defina a variável de ambiente $EDITOR.",
+        "err_response": "resposta inesperada da API",
+        "err_nobalance": "nenhum endpoint de saldo configurado (balance_path está vazio no arquivo de "
+                         "configuração); este recurso só existe no DeepSeek",
+        "err_nomodels": "nenhum endpoint de modelos configurado (models_path está vazio no arquivo de configuração)",
+        "bin_file": "'{path}' não parece ser um arquivo de texto",
+        "interrupted": "interrompido",
+        "usage_line": "tokens: prompt={p} resposta={c} total={t}",
+        "balance_title": "Saldo da conta",
+        "balance_unavail": "O saldo não está disponível para chamadas de API (is_available = false).",
+        "balance_row": "  {cur}: total {total} (recarregado {top}, bônus {gr})",
+        "models_title": "Modelos disponíveis",
+        "cfg_show_title": "Configuração efetiva",
+        "cfg_path_label": "arquivo de configuração",
+        "cfg_exists_no": "(ainda não existe)",
+        "key_set": "definida",
+        "key_unset": "NÃO DEFINIDA",
+        "banner": "{app} {ver} - modelo: {model}. Digite /help para ver os comandos, /exit para sair.",
+        "int_help": (
+            "Comandos:\n"
+            "  /help            mostra esta ajuda\n"
+            "  /exit, /quit     sai do chat (Ctrl+D também funciona)\n"
+            "  /clear           esquece a conversa até aqui\n"
+            "  /model [NOME]    mostra ou troca o modelo\n"
+            "  /system [TEXTO]  mostra ou troca o prompt de sistema\n"
+            "  /save ARQUIVO    salva a conversa em ARQUIVO\n"
+            "  /usage           mostra o uso acumulado de tokens"
+        ),
+        "cleared": "conversa apagada",
+        "model_now": "modelo: {model}",
+        "system_now": "prompt de sistema: {text}",
+        "system_none": "(nenhum)",
+        "saved": "salvo em {path}",
+        "unknown_cmd": "comando desconhecido: {cmd} (tente /help)",
+        "total_usage": "tokens até agora: prompt={p} resposta={c} total={t}",
+        "you": "você",
+        "bot": "assistente",
+        "think": "raciocínio",
+        "cfg_template": """\
+# ============================================================================
+#  {app} - arquivo de configuração
+# ============================================================================
+#  Linhas iniciadas por '#' são comentários. Não remova nada que você não
+#  entenda; apenas preencha os valores de que precisar.
+#
+#  Tudo que depende do provedor (endereço, chave, modelo, endpoints, headers)
+#  é configurado AQUI, então você nunca precisa editar o script para testar
+#  outro provedor. Do jeito que vem, este arquivo funciona com a API do
+#  DeepSeek; basta preencher a api_key.
+#
+#  Dica: você pode manter vários arquivos de configuração (um por provedor) e
+#  escolher um na hora de rodar:
+#      {app} -c ~/.config/{app}/ollama.conf "olá"
+#  (um arquivo inexistente passado com -c é criado a partir deste mesmo modelo).
+#
+#  COMO OBTER SUA CHAVE DE API DO DEEPSEEK
+#  ----------------------------------------------------------------------------
+#  1. Crie uma conta (ou faça login) em:
+#       {signup_url}
+#  2. Adicione crédito ao seu saldo (a API é paga por uso):
+#       {topup_url}
+#  3. Acesse a página de chaves de API:
+#       {keys_url}
+#  4. Clique em "Create new API key", digite qualquer nome (ex.: "terminal")
+#     e confirme.
+#  5. COPIE A CHAVE AGORA - ela começa com "sk-" e é exibida somente uma vez.
+#     Se perdê-la, basta criar outra e apagar a antiga na mesma página.
+#  6. Cole-a abaixo, depois de "api_key =", sem aspas e sem espaços.
+#
+#  Mantenha este arquivo privado (ele é criado com permissão 600). Nunca
+#  compartilhe sua chave nem envie este arquivo para um repositório.
+#
+#  Documentação da API: {docs_url}
+#
+#  ----------------------------------------------------------------------------
+#  USANDO OUTROS PROVEDORES (qualquer API compatível com OpenAI)
+#  ----------------------------------------------------------------------------
+#  Altere apenas as opções listadas em cada modelo abaixo, neste arquivo.
+#
+#  A) OLLAMA - local e 100% gratuito (precisa do Ollama instalado; rode uma
+#     vez: "ollama pull deepseek-r1:8b"). Os modelos locais são versões
+#     destiladas menores, então a qualidade depende do seu hardware.
+#       [api]
+#       api_key_required = false
+#       base_url = http://localhost:11434/v1
+#       balance_path =
+#       [defaults]
+#       model = deepseek-r1:8b
+#
+#  B) OPENROUTER - tem modelos DeepSeek, alguns com versão gratuita (sufixo
+#     ":free", com limite diário). Crie conta e chave em https://openrouter.ai
+#     Os nomes dos modelos gratuitos mudam com frequência: confira a lista
+#     atual no site deles.
+#       [api]
+#       api_key = sk-or-...
+#       base_url = https://openrouter.ai/api/v1
+#       balance_path =
+#       reasoning_field = reasoning
+#       [defaults]
+#       model = deepseek/deepseek-chat-v3-0324:free
+#     (opcional, na seção [headers]: HTTP-Referer e X-Title)
+#
+#  C) QUALQUER OUTRO PROVEDOR COMPATÍVEL: defina base_url (a parte antes de
+#     /chat/completions), api_key e model. Se os caminhos forem diferentes,
+#     ajuste chat_path / models_path. Provedores que usam outro header de
+#     autenticação podem mudar auth_header e auth_scheme (ex.:
+#     auth_header = x-api-key e auth_scheme vazio).
+#
+#  Observações: --balance só funciona com o DeepSeek (o formato da resposta é
+#  dele); deixe balance_path vazio nos outros provedores. Se --list-models e a
+#  exibição do raciocínio funcionam depende do que o provedor suporta.
+# ============================================================================
+
+[api]
+# Sua chave de API. OBRIGATÓRIA, a menos que api_key_required = false.
+# Exemplo: api_key = sk-0123456789abcdef
+api_key =
+
+# true: recusa rodar sem api_key. false: permite (ex.: Ollama local).
+api_key_required = true
+
+# URL base da API (o endereço antes de /chat/completions). Sem barra no final.
+base_url = {base_url}
+
+# Header que leva a chave e o texto colocado antes dela.
+# Resultado padrão: "Authorization: Bearer <api_key>". Scheme vazio = só a chave.
+auth_header = {auth_header}
+auth_scheme = {auth_scheme}
+
+# Caminhos dos endpoints, somados à base_url.
+chat_path = {chat_path}
+# Deixe vazio para desativar --list-models.
+models_path = {models_path}
+# Somente DeepSeek. Deixe vazio nos outros provedores para desativar --balance.
+balance_path = {balance_path}
+
+# Nome do campo em que o provedor envia o raciocínio do modelo
+# (DeepSeek: reasoning_content; OpenRouter e Ollama recente: reasoning).
+# Vazio = nunca mostrar o raciocínio.
+reasoning_field = {reasoning_field}
+
+# Pedir ao servidor o uso de tokens durante o streaming: true / false.
+# Use false se algum provedor rejeitar o parâmetro "stream_options".
+stream_usage = true
+
+[headers]
+# Headers HTTP extras enviados em toda requisição, um por linha: Nome = valor
+# Exemplos (o OpenRouter gosta destes dois, ambos opcionais):
+# HTTP-Referer = https://example.com
+# X-Title = {app}
+
+[help]
+# Links exibidos nas mensagens de erro e nas instruções de "sem chave de API".
+# Valores vazios são simplesmente omitidos. Troque-os ao trocar de provedor.
+signup_url = {signup_url}
+topup_url = {topup_url}
+keys_url = {keys_url}
+docs_url = {docs_url}
+
+[defaults]
+# Modelo padrão. Exemplos:
+#   deepseek-chat      - uso geral, rápido (DeepSeek)
+#   deepseek-reasoner  - raciocínio passo a passo, mais lento (DeepSeek)
+#   deepseek-r1:8b     - modelo local (Ollama)
+# OBRIGATÓRIO.
+model = {model}
+
+# Temperatura de amostragem, 0.0 - 2.0 (menor = mais determinístico).
+# Deixe vazio para usar o padrão da API. Ignorada pelo deepseek-reasoner.
+temperature =
+
+# Máximo de tokens na resposta. Deixe vazio para o padrão da API.
+max_tokens =
+
+# Prompt de sistema padrão (comportamento do assistente). Vazio = nenhum.
+system_prompt =
+
+# Objeto JSON extra mesclado em todo corpo de requisição (avançado).
+# Exemplo: extra_body = {{"top_p": 0.9}}
+extra_body =
+
+# Exibir a resposta conforme ela é gerada: true / false
+stream = true
+
+# Mostrar o raciocínio do modelo, quando o provedor enviar (no stderr): true / false
+show_reasoning = false
+
+# Mostrar o uso de tokens após cada resposta: true / false
+show_usage = false
+
+# Tempo limite da requisição, em segundos.
+timeout = 120
+
+# Idioma da saída: auto (segue o idioma do sistema), en ou pt.
+language = auto
+
+# Saída colorida: auto (somente em terminal), true ou false.
+color = auto
+""",
+    },
+}
+
+_LANG = "en"
+
+
+def t(key, **kw):
+    """Return the localized message for `key`, formatted with `kw`."""
+    text = MSG.get(_LANG, MSG["en"]).get(key) or MSG["en"][key]
+    return text.format(**kw) if kw else text
+
+
+# --------------------------------------------------------------------------- #
+# Helpers: language, colors, errors
+# --------------------------------------------------------------------------- #
+
+def lang_from_env():
+    """Detect the language from the standard locale variables."""
+    for var in ("LC_ALL", "LC_MESSAGES", "LANGUAGE", "LANG"):
+        value = os.environ.get(var, "")
+        if value and value not in ("C", "POSIX"):
+            return "pt" if value.lower().startswith("pt") else "en"
+    return "en"
+
+
+def normalize_lang(value):
+    value = (value or "auto").strip().lower()
+    if value in ("", "auto"):
+        return lang_from_env()
+    return value[:2] if value[:2] in SUPPORTED_LANGS else "en"
+
+
+class Colors:
+    """ANSI color helper that becomes a no-op when colors are disabled."""
+
+    def __init__(self, enabled):
+        self.enabled = enabled
+
+    def _wrap(self, code, text):
+        return f"\033[{code}m{text}\033[0m" if self.enabled else text
+
+    def bold(self, s): return self._wrap("1", s)
+    def dim(self, s): return self._wrap("2", s)
+    def red(self, s): return self._wrap("31", s)
+    def green(self, s): return self._wrap("32", s)
+    def yellow(self, s): return self._wrap("33", s)
+    def cyan(self, s): return self._wrap("36", s)
+
+
+C = Colors(False)
+
+
+class CliError(Exception):
+    def __init__(self, message, code=EXIT_ERROR):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+
+def eprint(*args, **kw):
+    print(*args, file=sys.stderr, **kw)
+
+
+def die(message, code=EXIT_ERROR):
+    eprint(f"{C.red(APP + ': ' + t('err'))}: {message}")
+    sys.exit(code)
+
+
+def hint(key, url):
+    """Append a localized hint with a URL, or nothing if the URL is empty."""
+    return (" " + t(key, url=url)) if url else ""
+
+
+# --------------------------------------------------------------------------- #
+# Configuration
+# --------------------------------------------------------------------------- #
+
+def write_config_template(path):
+    """Create the config file (mode 600) with guidance comments."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = t("cfg_template", app=APP, **TEMPLATE_DEFAULTS)
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(content)
+
+
+def ensure_config(path):
+    """Create the config file if it does not exist. Returns True if created."""
+    if path.exists():
+        return False
+    try:
+        write_config_template(path)
+    except OSError as exc:
+        raise CliError(t("cfg_invalid", path=path, detail=exc), EXIT_CONFIG)
+    return True
+
+
+def _to_bool(value, key):
+    v = value.strip().lower()
+    if v in ("1", "true", "yes", "on", "y", "sim"):
+        return True
+    if v in ("0", "false", "no", "off", "n", "nao", "não"):
+        return False
+    raise CliError(t("cfg_bad_value", key=key, value=value), EXIT_CONFIG)
+
+
+def _to_number(value, key, kind):
+    try:
+        return kind(value)
+    except ValueError:
+        raise CliError(t("cfg_bad_value", key=key, value=value), EXIT_CONFIG)
+
+
+def _norm_path(value):
+    """Normalize an endpoint path: '' stays '', anything else starts with '/'."""
+    value = value.strip()
+    return "/" + value.lstrip("/") if value else ""
+
+
+def load_config(path):
+    """Parse the config file into a plain dict with typed values."""
+    parser = ConfigParser(interpolation=None)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            parser.read_file(fh)
+    except (OSError, ConfigError, UnicodeDecodeError) as exc:
+        raise CliError(t("cfg_invalid", path=path, detail=exc), EXIT_CONFIG)
+
+    def opt(section, key, default=""):
+        """Value if the option exists (even empty); `default` only if absent."""
+        if parser.has_option(section, key):
+            return parser.get(section, key).strip()
+        return default
+
+    D = TEMPLATE_DEFAULTS
+
+    cfg = {
+        "api_key": opt("api", "api_key"),
+        "api_key_required": True,
+        "base_url": opt("api", "base_url").rstrip("/"),
+        "auth_header": opt("api", "auth_header", D["auth_header"]) or D["auth_header"],
+        "auth_scheme": opt("api", "auth_scheme", D["auth_scheme"]),
+        "chat_path": _norm_path(opt("api", "chat_path", D["chat_path"])),
+        "models_path": _norm_path(opt("api", "models_path", D["models_path"])),
+        "balance_path": _norm_path(opt("api", "balance_path", D["balance_path"])),
+        "reasoning_field": opt("api", "reasoning_field", D["reasoning_field"]),
+        "stream_usage": True,
+        "headers": {},
+        "signup_url": opt("help", "signup_url"),
+        "topup_url": opt("help", "topup_url"),
+        "keys_url": opt("help", "keys_url"),
+        "docs_url": opt("help", "docs_url"),
+        "model": opt("defaults", "model"),
+        "system_prompt": opt("defaults", "system_prompt"),
+        "language": opt("defaults", "language", "auto") or "auto",
+        "color": (opt("defaults", "color", "auto") or "auto").lower(),
+        "temperature": None,
+        "max_tokens": None,
+        "timeout": 120.0,
+        "extra_body": {},
+        "stream": True,
+        "show_reasoning": False,
+        "show_usage": False,
+    }
+
+    # Required values: no hardcoded fallback on purpose.
+    for key, value in (("base_url", cfg["base_url"]), ("chat_path", cfg["chat_path"]),
+                       ("model", cfg["model"])):
+        if not value:
+            raise CliError(t("cfg_missing", key=key, path=path), EXIT_CONFIG)
+
+    raw = opt("api", "api_key_required")
+    if raw:
+        cfg["api_key_required"] = _to_bool(raw, "api_key_required")
+    raw = opt("api", "stream_usage")
+    if raw:
+        cfg["stream_usage"] = _to_bool(raw, "stream_usage")
+
+    raw = opt("defaults", "temperature")
+    if raw:
+        cfg["temperature"] = _to_number(raw, "temperature", float)
+    raw = opt("defaults", "max_tokens")
+    if raw:
+        cfg["max_tokens"] = _to_number(raw, "max_tokens", int)
+    raw = opt("defaults", "timeout")
+    if raw:
+        cfg["timeout"] = _to_number(raw, "timeout", float)
+
+    for key in ("stream", "show_reasoning", "show_usage"):
+        raw = opt("defaults", key)
+        if raw:
+            cfg[key] = _to_bool(raw, key)
+
+    raw = opt("defaults", "extra_body")
+    if raw:
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            raise CliError(t("cfg_bad_value", key="extra_body", value=raw), EXIT_CONFIG)
+        if not isinstance(body, dict):
+            raise CliError(t("cfg_bad_value", key="extra_body", value=raw), EXIT_CONFIG)
+        cfg["extra_body"] = body
+
+    if parser.has_section("headers"):
+        cfg["headers"] = {k: v.strip() for k, v in parser.items("headers") if v.strip()}
+
+    return cfg
+
+
+def read_language_from_file(path):
+    """Cheap read of the 'language' option, used before the parser exists."""
+    try:
+        parser = ConfigParser(interpolation=None)
+        parser.read(path, encoding="utf-8")
+        return parser.get("defaults", "language", fallback="auto").strip()
+    except Exception:
+        return "auto"
+
+
+def mask_key(key):
+    if not key:
+        return t("key_unset")
+    if len(key) <= 10:
+        return t("key_set")
+    return f"{key[:5]}...{key[-4:]}"
+
+
+def key_missing_message(cfg, path):
+    """Build the 'no API key' help text from whatever links the config has."""
+    prog = os.path.basename(sys.argv[0]) or APP
+    steps = []
+    if cfg["signup_url"]:
+        steps.append(t("step_signup", url=cfg["signup_url"]))
+    if cfg["topup_url"]:
+        steps.append(t("step_topup", url=cfg["topup_url"]))
+    if cfg["keys_url"]:
+        steps.append(t("step_keys", url=cfg["keys_url"]))
+    steps.append(t("step_create"))
+    steps.append(t("step_paste"))
+    lines = [t("key_missing_head", path=path), "", t("key_missing_steps")]
+    lines += [f"  {i}. {s}" for i, s in enumerate(steps, 1)]
+    lines += ["", t("key_missing_nokey"), "", t("key_missing_tail", prog=prog)]
+    return "\n".join(lines)
+
+
+def require_api_key(cfg, path):
+    if cfg["api_key_required"] and not cfg["api_key"]:
+        raise CliError(key_missing_message(cfg, path), EXIT_CONFIG)
+
+
+# --------------------------------------------------------------------------- #
+# HTTP layer
+# --------------------------------------------------------------------------- #
+
+def _error_detail(body):
+    """Extract a readable message from an API error body."""
+    try:
+        data = json.loads(body)
+        err = data.get("error", data)
+        if isinstance(err, dict):
+            return err.get("message") or json.dumps(err, ensure_ascii=False)
+        return str(err)
+    except (ValueError, AttributeError):
+        return body.strip()[:300] or "-"
+
+
+def http_error_to_cli(exc, cfg):
+    code = exc.code
+    try:
+        detail = _error_detail(exc.read().decode("utf-8", "replace"))
+    except Exception:
+        detail = exc.reason
+    if code == 401:
+        return CliError(t("err_401") + hint("hint_keys", cfg["keys_url"]))
+    if code == 402:
+        return CliError(t("err_402") + hint("hint_topup", cfg["topup_url"]))
+    if code == 422:
+        return CliError(t("err_422", detail=detail))
+    if code == 429:
+        return CliError(t("err_429"))
+    if code >= 500:
+        return CliError(t("err_5xx", code=code))
+    return CliError(t("err_http", code=code, detail=detail))
+
+
+def api_open(cfg, path, payload=None):
+    """Open an HTTP connection to the API and return the response object."""
+    url = cfg["base_url"] + path
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(url, data=data, method="POST" if data else "GET")
+    if cfg["api_key"]:
+        scheme = cfg["auth_scheme"]
+        value = f"{scheme} {cfg['api_key']}" if scheme else cfg["api_key"]
+        req.add_header(cfg["auth_header"], value)
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "text/event-stream" if payload and payload.get("stream")
+                   else "application/json")
+    req.add_header("User-Agent", f"{APP}/{VERSION}")
+    for name, value in cfg["headers"].items():
+        req.add_header(name, value)
+    try:
+        return urllib.request.urlopen(req, timeout=cfg["timeout"])
+    except urllib.error.HTTPError as exc:
+        raise http_error_to_cli(exc, cfg)
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, TimeoutError):
+            raise CliError(t("err_timeout"))
+        raise CliError(t("err_net", detail=exc.reason))
+    except TimeoutError:
+        raise CliError(t("err_timeout"))
+
+
+def api_get_json(cfg, path):
+    with api_open(cfg, path) as resp:
+        try:
+            return json.loads(resp.read().decode("utf-8"))
+        except (ValueError, OSError):
+            raise CliError(t("err_response"))
+
+
+# --------------------------------------------------------------------------- #
+# Chat
+# --------------------------------------------------------------------------- #
+
+def build_payload(opts, history):
+    messages = []
+    if opts["system"]:
+        messages.append({"role": "system", "content": opts["system"]})
+    messages.extend(history)
+    payload = {"model": opts["model"], "messages": messages, "stream": opts["stream"]}
+    if opts["temperature"] is not None:
+        payload["temperature"] = opts["temperature"]
+    if opts["max_tokens"] is not None:
+        payload["max_tokens"] = opts["max_tokens"]
+    if opts["stream"] and opts["stream_usage"]:
+        payload["stream_options"] = {"include_usage": True}
+    for key, value in opts["extra_body"].items():
+        payload.setdefault(key, value)
+    return payload
+
+
+def chat_turn(cfg, opts, history, label=None):
+    """
+    Send `history` to the API and print the answer.
+    Returns (answer_text, usage_dict_or_None).
+    """
+    payload = build_payload(opts, history)
+    reasoning_field = cfg["reasoning_field"]
+
+    if opts["raw_json"]:
+        payload["stream"] = False
+        payload.pop("stream_options", None)
+        with api_open(cfg, cfg["chat_path"], payload) as resp:
+            body = resp.read().decode("utf-8", "replace")
+        print(body)
+        try:
+            data = json.loads(body)
+            return data["choices"][0]["message"].get("content") or "", data.get("usage")
+        except (ValueError, KeyError, IndexError):
+            return "", None
+
+    if not opts["stream"]:
+        with api_open(cfg, cfg["chat_path"], payload) as resp:
+            try:
+                data = json.loads(resp.read().decode("utf-8"))
+                message = data["choices"][0]["message"]
+            except (ValueError, KeyError, IndexError):
+                raise CliError(t("err_response"))
+        reasoning = message.get(reasoning_field) if reasoning_field else None
+        if reasoning and opts["show_reasoning"]:
+            eprint(C.dim(f"[{t('think')}]\n{reasoning}\n[/{t('think')}]"))
+        text = message.get("content") or ""
+        if label:
+            print(label, end="")
+        print(text)
+        return text, data.get("usage")
+
+    # Streaming (Server-Sent Events)
+    text_parts = []
+    usage = None
+    in_reasoning = False
+    started = False
+    with api_open(cfg, cfg["chat_path"], payload) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line or line.startswith(":") or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                chunk = json.loads(data)
+            except ValueError:
+                continue
+            if chunk.get("usage"):
+                usage = chunk["usage"]
+            choices = chunk.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            reasoning = delta.get(reasoning_field) if reasoning_field else None
+            content = delta.get("content")
+            if reasoning and opts["show_reasoning"]:
+                if not in_reasoning:
+                    eprint(C.dim(f"[{t('think')}]"), end="")
+                    in_reasoning = True
+                eprint(C.dim(reasoning), end="")
+                sys.stderr.flush()
+            if content:
+                if in_reasoning:
+                    eprint(C.dim(f"\n[/{t('think')}]\n"))
+                    in_reasoning = False
+                if not started:
+                    if label:
+                        print(label, end="")
+                    started = True
+                print(content, end="")
+                sys.stdout.flush()
+                text_parts.append(content)
+    if in_reasoning:
+        eprint(C.dim(f"\n[/{t('think')}]\n"))
+    if started or not text_parts:
+        print()
+    return "".join(text_parts), usage
+
+
+def print_usage(usage):
+    if not usage:
+        return
+    eprint(C.dim(t("usage_line", p=usage.get("prompt_tokens", "?"),
+                   c=usage.get("completion_tokens", "?"),
+                   t=usage.get("total_tokens", "?"))))
+
+
+def read_text_file(path):
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+        if b"\x00" in raw[:8192]:
+            raise CliError(t("bin_file", path=path))
+        return raw.decode("utf-8", "replace")
+    except OSError as exc:
+        raise CliError(t("err_file", path=path, detail=exc.strerror or exc))
+
+
+def assemble_prompt(args):
+    """Combine the positional prompt, files and piped stdin into one prompt."""
+    parts = []
+    if args.prompt:
+        parts.append(" ".join(args.prompt).strip())
+    for path in args.file or []:
+        parts.append(f"--- {path} ---\n{read_text_file(path)}\n--- end ---")
+    if not sys.stdin.isatty():
+        piped = sys.stdin.read()
+        if piped.strip():
+            parts.append(piped.strip("\n"))
+    return "\n\n".join(p for p in parts if p).strip()
+
+
+def save_output(path, text):
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+    except OSError as exc:
+        raise CliError(t("err_save", path=path, detail=exc.strerror or exc))
+
+
+# --------------------------------------------------------------------------- #
+# Interactive mode
+# --------------------------------------------------------------------------- #
+
+def interactive(cfg, opts):
+    if not sys.stdin.isatty():
+        raise CliError(t("err_nostdin"), EXIT_USAGE)
+    try:
+        import readline
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            readline.read_history_file(HISTORY_FILE)
+        except OSError:
+            pass
+    except ImportError:
+        readline = None
+
+    print(C.bold(t("banner", app=APP, ver=VERSION, model=opts["model"])))
+    history = []
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    # Prompt markers are wrapped in \001..\002 so readline ignores their width.
+    prompt = (f"\001\033[32m\002{t('you')}>\001\033[0m\002 " if C.enabled
+              else f"{t('you')}> ")
+    label = C.cyan(f"{t('bot')}> ") if C.enabled else f"{t('bot')}> "
+
+    try:
+        while True:
+            try:
+                line = input(prompt).strip()
+            except EOFError:
+                print()
+                break
+            except KeyboardInterrupt:
+                print()
+                continue
+            if not line:
+                continue
+
+            if line.startswith("/"):
+                cmd, _, rest = line.partition(" ")
+                rest = rest.strip()
+                if cmd in ("/exit", "/quit", "/q"):
+                    break
+                elif cmd == "/help":
+                    print(t("int_help"))
+                elif cmd == "/clear":
+                    history.clear()
+                    print(t("cleared"))
+                elif cmd == "/model":
+                    if rest:
+                        opts["model"] = rest
+                    print(t("model_now", model=opts["model"]))
+                elif cmd == "/system":
+                    if rest:
+                        opts["system"] = rest
+                    print(t("system_now", text=opts["system"] or t("system_none")))
+                elif cmd == "/usage":
+                    print(t("total_usage", p=totals["prompt_tokens"],
+                            c=totals["completion_tokens"], t=totals["total_tokens"]))
+                elif cmd == "/save":
+                    if not rest:
+                        print(t("unknown_cmd", cmd=line))
+                        continue
+                    dump = "\n\n".join(f"{m['role']}: {m['content']}" for m in history)
+                    try:
+                        save_output(rest, dump)
+                        print(t("saved", path=rest))
+                    except CliError as exc:
+                        eprint(C.red(f"{t('err')}: {exc.message}"))
+                else:
+                    print(t("unknown_cmd", cmd=cmd))
+                continue
+
+            history.append({"role": "user", "content": line})
+            try:
+                answer, usage = chat_turn(cfg, opts, history, label=label)
+            except KeyboardInterrupt:
+                print(f"\n[{t('interrupted')}]")
+                history.pop()
+                continue
+            except CliError as exc:
+                eprint(C.red(f"{t('err')}: {exc.message}"))
+                history.pop()
+                continue
+            history.append({"role": "assistant", "content": answer})
+            if usage:
+                for k in totals:
+                    totals[k] += usage.get(k, 0) or 0
+                if opts["show_usage"]:
+                    print_usage(usage)
+    finally:
+        if readline:
+            try:
+                readline.write_history_file(HISTORY_FILE)
+            except OSError:
+                pass
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
+# Argument parser (localized)
+# --------------------------------------------------------------------------- #
+
+class HelpFormatter(argparse.RawDescriptionHelpFormatter):
+    def __init__(self, prog, **kw):
+        kw.setdefault("max_help_position", 32)
+        kw.setdefault("width", max(60, min(100, shutil.get_terminal_size().columns)))
+        super().__init__(prog, **kw)
+
+    def add_usage(self, usage, actions, groups, prefix=None):
+        if prefix is None:
+            prefix = t("usage") + ": "
+        super().add_usage(usage, actions, groups, prefix)
+
+
+class LocalizedParser(argparse.ArgumentParser):
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        eprint(f"{self.prog}: {t('err')}: {message}")
+        sys.exit(EXIT_USAGE)
+
+
+def build_parser(config_path):
+    prog = os.path.basename(sys.argv[0]) or APP
+    epilog = t("epilog") % {"p": prog, "cfg": config_path}
+    parser = LocalizedParser(
+        prog=prog, description=t("desc"), epilog=epilog, add_help=False,
+        formatter_class=HelpFormatter,
+    )
+    parser._positionals.title = t("grp_pos")
+
+    parser.add_argument("prompt", nargs="*", help=t("h_prompt"), metavar=t("m_text"))
+
+    g = parser.add_argument_group(t("grp_gen"))
+    g.add_argument("-m", "--model", metavar=t("m_model"), help=t("h_model"))
+    g.add_argument("-s", "--system", metavar=t("m_text"), help=t("h_system"))
+    g.add_argument("-t", "--temperature", type=float, metavar=t("m_temp"),
+                   help=t("h_temp"))
+    g.add_argument("-M", "--max-tokens", type=int, metavar=t("m_n"), help=t("h_maxtok"))
+    g.add_argument("--no-stream", action="store_true", help=t("h_nostream"))
+    g.add_argument("-r", "--reasoning", action="store_true", help=t("h_reasoning"))
+
+    g = parser.add_argument_group(t("grp_io"))
+    g.add_argument("-i", "--interactive", action="store_true", help=t("h_interactive"))
+    g.add_argument("-f", "--file", action="append", metavar=t("m_file"),
+                   help=t("h_file"))
+    g.add_argument("-o", "--output", metavar=t("m_file"), help=t("h_output"))
+    g.add_argument("-u", "--usage", action="store_true", help=t("h_usage"))
+    g.add_argument("--json", action="store_true", help=t("h_json"))
+
+    g = parser.add_argument_group(t("grp_acc"))
+    g.add_argument("-l", "--list-models", action="store_true", help=t("h_models"))
+    g.add_argument("-b", "--balance", action="store_true", help=t("h_balance"))
+    g.add_argument("-c", "--config", metavar=t("m_file"), help=t("h_config"))
+    g.add_argument("--init-config", action="store_true", help=t("h_initcfg"))
+    g.add_argument("--edit-config", action="store_true", help=t("h_editcfg"))
+    g.add_argument("--show-config", action="store_true", help=t("h_showcfg"))
+    g.add_argument("--config-path", action="store_true", help=t("h_cfgpath"))
+
+    g = parser.add_argument_group(t("grp_misc"))
+    g.add_argument("--lang", metavar=t("m_lang"), help=t("h_lang"))
+    g.add_argument("--no-color", action="store_true", help=t("h_nocolor"))
+    g.add_argument("-v", "--version", action="version",
+                   version=f"{APP} {VERSION}", help=t("h_version"))
+    g.add_argument("-h", "--help", action="help", help=t("h_help"))
+    return parser
+
+
+def early_language(argv, config_path):
+    """Figure out the language before the parser (and its help) is built."""
+    for i, arg in enumerate(argv):
+        if arg == "--lang" and i + 1 < len(argv):
+            return normalize_lang(argv[i + 1])
+        if arg.startswith("--lang="):
+            return normalize_lang(arg.split("=", 1)[1])
+    if config_path.exists():
+        return normalize_lang(read_language_from_file(config_path))
+    return lang_from_env()
+
+
+def early_config_path(argv):
+    for i, arg in enumerate(argv):
+        if arg in ("-c", "--config") and i + 1 < len(argv):
+            return Path(argv[i + 1]).expanduser()
+        if arg.startswith("--config="):
+            return Path(arg.split("=", 1)[1]).expanduser()
+    return CONFIG_FILE
+
+
+# --------------------------------------------------------------------------- #
+# Commands
+# --------------------------------------------------------------------------- #
+
+def cmd_edit_config(path):
+    ensure_config(path)
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    candidates = [editor] if editor else []
+    candidates += ["nano", "vim", "vi"]
+    for cand in candidates:
+        if cand and shutil.which(cand.split()[0]):
+            return subprocess.call(cand.split() + [str(path)])
+    raise CliError(t("err_editor"))
+
+
+def cmd_show_config(cfg, path):
+    print(C.bold(t("cfg_show_title")))
+    exists = path.exists()
+    print(f"  {t('cfg_path_label')}: {path} {'' if exists else t('cfg_exists_no')}")
+    print(f"  {'api_key':<16}: {mask_key(cfg['api_key'])}")
+    for key in ("api_key_required", "base_url", "auth_header", "auth_scheme",
+                "chat_path", "models_path", "balance_path", "reasoning_field",
+                "stream_usage", "model", "temperature", "max_tokens",
+                "system_prompt", "extra_body", "stream", "show_reasoning",
+                "show_usage", "timeout", "language", "color"):
+        value = cfg[key]
+        print(f"  {key:<16}: {value if value not in (None, '', {}) else '-'}")
+    # Header values may hold secrets: show only the names.
+    names = ", ".join(cfg["headers"]) or "-"
+    print(f"  {'headers':<16}: {names}")
+
+
+def cmd_balance(cfg):
+    if not cfg["balance_path"]:
+        raise CliError(t("err_nobalance"))
+    data = api_get_json(cfg, cfg["balance_path"])
+    print(C.bold(t("balance_title")))
+    if not data.get("is_available", True):
+        print(C.yellow(t("balance_unavail")))
+    for info in data.get("balance_infos", []):
+        print(t("balance_row", cur=info.get("currency", "?"),
+                total=info.get("total_balance", "?"),
+                top=info.get("topped_up_balance", "?"),
+                gr=info.get("granted_balance", "?")))
+
+
+def cmd_list_models(cfg):
+    if not cfg["models_path"]:
+        raise CliError(t("err_nomodels"))
+    data = api_get_json(cfg, cfg["models_path"])
+    print(C.bold(t("models_title")))
+    for model in data.get("data", []):
+        print(f"  {model.get('id', '?')}")
+
+
+# --------------------------------------------------------------------------- #
+# Main
+# --------------------------------------------------------------------------- #
+
+def main(argv=None):
+    global _LANG, C
+    argv = list(sys.argv[1:] if argv is None else argv)
+
+    config_path = early_config_path(argv)
+    _LANG = early_language(argv, config_path)
+    C = Colors(sys.stderr.isatty() and "NO_COLOR" not in os.environ
+               and "--no-color" not in argv)
+
+    parser = build_parser(config_path)
+    args = parser.parse_args(argv)
+
+    try:
+        if args.config_path:
+            print(config_path)
+            return EXIT_OK
+
+        # Config bootstrap: create the file on first run.
+        created = ensure_config(config_path)
+        if created:
+            eprint(C.green(t("cfg_created", path=config_path)))
+
+        if args.init_config:
+            return EXIT_OK
+        if args.edit_config:
+            return cmd_edit_config(config_path)
+
+        cfg = load_config(config_path)
+
+        # Final language/color decision now that the file is parsed.
+        _LANG = normalize_lang(args.lang or cfg["language"])
+        color_pref = cfg["color"]
+        use_color = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+        if color_pref in ("true", "yes", "on", "1"):
+            use_color = "NO_COLOR" not in os.environ
+        elif color_pref in ("false", "no", "off", "0"):
+            use_color = False
+        if args.no_color:
+            use_color = False
+        C = Colors(use_color)
+
+        if args.show_config:
+            cmd_show_config(cfg, config_path)
+            return EXIT_OK
+
+        # From here on the API key is mandatory, unless the config says otherwise.
+        require_api_key(cfg, config_path)
+
+        if args.balance:
+            cmd_balance(cfg)
+            return EXIT_OK
+        if args.list_models:
+            cmd_list_models(cfg)
+            return EXIT_OK
+
+        if args.temperature is not None and not 0.0 <= args.temperature <= 2.0:
+            raise CliError(t("err_temp"), EXIT_USAGE)
+
+        opts = {
+            "model": args.model or cfg["model"],
+            "system": args.system if args.system is not None else cfg["system_prompt"],
+            "temperature": args.temperature if args.temperature is not None
+            else cfg["temperature"],
+            "max_tokens": args.max_tokens if args.max_tokens is not None
+            else cfg["max_tokens"],
+            "stream": cfg["stream"] and not args.no_stream and not args.json,
+            "stream_usage": cfg["stream_usage"],
+            "extra_body": cfg["extra_body"],
+            "show_reasoning": cfg["show_reasoning"] or args.reasoning,
+            "show_usage": cfg["show_usage"] or args.usage,
+            "raw_json": args.json,
+        }
+
+        no_input = not args.prompt and not args.file
+        if args.interactive or (no_input and sys.stdin.isatty()):
+            return interactive(cfg, opts)
+
+        prompt = assemble_prompt(args)
+        if not prompt:
+            raise CliError(t("err_empty"), EXIT_USAGE)
+
+        answer, usage = chat_turn(cfg, opts, [{"role": "user", "content": prompt}])
+        if args.output:
+            save_output(args.output, answer)
+        if opts["show_usage"]:
+            print_usage(usage)
+        return EXIT_OK
+
+    except CliError as exc:
+        eprint(f"{C.red(APP + ': ' + t('err'))}: {exc.message}")
+        return exc.code
+    except KeyboardInterrupt:
+        eprint(f"\n[{t('interrupted')}]")
+        return EXIT_INTERRUPT
+    except BrokenPipeError:
+        # Output piped into something like `head`; exit quietly.
+        try:
+            sys.stdout.close()
+        except Exception:
+            pass
+        return EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

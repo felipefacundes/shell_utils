@@ -41,7 +41,6 @@ alias less='less -R -i'
 alias lessh='LESSOPEN="| pygmentize -O style=monokai %s" less -M -R '
 
 alias mv='mv -v --backup=t'
-alias aur="yay -S --nodiffmenu --noeditmenu --noupgrademenu --mflags --skipinteg --noconfirm"
 alias cpi="cpupower frequency-info"
 alias cpu="cpupower frequency-info; lscpu"
 alias so="echo source ~/.zshrc; source ~/.zshrc"

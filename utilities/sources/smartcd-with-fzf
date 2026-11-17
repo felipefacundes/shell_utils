@@ -13,9 +13,10 @@ fuzzy file search for fast, intuitive navigation.
 
 FEATURES:
 • Fuzzy search through directory history and filesystem
-• Interactive selection with fzf + preview (exa/tree/ls)
-• Auto-execute .on_entry.smartcd.sh/.on_leave.smartcd.sh scripts
-• Ignores directories from SMARTCD_HIST_IGNORE (e.g., .git)
+• Interactive selection with fzf + preview (eza/exa/tree/ls)
+• Auto-execute .on_entry.smartcd.sh/.on_leave.smartcd.sh scripts (with trust check)
+• Ignores directories from SMARTCD_HIST_IGNORE in the history (.git is also
+  hidden from filesystem search; typing a name like node_modules still works)
 • Maintains history database with size limit (SMARTCD_HIST_SIZE)
 
 CONFIGURATION MODES (via SMARTCD variable in $SMARTCD_CONFIG):
@@ -38,31 +39,32 @@ EXAMPLES:
   Ctrl+f              # Interactive mode (bash/zsh binding)
 
 CONFIGURATION:
-  SMARTCD_HIST_SIZE=100          # History entries to keep
-  SMARTCD_HIST_IGNORE=".git|node_modules"  # Directories to ignore
-  SMARTCD_CONFIG_FOLDER="$HOME/.config/smartcd"  # Config location
-  SMARTCD_CONFIG="$SMARTCD_CONFIG_FOLDER/smartcd.conf"  # Main config file
+  SMARTCD_HIST_SIZE=100          # History entries to keep (positive integer)
+  SMARTCD_HIST_IGNORE=".git|node_modules"  # Directories to ignore (regex alternatives)
+  SMARTCD_CONFIG_FOLDER="$HOME/.shell_utils_configs/smartcd"  # Config location
+  SMARTCD_CONFIG="$SMARTCD_CONFIG_FOLDER/smartcd.conf"        # Main config file
   SMARTCD_HIST_FILE="path_history.db"      # History database
-  SMARTCD_AUTOEXEC_FILE="autoexec.db"      # Auto-exec scripts
+  SMARTCD_AUTOEXEC_FILE="autoexec.db"      # Trusted auto-exec scripts (hash + path)
+  SMARTCD_AUTOEXEC_ASK=1                   # 1 = ask before running an untrusted
+                                           #     .on_entry/.on_leave script (default)
+                                           # 0 = run them without asking
 
 AUTO-EXECUTION SCRIPTS:
   Create .on_entry.smartcd.sh or .on_leave.smartcd.sh in any directory
   to run commands automatically when entering/leaving that directory.
-
-PERFORMANCE:
-• Uses pipes instead of temp files for better reliability
-• Combines database search with filesystem search
-• Removes duplicates and empty lines automatically
+  The first time (or whenever the file changes) smartcd asks for
+  confirmation: [y] run once, [a] always trust this exact file, [N] skip.
 
 TIPS:
-• Use quotes for paths with spaces: smartcd "my folder"
+• Quotes are optional: smartcd my folder   /   smartcd "my folder"
 • Clean history periodically: smartcd --cleanup
 • The more you use it, the smarter it gets!
-• Configure SMARTCD in $SMARTCD_CONFIG to control features
 
 DOCUMENTATION
 
-# Smartcd configuration
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 export SMARTCD_LOG=~/.smartcd.log
 export SMARTCD_HIST_SIZE=${SMARTCD_HIST_SIZE:-"100"}
 export SMARTCD_HIST_IGNORE=${SMARTCD_HIST_IGNORE:-".git"}
@@ -70,6 +72,14 @@ export SMARTCD_CONFIG_FOLDER=${SMARTCD_CONFIG_FOLDER:-"$HOME/.shell_utils_config
 export SMARTCD_CONFIG="$SMARTCD_CONFIG_FOLDER/smartcd.conf"
 export SMARTCD_HIST_FILE=${SMARTCD_HIST_FILE:-"path_history.db"}
 export SMARTCD_AUTOEXEC_FILE=${SMARTCD_AUTOEXEC_FILE:-"autoexec.db"}
+export SMARTCD_AUTOEXEC_ASK=${SMARTCD_AUTOEXEC_ASK:-"1"}
+
+# FIX: guarantee SMARTCD_HIST_SIZE is a positive integer. A value of 0 (or
+# non-numeric) would make "head -n 0" silently wipe the database.
+if ! [[ "${SMARTCD_HIST_SIZE}" =~ ^[1-9][0-9]*$ ]]; then
+    SMARTCD_HIST_SIZE=100
+fi
+export SMARTCD_HIST_SIZE
 
 [[ ! -d "$SMARTCD_CONFIG_FOLDER" ]] && mkdir -p "$SMARTCD_CONFIG_FOLDER" >/dev/null 2>&1
 
@@ -89,350 +99,370 @@ _unset() {
     unset SMARTCD_HIST_FILE
     unset SMARTCD_HIST_IGNORE
     unset SMARTCD_AUTOEXEC_FILE
+    unset SMARTCD_AUTOEXEC_ASK
 }
 
 # Disable smartcd completely if SMARTCD is not 1 or 2
-! { [[ "$SMARTCD" == 1 || "$SMARTCD" == 2 ]]; } && _unset && return
+if ! { [[ "$SMARTCD" == 1 || "$SMARTCD" == 2 ]]; }; then
+    _unset
+    return
+fi
+
+# ---------------------------------------------------------------------------
+# Basic mode: cd without bureaucracy (no quotes/escapes needed). Works in
+# bash and zsh. Used as-is when SMARTCD=1 or when fzf is not available.
+# NOTE: always use "builtin cd" inside functions, never the aliased "cd".
+# ---------------------------------------------------------------------------
+__smartcd::basic() {
+    local dir arg
+
+    # Pass real cd options straight through
+    case "$1" in
+        -|-L|-P|-e|-@) builtin cd "$@"; return ;;
+        --) shift ;;
+    esac
+
+    if [[ $# -eq 0 ]]; then
+        builtin cd
+        return
+    fi
+
+    dir="$1"
+    shift
+    for arg in "$@"; do dir+=" ${arg}"; done
+
+    # Remove surrounding quotes, expand ~
+    dir=${dir#[\"\']}
+    dir=${dir%[\"\']}
+    if [[ "$dir" == "~" || "$dir" == "~/"* ]]; then
+        dir="${HOME}${dir:1}"
+    fi
+
+    builtin cd -- "$dir"
+}
+
+smartcd() { __smartcd::basic "$@"; }
 
 if [[ -n "$ZSH_VERSION" ]]; then
-	smartcd() {
-		local target
-		
-		# If no argument, go to HOME
-		if [ $# -eq 0 ]; then
-			builtin cd || return 1
-			return 0
-		fi
-		
-		# Join all arguments
-		target="$*"
-		
-		# Remove external quotes
-		target="${target%\"}"
-		target="${target#\"}"
-		target="${target%\'}"
-		target="${target#\'}"
-		
-		# Try changing directory
-		if builtin cd "$target" 2>/dev/null; then
-			return 0
-		else
-			echo "Error: Directory '$target' does not exist" >&2
-			return 1
-		fi
-	}
-
-	alias cd='noglob smartcd'
-    
+    alias cd='noglob smartcd'
 elif [[ -n "$BASH_VERSION" ]]; then
-    smartcd() {
-        local dir="$*"
-
-        # Expand ~ manually
-        [[ $dir == "~"* ]] && dir="${dir/#\~/$HOME}"
-
-        # Use printf '%q' to correctly escape spaces and special characters
-        builtin cd "$(printf '%b' "$dir")" 2>/dev/null || builtin cd "$dir" || return 1
-    }
-
     alias cd='smartcd'
 fi
 
 # If SMARTCD is not 2, disable fuzzy search but keep alias functionality
-[[ "$SMARTCD" != 2 ]] && _unset && return
+if [[ "$SMARTCD" != 2 ]]; then
+    _unset
+    return
+fi
 
 # Check dependencies
 if ! command -v fzf &> /dev/null; then
-	echo "Can't use smartcd : missing fzf" >| "$SMARTCD_LOG"
-	return #1
+    echo "Can't use smartcd : missing fzf" >| "$SMARTCD_LOG"
+    return
 fi
 
-if ! command -v md5sum &> /dev/null; then
-	echo "Can't use smartcd : missing md5sum" >| "$SMARTCD_LOG"
-	return #1
+# FIX: accept either GNU md5sum or BSD/macOS md5. We only need the hash of a
+# file's contents, so define a helper that works on both.
+if command -v md5sum &> /dev/null; then
+    __smartcd::md5() { md5sum "$1" | cut -d' ' -f1; }
+elif command -v md5 &> /dev/null; then
+    __smartcd::md5() { md5 -q "$1"; }
+else
+    echo "Can't use smartcd : missing md5sum/md5" >| "$SMARTCD_LOG"
+    return
 fi
 
-# Smartcd functions
-function __smartcd::cd() {
-    local original_stderr_setting="$-"
-    set +x  # Disable debug if enabled
-    
-    local lookUpPath="${1:-$HOME}"
-    local selectedEntry=""
-    local fzfSelect1=""
+# ---------------------------------------------------------------------------
+# Database helpers (plain text file, one absolute path per line).
+# No sed with user data: paths may contain ':', '&', '\', '/', spaces, etc.
+# ---------------------------------------------------------------------------
+function __smartcd::dbfile() {
+    printf '%s' "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
+}
 
-    [[ ! -f "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}" ]] && __smartcd::databaseReset
+function __smartcd::mktemp() {
+    mktemp "${SMARTCD_CONFIG_FOLDER}/.tmp.XXXXXX" 2>/dev/null
+}
 
-    # Remove surrounding quotes if present
-    lookUpPath=$(echo "$lookUpPath" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
+function __smartcd::isIgnored() {
+    [[ -n "${SMARTCD_HIST_IGNORE}" ]] || return 1
+    printf '%s\n' "${1}" | grep -Eq "/(${SMARTCD_HIST_IGNORE})(/|\$)"
+}
 
-    if [[ "${lookUpPath}" = "-" ]] || [[ -d "${lookUpPath}" ]]; then
-        selectedEntry="${lookUpPath}"
-    elif [[ "${lookUpPath}" = "--" ]]; then
-        selectedEntry=$(__smartcd::databaseSearch 2>/dev/null | __smartcd::choose_direct)
+function __smartcd::databaseReset() {
+    mkdir -p "${SMARTCD_CONFIG_FOLDER}" >/dev/null 2>&1
+    : > "$(__smartcd::dbfile)"
+}
+
+function __smartcd::databaseSavePath() {
+    local directory="${1}"
+    local db; db=$(__smartcd::dbfile)
+    local tmp
+
+    [[ "${directory}" = "${HOME}" || "${directory}" = "/" ]] && return 0
+
+    tmp=$(__smartcd::mktemp) || return 1
+
+    if __smartcd::isIgnored "${directory}"; then
+        # Ignored directory: just make sure it is not in the history
+        grep -Fxv -- "${directory}" "${db}" 2>/dev/null > "${tmp}"
     else
-        # Combine results without using temporary file
-        local combined_results
-        
-        # Capture results from database
-        local db_results
-        db_results=$(__smartcd::databaseSearch "${lookUpPath}" 2>/dev/null)
-        
-        # Capture results from filesystem
-        local fs_results
-        fs_results=$(__smartcd::filesystemSearch "${lookUpPath}" 2>/dev/null)
-        
-        # Combine and remove duplicates
-        combined_results=$(printf "%s\n%s" "$db_results" "$fs_results" | awk '!seen[$0]++ && $0 != ""')
-        
-        if [[ -n "$combined_results" ]]; then
-            local line_count; line_count=$(echo "$combined_results" | wc -l)
-            [[ $line_count -gt 0 ]] && fzfSelect1="--select-1"
-            
-            selectedEntry=$(echo "$combined_results" | __smartcd::choose_direct "$fzfSelect1")
-        else
-            selectedEntry="${lookUpPath}"
+        # Put it first, drop any previous occurrence/blank lines, trim size
+        {
+            printf '%s\n' "${directory}"
+            grep -Fxv -- "${directory}" "${db}" 2>/dev/null | grep -v '^[[:space:]]*$'
+        } | head -n "${SMARTCD_HIST_SIZE:-100}" > "${tmp}"
+    fi
+
+    mv -f "${tmp}" "${db}"
+}
+
+function __smartcd::databaseDeletePath() {
+    local directory="${1}"
+    local db; db=$(__smartcd::dbfile)
+    local tmp
+
+    [[ -f "${db}" ]] || return 0
+    tmp=$(__smartcd::mktemp) || return 1
+    grep -Fxv -- "${directory}" "${db}" 2>/dev/null > "${tmp}"
+    mv -f "${tmp}" "${db}"
+}
+
+function __smartcd::databaseCleanup() {
+    local db; db=$(__smartcd::dbfile)
+    local tmp line
+
+    [[ -f "${db}" ]] || __smartcd::databaseReset
+    tmp=$(__smartcd::mktemp) || return 1
+
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        [[ -n "${line}" && -d "${line}" ]] || continue
+        __smartcd::isIgnored "${line}" && continue
+        printf '%s\n' "${line}"
+    done < "${db}" | awk '!seen[$0]++' | head -n "${SMARTCD_HIST_SIZE:-100}" > "${tmp}"
+
+    mv -f "${tmp}" "${db}"
+}
+
+# Literal (non-regex), case-insensitive search in the history.
+# "a/b" means: "a" somewhere in the directory part, "b" in the last component.
+function __smartcd::databaseSearch() {
+    local db; db=$(__smartcd::dbfile)
+    [[ -f "${db}" ]] || return 0
+
+    SMARTCD_Q="${1}" awk '
+        BEGIN { q = tolower(ENVIRON["SMARTCD_Q"]); n = split(q, parts, "/") }
+        length($0) == 0 { next }
+        {
+            line = tolower($0)
+            m = split(line, comp, "/")
+            base = comp[m]
+            if (parts[n] != "" && index(base, parts[n]) == 0) next
+            dir = substr(line, 1, length(line) - length(base))
+            pos = 1
+            for (i = 1; i < n; i++) {
+                if (parts[i] == "") continue
+                p = index(substr(dir, pos), parts[i])
+                if (p == 0) next
+                pos += p - 1 + length(parts[i])
+            }
+            print $0
+        }' "${db}"
+}
+
+# Literal, case-insensitive search among the sub-directories of the parent.
+function __smartcd::filesystemSearch() {
+    local query="${1}" parent name
+
+    parent=$(dirname -- "${query}")
+    name=$(basename -- "${query}")
+    [[ -d "${parent}" ]] || return 0
+    parent=$(builtin cd -- "${parent}" 2>/dev/null && pwd) || return 0
+
+    find -L "${parent}" -mindepth 1 -maxdepth 1 -type d ! -name .git 2>/dev/null |
+        SMARTCD_Q="${name}" awk '
+            BEGIN { q = tolower(ENVIRON["SMARTCD_Q"]) }
+            { n = split($0, a, "/"); if (index(tolower(a[n]), q)) print $0 }'
+}
+
+# ---------------------------------------------------------------------------
+# fzf chooser: reads candidates from stdin, prints the selected one.
+# ---------------------------------------------------------------------------
+function __smartcd::choose_direct() {
+    local mode="${1}"
+    local viewer preview hint
+    local -a args
+
+    viewer=$(command -v eza exa tree ls 2>/dev/null | awk 'NR==1 {print}')
+    hint="printf 'no such directory: %s\n' {}; echo 'hint: run smartcd --cleanup'"
+
+    case "${viewer}" in
+        */eza|*/exa)
+            preview="[ -d {} ] && ${viewer} --tree --colour=always --icons --group-directories-first --all --level=1 {} || { ${hint}; }"
+            ;;
+        */tree)
+            preview="[ -d {} ] && ${viewer} --dirsfirst -a -x -C --filelimit 100 -L 1 {} || { ${hint}; }"
+            ;;
+        *)
+            preview="[ -d {} ] && { command ls -A --color=always {} 2>/dev/null || command ls -A {}; } || { ${hint}; }"
+            ;;
+    esac
+
+    args=(--layout=reverse)
+    [[ "${mode}" == "select1" ]] && args+=(--select-1 --exit-0)
+    [[ -z "$TERMUX_VERSION" ]] && args+=(--height=40% "--preview=${preview}")
+
+    fzf "${args[@]}"
+}
+
+# ---------------------------------------------------------------------------
+# Auto-exec scripts (.on_entry.smartcd.sh / .on_leave.smartcd.sh)
+# Only run if trusted: hash+path stored in autoexec.db
+# ---------------------------------------------------------------------------
+function __smartcd::autoexecRun() {
+    local file="${1}"
+    local db="${SMARTCD_CONFIG_FOLDER}/${SMARTCD_AUTOEXEC_FILE}"
+    local abs hash answer
+
+    [[ -f "${file}" && -r "${file}" ]] || return 0
+
+    if [[ "${SMARTCD_AUTOEXEC_ASK}" != "0" ]]; then
+        abs="${PWD}/${file}"
+        # FIX: portable hash (md5sum on GNU, md5 -q on BSD/macOS).
+        hash=$(__smartcd::md5 "${file}")
+
+        if ! grep -Fxq -- "${hash}  ${abs}" "${db}" 2>/dev/null; then
+            printf 'smartcd: run %s? [y]es once / [a]lways / [N]o: ' "${abs}" >&2
+            read -r answer < /dev/tty 2>/dev/null || { echo >&2; return 0; }
+            case "${answer}" in
+                a|A) printf '%s  %s\n' "${hash}" "${abs}" >> "${db}" ;;
+                y|Y) ;;
+                *) return 0 ;;
+            esac
         fi
     fi
-    
-    # Restore stderr if it was redirected
-    [[ "$original_stderr_setting" =~ x ]] && set -x
-    
-    # Only proceed if a directory was actually selected
+
+    # Explicit path: never search $PATH (a bare "source file" would).
+    # shellcheck source=/dev/null
+    source "${PWD}/${file}"
+}
+
+function __smartcd::enterPath() {
+    local directory="${1}"
+    local returnCode=0
+
+    [[ "${PWD}" = "${directory}" ]] && return 0
+
+    if { [[ -d "${directory}" ]] && [[ -r "${directory}" ]]; } || [[ "${directory}" = "-" ]]; then
+        __smartcd::autoexecRun .on_leave.smartcd.sh
+    fi
+
+    if [[ "${directory}" = "-" ]]; then
+        builtin cd -
+    else
+        builtin cd -- "${directory}"
+    fi
+    returnCode=$?
+
+    if [[ ${returnCode} -eq 0 ]]; then
+        __smartcd::databaseSavePath "${PWD}"
+        __smartcd::autoexecRun .on_entry.smartcd.sh
+    else
+        __smartcd::databaseDeletePath "${directory}"
+    fi
+
+    return ${returnCode}
+}
+
+# ---------------------------------------------------------------------------
+# Main logic
+# ---------------------------------------------------------------------------
+function __smartcd::cd() {
+    local target="${1:-$HOME}"
+    local selectedEntry="" results
+    local db; db=$(__smartcd::dbfile)
+
+    [[ -f "${db}" ]] || __smartcd::databaseReset
+
+    # Remove surrounding quotes, expand ~
+    target=${target#[\"\']}
+    target=${target%[\"\']}
+    if [[ "${target}" == "~" || "${target}" == "~/"* ]]; then
+        target="${HOME}${target:1}"
+    fi
+
+    if [[ "${target}" = "-" ]] || [[ -d "${target}" ]]; then
+        selectedEntry="${target}"
+    elif [[ "${target}" = "--" ]]; then
+        if ! grep -q '[^[:space:]]' "${db}" 2>/dev/null; then
+            printf 'smartcd: history is empty, nothing to choose from\n' >&2
+            return 1
+        fi
+        selectedEntry=$(__smartcd::databaseSearch "" | __smartcd::choose_direct)
+    else
+        results=$({ __smartcd::databaseSearch "${target}"; __smartcd::filesystemSearch "${target}"; } \
+            | awk 'length($0) && !seen[$0]++')
+
+        if [[ -n "${results}" ]]; then
+            selectedEntry=$(printf '%s\n' "${results}" | __smartcd::choose_direct select1)
+        else
+            selectedEntry="${target}"   # let cd print its own error
+        fi
+    fi
+
+    # Only proceed if something was actually selected (Esc in fzf = nothing)
     if [[ -n "${selectedEntry}" ]]; then
         __smartcd::enterPath "${selectedEntry}"
     fi
 }
 
-# New choose function that receives input via pipe
-function __smartcd::choose_direct() {
-    local fzfSelect1="${1}"
-    local fzfPreview=""
-    local cmdPreview; cmdPreview=$(command -v exa tree ls 2>/dev/null | awk 'NR==1 {print}')
-    
-    local errMessage="no such directory [ {} ]'\n\n'hint: run '\033[1m'smartcd --cleanup'\033[22m'"
-    
-    case "${cmdPreview}" in
-        */eza|*/exa)
-            fzfPreview='[ -d {} ] && '${cmdPreview}' --tree --colour=always --icons --group-directories-first --all --level=1 {} || echo '"${errMessage}"''
-            ;;
-        */tree)
-            fzfPreview='[ -d {} ] && '${cmdPreview}' --dirsfirst -a -x -C --filelimit 100 -L 1 {} || echo '"${errMessage}"''
-            ;;
-        *)
-            fzfPreview='[ -d {} ] && echo [ {} ] ; '${cmdPreview}' --color=always --almost-all --group-directories-first {} || echo '"${errMessage}"''
-            ;;
-    esac
-    
-    # Read from stdin (pipe) instead of file
-    if [[ -n "$TERMUX_VERSION" ]]; then
-        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" 2>/dev/tty
-    else
-        fzf ${fzfSelect1} --delimiter="\n" --layout="reverse" --height="40%" \
-            --preview="${fzfPreview}" 2>/dev/tty
-    fi
-
-}
-
-function __smartcd::enterPath() {
-	local returnCode=0
-	local directory="${1}"
-
-	[[ "${PWD}" = "${directory}" ]] && return ${returnCode}
-
-	if [[ -d "${directory}" ]] && [[ -r "${directory}" ]] || [[ "-" = "${directory}" ]]; then
-		__smartcd::autoexecRun .on_leave.smartcd.sh
-	fi
-
-	if builtin cd "${directory}" 2>&1; then
-		__smartcd::databaseSavePath "${PWD}"
-		__smartcd::autoexecRun .on_entry.smartcd.sh
-	else
-	    returnCode=$?
-		__smartcd::databaseDeletePath "${directory}"
-	    return ${returnCode}
-	fi
-
-}
-
-function __smartcd::filesystemSearch() {
-	local searchPath; searchPath=$(dirname -- "${1}")
-	local searchString; searchString=$(basename -- "${1}")
-	local cmdFinder; cmdFinder=$(command -v fdfind fd find 2>/dev/null | awk 'NR==1 {print}')
-
-	case "${cmdFinder}" in
-		*/fd*)
-			"${cmdFinder}" --hidden --no-ignore-vcs "${searchString}" --color=never --follow --min-depth=1 --max-depth=1 --type=directory --exclude ".git/" "${searchPath}" --exec realpath --no-symlinks 2>/dev/null
-			;;
-		*)
-			find "${searchPath}" -follow -mindepth 1 -maxdepth 1 -type d ! -path '*\.git/*' -iname '*'"${searchString}"'*' -exec realpath --no-symlinks {} + 2>/dev/null
-			;;
-	esac
-}
-
-function __smartcd::databaseSearch() {
-	local searchString; searchString=$(echo "${1}" | sed -e 's:\.:\\.:g' -e 's:/:.*/.*:g')
-	grep -i -E "${searchString}"'[^/]*$' "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}" 2>/dev/null
-}
-
-function __smartcd::databaseSavePath() {
-	local directory="${1}"
-	local iCounter=0
-	local ignoreItem=""
-	local ignoreItemFound=""
-
-	[[ "${directory}" = "${HOME}" ]] || [[ "${directory}" = "/" ]] && return
-
-	# Check ignore list
-	while true; do
-		((iCounter++))
-		ignoreItem=$(echo "${SMARTCD_HIST_IGNORE}|" | cut -d'|' -f${iCounter})
-		[[ -z "${ignoreItem}" ]] && break
-
-		ignoreItemFound=$(echo "${directory}" | grep -E "/${ignoreItem}$|/${ignoreItem}/")
-		if [[ -n "${ignoreItemFound}" ]]; then
-			__smartcd::databaseDeletePath "${directory}"
-			return
-		fi
-	done
-
-	__smartcd::databaseDeletePath "${directory}"
-	sed -i "1 s:^:${directory}\n:" "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
-	sed -i $((SMARTCD_HIST_SIZE + 1))',$ d' "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
-}
-
-function __smartcd::databaseDeletePath() {
-	local directory="${1}"
-	sed -i "\:^${directory}$:d" "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}" 2>/dev/null
-}
-
-function __smartcd::databaseCleanup() {
-	local fTmp; fTmp=$(mktemp 2>/dev/null)
-	local line=""
-	local iCounter=0
-	local bIgnore="false"
-	local ignoreItem=""
-	local ignoreItemFound=""
-
-	[[ ! -f "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}" ]] && __smartcd::databaseReset
-
-	while IFS= read -r line || [[ -n "${line}" ]]; do
-		if [[ -d "${line}" ]]; then
-			iCounter=0
-			bIgnore="false"
-
-			while true; do
-				((iCounter++))
-				ignoreItem=$(echo "${SMARTCD_HIST_IGNORE}|" | cut -d'|' -f${iCounter})
-				[[ -z "${ignoreItem}" ]] && break
-
-				ignoreItemFound=$(echo "${line}" | grep -E "/${ignoreItem}$|/${ignoreItem}/")
-				if [[ -n "${ignoreItemFound}" ]]; then
-					bIgnore="true"
-					break
-				fi
-			done
-
-			[[ "${bIgnore}" = "false" ]] && echo "${line}" >> "${fTmp}"
-		fi
-	done < "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
-
-	awk '!seen[$0]++' "${fTmp}" > "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
-	sed -i '/^[[:blank:]]*$/ d' "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
-	[[ $(wc -l < "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}") -eq 0 ]] && __smartcd::databaseReset
-	rm -f "${fTmp}"
-}
-
-function __smartcd::databaseReset() {
-	mkdir -p "${SMARTCD_CONFIG_FOLDER}" >/dev/null 2>&1
-	echo "" > "${SMARTCD_CONFIG_FOLDER}/${SMARTCD_HIST_FILE}"
-}
-
-function __smartcd::autoexecRun() {
-	local fAutoexec="${1}"
-	if [[ -f "${fAutoexec}" ]] && [[ -r "${fAutoexec}" ]]; then
-        # shellcheck source=/dev/null
-		source "${fAutoexec}"
-	fi
-}
-
-# Key binding for Ctrl+f
-[[ -n "$BASH_VERSION" ]] && bind -r '\C-f'
-[[ -n "$BASH_VERSION" ]] && bind '"\C-f":"smartcd --\n"'
-[[ -n "$ZSH_VERSION" ]] && bindkey -s '^f' 'smartcd --\n'
-
-# Simple wrapper that joins all arguments
-function __smartcd_wrapper() {
-	case $# in
-		0)
-			__smartcd::cd
-			;;
-		1)
-			__smartcd::cd "$1"
-			;;
-		*)
-			# Para múltiplos argumentos, junta-os mantendo os espaços
-			local IFS=' '
-			__smartcd::cd "$*"
-			;;
-	esac
-}
-
-function __smartcd::handle_special_paths() {
-    local path="$1"
-    
-    # Suporte a variáveis especiais
-    case "$path" in
-        '..'|'../')
-            builtin cd .. || true
-            return 0
-            ;;
-        '.')
-            return 0  # Ficar no mesmo diretório
-            ;;
-        '~'*)
-            # Expansão com suporte a ~username
-            builtin cd "$path" 2>/dev/null && return 0
-            ;;
-    esac
-    return 1
-}
-
-# Main smartcd function - call this instead of overriding cd
+# Main smartcd function - the "cd" alias points here
 function smartcd() {
+    local joined arg
+
     case "$1" in
         --help|-h)
             echo "Usage: smartcd [PATH]"
-            echo "       smartcd --     (interactive mode)"
-            echo "       smartcd -      (go to previous directory)"
-            echo "       smartcd --cleanup (cleanup database)"
-            echo "       smartcd --reset (reset database)"
+            echo "       smartcd --          (interactive mode)"
+            echo "       smartcd -           (go to previous directory)"
+            echo "       smartcd --cleanup   (cleanup database)"
+            echo "       smartcd --reset     (reset database)"
             ;;
-        --cleanup)
-            __smartcd::databaseCleanup
-            ;;
-        --reset)
-            __smartcd::databaseReset
-            ;;
-        -)
-            # Default cd behavior - (go back to previous folder)
-            builtin cd - || true
-            ;;
-        '..'|'../'|'.'|'~'*)
-            __smartcd::handle_special_paths "$1" && return
-            ;;
+        --cleanup) __smartcd::databaseCleanup ;;
+        --reset)   __smartcd::databaseReset ;;
+        -L|-P|-e|-@) builtin cd "$@" ;;
         *)
-            __smartcd_wrapper "$@"
+            # Join all arguments with spaces (cd my folder just works).
+            # Done by hand instead of "$*" so we never touch IFS, which would
+            # leak into sourced .on_entry/.on_leave scripts (dynamic scope).
+            joined="$1"
+            (( $# )) && shift
+            for arg in "$@"; do joined+=" ${arg}"; done
+            __smartcd::cd "${joined}"
             ;;
     esac
 }
 
-# To complete smartcd in bash (optional)
-if [[ -n "$BASH_VERSION" ]]; then
-	complete -o dirnames -o nospace -F _cd smartcd 2>/dev/null || true
+# ---------------------------------------------------------------------------
+# Key bindings and completion (interactive shells only)
+# ---------------------------------------------------------------------------
+if [[ $- == *i* ]]; then
+    if [[ -n "$BASH_VERSION" ]]; then
+        bind -r '\C-f' 2>/dev/null
+        bind '"\C-f":"smartcd --\n"'
+    elif [[ -n "$ZSH_VERSION" ]]; then
+        bindkey -s '^f' 'smartcd --\n'
+    fi
 fi
 
-# To complete smartcd in zsh (optional)
+if [[ -n "$BASH_VERSION" ]]; then
+    if declare -F _cd >/dev/null 2>&1; then
+        complete -o nospace -F _cd smartcd 2>/dev/null || true
+    else
+        complete -d smartcd 2>/dev/null || true
+    fi
+fi
+
 if [[ -n "$ZSH_VERSION" ]]; then
-	compdef _cd smartcd 2>/dev/null || true
+    compdef _cd smartcd 2>/dev/null || true
 fi

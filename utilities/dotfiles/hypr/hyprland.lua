@@ -134,13 +134,14 @@ hl.window_rule({
 
 -- ============================================================
 -- Se apertar a Workspace desejada mais de uma vez, retorna para a anterior
--- ============================================================
 
-hl.config({
-    binds = {
-        workspace_back_and_forth = true,
-    },
-})
+-- hl.config({
+--     binds = {
+--         workspace_back_and_forth = true,
+--     },
+-- })
+
+-- ============================================================
 
 
 hl.curve("myBezier", {
