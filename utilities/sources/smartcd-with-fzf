@@ -191,7 +191,7 @@ function __smartcd::isIgnored() {
 
 function __smartcd::databaseReset() {
     mkdir -p "${SMARTCD_CONFIG_FOLDER}" >/dev/null 2>&1
-    : > "$(__smartcd::dbfile)"
+    : >| "$(__smartcd::dbfile)"
 }
 
 function __smartcd::databaseSavePath() {
@@ -205,16 +205,19 @@ function __smartcd::databaseSavePath() {
 
     if __smartcd::isIgnored "${directory}"; then
         # Ignored directory: just make sure it is not in the history
-        grep -Fxv -- "${directory}" "${db}" 2>/dev/null > "${tmp}"
+        grep -Fxv -- "${directory}" "${db}" 2>/dev/null >| "${tmp}"
     else
         # Put it first, drop any previous occurrence/blank lines, trim size
         {
             printf '%s\n' "${directory}"
             grep -Fxv -- "${directory}" "${db}" 2>/dev/null | grep -v '^[[:space:]]*$'
-        } | head -n "${SMARTCD_HIST_SIZE:-100}" > "${tmp}"
+        } | head -n "${SMARTCD_HIST_SIZE:-100}" >| "${tmp}"
     fi
 
-    mv -f "${tmp}" "${db}"
+    # FIX: "command" bypasses any "alias mv='mv -v'"; stdout discarded so the
+    # "renamed ... -> ..." noise never reaches the terminal. stderr is kept,
+    # so real errors (permissions, missing file, etc.) are still shown.
+    command mv -f "${tmp}" "${db}" >/dev/null
 }
 
 function __smartcd::databaseDeletePath() {
@@ -224,8 +227,8 @@ function __smartcd::databaseDeletePath() {
 
     [[ -f "${db}" ]] || return 0
     tmp=$(__smartcd::mktemp) || return 1
-    grep -Fxv -- "${directory}" "${db}" 2>/dev/null > "${tmp}"
-    mv -f "${tmp}" "${db}"
+    grep -Fxv -- "${directory}" "${db}" 2>/dev/null >| "${tmp}"
+    command mv -f "${tmp}" "${db}" >/dev/null
 }
 
 function __smartcd::databaseCleanup() {
@@ -239,9 +242,9 @@ function __smartcd::databaseCleanup() {
         [[ -n "${line}" && -d "${line}" ]] || continue
         __smartcd::isIgnored "${line}" && continue
         printf '%s\n' "${line}"
-    done < "${db}" | awk '!seen[$0]++' | head -n "${SMARTCD_HIST_SIZE:-100}" > "${tmp}"
+    done < "${db}" | awk '!seen[$0]++' | head -n "${SMARTCD_HIST_SIZE:-100}" >| "${tmp}"
 
-    mv -f "${tmp}" "${db}"
+    command mv -f "${tmp}" "${db}" >/dev/null
 }
 
 # Literal (non-regex), case-insensitive search in the history.
