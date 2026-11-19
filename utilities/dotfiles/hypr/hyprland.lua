@@ -63,7 +63,7 @@ hl.config({
     input = {
         kb_layout          = "br",
         numlock_by_default = true,
-        follow_mouse       = 1,
+        follow_mouse       = 2, -- 1 or 2
         touchpad = {
             natural_scroll = false,
         },
