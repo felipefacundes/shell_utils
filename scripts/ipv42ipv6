@@ -1,0 +1,815 @@
+#!/usr/bin/env bash
+# License: GPLv3
+# Credits: Felipe Facundes
+
+# ==============================================================================
+# Script Name : ipv42ipv6
+# Version     : 3.0.0
+# Description : Complete IPv4 -> IPv6 conversion and IPv6 manual-configuration
+#               toolkit (pure Bash, no python3 required).
+#
+# CONVERSIONS (need an IPv4 address):
+#   --mapped        IPv4-mapped        ::ffff:a.b.c.d          (RFC 4291)
+#   --compatible    IPv4-compatible    ::a.b.c.d  [deprecated] (RFC 4291)
+#   --six-to-four   6to4               2002:WWXX:YYZZ::/48     (RFC 3056)
+#   --nat64         NAT64 / RFC 6052   64:ff9b::/96 or custom /32 /40 /48 /56 /64 /96
+#   --link-local    Link-local         fe80::a.b.c.d           (RFC 4291)
+#   --isatap        ISATAP             ::0:5efe:a.b.c.d        (RFC 5214)
+#   --ula           ULA host address   fdXX:XXXX:XXXX:SUBNET::a.b.c.d (RFC 4193)
+#   --gua           GUA host address   from your ISP prefix
+#
+# SYSTEM HELPERS:
+#   --auto          Read this machine's IPv4 address/gateway and build a
+#                   ready-to-use IPv6 plan (nmtui + nmcli).
+#   --show-gateway  Show the real IPv6/IPv4 default gateways (kernel).
+#   --gen-ula       Generate and save a random /48 ULA prefix.
+#   --show-ula      Show the saved ULA prefix.
+#   --gen-ula-host  Generate a ULA host address from a host number.
+#   --gen-gua       Generate a GUA host address from a prefix + host number.
+#   --nmtui-hint    Cheat-sheet for the nmtui IPv6 fields.
+# ==============================================================================
+
+# NOTE: 'errexit' is intentionally NOT enabled. This script relies on many
+# conditional tests and explicit return codes; errexit would abort on harmless
+# non-zero statuses. Errors are handled explicitly instead.
+set -o nounset
+set -o pipefail
+
+readonly VERSION="3.0.0"
+SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_NAME
+ULA_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/ipv6_toolkit/ula.prefix"
+readonly ULA_FILE
+
+# ------------------------------------------------------------------------------
+# Colors (disabled when output is not a terminal or NO_COLOR is set)
+# ------------------------------------------------------------------------------
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'
+    BLUE=$'\033[0;34m'; CYAN=$'\033[0;36m'; MAGENTA=$'\033[0;35m'
+    BOLD=$'\033[1m'; DIM=$'\033[2m'; NC=$'\033[0m'
+else
+    RED=""; GREEN=""; YELLOW=""; BLUE=""; CYAN=""; MAGENTA=""; BOLD=""; DIM=""; NC=""
+fi
+
+log_info()    { printf '%s[INFO]%s    %s\n' "$BLUE"   "$NC" "$*"; }
+log_success() { printf '%s[OK]%s      %s\n' "$GREEN"  "$NC" "$*"; }
+log_warn()    { printf '%s[WARN]%s    %s\n' "$YELLOW" "$NC" "$*" >&2; }
+log_error()   { printf '%s[ERROR]%s   %s\n' "$RED"    "$NC" "$*" >&2; }
+log_note()    { printf '  %s%s%s\n' "$DIM" "$*" "$NC"; }
+log_title()   { printf '\n%s%s%s\n' "$BOLD$CYAN" "$*" "$NC"; }
+log_kv()      { printf '  %s%-24s%s %s%s%s\n' "$MAGENTA" "$1" "$NC" "$BOLD" "$2" "$NC"; }
+
+# ------------------------------------------------------------------------------
+# Global state
+# ------------------------------------------------------------------------------
+declare -a IP6_B=()        # 16 bytes of the last parsed IPv6 address
+declare -a V4B=()          # 4 bytes of the current IPv4 address
+V4=""; V4_HI=""; V4_LO=""  # IPv4 text and its two 16-bit hex halves
+V4_CLASS=""; V4_PUBLIC=false
+P_ADDR=""; P_LEN=0         # last parsed prefix (address / length)
+ULA_PREFIX=""
+SHOW_PTR=false
+SUBNET="0"                 # subnet ID inside a /48 (or shorter) prefix
+HOST_SPEC="ipv4"           # "ipv4" = embed the IPv4 in the low 32 bits, or a number
+USER_PREFIX=""             # prefix given with --prefix
+NAT64_PREFIX="64:ff9b::/96"
+IFACE_HINT=""
+
+usage() {
+    cat <<EOF
+${BOLD}Usage:${NC} ${SCRIPT_NAME} [OPTIONS] [IPv4_ADDRESS]
+
+${BOLD}CONVERSION MODES${NC} (require an IPv4 address; default is --all):
+  -a, --all                 Every conversion below (GUA only if --prefix is given)
+  -m, --mapped              IPv4-mapped IPv6        ::ffff:a.b.c.d
+  -c, --compatible          IPv4-compatible IPv6    ::a.b.c.d       [deprecated]
+  -6, --six-to-four         6to4                    2002:WWXX:YYZZ::/48
+  -n, --nat64               NAT64 (RFC 6052). Default prefix 64:ff9b::/96
+  -l, --link-local          Link-local              fe80::a.b.c.d
+  -i, --isatap              ISATAP interface ID     ::5efe:a.b.c.d
+  -u, --ula                 ULA host address (uses/creates the saved ULA prefix)
+  -G, --gua                 GUA host address (requires --prefix)
+
+${BOLD}CONVERSION OPTIONS:${NC}
+  -p, --prefix PREFIX/LEN   IPv6 prefix for --gua / --ula / --isatap (LEN <= 64)
+      --nat64-prefix P/LEN  NAT64 prefix: LEN in 32, 40, 48, 56, 64 or 96
+      --subnet N            Subnet ID inside the prefix (default 0; decimal or 0x..)
+      --host  N|ipv4        Host part: a number, or 'ipv4' to embed the IPv4
+                            in the low 32 bits (default: ipv4)
+  -r, --reverse             Also print the ip6.arpa PTR name of every address
+
+${BOLD}SYSTEM HELPERS:${NC}
+  -A, --auto                Detect this machine's IPv4 + gateway and build an
+                            IPv6 plan (nmtui values and nmcli commands)
+  -g, --show-gateway        Show the real default gateways from the kernel
+  -N, --gen-ula             Generate and save a random /48 ULA prefix (RFC 4193)
+      --show-ula            Show the saved ULA prefix
+  -U, --gen-ula-host [N]    ULA host address from host number N (default 10)
+      --gen-gua PREFIX [N]  GUA host address from PREFIX and host number N
+  -H, --nmtui-hint          Cheat-sheet mapping values to nmtui fields
+
+${BOLD}OTHER:${NC}
+  -h, --help                Show this help
+  -v, --version             Show version
+
+${BOLD}EXAMPLES:${NC}
+  ${SCRIPT_NAME} 192.168.0.1                      # every conversion
+  ${SCRIPT_NAME} --ula 192.168.0.50               # ULA address for a host
+  ${SCRIPT_NAME} --ula --subnet 1 192.168.1.1     # ULA gateway-style address
+  ${SCRIPT_NAME} --gua --prefix 2001:db8:abcd:1::/64 192.168.0.50
+  ${SCRIPT_NAME} --nat64 --nat64-prefix 2001:db8::/32 8.8.8.8
+  ${SCRIPT_NAME} --mapped --reverse 203.0.113.9
+  ${SCRIPT_NAME} --auto
+  ${SCRIPT_NAME} --gen-ula-host 10
+  ${SCRIPT_NAME} --gen-gua 2001:db8:abcd:1::/64 20
+EOF
+}
+
+# ==============================================================================
+# Validation and parsing helpers
+# ==============================================================================
+
+# Strict IPv4 validation (no leading zeros, each octet 0-255).
+is_valid_ipv4() {
+    local ip="$1" o
+    local -a octets
+    [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+    IFS='.' read -r -a octets <<< "$ip"
+    for o in "${octets[@]}"; do
+        [[ "$o" =~ ^(0|[1-9][0-9]{0,2})$ ]] || return 1
+        (( o <= 255 )) || return 1
+    done
+    return 0
+}
+
+# Parse a decimal or 0x-hex integer. Prints the value, or returns 1.
+parse_int() {
+    local v="$1"
+    if [[ "$v" =~ ^0[xX][0-9a-fA-F]{1,15}$ ]]; then
+        echo $(( v ))
+    elif [[ "$v" =~ ^[0-9]{1,18}$ ]]; then
+        echo $(( 10#$v ))
+    else
+        return 1
+    fi
+}
+
+# Parse any textual IPv6 address (compressed, full, or with embedded IPv4 tail)
+# into the global array IP6_B (16 decimal bytes). Zone IDs (%eth0) are ignored.
+parse_ipv6() {
+    local addr="${1,,}" v4tail a b c d left right g v i missing
+    local -a L=() R=() Z=() G=()
+    addr="${addr%%\%*}"
+    [[ -n "$addr" ]] || return 1
+
+    # Embedded dotted IPv4 tail (e.g. ::ffff:192.0.2.1)
+    if [[ "$addr" == *.* ]]; then
+        v4tail="${addr##*:}"
+        is_valid_ipv4 "$v4tail" || return 1
+        IFS='.' read -r a b c d <<< "$v4tail"
+        addr="${addr%:*}:$(printf '%x:%x' $(( a * 256 + b )) $(( c * 256 + d )))"
+    fi
+
+    [[ "$addr" =~ ^[0-9a-f:]+$ ]] || return 1
+    [[ "$addr" == *:::* ]] && return 1
+    [[ "$addr" == *::*::* ]] && return 1
+    [[ "$addr" == :* && "$addr" != ::* ]] && return 1
+    [[ "$addr" == *: && "$addr" != *:: ]] && return 1
+
+    if [[ "$addr" == *::* ]]; then
+        left="${addr%%::*}"; right="${addr#*::}"
+        [[ -n "$left"  ]] && IFS=':' read -r -a L <<< "$left"
+        [[ -n "$right" ]] && IFS=':' read -r -a R <<< "$right"
+        missing=$(( 8 - ${#L[@]} - ${#R[@]} ))
+        (( missing >= 1 )) || return 1
+        for (( i = 0; i < missing; i++ )); do Z+=(0); done
+        G=( ${L[@]+"${L[@]}"} ${Z[@]+"${Z[@]}"} ${R[@]+"${R[@]}"} )
+    else
+        IFS=':' read -r -a G <<< "$addr"
+        (( ${#G[@]} == 8 )) || return 1
+    fi
+
+    IP6_B=()
+    for g in "${G[@]}"; do
+        [[ "$g" =~ ^[0-9a-f]{1,4}$ ]] || return 1
+        v=$(( 16#$g ))
+        IP6_B+=( $(( v >> 8 )) $(( v & 255 )) )
+    done
+    (( ${#IP6_B[@]} == 16 )) || return 1
+    return 0
+}
+
+# Convert 16 bytes (arguments) to canonical compressed IPv6 text (RFC 5952).
+bytes_to_ipv6() {
+    local -a b=("$@") g=()
+    local i best_s=-1 best_l=0 cur_s=-1 cur_l=0 left="" right=""
+    for (( i = 0; i < 16; i += 2 )); do
+        g+=( "$(printf '%x' $(( (b[i] << 8) | b[i+1] )))" )
+    done
+    for (( i = 0; i < 8; i++ )); do
+        if [[ "${g[i]}" == "0" ]]; then
+            if (( cur_s < 0 )); then cur_s=$i; cur_l=0; fi
+            cur_l=$(( cur_l + 1 ))
+            if (( cur_l > best_l )); then best_l=$cur_l; best_s=$cur_s; fi
+        else
+            cur_s=-1; cur_l=0
+        fi
+    done
+    if (( best_l >= 2 )); then
+        for (( i = 0; i < best_s; i++ )); do left+="${left:+:}${g[i]}"; done
+        for (( i = best_s + best_l; i < 8; i++ )); do right+="${right:+:}${g[i]}"; done
+        printf '%s::%s' "$left" "$right"
+    else
+        local IFS=':'
+        printf '%s' "${g[*]}"
+    fi
+}
+
+# Split "addr/len" into P_ADDR / P_LEN and fill IP6_B with the address bytes.
+split_prefix() {
+    local p="$1"
+    if [[ "$p" != */* ]]; then
+        log_error "Prefix must include a length, e.g. 2001:db8:abcd:1::/64 (got '$p')"
+        return 1
+    fi
+    P_ADDR="${p%%/*}"; P_LEN="${p##*/}"
+    if ! [[ "$P_LEN" =~ ^[0-9]{1,3}$ ]] || (( 10#$P_LEN > 128 )); then
+        log_error "Invalid prefix length in '$p' (must be 0-128)"
+        return 1
+    fi
+    P_LEN=$(( 10#$P_LEN ))
+    if ! parse_ipv6 "$P_ADDR"; then
+        log_error "Invalid IPv6 prefix address: '$P_ADDR'"
+        return 1
+    fi
+    return 0
+}
+
+# Classify an IPv4 address. Sets V4_CLASS and V4_PUBLIC.
+classify_ipv4() {
+    local a="${V4B[0]}" b="${V4B[1]}" c="${V4B[2]}"
+    V4_PUBLIC=false
+    if   (( a == 0 ));                         then V4_CLASS="'this network' (0.0.0.0/8)"
+    elif (( a == 10 ));                        then V4_CLASS="private (RFC 1918)"
+    elif (( a == 100 && b >= 64 && b <= 127 )); then V4_CLASS="shared / CGNAT (RFC 6598)"
+    elif (( a == 127 ));                       then V4_CLASS="loopback"
+    elif (( a == 169 && b == 254 ));           then V4_CLASS="link-local / APIPA"
+    elif (( a == 172 && b >= 16 && b <= 31 )); then V4_CLASS="private (RFC 1918)"
+    elif (( a == 192 && b == 168 ));           then V4_CLASS="private (RFC 1918)"
+    elif (( a == 192 && b == 0 && c == 0 ));   then V4_CLASS="IETF protocol assignments"
+    elif (( a == 192 && b == 0 && c == 2 ));   then V4_CLASS="documentation (TEST-NET-1)"
+    elif (( a == 198 && b == 51 && c == 100 )); then V4_CLASS="documentation (TEST-NET-2)"
+    elif (( a == 203 && b == 0 && c == 113 )); then V4_CLASS="documentation (TEST-NET-3)"
+    elif (( a == 198 && (b == 18 || b == 19) )); then V4_CLASS="benchmarking (RFC 2544)"
+    elif (( a >= 224 && a <= 239 ));           then V4_CLASS="multicast"
+    elif (( a >= 240 ));                       then V4_CLASS="reserved / broadcast"
+    else V4_CLASS="public (globally routable)"; V4_PUBLIC=true
+    fi
+}
+
+# Load an IPv4 address into V4, V4B, V4_HI, V4_LO and classify it.
+load_ipv4() {
+    V4="$1"
+    IFS='.' read -r -a V4B <<< "$V4"
+    V4_HI="$(printf '%x' $(( V4B[0] * 256 + V4B[1] )))"
+    V4_LO="$(printf '%x' $(( V4B[2] * 256 + V4B[3] )))"
+    classify_ipv4
+}
+
+# Print an address; optionally add its ip6.arpa PTR name.
+emit() {
+    local label="$1" value="$2" a="${2%%/*}" i ptr=""
+    log_kv "$label" "$value"
+    if $SHOW_PTR && parse_ipv6 "$a"; then
+        for (( i = 15; i >= 0; i-- )); do
+            ptr+="$(printf '%x.%x.' $(( IP6_B[i] & 15 )) $(( IP6_B[i] >> 4 )))"
+        done
+        log_kv "  PTR (ip6.arpa)" "${ptr}ip6.arpa."
+    fi
+}
+
+# ==============================================================================
+# Address construction inside a prefix (LEN <= 64)
+#   make_addr <prefix/len> <subnet> <host: number|ipv4> <ipv4>
+# Prints "address/64".
+# ==============================================================================
+make_addr() {
+    local prefix="$1" subnet="$2" hostspec="$3" v4="${4:-}"
+    local i lo sbits k pos n sub
+    local -a o=() v=()
+
+    split_prefix "$prefix" || return 1
+    if (( P_LEN > 64 )); then
+        log_error "Prefix /$P_LEN is longer than /64; SLAAC/standard LANs need <= /64."
+        return 1
+    fi
+    o=("${IP6_B[@]}")
+
+    # Mask host bits beyond the prefix length.
+    for (( i = 0; i < 16; i++ )); do
+        lo=$(( i * 8 ))
+        if   (( lo >= P_LEN )); then o[i]=0
+        elif (( lo + 8 > P_LEN )); then o[i]=$(( o[i] & ((0xFF << (8 - (P_LEN - lo))) & 0xFF) ))
+        fi
+    done
+
+    # Subnet ID occupies the bits between P_LEN and 64.
+    sub="$(parse_int "$subnet")" || { log_error "Invalid subnet ID: '$subnet'"; return 1; }
+    sbits=$(( 64 - P_LEN ))
+    if (( sbits < 40 )) && (( sub >= (1 << sbits) )); then
+        log_error "Subnet ID $sub does not fit in $sbits bits (prefix /$P_LEN)."
+        return 1
+    fi
+    for (( k = 0; k < sbits && k < 62; k++ )); do
+        if (( (sub >> k) & 1 )); then
+            pos=$(( 63 - k ))
+            o[pos / 8]=$(( o[pos / 8] | (1 << (7 - pos % 8)) ))
+        fi
+    done
+
+    # Host part (interface ID, bytes 8-15).
+    for (( i = 8; i < 16; i++ )); do o[i]=0; done
+    if [[ "$hostspec" == "ipv4" ]]; then
+        is_valid_ipv4 "$v4" || { log_error "Host 'ipv4' requires a valid IPv4 address."; return 1; }
+        IFS='.' read -r -a v <<< "$v4"
+        o[12]=${v[0]}; o[13]=${v[1]}; o[14]=${v[2]}; o[15]=${v[3]}
+    else
+        n="$(parse_int "$hostspec")" || { log_error "Invalid host number: '$hostspec'"; return 1; }
+        for (( i = 15; i >= 8; i-- )); do
+            o[i]=$(( n & 255 )); n=$(( n >> 8 ))
+        done
+    fi
+    printf '%s/64\n' "$(bytes_to_ipv6 "${o[@]}")"
+}
+
+# ==============================================================================
+# ULA handling (RFC 4193)
+# ==============================================================================
+random_hex_bytes() {
+    local n="$1" out=""
+    if command -v openssl >/dev/null 2>&1; then
+        out="$(openssl rand -hex "$n" 2>/dev/null)"
+    fi
+    if [[ -z "$out" ]]; then
+        out="$(head -c "$n" /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    fi
+    printf '%s' "$out"
+}
+
+gen_ula() {
+    log_title "Generate a valid ULA /48 prefix (RFC 4193)"
+    local gid ula g1 g2 g3
+    if [[ -f "$ULA_FILE" ]]; then
+        ula="$(< "$ULA_FILE")"
+        log_warn "A ULA prefix already exists and will be reused:"
+        log_kv "Saved prefix" "$ula"
+        log_info "Delete '$ULA_FILE' if you want to regenerate."
+        return 0
+    fi
+    # 40-bit Global ID = 5 random bytes = 10 hex chars.
+    # Layout: fd + GG : GGGG : GGGG  ->  fdGG:GGGG:GGGG::/48
+    gid="$(random_hex_bytes 5)"
+    if ! [[ "$gid" =~ ^[0-9a-f]{10}$ ]]; then
+        log_error "Could not obtain random data for the Global ID."
+        return 1
+    fi
+    g1="${gid:0:2}"; g2="${gid:2:4}"; g3="${gid:6:4}"
+    ula="fd${g1}:${g2}:${g3}::/48"
+    mkdir -p "$(dirname "$ULA_FILE")" || { log_error "Cannot create config directory."; return 1; }
+    printf '%s\n' "$ula" > "$ULA_FILE" || { log_error "Cannot write $ULA_FILE"; return 1; }
+    log_success "ULA prefix generated and saved to $ULA_FILE"
+    log_kv "Prefix" "$ula"
+    echo
+    log_info "Use it as the IPv6 prefix of your LAN. It is NOT routable on the Internet."
+}
+
+show_ula() {
+    log_title "Saved ULA prefix"
+    if [[ -f "$ULA_FILE" ]]; then
+        log_kv "Prefix" "$(< "$ULA_FILE")"
+    else
+        log_warn "No saved ULA prefix. Run '--gen-ula' first."
+        return 1
+    fi
+}
+
+# Load the saved ULA prefix into ULA_PREFIX (generating one if missing).
+ensure_ula() {
+    if [[ ! -f "$ULA_FILE" ]]; then
+        log_warn "No saved ULA prefix found. Generating one now..."
+        gen_ula >/dev/null || return 1
+        log_success "New ULA prefix saved to $ULA_FILE"
+    fi
+    ULA_PREFIX="$(< "$ULA_FILE")"
+    split_prefix "$ULA_PREFIX" || { log_error "Saved ULA prefix is invalid: '$ULA_PREFIX'"; return 1; }
+}
+
+# ==============================================================================
+# SYSTEM HELPERS
+# ==============================================================================
+show_real_gateway() {
+    log_title "Actual default gateways (from the kernel routing table)"
+    command -v ip >/dev/null 2>&1 || { log_error "'ip' (iproute2) not found."; return 1; }
+    local line gw iface metric found=false
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        gw="$(awk '{for(i=1;i<=NF;i++) if($i=="via") print $(i+1)}' <<< "$line")"
+        iface="$(awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' <<< "$line")"
+        metric="$(awk '{for(i=1;i<=NF;i++) if($i=="metric") print $(i+1)}' <<< "$line")"
+        [[ -n "$gw" ]] || continue
+        found=true
+        log_success "IPv6 default gateway"
+        log_kv "Gateway" "$gw"
+        [[ -n "$iface"  ]] && log_kv "Interface" "$iface"
+        [[ -n "$metric" ]] && log_kv "Metric" "$metric"
+        [[ "$gw" == fe80:* ]] && log_note "Link-local gateway (normal). nmtui accepts it as typed; with 'ip' use: via $gw dev ${iface:-IFACE}"
+    done < <(ip -6 route show default 2>/dev/null)
+    $found || log_warn "No IPv6 default gateway found (network may be IPv4-only)."
+
+    line="$(ip -4 route show default 2>/dev/null | head -n1)"
+    if [[ -n "$line" ]]; then
+        gw="$(awk '{for(i=1;i<=NF;i++) if($i=="via") print $(i+1)}' <<< "$line")"
+        [[ -n "$gw" ]] && log_kv "IPv4 gateway (info)" "$gw"
+    fi
+    $found
+}
+
+# Build a full IPv6 plan from this machine's IPv4 configuration.
+auto_mode() {
+    log_title "Automatic plan from this machine's IPv4 configuration"
+    command -v ip >/dev/null 2>&1 || { log_error "'ip' (iproute2) not found."; return 1; }
+    local line gw4 iface cidr addr4 host6 gw6 net6 conn real6
+    line="$(ip -4 route show default 2>/dev/null | head -n1)"
+    if [[ -z "$line" ]]; then
+        log_error "No IPv4 default route found; cannot detect address/gateway."
+        return 1
+    fi
+    gw4="$(awk '{for(i=1;i<=NF;i++) if($i=="via") print $(i+1)}' <<< "$line")"
+    iface="$(awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}' <<< "$line")"
+    cidr="$(ip -4 -o addr show dev "$iface" scope global 2>/dev/null | awk '{print $4}' | head -n1)"
+    addr4="${cidr%%/*}"
+    if ! is_valid_ipv4 "$addr4" || ! is_valid_ipv4 "$gw4"; then
+        log_error "Could not read a valid IPv4 address/gateway on '$iface'."
+        return 1
+    fi
+    log_kv "Interface" "$iface"
+    log_kv "IPv4 address" "$cidr"
+    log_kv "IPv4 gateway" "$gw4"
+
+    ensure_ula || return 1
+    host6="$(make_addr "$ULA_PREFIX" "$SUBNET" ipv4 "$addr4")" || return 1
+    gw6="$(make_addr "$ULA_PREFIX" "$SUBNET" ipv4 "$gw4")" || return 1
+    net6="$(make_addr "$ULA_PREFIX" "$SUBNET" 0 "")" || return 1
+    real6="$(ip -6 route show default dev "$iface" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}')"
+
+    echo
+    log_title "ULA plan (LAN-only IPv6)"
+    emit "ULA network"         "$net6"
+    emit "IPv6 address (host)" "$host6"
+    emit "IPv6 gateway (ULA)"  "$gw6"
+    log_note "The ULA gateway above only works if your router really owns that address."
+    if [[ -n "$real6" ]]; then
+        log_success "Your router already advertises a real IPv6 gateway:"
+        log_kv "Real IPv6 gateway" "$real6"
+        log_note "Prefer the real gateway over the converted one."
+    else
+        log_warn "No real IPv6 gateway detected: ULA gives LAN IPv6 only, not Internet IPv6."
+    fi
+
+    conn="$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null | awk -F: -v d="$iface" '$2==d{print $1; exit}')"
+    [[ -n "$conn" ]] || conn="<CONNECTION_NAME>"
+    echo
+    log_title "nmtui fields"
+    log_kv "IPv6 Method"  "Manual"
+    log_kv "IPv6 Address" "$host6"
+    log_kv "IPv6 Gateway" "${real6:-$gw6}"
+    log_kv "IPv6 DNS"     "2606:4700:4700::1111"
+    echo
+    log_title "Equivalent nmcli commands"
+    printf '  nmcli connection modify "%s" ipv6.method manual ipv6.addresses "%s" ipv6.gateway "%s" ipv6.dns "2606:4700:4700::1111"\n' \
+        "$conn" "$host6" "${real6:-$gw6}"
+    printf '  nmcli connection up "%s"\n' "$conn"
+}
+
+gen_host_mode() { # <label> <prefix> <host_number>
+    local label="$1" prefix="$2" hid="$3" addr
+    addr="$(make_addr "$prefix" "$SUBNET" "$hid" "")" || return 1
+    log_success "$label host address generated"
+    log_kv "Source prefix" "$prefix"
+    log_kv "Host ID" "$hid"
+    emit "Address" "$addr"
+    echo
+    log_info "Paste '$addr' into nmtui's IPv6 Address field."
+    [[ "${hid}" == "0" ]] && log_warn "Host 0 is the Subnet-Router anycast address; avoid it for hosts."
+    return 0
+}
+
+gen_ula_host() {
+    local hid="${1:-10}"
+    log_title "Generate a full ULA host address"
+    ensure_ula || return 1
+    gen_host_mode "ULA" "$ULA_PREFIX" "$hid" || return 1
+    log_warn "ULA is LAN-only; it does not provide Internet IPv6 by itself."
+}
+
+gen_gua() {
+    local prefix="${1:-}" hid="${2:-10}"
+    if [[ -z "$prefix" ]]; then
+        log_error "Usage: --gen-gua <PREFIX>/<LEN> [HOST_ID]   e.g. --gen-gua 2001:db8:abcd:1::/64 10"
+        return 1
+    fi
+    log_title "Generate a full GUA host address from an ISP prefix"
+    gen_host_mode "GUA" "$prefix" "$hid" || return 1
+    log_info "Also set the IPv6 Gateway (see --show-gateway)."
+}
+
+nmtui_hint() {
+    log_title "nmtui cheat-sheet (IPv6 manual mode)"
+    cat <<EOF
+  ${BOLD}Field in nmtui${NC}      ${BOLD}Value to use${NC}
+  ---------------------  -------------------------------------------------------
+  IPv6 Method            Manual
+  IPv6 Address           ULA/GUA host address with /64, e.g. fd12:3456:789a::c0a8:32/64
+  IPv6 Gateway           Real router address from --show-gateway (usually fe80::...)
+                         or a ULA/GUA address your router really owns
+  IPv6 DNS               Router IPv6, or a public resolver (2606:4700:4700::1111)
+  ---------------------  -------------------------------------------------------
+  ${YELLOW}Which address type should I use?${NC}
+   * LAN only, no ISP IPv6      -> ULA  (--ula)       fd00::/8, not Internet-routable
+   * ISP delegates a prefix     -> GUA  (--gua --prefix PREFIX/64)
+   * Reach IPv4 hosts via NAT64 -> --nat64 (DNS64 resolver needed; not a NIC address)
+   * Local-only on one link     -> Link-local (--link-local), fe80::/10
+
+  ${YELLOW}Never valid as NIC address or gateway:${NC}
+   * ::ffff:a.b.c.d (mapped)   - only for sockets inside the OS
+   * ::a.b.c.d (compatible)    - deprecated, not routable
+   * 6to4 (2002::/16)          - deprecated (RFC 7526), needs a PUBLIC IPv4
+   * NAT64 (64:ff9b::/96)      - translator prefix, not a host/gateway address
+
+  ${YELLOW}Gateway tip:${NC} a gateway is a real device. Convert your IPv4 gateway with the
+  SAME mode and subnet as the host (e.g. --ula --subnet 0 192.168.0.1) only when
+  you configure that address on the router yourself. Otherwise use the router's
+  real fe80:: address from --show-gateway.
+EOF
+}
+
+# ==============================================================================
+# CONVERSIONS
+# ==============================================================================
+conv_mapped() {
+    local -a o=(0 0 0 0 0 0 0 0 0 0 255 255 "${V4B[@]}")
+    log_title "IPv4-mapped IPv6 (RFC 4291 §2.5.5.2)"
+    emit "Dotted form" "::ffff:${V4}"
+    emit "Canonical hex form" "$(bytes_to_ipv6 "${o[@]}")"
+    log_note "Used by dual-stack sockets, e.g. [::ffff:${V4}]:80."
+    log_note "NOT valid as a NIC address or gateway."
+}
+
+conv_compatible() {
+    local -a o=(0 0 0 0 0 0 0 0 0 0 0 0 "${V4B[@]}")
+    log_title "IPv4-compatible IPv6 (deprecated, RFC 4291)"
+    emit "Address" "$(bytes_to_ipv6 "${o[@]}")"
+    emit "Dotted form" "::${V4}"
+    log_note "Deprecated since RFC 4291; never routable."
+    [[ "$V4" == "0.0.0.0" || "$V4" == "0.0.0.1" ]] && \
+        log_warn "This result collides with the IPv6 unspecified (::) / loopback (::1) address."
+}
+
+conv_6to4() {
+    local -a o=(32 2 "${V4B[@]}" 0 0 0 0 0 0 0 0 0 0)
+    local -a h=("${o[@]}")
+    log_title "6to4 (RFC 3056, deprecated by RFC 7526)"
+    emit "6to4 /48 prefix"  "$(bytes_to_ipv6 "${o[@]}")/48"
+    h[15]=1
+    emit "Example host (::1)" "$(bytes_to_ipv6 "${h[@]}")"
+    if ! $V4_PUBLIC; then
+        log_warn "6to4 requires a PUBLIC IPv4 address; this one is: ${V4_CLASS}."
+    fi
+    log_note "Deprecated; shown for reference and legacy tunnels only."
+}
+
+conv_nat64() {
+    local len i
+    local -a o=() p=()
+    log_title "NAT64 / IPv4-embedded IPv6 (RFC 6052)"
+    split_prefix "$NAT64_PREFIX" || return 1
+    len="$P_LEN"
+    case "$len" in
+        32|40|48|56|64|96) ;;
+        *) log_error "NAT64 prefix length must be 32, 40, 48, 56, 64 or 96 (got /$len)."; return 1 ;;
+    esac
+    p=("${IP6_B[@]}")
+    o=("${p[@]}")
+    for (( i = len / 8; i < 16; i++ )); do o[i]=0; done   # clear everything after the prefix
+    case "$len" in
+        32) o[4]=${V4B[0]}; o[5]=${V4B[1]}; o[6]=${V4B[2]}; o[7]=${V4B[3]} ;;
+        40) o[5]=${V4B[0]}; o[6]=${V4B[1]}; o[7]=${V4B[2]}; o[9]=${V4B[3]} ;;
+        48) o[6]=${V4B[0]}; o[7]=${V4B[1]}; o[9]=${V4B[2]}; o[10]=${V4B[3]} ;;
+        56) o[7]=${V4B[0]}; o[9]=${V4B[1]}; o[10]=${V4B[2]}; o[11]=${V4B[3]} ;;
+        64) o[9]=${V4B[0]}; o[10]=${V4B[1]}; o[11]=${V4B[2]}; o[12]=${V4B[3]} ;;
+        96) o[12]=${V4B[0]}; o[13]=${V4B[1]}; o[14]=${V4B[2]}; o[15]=${V4B[3]} ;;
+    esac
+    local pfx_txt
+    pfx_txt="$(bytes_to_ipv6 "${p[@]}")"
+    log_kv "NAT64 prefix" "${pfx_txt}/${len}"
+    emit "Synthesized address" "$(bytes_to_ipv6 "${o[@]}")"
+    if (( len == 96 )); then
+        local z=("${o[@]}"); z[12]=0; z[13]=0; z[14]=0; z[15]=0
+        local base; base="$(bytes_to_ipv6 "${z[@]}")"
+        [[ "$base" == *:: ]] && emit "Dotted form" "${base}${V4}"
+    fi
+    if [[ "$NAT64_PREFIX" == "64:ff9b::/96" ]] && ! $V4_PUBLIC; then
+        log_warn "The Well-Known Prefix must only be used with PUBLIC IPv4 (${V4_CLASS})."
+        log_note "For private IPv4 use a network-specific prefix, e.g. --nat64-prefix 64:ff9b:1::/48 (RFC 8215)."
+    fi
+    log_note "Translator prefix: used with DNS64/NAT64 gateways, not as a host/gateway address."
+}
+
+conv_link_local() {
+    local a
+    log_title "Link-local IPv6 (fe80::/10)"
+    a="$(make_addr "fe80::/64" 0 ipv4 "$V4")" || return 1
+    emit "Link-local" "$a"
+    [[ -n "$IFACE_HINT" ]] && log_kv "With zone ID" "${a%%/*}%${IFACE_HINT}"
+    log_note "Valid only on the local link; always needs an interface (fe80::x%eth0)."
+}
+
+conv_isatap() {
+    local -a o=(254 128 0 0 0 0 0 0 0 0 94 254 "${V4B[@]}")
+    log_title "ISATAP interface ID (RFC 5214)"
+    o[8]=0; $V4_PUBLIC && o[8]=2
+    emit "Link-local ISATAP" "$(bytes_to_ipv6 "${o[@]}")"
+    if [[ -n "$USER_PREFIX" ]]; then
+        split_prefix "$USER_PREFIX" || return 1
+        if (( P_LEN > 64 )); then log_error "ISATAP needs a prefix of /64 or shorter."; return 1; fi
+        local i; local -a g=("${IP6_B[@]}")
+        for (( i = 8; i < 16; i++ )); do g[i]=${o[i]}; done
+        for (( i = P_LEN / 8; i < 8; i++ )); do g[i]=0; done
+        emit "ISATAP with prefix" "$(bytes_to_ipv6 "${g[@]}")"
+    fi
+    log_note "Interface ID is ::5efe:a.b.c.d (0200 prefix when the IPv4 is public)."
+}
+
+conv_ula() {
+    local addr net
+    log_title "ULA host address (RFC 4193)"
+    ensure_ula || return 1
+    addr="$(make_addr "$ULA_PREFIX" "$SUBNET" "$HOST_SPEC" "$V4")" || return 1
+    net="$(make_addr "$ULA_PREFIX" "$SUBNET" 0 "")" || return 1
+    log_kv "ULA /48 prefix" "$ULA_PREFIX"
+    emit "ULA /64 network" "$net"
+    emit "ULA address" "$addr"
+    log_note "Usable as manual NIC address (LAN only). Same subnet + same mode for the gateway."
+}
+
+conv_gua() {
+    local addr net
+    log_title "GUA host address from ISP prefix"
+    if [[ -z "$USER_PREFIX" ]]; then
+        log_error "--gua needs --prefix PREFIX/LEN (the prefix delegated by your ISP)."
+        return 1
+    fi
+    addr="$(make_addr "$USER_PREFIX" "$SUBNET" "$HOST_SPEC" "$V4")" || return 1
+    net="$(make_addr "$USER_PREFIX" "$SUBNET" 0 "")" || return 1
+    log_kv "ISP prefix" "$USER_PREFIX"
+    emit "GUA /64 network" "$net"
+    emit "GUA address" "$addr"
+    log_note "Only valid if the prefix really belongs to your network; also set the gateway."
+}
+
+# ==============================================================================
+# MAIN
+# ==============================================================================
+main() {
+    if (( BASH_VERSINFO[0] < 4 )); then
+        log_error "Bash 4.0 or newer is required."
+        exit 1
+    fi
+    (( $# > 0 )) || { usage; exit 1; }
+
+    local ip="" tmp
+    local do_gateway=false do_ula_gen=false do_ula_show=false do_ula_host=false
+    local do_gua_gen=false do_hint=false do_auto=false
+    local ula_host_id="10" gua_prefix="" gua_host_id="10"
+    local -A want=()
+
+    while (( $# > 0 )); do
+        case "$1" in
+            -h|--help)         usage; exit 0 ;;
+            -v|--version)      echo "${SCRIPT_NAME} v${VERSION}"; exit 0 ;;
+            -a|--all)          want[mapped]=1; want[compatible]=1; want[six]=1; want[nat64]=1
+                               want[link]=1; want[isatap]=1; want[ula]=1; want[all]=1 ;;
+            -m|--mapped)       want[mapped]=1 ;;
+            -c|--compatible)   want[compatible]=1 ;;
+            -6|--six-to-four)  want[six]=1 ;;
+            -n|--nat64)        want[nat64]=1 ;;
+            -l|--link-local)   want[link]=1 ;;
+            -i|--isatap)       want[isatap]=1 ;;
+            -u|--ula)          want[ula]=1 ;;
+            -G|--gua)          want[gua]=1 ;;
+            -r|--reverse)      SHOW_PTR=true ;;
+            -p|--prefix)       [[ -n "${2:-}" ]] || { log_error "--prefix needs a value."; exit 1; }
+                               USER_PREFIX="$2"; shift ;;
+               --nat64-prefix) [[ -n "${2:-}" ]] || { log_error "--nat64-prefix needs a value."; exit 1; }
+                               NAT64_PREFIX="$2"; shift ;;
+               --subnet)       [[ -n "${2:-}" ]] || { log_error "--subnet needs a value."; exit 1; }
+                               SUBNET="$2"; shift ;;
+               --host)         [[ -n "${2:-}" ]] || { log_error "--host needs a value."; exit 1; }
+                               HOST_SPEC="$2"; shift ;;
+               --iface)        IFACE_HINT="${2:-}"; shift ;;
+            -A|--auto)         do_auto=true ;;
+            -g|--show-gateway) do_gateway=true ;;
+            -N|--gen-ula)      do_ula_gen=true ;;
+               --show-ula)     do_ula_show=true ;;
+            -U|--gen-ula-host) do_ula_host=true
+                               if [[ "${2:-}" =~ ^[0-9]+$ ]]; then ula_host_id="$2"; shift; fi ;;
+               --gen-gua)      do_gua_gen=true
+                               if [[ -n "${2:-}" && "${2}" != -* ]]; then gua_prefix="$2"; shift; fi
+                               if [[ "${2:-}" =~ ^[0-9]+$ ]]; then gua_host_id="$2"; shift; fi ;;
+            -H|--nmtui-hint)   do_hint=true ;;
+            --)                shift; break ;;
+            -*)                log_error "Unknown option: $1 (use --help)"; exit 1 ;;
+            *)                 ip="$1" ;;
+        esac
+        shift
+    done
+
+    if [[ "$HOST_SPEC" != "ipv4" ]]; then
+        parse_int "$HOST_SPEC" >/dev/null || { log_error "--host must be a number or 'ipv4'."; exit 1; }
+    fi
+    parse_int "$SUBNET" >/dev/null || { log_error "--subnet must be a number (decimal or 0x..)."; exit 1; }
+
+    printf '%s\n' "============================================================"
+    printf '%s   IPv4 -> IPv6 TOOLKIT  (v%s)%s\n' "$BOLD$CYAN" "$VERSION" "$NC"
+    printf '%s\n' "============================================================"
+
+    # ---- Friendly warning: host-number modes do not take an IPv4 ----
+    if [[ -n "$ip" ]]; then
+        if $do_ula_host; then
+            log_warn "'--gen-ula-host' expects a host number (e.g. 10), not an IPv4; '$ip' will be used for conversions."
+            log_warn "To embed an IPv4 in a ULA address use: ${SCRIPT_NAME} --ula $ip"
+        fi
+        if $do_gua_gen; then
+            log_warn "'--gen-gua' expects PREFIX [HOST_NUMBER], not an IPv4; '$ip' will be used for conversions."
+            log_warn "To embed an IPv4 in a GUA address use: ${SCRIPT_NAME} --gua --prefix PREFIX/64 $ip"
+        fi
+    fi
+
+    # ---- System helpers ----
+    $do_gateway  && { show_real_gateway || true; }
+    $do_ula_gen  && { gen_ula || true; }
+    $do_ula_show && { show_ula || true; }
+    $do_ula_host && { gen_ula_host "$ula_host_id" || true; }
+    $do_gua_gen  && { gen_gua "$gua_prefix" "$gua_host_id" || true; }
+    $do_auto     && { auto_mode || true; }
+    $do_hint     && { nmtui_hint; }
+
+    # ---- Conversions ----
+    if [[ -z "$ip" ]]; then
+        if (( ${#want[@]} > 0 )); then
+            log_error "Conversion modes require an IPv4 address (e.g. 192.168.0.1)."
+            exit 1
+        fi
+        log_title "Done"
+        return 0
+    fi
+
+    if ! is_valid_ipv4 "$ip"; then
+        log_error "Invalid IPv4 address: '$ip'"
+        exit 1
+    fi
+    load_ipv4 "$ip"
+    (( ${#want[@]} > 0 )) || { want[mapped]=1; want[compatible]=1; want[six]=1; want[nat64]=1
+                                want[link]=1; want[isatap]=1; want[ula]=1; want[all]=1; }
+    [[ -n "$USER_PREFIX" && -n "${want[all]:-}" ]] && want[gua]=1
+
+    log_title "Input IPv4"
+    log_kv "Address" "$V4"
+    log_kv "Classification" "$V4_CLASS"
+    log_kv "Hex (a.b : c.d)" "${V4_HI}:${V4_LO}"
+
+    [[ -n "${want[mapped]:-}"     ]] && { conv_mapped     || true; }
+    [[ -n "${want[compatible]:-}" ]] && { conv_compatible || true; }
+    [[ -n "${want[six]:-}"        ]] && { conv_6to4       || true; }
+    [[ -n "${want[nat64]:-}"      ]] && { conv_nat64      || true; }
+    [[ -n "${want[link]:-}"       ]] && { conv_link_local || true; }
+    [[ -n "${want[isatap]:-}"     ]] && { conv_isatap     || true; }
+    if [[ -n "${want[ula]:-}" ]]; then
+        if [[ -n "${want[all]:-}" && ! -f "$ULA_FILE" ]]; then
+            log_title "ULA host address (RFC 4193)"
+            log_warn "No saved ULA prefix. Run '--gen-ula' (or '--ula') to create one."
+        else
+            conv_ula || true
+        fi
+    fi
+    [[ -n "${want[gua]:-}" ]] && { conv_gua || true; }
+
+    tmp="Only ULA / GUA / link-local results are valid as manual NIC addresses."
+    echo
+    log_info "$tmp"
+    log_info "Mapped, compatible, 6to4 and NAT64 are reference/translation formats."
+    log_title "Done"
+}
+
+main "$@"
